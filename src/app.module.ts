@@ -1,0 +1,61 @@
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { EmployeeModule } from './employee/employee.module';
+import { CityModule } from './city/city.module';
+import { DepartmentModule } from './department/department.module';
+import { DesignationModule } from './designation/designation.module';
+import { EmployeeGradeModule } from './employee-grade/employee-grade.module';
+import { EmployeeStatusModule } from './employee-status/employee-status.module';
+import { BranchModule } from './branch/branch.module';
+import { EquipmentModule } from './equipment/equipment.module';
+import { WorkingHoursPolicyModule } from './working-hours-policy/working-hours-policy.module';
+import { JobTypeModule } from './job-type/job-type.module';
+import { InstituteModule } from './institute/institute.module';
+import { QualificationModule } from './qualification/qualification.module';
+import { ProvidentFundModule } from './provident-fund/provident-fund.module';
+import { TaxSlabModule } from './tax-slab/tax-slab.module';
+import { MaritalStatusModule } from './marital-status/marital-status.module';
+import { LeaveTypeModule } from './leave-type/leave-type.module';
+import { LeavesPolicyModule } from './leaves-policy/leaves-policy.module';
+import { LoanTypeModule } from './loan-type/loan-type.module';
+import { EobiModule } from './eobi/eobi.module';
+import { UploadModule } from './upload/upload.module';
+import { BonusTypeModule } from './bonus-type/bonus-type.module';
+import { SalaryBreakupModule } from './salary-breakup/salary-breakup.module';
+import { ActivityLogsModule } from './activity-logs/activity-logs.module';
+
+@Module({
+  imports: [
+    PrismaModule,
+    AuthModule,
+    EmployeeModule,
+    CityModule,
+    DepartmentModule,
+    DesignationModule,
+    EmployeeGradeModule,
+    EmployeeStatusModule,
+    BranchModule,
+    EquipmentModule,
+    WorkingHoursPolicyModule,
+    JobTypeModule,
+    InstituteModule,
+    QualificationModule,
+    ProvidentFundModule,
+    TaxSlabModule,
+    MaritalStatusModule,
+    LeaveTypeModule,
+    LeavesPolicyModule,
+    LoanTypeModule,
+    EobiModule,
+    BonusTypeModule,
+    SalaryBreakupModule,
+    UploadModule,
+    ActivityLogsModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}

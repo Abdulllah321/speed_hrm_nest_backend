@@ -1,0 +1,172 @@
+// Authentication & Security models
+
+model User {
+  id                    String         @id @default(uuid())
+  email                 String         @unique
+  password              String
+  firstName             String
+  lastName              String
+  phone                 String?
+  avatar                String?
+  employeeId            String?        @unique
+  status                String         @default("active")
+  failedLoginAttempts   Int            @default(0)
+  lockedUntil           DateTime?
+  lastLoginAt           DateTime?
+  lastLoginIp           String?
+  passwordChangedAt     DateTime?
+  mustChangePassword    Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  // Relations
+  roleId                String?
+  role                  Role?          @relation(fields: [roleId], references: [id])
+  sessions              Session[]
+  refreshTokens         RefreshToken[]
+  activityLogs          ActivityLog[]
+  loginHistory          LoginHistory[]
+  employee              Employee?
+
+  // CreatedBy relations for master data
+  designationsCreated      Designation[]      @relation("DesignationCreatedBy")
+  jobTypesCreated          JobType[]          @relation("JobTypeCreatedBy")
+  institutesCreated        Institute[]        @relation("InstituteCreatedBy")
+  qualificationsCreated    Qualification[]    @relation("QualificationCreatedBy")
+  maritalStatusesCreated   MaritalStatus[]    @relation("MaritalStatusCreatedBy")
+  degreeTypesCreated       DegreeType[]       @relation("DegreeTypeCreatedBy")
+  statesCreated            State[]            @relation("StateCreatedBy")
+  citiesCreated            City[]             @relation("CityCreatedBy")
+  branchesCreated          Branch[]           @relation("BranchCreatedBy")
+  allowanceHeadsCreated    AllowanceHead[]    @relation("AllowanceHeadCreatedBy")
+  deductionHeadsCreated    DeductionHead[]    @relation("DeductionHeadCreatedBy")
+  loanTypesCreated         LoanType[]         @relation("LoanTypeCreatedBy")
+  leaveTypesCreated        LeaveType[]        @relation("LeaveTypeCreatedBy")
+  leavesPoliciesCreated    LeavesPolicy[]     @relation("LeavesPolicyCreatedBy")
+  equipmentsCreated        Equipment[]        @relation("EquipmentCreatedBy")
+  eobisCreated             EOBI[]             @relation("EOBICreatedBy")
+  salaryBreakupsCreated    SalaryBreakup[]    @relation("SalaryBreakupCreatedBy")
+  taxSlabsCreated          TaxSlab[]          @relation("TaxSlabCreatedBy")
+  bonusTypesCreated        BonusType[]        @relation("BonusTypeCreatedBy")
+  approvalSettingsCreated  ApprovalSetting[]  @relation("ApprovalSettingCreatedBy")
+  departmentsCreated       Department[]       @relation("DepartmentCreatedBy")
+  subDepartmentsCreated    SubDepartment[]    @relation("SubDepartmentCreatedBy")
+  employeeGradesCreated    EmployeeGrade[]    @relation("EmployeeGradeCreatedBy")
+  employeeStatusesCreated  EmployeeStatus[]   @relation("EmployeeStatusCreatedBy")
+  providentFundsCreated    ProvidentFund[]    @relation("ProvidentFundCreatedBy")
+  workingHoursPoliciesCreated WorkingHoursPolicy[] @relation("WorkingHoursPolicyCreatedBy")
+  fileUploadsCreated          FileUpload[]         @relation("FileUploadCreatedBy")
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  isSystem    Boolean          @default(false) // System roles can't be deleted
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique // e.g., "employees.create", "employees.view"
+  module      String           // e.g., "employees", "departments", "payroll"
+  action      String           // e.g., "create", "read", "update", "delete"
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model Session {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token          String   @unique
+  ipAddress      String?
+  userAgent      String?
+  deviceInfo     String?
+  isActive       Boolean  @default(true)
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  family    String
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model ActivityLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action       String   // login, logout, create, update, delete, etc.
+  module       String?  // employees, departments, payroll, etc.
+  entity       String?  // Entity type affected
+  entityId     String?  // Entity ID affected
+  description  String?  // Human readable description
+  oldValues    String?  // JSON string of old values
+  newValues    String?  // JSON string of new values
+  ipAddress    String?
+  userAgent    String?
+  status       String   @default("success") // success, failure
+  errorMessage String?
+  metadata     String?  // Additional JSON metadata
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([module])
+  @@index([createdAt])
+}
+
+model LoginHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress  String
+  userAgent  String?
+  deviceInfo String?
+  status     String   // success, failed, blocked
+  failReason String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model BlacklistedToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  reason    String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+}

@@ -1,0 +1,61 @@
+// Employee related models
+
+model Employee {
+  id                        String    @id @default(uuid())
+  userId                    String?   @unique
+  user                      User?     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  employeeId                String    @unique
+  employeeName              String
+  fatherHusbandName         String
+  department                String
+  subDepartment             String?
+  employeeGrade             String
+  attendanceId              String
+  designation               String
+  maritalStatus             String
+  employmentStatus          String
+  probationExpiryDate       DateTime?
+  cnicNumber                String    @unique
+  cnicExpiryDate            DateTime?
+  lifetimeCnic              Boolean   @default(false)
+  joiningDate               DateTime
+  dateOfBirth               DateTime
+  nationality               String
+  gender                    String
+  contactNumber             String
+  emergencyContactNumber    String?
+  emergencyContactPerson    String?
+  personalEmail             String?
+  officialEmail             String    @unique
+  country                   String
+  province                  String
+  city                      String
+  area                      String?
+  employeeSalary            Decimal
+  eobi                      Boolean   @default(false)
+  eobiNumber                String?
+  providentFund             Boolean   @default(false)
+  overtimeApplicable        Boolean   @default(false)
+  daysOff                   String?
+  reportingManager          String
+  workingHoursPolicy        String
+  branch                    String
+  leavesPolicy              String
+  allowRemoteAttendance     Boolean   @default(false)
+  currentAddress            String?
+  permanentAddress          String?
+  bankName                  String
+  accountNumber             String
+  accountTitle              String
+  laptop                    Boolean   @default(false)
+  card                      Boolean   @default(false)
+  mobileSim                 Boolean   @default(false)
+  key                       Boolean   @default(false)
+  tools                     Boolean   @default(false)
+  accountType               String?
+  password                  String?
+  roles                     String?
+  status                    String    @default("active")
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+}

@@ -1,0 +1,9 @@
+// Base configuration for Prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

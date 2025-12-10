@@ -1,0 +1,360 @@
+// Master data models
+
+model Designation {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("DesignationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model JobType {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("JobTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Institute {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  status         String          @default("active")
+  createdById    String?
+  createdBy      User?           @relation("InstituteCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  qualifications Qualification[]
+}
+
+model Qualification {
+  id            String     @id @default(uuid())
+  instituteId   String?
+  institute     Institute? @relation(fields: [instituteId], references: [id], onDelete: SetNull)
+  instituteName String
+  qualification String
+  country       String
+  city          String
+  status        String     @default("active")
+  createdById   String?
+  createdBy     User?      @relation("QualificationCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model MaritalStatus {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("MaritalStatusCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DegreeType {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("DegreeTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String
+  iso       String
+  nicename  String
+  iso3      String
+  phoneCode Int
+  numcode   Int
+  cities    City[]
+  states    State[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model City {
+  id          String   @id @default(uuid())
+  name        String
+  countryId   String
+  country     Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  stateId     String
+  state       State   @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("CityCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  branches    Branch[]
+
+  @@unique([name, countryId, stateId])
+}
+
+model State {
+  id          String   @id @default(uuid())
+  name        String
+  countryId   String
+  country     Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("StateCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cities      City[]
+}
+
+model Branch {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  address     String?
+  cityId      String?
+  city        City?    @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  status      String   @default("active") // active, inactive
+  createdById String?
+  createdBy   User?    @relation("BranchCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AllowanceHead {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DeductionHead {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("DeductionHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LoanType {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("LoanTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LeaveType {
+  id                      String                    @id @default(uuid())
+  name                    String                    @unique
+  status                  String                    @default("active")
+  createdById             String?
+  createdBy               User?                     @relation("LeaveTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  leavesPolicies          LeavesPolicyLeaveType[]
+}
+
+model LeavesPolicy {
+  id                      String                    @id @default(uuid())
+  name                    String                    @unique
+  details                 String?
+  policyDateFrom          DateTime?
+  policyDateTill          DateTime?
+  fullDayDeductionRate    Decimal?
+  halfDayDeductionRate    Decimal?
+  shortLeaveDeductionRate Decimal?
+  status                  String                    @default("active")
+  createdById             String?
+  createdBy               User?                     @relation("LeavesPolicyCreatedBy", fields: [createdById], references: [id])
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  leaveTypes              LeavesPolicyLeaveType[]
+}
+
+model LeavesPolicyLeaveType {
+  id             String        @id @default(uuid())
+  leavesPolicyId String
+  leavesPolicy   LeavesPolicy  @relation(fields: [leavesPolicyId], references: [id], onDelete: Cascade)
+  leaveTypeId    String
+  leaveType      LeaveType     @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  numberOfLeaves Int
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([leavesPolicyId, leaveTypeId])
+}
+
+model Equipment {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("EquipmentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SalaryBreakup {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  details     String?
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("SalaryBreakupCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TaxSlab {
+  id          String   @id @default(uuid())
+  name        String
+  minAmount   Decimal
+  maxAmount   Decimal
+  rate        Decimal
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("TaxSlabCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BonusType {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("BonusTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ApprovalSetting {
+  id          String   @id @default(uuid())
+  name        String
+  levels      Int      @default(1)
+  details     String?
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("ApprovalSettingCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Department related models
+
+model Department {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  createdById    String?
+  createdBy      User?           @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  subDepartments SubDepartment[]
+}
+
+model SubDepartment {
+  id           String     @id @default(uuid())
+  name         String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdById  String?
+  createdBy    User?      @relation("SubDepartmentCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([name, departmentId])
+}
+
+model EOBI {
+  id          String   @id @default(uuid())
+  name        String
+  amount      Decimal
+  yearMonth   String
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("EOBICreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EmployeeGrade {
+  id          String   @id @default(uuid())
+  grade       String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("EmployeeGradeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EmployeeStatus {
+  id          String   @id @default(uuid())
+  status      String   @unique
+  statusType  String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("EmployeeStatusCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProvidentFund {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  percentage  Decimal
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("ProvidentFundCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model WorkingHoursPolicy {
+  id                        String   @id @default(uuid())
+  name                      String   @unique
+  startWorkingHours         String
+  endWorkingHours           String
+  shortDayMins              Int?
+  startBreakTime            String?
+  endBreakTime              String?
+  halfDayStartTime          String?
+  lateStartTime             String?
+  lateDeductionType         String?
+  applyDeductionAfterLates  Int?
+  lateDeductionPercent      Decimal?
+  halfDayDeductionType      String?
+  applyDeductionAfterHalfDays Int?
+  halfDayDeductionAmount    Decimal?
+  shortDayDeductionType     String?
+  applyDeductionAfterShortDays Int?
+  shortDayDeductionAmount   Decimal?
+  overtimeRate              Decimal?
+  gazzetedOvertimeRate      Decimal?
+  dayOverrides              Json?    // Stores day-wise overrides: { monday: { enabled, overrideHours, startTime, endTime, overrideBreak, startBreakTime, endBreakTime, dayType }, ... }
+  status                    String   @default("active")
+  createdById               String?
+  createdBy                 User?    @relation("WorkingHoursPolicyCreatedBy", fields: [createdById], references: [id])
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+model FileUpload {
+  id           String   @id @default(uuid())
+  filename     String
+  mimetype     String
+  size         Int
+  path         String?
+  createdById  String?
+  createdBy    User?    @relation("FileUploadCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
