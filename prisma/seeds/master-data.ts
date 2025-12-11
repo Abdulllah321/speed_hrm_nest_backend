@@ -1,6 +1,6 @@
-// Seed functions for master data: Department, SubDepartment, Designation, JobType, MaritalStatus
+import { PrismaClient } from '@prisma/client';
 
-export async function seedDepartments(prisma) {
+export async function seedDepartments(prisma: PrismaClient) {
   console.log('🏢 Seeding departments...');
   const departments = [
     'Human Resources',
@@ -24,7 +24,7 @@ export async function seedDepartments(prisma) {
       if (existing) { skipped++; continue; }
       await prisma.department.create({ data: { name } });
       created++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding department "${name}":`, error.message);
     }
   }
@@ -32,7 +32,7 @@ export async function seedDepartments(prisma) {
   return { created, skipped };
 }
 
-export async function seedSubDepartments(prisma) {
+export async function seedSubDepartments(prisma: PrismaClient) {
   console.log('📁 Seeding sub-departments...');
   const departments = await prisma.department.findMany();
   const departmentMap = new Map(departments.map(d => [d.name.toLowerCase(), d.id]));
@@ -86,7 +86,7 @@ export async function seedSubDepartments(prisma) {
       if (existing) { skipped++; continue; }
       await prisma.subDepartment.create({ data: { name: subDept.name, departmentId } });
       created++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding sub-department "${subDept.name}":`, error.message);
     }
   }
@@ -94,7 +94,7 @@ export async function seedSubDepartments(prisma) {
   return { created, skipped };
 }
 
-export async function seedDesignations(prisma) {
+export async function seedDesignations(prisma: PrismaClient) {
   console.log('👔 Seeding designations...');
   const designations = [
     'Chief Executive Officer',
@@ -163,7 +163,7 @@ export async function seedDesignations(prisma) {
       if (existing) { skipped++; continue; }
       await prisma.designation.create({ data: { name, status: 'active' } });
       created++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding designation "${name}":`, error.message);
     }
   }
@@ -171,9 +171,9 @@ export async function seedDesignations(prisma) {
   return { created, skipped };
 }
 
-export async function seedJobTypes(prisma) {
+export async function seedJobTypes(prisma: PrismaClient) {
   console.log('💼 Seeding job types...');
-  const jobTypes = ['Full Time','Part Time','Contract','Temporary','Internship','Freelance','Consultant','Volunteer'];
+  const jobTypes = ['Full Time', 'Part Time', 'Contract', 'Temporary', 'Internship', 'Freelance', 'Consultant', 'Volunteer'];
   let created = 0;
   let skipped = 0;
   for (const name of jobTypes) {
@@ -182,7 +182,7 @@ export async function seedJobTypes(prisma) {
       if (existing) { skipped++; continue; }
       await prisma.jobType.create({ data: { name, status: 'active' } });
       created++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding job type "${name}":`, error.message);
     }
   }
@@ -190,9 +190,9 @@ export async function seedJobTypes(prisma) {
   return { created, skipped };
 }
 
-export async function seedMaritalStatuses(prisma) {
+export async function seedMaritalStatuses(prisma: PrismaClient) {
   console.log('💑 Seeding marital statuses...');
-  const maritalStatuses = ['Single','Married','Divorced','Widowed','Separated'];
+  const maritalStatuses = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated'];
   let created = 0;
   let skipped = 0;
   for (const name of maritalStatuses) {
@@ -201,11 +201,70 @@ export async function seedMaritalStatuses(prisma) {
       if (existing) { skipped++; continue; }
       await prisma.maritalStatus.create({ data: { name, status: 'active' } });
       created++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding marital status "${name}":`, error.message);
     }
   }
   console.log(`✓ Marital Statuses: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
+export async function seedHolidays(prisma: PrismaClient, createdById: string) {
+  console.log('🎉 Seeding holidays...');
+  const currentYear = new Date().getFullYear();
+  const nextYear = currentYear + 1;
+  
+  const createDate = (year: number, month: number, day: number): Date => {
+    const date = new Date(year, month - 1, day);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const holidays = [
+    { name: `New Year's Day ${currentYear}`, dateFrom: createDate(currentYear, 1, 1), dateTo: createDate(currentYear, 1, 1) },
+    { name: `New Year's Day ${nextYear}`, dateFrom: createDate(nextYear, 1, 1), dateTo: createDate(nextYear, 1, 1) },
+    { name: `Pakistan Day ${currentYear}`, dateFrom: createDate(currentYear, 3, 23), dateTo: createDate(currentYear, 3, 23) },
+    { name: `Pakistan Day ${nextYear}`, dateFrom: createDate(nextYear, 3, 23), dateTo: createDate(nextYear, 3, 23) },
+    { name: `Labour Day ${currentYear}`, dateFrom: createDate(currentYear, 5, 1), dateTo: createDate(currentYear, 5, 1) },
+    { name: `Labour Day ${nextYear}`, dateFrom: createDate(nextYear, 5, 1), dateTo: createDate(nextYear, 5, 1) },
+    { name: `Independence Day ${currentYear}`, dateFrom: createDate(currentYear, 8, 14), dateTo: createDate(currentYear, 8, 14) },
+    { name: `Independence Day ${nextYear}`, dateFrom: createDate(nextYear, 8, 14), dateTo: createDate(nextYear, 8, 14) },
+    { name: `Defence Day ${currentYear}`, dateFrom: createDate(currentYear, 9, 6), dateTo: createDate(currentYear, 9, 6) },
+    { name: `Defence Day ${nextYear}`, dateFrom: createDate(nextYear, 9, 6), dateTo: createDate(nextYear, 9, 6) },
+    { name: `Iqbal Day ${currentYear}`, dateFrom: createDate(currentYear, 11, 9), dateTo: createDate(currentYear, 11, 9) },
+    { name: `Iqbal Day ${nextYear}`, dateFrom: createDate(nextYear, 11, 9), dateTo: createDate(nextYear, 11, 9) },
+    { name: `Quaid-e-Azam Day ${currentYear}`, dateFrom: createDate(currentYear, 12, 25), dateTo: createDate(currentYear, 12, 25) },
+    { name: `Quaid-e-Azam Day ${nextYear}`, dateFrom: createDate(nextYear, 12, 25), dateTo: createDate(nextYear, 12, 25) },
+    { name: `Eid-ul-Fitr ${currentYear}`, dateFrom: createDate(currentYear, 4, 1), dateTo: createDate(currentYear, 4, 3) },
+    { name: `Eid-ul-Fitr ${nextYear}`, dateFrom: createDate(nextYear, 3, 21), dateTo: createDate(nextYear, 3, 23) },
+    { name: `Eid-ul-Adha ${currentYear}`, dateFrom: createDate(currentYear, 6, 7), dateTo: createDate(currentYear, 6, 9) },
+    { name: `Eid-ul-Adha ${nextYear}`, dateFrom: createDate(nextYear, 5, 27), dateTo: createDate(nextYear, 5, 29) },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  for (const holiday of holidays) {
+    try {
+      const existing = await prisma.holiday.findFirst({ where: { name: holiday.name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      await prisma.holiday.create({
+        data: {
+          name: holiday.name,
+          dateFrom: holiday.dateFrom,
+          dateTo: holiday.dateTo,
+          status: 'active',
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding holiday "${holiday.name}":`, error.message);
+    }
+  }
+  console.log(`✓ Holidays: ${created} created, ${skipped} skipped`);
   return { created, skipped };
 }
 

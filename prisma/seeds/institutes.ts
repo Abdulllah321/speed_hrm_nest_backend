@@ -1,3 +1,5 @@
+import { PrismaClient } from '@prisma/client';
+
 const institutes = [
   "Abasyn University",
   "Abbottabad University of Science and Technology",
@@ -165,7 +167,7 @@ const institutes = [
   "Ziauddin University",
 ];
 
-export async function seedInstitutes(prisma) {
+export async function seedInstitutes(prisma: PrismaClient) {
   console.log('🌱 Seeding institutes...');
   let created = 0;
   let skipped = 0;
@@ -175,10 +177,11 @@ export async function seedInstitutes(prisma) {
       if (existing) { skipped++; continue; }
       await prisma.institute.create({ data: { name, status: 'active' } });
       created++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding institute "${name}":`, error.message);
     }
   }
   console.log(`✅ Institutes seeding completed: ${created} created, ${skipped} skipped`);
   return { created, skipped };
 }
+

@@ -1,14 +1,18 @@
 import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { join } from 'path';
+import { PrismaClient } from '@prisma/client';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-export async function seedCountries(prisma) {
+export async function seedCountries(prisma: PrismaClient) {
   console.log('🌍 Seeding countries...');
-  const countriesPath = join(__dirname, '..', '..', 'countries.json');
-  const countriesData = JSON.parse(readFileSync(countriesPath, 'utf-8'));
+  const countriesPath = join(process.cwd(), 'countries.json');
+  const countriesData = JSON.parse(readFileSync(countriesPath, 'utf-8')) as Array<{
+    name?: string;
+    iso?: string;
+    nicename?: string;
+    iso3?: string;
+    phonecode?: string;
+    numcode?: string;
+  }>;
   let created = 0;
   let updated = 0;
   for (const item of countriesData) {
@@ -52,3 +56,4 @@ export async function seedCountries(prisma) {
   console.log(`✓ ${created} countries created, ${updated} countries updated (total: ${countriesData.length})`);
   return { created, updated, total: countriesData.length };
 }
+

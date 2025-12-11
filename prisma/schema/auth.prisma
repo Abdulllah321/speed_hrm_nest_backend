@@ -56,6 +56,7 @@ model User {
   providentFundsCreated    ProvidentFund[]    @relation("ProvidentFundCreatedBy")
   workingHoursPoliciesCreated WorkingHoursPolicy[] @relation("WorkingHoursPolicyCreatedBy")
   fileUploadsCreated          FileUpload[]         @relation("FileUploadCreatedBy")
+  holidaysCreated            Holiday[]            @relation("HolidayCreatedBy")
 }
 
 model Role {

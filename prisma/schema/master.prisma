@@ -21,29 +21,25 @@ model JobType {
 }
 
 model Institute {
-  id             String          @id @default(uuid())
-  name           String          @unique
-  status         String          @default("active")
-  createdById    String?
-  createdBy      User?           @relation("InstituteCreatedBy", fields: [createdById], references: [id])
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  qualifications Qualification[]
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("InstituteCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employeeQualifications EmployeeQualification[]
 }
 
 model Qualification {
-  id            String     @id @default(uuid())
-  instituteId   String?
-  institute     Institute? @relation(fields: [instituteId], references: [id], onDelete: SetNull)
-  instituteName String
-  qualification String
-  country       String
-  city          String
-  status        String     @default("active")
-  createdById   String?
-  createdBy     User?      @relation("QualificationCreatedBy", fields: [createdById], references: [id])
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("QualificationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model MaritalStatus {
@@ -78,6 +74,8 @@ model Country {
   states    State[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  employeeQualifications EmployeeQualification[]
 }
 
 model City {
@@ -95,6 +93,7 @@ model City {
   branches    Branch[]
 
   @@unique([name, countryId, stateId])
+  employeeQualifications EmployeeQualification[]
 }
 
 model State {
@@ -108,6 +107,8 @@ model State {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   cities      City[]
+
+  employeeQualifications EmployeeQualification[]
 }
 
 model Branch {
@@ -121,6 +122,7 @@ model Branch {
   createdBy   User?    @relation("BranchCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
 }
 
 model AllowanceHead {
@@ -357,4 +359,16 @@ model FileUpload {
   createdBy    User?    @relation("FileUploadCreatedBy", fields: [createdById], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model Holiday {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  dateFrom    DateTime
+  dateTo      DateTime
+  status      String   @default("active")
+  createdById String?
+  createdBy   User?    @relation("HolidayCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

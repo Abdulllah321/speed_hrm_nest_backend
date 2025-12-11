@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class WorkingHoursPolicyService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogsService: ActivityLogsService
+  ) {}
 
   async list() {
     const items = await this.prisma.workingHoursPolicy.findMany({ orderBy: { createdAt: 'desc' } })
@@ -45,11 +49,10 @@ export class WorkingHoursPolicyService {
         },
       })
 
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogsService.log({
           userId: ctx.userId,
           action: 'create',
-          module: 'working-hours-policies',
+        module: 'working_hours_policies',
           entity: 'WorkingHoursPolicy',
           entityId: created.id,
           description: `Created working hours policy ${created.name}`,
@@ -57,16 +60,14 @@ export class WorkingHoursPolicyService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
 
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogsService.log({
           userId: ctx.userId,
           action: 'create',
-          module: 'working-hours-policies',
+        module: 'working_hours_policies',
           entity: 'WorkingHoursPolicy',
           description: 'Failed to create working hours policy',
           errorMessage: error?.message,
@@ -74,7 +75,6 @@ export class WorkingHoursPolicyService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create working hours policy' }
     }
@@ -110,11 +110,10 @@ export class WorkingHoursPolicyService {
         },
       })
 
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogsService.log({
           userId: ctx.userId,
           action: 'update',
-          module: 'working-hours-policies',
+        module: 'working_hours_policies',
           entity: 'WorkingHoursPolicy',
           entityId: id,
           description: `Updated working hours policy ${updated.name}`,
@@ -123,16 +122,14 @@ export class WorkingHoursPolicyService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
 
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogsService.log({
           userId: ctx.userId,
           action: 'update',
-          module: 'working-hours-policies',
+        module: 'working_hours_policies',
           entity: 'WorkingHoursPolicy',
           entityId: id,
           description: 'Failed to update working hours policy',
@@ -141,7 +138,6 @@ export class WorkingHoursPolicyService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update working hours policy' }
     }
@@ -152,11 +148,10 @@ export class WorkingHoursPolicyService {
       const existing = await this.prisma.workingHoursPolicy.findUnique({ where: { id } })
       const removed = await this.prisma.workingHoursPolicy.delete({ where: { id } })
 
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogsService.log({
           userId: ctx.userId,
           action: 'delete',
-          module: 'working-hours-policies',
+        module: 'working_hours_policies',
           entity: 'WorkingHoursPolicy',
           entityId: id,
           description: `Deleted working hours policy ${existing?.name}`,
@@ -164,16 +159,14 @@ export class WorkingHoursPolicyService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
 
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogsService.log({
           userId: ctx.userId,
           action: 'delete',
-          module: 'working-hours-policies',
+        module: 'working_hours_policies',
           entity: 'WorkingHoursPolicy',
           entityId: id,
           description: 'Failed to delete working hours policy',
@@ -181,7 +174,6 @@ export class WorkingHoursPolicyService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete working hours policy' }
     }

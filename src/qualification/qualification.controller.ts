@@ -20,7 +20,7 @@ export class QualificationController {
 
   @Post('qualifications')
   @UseGuards(JwtAuthGuard)
-  async create(@Body() body: { instituteId?: string; instituteName: string; qualification: string; country: string; city: string }, @Req() req) {
+  async create(@Body() body: { name: string; status?: string }, @Req() req) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -30,7 +30,7 @@ export class QualificationController {
 
   @Post('qualifications/bulk')
   @UseGuards(JwtAuthGuard)
-  async createBulk(@Body() body: { items: { instituteId?: string; instituteName: string; qualification: string; country: string; city: string }[] }, @Req() req) {
+  async createBulk(@Body() body: { items: { name: string; status?: string }[] }, @Req() req) {
     return this.service.createBulk(body.items || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -40,7 +40,7 @@ export class QualificationController {
 
   @Put('qualifications/:id')
   @UseGuards(JwtAuthGuard)
-  async update(@Param('id') id: string, @Body() body: { instituteId?: string; instituteName: string; qualification: string; country: string; city: string; status?: string }, @Req() req) {
+  async update(@Param('id') id: string, @Body() body: { name?: string; status?: string }, @Req() req) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -52,6 +52,16 @@ export class QualificationController {
   @UseGuards(JwtAuthGuard)
   async remove(@Param('id') id: string, @Req() req) {
     return this.service.remove(id, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Delete('qualifications/bulk')
+  @UseGuards(JwtAuthGuard)
+  async removeBulk(@Body() body: { ids: string[] }, @Req() req) {
+    return this.service.removeBulk(body.ids || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

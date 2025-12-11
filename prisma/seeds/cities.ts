@@ -1,9 +1,6 @@
 import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join } from 'path';
+import { PrismaClient } from '@prisma/client';
 
 const PAKISTAN_STATES = [
   { name: 'AZAD KASHMIR' },
@@ -15,8 +12,8 @@ const PAKISTAN_STATES = [
   { name: 'SINDH' },
 ];
 
-function getStateByCoordinates(lat, lng, cityName) {
-  const knownCities = {
+function getStateByCoordinates(lat: number | undefined, lng: number | undefined, cityName: string): string {
+  const knownCities: Record<string, string> = {
     'Islamabad': 'FANA',
     'Karachi': 'SINDH',
     'Lahore': 'PUNJAB',
@@ -113,7 +110,7 @@ function getStateByCoordinates(lat, lng, cityName) {
   return 'PUNJAB';
 }
 
-export async function seedCities(prisma) {
+export async function seedCities(prisma: PrismaClient) {
   console.log('🏙️  Seeding states and cities for Pakistan...');
   const pakistan = await prisma.country.findFirst({ where: { phoneCode: 92 } });
   if (!pakistan) {
@@ -121,7 +118,7 @@ export async function seedCities(prisma) {
     return { statesCreated: 0, statesSkipped: 0, citiesCreated: 0, citiesSkipped: 0 };
   }
   console.log('📍 Seeding states...');
-  const stateMap = new Map();
+  const stateMap = new Map<string, string>();
   let statesCreated = 0;
   let statesSkipped = 0;
   for (const stateData of PAKISTAN_STATES) {
@@ -135,14 +132,19 @@ export async function seedCities(prisma) {
       const state = await prisma.state.create({ data: { name: stateData.name, countryId: pakistan.id, status: 'active' } });
       stateMap.set(stateData.name, state.id);
       statesCreated++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding state "${stateData.name}":`, error.message);
     }
   }
   console.log(`✓ States: ${statesCreated} created, ${statesSkipped} skipped`);
   console.log('🏙️  Seeding cities...');
-  const citiesPath = join(__dirname, '..', '..', 'city.json');
-  const citiesData = JSON.parse(readFileSync(citiesPath, 'utf-8'));
+  const citiesPath = join(process.cwd(), 'city.json');
+  const citiesData = JSON.parse(readFileSync(citiesPath, 'utf-8')) as Array<{
+    name?: string;
+    country?: string;
+    lat?: number;
+    lng?: number;
+  }>;
   const pakistanCities = citiesData.filter(city => city.country === 'PK');
   let citiesCreated = 0;
   let citiesSkipped = 0;
@@ -164,10 +166,11 @@ export async function seedCities(prisma) {
       }
       await prisma.city.create({ data: { name: cityName, countryId: pakistan.id, stateId, status: 'active' } });
       citiesCreated++;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error seeding city "${city.name}":`, error.message);
     }
   }
   console.log(`✓ Cities: ${citiesCreated} created, ${citiesSkipped} skipped (total: ${pakistanCities.length})`);
   return { statesCreated, statesSkipped, citiesCreated, citiesSkipped, totalCities: pakistanCities.length };
 }
+

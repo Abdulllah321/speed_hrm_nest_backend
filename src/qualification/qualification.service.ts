@@ -16,16 +16,12 @@ export class QualificationService {
     return { status: true, data: item }
   }
 
-  async create(body: { instituteId?: string; instituteName: string; qualification: string; country: string; city: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(body: { name: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const created = await this.prisma.qualification.create({
         data: {
-          instituteId: body.instituteId ?? null,
-          instituteName: body.instituteName,
-          qualification: body.qualification,
-          country: body.country,
-          city: body.city,
-          status: 'active',
+          name: body.name,
+          status: body.status ?? 'active',
           createdById: ctx.userId,
         },
       })
@@ -36,7 +32,7 @@ export class QualificationService {
           module: 'qualifications',
           entity: 'Qualification',
           entityId: created.id,
-          description: `Created qualification ${created.qualification}`,
+          description: `Created qualification ${created.name}`,
           newValues: JSON.stringify(body),
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
@@ -59,21 +55,22 @@ export class QualificationService {
           status: 'failure',
         },
       })
+
+      if (error?.code === 'P2002') {
+        return { status: false, message: 'A qualification with this name already exists' }
+      }
+
       return { status: false, message: 'Failed to create qualification' }
     }
   }
 
-  async createBulk(items: { instituteId?: string; instituteName: string; qualification: string; country: string; city: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async createBulk(items: { name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     if (!items?.length) return { status: false, message: 'No items to create' }
     try {
       const result = await this.prisma.qualification.createMany({
         data: items.map(i => ({
-          instituteId: i.instituteId ?? null,
-          instituteName: i.instituteName,
-          qualification: i.qualification,
-          country: i.country,
-          city: i.city,
-          status: 'active',
+          name: i.name,
+          status: i.status ?? 'active',
           createdById: ctx.userId,
         })),
         skipDuplicates: true,
@@ -111,18 +108,18 @@ export class QualificationService {
     }
   }
 
-  async update(id: string, body: { instituteId?: string; instituteName: string; qualification: string; country: string; city: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(id: string, body: { name?: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.qualification.findUnique({ where: { id } })
+      if (!existing) {
+        return { status: false, message: 'Qualification not found' }
+      }
+
       const updated = await this.prisma.qualification.update({
         where: { id },
         data: {
-          instituteId: body.instituteId ?? existing?.instituteId ?? null,
-          instituteName: body.instituteName ?? existing?.instituteName,
-          qualification: body.qualification ?? existing?.qualification,
-          country: body.country ?? existing?.country,
-          city: body.city ?? existing?.city,
-          status: body.status ?? existing?.status ?? 'active',
+          name: body.name ?? existing.name,
+          status: body.status ?? existing.status,
         },
       })
       await this.prisma.activityLog.create({
@@ -132,7 +129,7 @@ export class QualificationService {
           module: 'qualifications',
           entity: 'Qualification',
           entityId: id,
-          description: `Updated qualification ${updated.qualification}`,
+          description: `Updated qualification ${updated.name}`,
           oldValues: JSON.stringify(existing),
           newValues: JSON.stringify(body),
           ipAddress: ctx.ipAddress,
@@ -157,6 +154,11 @@ export class QualificationService {
           status: 'failure',
         },
       })
+
+      if (error?.code === 'P2002') {
+        return { status: false, message: 'A qualification with this name already exists' }
+      }
+
       return { status: false, message: 'Failed to update qualification' }
     }
   }
@@ -164,6 +166,10 @@ export class QualificationService {
   async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.qualification.findUnique({ where: { id } })
+      if (!existing) {
+        return { status: false, message: 'Qualification not found' }
+      }
+
       const removed = await this.prisma.qualification.delete({ where: { id } })
       await this.prisma.activityLog.create({
         data: {
@@ -172,7 +178,7 @@ export class QualificationService {
           module: 'qualifications',
           entity: 'Qualification',
           entityId: id,
-          description: `Deleted qualification ${existing?.qualification}`,
+          description: `Deleted qualification ${existing.name}`,
           oldValues: JSON.stringify(existing),
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
@@ -196,6 +202,44 @@ export class QualificationService {
         },
       })
       return { status: false, message: 'Failed to delete qualification' }
+    }
+  }
+
+  async removeBulk(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    if (!ids?.length) return { status: false, message: 'No qualifications to delete' }
+    try {
+      const existing = await this.prisma.qualification.findMany({ where: { id: { in: ids } } })
+      const result = await this.prisma.qualification.deleteMany({ where: { id: { in: ids } } })
+      await this.prisma.activityLog.create({
+        data: {
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: `Bulk deleted qualifications (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        },
+      })
+      return { status: true, message: 'Qualifications deleted', data: result }
+    } catch (error: any) {
+      await this.prisma.activityLog.create({
+        data: {
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: 'Failed to bulk delete qualifications',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        },
+      })
+      return { status: false, message: 'Failed to delete qualifications' }
     }
   }
 }

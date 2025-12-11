@@ -26,6 +26,7 @@ import { UploadModule } from './upload/upload.module';
 import { BonusTypeModule } from './bonus-type/bonus-type.module';
 import { SalaryBreakupModule } from './salary-breakup/salary-breakup.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
+import { HolidayModule } from './holiday/holiday.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
     EobiModule,
     BonusTypeModule,
     SalaryBreakupModule,
+    HolidayModule,
     UploadModule,
     ActivityLogsModule,
   ],
