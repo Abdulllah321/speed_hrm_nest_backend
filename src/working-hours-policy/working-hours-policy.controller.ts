@@ -47,4 +47,14 @@ export class WorkingHoursPolicyController {
       userAgent: req.headers['user-agent'],
     })
   }
+
+  @Put('working-hours-policies/:id/set-default')
+  @UseGuards(JwtAuthGuard)
+  async setAsDefault(@Param('id') id: string, @Req() req) {
+    return this.service.setAsDefault(id, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
 }

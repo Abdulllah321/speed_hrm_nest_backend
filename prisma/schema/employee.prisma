@@ -59,6 +59,7 @@ model Employee {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   qualifications         EmployeeQualification[]
+  attendances            Attendance[]
 }
 
 model EmployeeQualification {

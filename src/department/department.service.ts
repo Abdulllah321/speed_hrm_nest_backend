@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 import { CreateSubDepartmentDto, UpdateDepartmentDto, UpdateSubDepartmentDto } from './dto/department-dto'
 
 @Injectable()
 export class DepartmentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async getAllDepartments() {
     const departments = await this.prisma.department.findMany({
@@ -37,8 +41,7 @@ export class DepartmentService {
         data: names.map(name => ({ name, createdById })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: createdById,
           action: 'create',
           module: 'departments',
@@ -46,12 +49,10 @@ export class DepartmentService {
           description: `Created departments (${departments.count})`,
           newValues: JSON.stringify(names),
           status: 'success',
-        },
       })
       return { status: true, data: departments }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: createdById,
           action: 'create',
           module: 'departments',
@@ -60,7 +61,6 @@ export class DepartmentService {
           errorMessage: error?.message,
           newValues: JSON.stringify(names),
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create departments' }
     }
@@ -73,8 +73,7 @@ export class DepartmentService {
         where: { id },
         data: { name: updateDepartmentDto.name },
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'departments',
@@ -86,12 +85,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: department }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'departments',
@@ -103,7 +100,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update department' }
     }
@@ -116,8 +112,7 @@ export class DepartmentService {
         const department = await this.prisma.department.update({ where: { id: dto.id }, data: { name: dto.name } })
         updatedDepartments.push(department)
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'departments',
@@ -127,12 +122,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updatedDepartments }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'departments',
@@ -143,7 +136,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update departments' }
     }
@@ -152,8 +144,7 @@ export class DepartmentService {
   async deleteDepartments(departmentIds: string[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const departments = await this.prisma.department.deleteMany({ where: { id: { in: departmentIds } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'departments',
@@ -163,12 +154,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: departments }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'departments',
@@ -179,7 +168,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete departments' }
     }
@@ -189,8 +177,7 @@ export class DepartmentService {
     try {
       const existing = await this.prisma.department.findUnique({ where: { id } })
       const department = await this.prisma.department.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'departments',
@@ -201,12 +188,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: department }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'departments',
@@ -217,7 +202,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete department' }
     }
@@ -256,8 +240,7 @@ export class DepartmentService {
         data: createSubDepartmentDto.map(dto => ({ name: dto.name, departmentId: dto.departmentId, createdById: dto.createdById })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'create',
           module: 'sub-departments',
@@ -267,12 +250,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: subDepartments }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'create',
           module: 'sub-departments',
@@ -283,7 +264,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create sub-departments' }
     }
@@ -295,8 +275,7 @@ export class DepartmentService {
         where: { id: { in: updateSubDepartmentDto.map(dto => dto.id) } },
         data: updateSubDepartmentDto.map(dto => ({ name: dto.name })),
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'sub-departments',
@@ -306,12 +285,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: subDepartments }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'sub-departments',
@@ -322,7 +299,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update sub-departments' }
     }
@@ -332,8 +308,7 @@ export class DepartmentService {
     try {
       const existing = await this.prisma.subDepartment.findUnique({ where: { id } })
       const subDepartment = await this.prisma.subDepartment.update({ where: { id }, data: { name: updateSubDepartmentDto.name } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'sub-departments',
@@ -345,12 +320,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: subDepartment }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'sub-departments',
@@ -362,7 +335,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update sub-department' }
     }
@@ -371,8 +343,7 @@ export class DepartmentService {
   async deleteSubDepartments(subDepartmentIds: string[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const subDepartments = await this.prisma.subDepartment.deleteMany({ where: { id: { in: subDepartmentIds } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'sub-departments',
@@ -382,12 +353,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: subDepartments }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'sub-departments',
@@ -398,7 +367,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete sub-departments' }
     }
@@ -408,8 +376,7 @@ export class DepartmentService {
     try {
       const existing = await this.prisma.subDepartment.findUnique({ where: { id } })
       const subDepartment = await this.prisma.subDepartment.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'sub-departments',
@@ -420,12 +387,10 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: subDepartment }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'delete',
           module: 'sub-departments',
@@ -436,7 +401,6 @@ export class DepartmentService {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete sub-department' }
     }

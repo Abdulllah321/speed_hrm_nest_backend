@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class QualificationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.qualification.findMany({ orderBy: { createdAt: 'desc' } })
@@ -25,8 +29,7 @@ export class QualificationService {
           createdById: ctx.userId,
         },
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'qualifications',
@@ -37,12 +40,10 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'qualifications',
@@ -53,7 +54,6 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
 
       if (error?.code === 'P2002') {
@@ -75,8 +75,7 @@ export class QualificationService {
         })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'qualifications',
@@ -86,12 +85,10 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Qualifications created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'qualifications',
@@ -102,7 +99,6 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create qualifications' }
     }
@@ -122,8 +118,7 @@ export class QualificationService {
           status: body.status ?? existing.status,
         },
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'qualifications',
@@ -135,12 +130,10 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'qualifications',
@@ -152,7 +145,6 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
 
       if (error?.code === 'P2002') {
@@ -171,8 +163,7 @@ export class QualificationService {
       }
 
       const removed = await this.prisma.qualification.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'qualifications',
@@ -183,12 +174,10 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'qualifications',
@@ -199,7 +188,6 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete qualification' }
     }
@@ -210,8 +198,7 @@ export class QualificationService {
     try {
       const existing = await this.prisma.qualification.findMany({ where: { id: { in: ids } } })
       const result = await this.prisma.qualification.deleteMany({ where: { id: { in: ids } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'qualifications',
@@ -221,12 +208,10 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Qualifications deleted', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'qualifications',
@@ -237,7 +222,6 @@ export class QualificationService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete qualifications' }
     }

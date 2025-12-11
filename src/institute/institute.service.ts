@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class InstituteService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.institute.findMany({ orderBy: { createdAt: 'desc' } })
@@ -19,8 +23,7 @@ export class InstituteService {
   async create(body: { name: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const created = await this.prisma.institute.create({ data: { name: body.name, status: body.status ?? 'active', createdById: ctx.userId } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'institutes',
@@ -31,12 +34,10 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'institutes',
@@ -47,7 +48,6 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create institute' }
     }
@@ -57,8 +57,7 @@ export class InstituteService {
     try {
       const existing = await this.prisma.institute.findUnique({ where: { id } })
       const updated = await this.prisma.institute.update({ where: { id }, data: { name: body.name ?? existing?.name, status: body.status ?? existing?.status ?? 'active' } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'institutes',
@@ -70,12 +69,10 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'institutes',
@@ -87,7 +84,6 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update institute' }
     }
@@ -97,8 +93,7 @@ export class InstituteService {
     try {
       const existing = await this.prisma.institute.findUnique({ where: { id } })
       const removed = await this.prisma.institute.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'institutes',
@@ -109,12 +104,10 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'institutes',
@@ -125,7 +118,6 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete institute' }
     }
@@ -136,8 +128,7 @@ export class InstituteService {
     const data = items.map((i) => ({ name: i.name, status: i.status ?? 'active', createdById: ctx.userId }))
     try {
       const result = await this.prisma.institute.createMany({ data, skipDuplicates: true })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'institutes',
@@ -147,12 +138,10 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Institutes created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'institutes',
@@ -163,7 +152,6 @@ export class InstituteService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create institutes' }
     }
@@ -189,18 +177,16 @@ export class InstituteService {
         skipped++
       }
     }
-    await this.prisma.activityLog.create({
-      data: {
-        userId: ctx.userId,
-        action: 'seed',
-        module: 'institutes',
-        entity: 'Institute',
-        description: `Seeded institutes: created=${created}, skipped=${skipped}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-        metadata: JSON.stringify({ total: seedItems.length, created, skipped }),
-      },
+    await this.activityLogs.log({
+      userId: ctx.userId,
+      action: 'seed',
+      module: 'institutes',
+      entity: 'Institute',
+      description: `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
+      newValues: JSON.stringify({ total: seedItems.length, created, skipped }),
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      status: 'success',
     })
     return { status: true, data: { total: seedItems.length, created, skipped } }
   }

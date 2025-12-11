@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class TaxSlabService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.taxSlab.findMany({
@@ -39,8 +43,7 @@ export class TaxSlabService {
           createdById: ctx.userId,
         },
       });
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'tax-slabs',
@@ -51,12 +54,10 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       });
       return { status: true, data: created };
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'tax-slabs',
@@ -67,7 +68,6 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       });
       return { status: false, message: 'Failed to create tax slab' };
     }
@@ -96,8 +96,7 @@ export class TaxSlabService {
         })),
         skipDuplicates: true,
       });
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'tax-slabs',
@@ -107,12 +106,10 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       });
       return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'tax-slabs',
@@ -123,7 +120,6 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       });
       return { status: false, message: 'Failed to create tax slabs' };
     }
@@ -153,8 +149,7 @@ export class TaxSlabService {
           status: body.status ?? existing.status,
         },
       });
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'tax-slabs',
@@ -166,12 +161,10 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       });
       return { status: true, data: updated };
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'tax-slabs',
@@ -183,7 +176,6 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       });
       return { status: false, message: 'Failed to update tax slab' };
     }
@@ -197,8 +189,7 @@ export class TaxSlabService {
       const existing = await this.prisma.taxSlab.findUnique({ where: { id } });
       if (!existing) return { status: false, message: 'Tax slab not found' };
       await this.prisma.taxSlab.delete({ where: { id } });
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'tax-slabs',
@@ -209,12 +200,10 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       });
       return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'tax-slabs',
@@ -225,7 +214,6 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       });
       return { status: false, message: 'Failed to delete tax slab' };
     }
@@ -249,18 +237,16 @@ export class TaxSlabService {
         if (!existing) {
           result.failed.push({ id, reason: 'Tax slab not found' });
 
-          await this.prisma.activityLog.create({
-            data: {
-              userId: ctx.userId,
-              action: 'delete',
-              module: 'tax-slabs',
-              entity: 'TaxSlab',
-              entityId: id,
-              description: 'Tax slab not found',
-              ipAddress: ctx.ipAddress,
-              userAgent: ctx.userAgent,
-              status: 'failure',
-            },
+          await this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'delete',
+            module: 'tax-slabs',
+            entity: 'TaxSlab',
+            entityId: id,
+            description: 'Tax slab not found',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'failure',
           });
 
           continue;
@@ -268,38 +254,34 @@ export class TaxSlabService {
 
         await this.prisma.taxSlab.delete({ where: { id } });
 
-        await this.prisma.activityLog.create({
-          data: {
-            userId: ctx.userId,
-            action: 'delete',
-            module: 'tax-slabs',
-            entity: 'TaxSlab',
-            entityId: id,
-            description: `Deleted tax slab ${existing.name}`,
-            oldValues: JSON.stringify(existing),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          },
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'tax-slabs',
+          entity: 'TaxSlab',
+          entityId: id,
+          description: `Deleted tax slab ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
         });
 
         result.success.push(id);
       } catch (error: any) {
         result.failed.push({ id, reason: error?.message ?? 'Unknown error' });
 
-        await this.prisma.activityLog.create({
-          data: {
-            userId: ctx.userId,
-            action: 'delete',
-            module: 'tax-slabs',
-            entity: 'TaxSlab',
-            entityId: id,
-            description: 'Failed to delete tax slab',
-            errorMessage: error?.message,
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'failure',
-          },
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'tax-slabs',
+          entity: 'TaxSlab',
+          entityId: id,
+          description: 'Failed to delete tax slab',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
         });
       }
     }
@@ -339,8 +321,7 @@ export class TaxSlabService {
           },
         });
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'tax-slabs',
@@ -350,12 +331,10 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       });
       return { status: true, message: 'Updated successfully' };
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'tax-slabs',
@@ -366,7 +345,6 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       });
       return { status: false, message: 'Failed to update tax slabs' };
     }

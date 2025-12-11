@@ -31,6 +31,7 @@ export class LeavesPolicyController {
       halfDayDeductionRate?: number
       shortLeaveDeductionRate?: number
       status?: string
+      isDefault?: boolean
       leaveTypes?: { leaveTypeId: string; numberOfLeaves: number }[]
     },
     @Req() req: any,
@@ -69,6 +70,7 @@ export class LeavesPolicyController {
       halfDayDeductionRate?: number
       shortLeaveDeductionRate?: number
       status?: string
+      isDefault?: boolean
       leaveTypes?: { leaveTypeId: string; numberOfLeaves: number }[]
     },
     @Req() req: any,
@@ -107,6 +109,16 @@ export class LeavesPolicyController {
   @UseGuards(JwtAuthGuard)
   async removeBulk(@Body() body: { ids: string[] }, @Req() req: any) {
     return this.service.removeBulk(body.ids ?? [], {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Put('leaves-policies/:id/set-default')
+  @UseGuards(JwtAuthGuard)
+  async setAsDefault(@Param('id') id: string, @Req() req: any) {
+    return this.service.setAsDefault(id, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

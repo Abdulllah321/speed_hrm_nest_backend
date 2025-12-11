@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class BranchService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.branch.findMany({ orderBy: { createdAt: 'desc' } })
@@ -27,8 +31,7 @@ export class BranchService {
           createdById: ctx.userId,
         },
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'branches',
@@ -39,12 +42,10 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'branches',
@@ -55,7 +56,6 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create branch' }
     }
@@ -73,8 +73,7 @@ export class BranchService {
           status: body.status ?? existing?.status ?? 'active',
         },
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'branches',
@@ -86,12 +85,10 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'branches',
@@ -103,7 +100,6 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update branch' }
     }
@@ -113,8 +109,7 @@ export class BranchService {
     try {
       const existing = await this.prisma.branch.findUnique({ where: { id } })
       const removed = await this.prisma.branch.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'branches',
@@ -125,12 +120,10 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'branches',
@@ -141,7 +134,6 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete branch' }
     }
@@ -163,8 +155,7 @@ export class BranchService {
         })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'branches',
@@ -174,12 +165,10 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Branches created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'branches',
@@ -190,7 +179,6 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create branches' }
     }
@@ -214,8 +202,7 @@ export class BranchService {
           },
         })
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'branches',
@@ -225,12 +212,10 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Branches updated' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'branches',
@@ -241,7 +226,6 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update branches' }
     }
@@ -252,8 +236,7 @@ export class BranchService {
     try {
       const existing = await this.prisma.branch.findMany({ where: { id: { in: ids } } })
       const result = await this.prisma.branch.deleteMany({ where: { id: { in: ids } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'branches',
@@ -263,12 +246,10 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Branches deleted', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'branches',
@@ -278,7 +259,6 @@ export class BranchService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete branches' }
     }

@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class EquipmentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.equipment.findMany({ orderBy: { createdAt: 'desc' } })
@@ -19,8 +23,7 @@ export class EquipmentService {
   async create(body: { name: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const created = await this.prisma.equipment.create({ data: { name: body.name, status: body.status ?? 'active', createdById: ctx.userId } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'equipments',
@@ -31,12 +34,10 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'equipments',
@@ -47,7 +48,6 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create equipment' }
     }
@@ -57,8 +57,7 @@ export class EquipmentService {
     try {
       const existing = await this.prisma.equipment.findUnique({ where: { id } })
       const updated = await this.prisma.equipment.update({ where: { id }, data: { name: body.name ?? existing?.name, status: body.status ?? existing?.status ?? 'active' } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'equipments',
@@ -70,12 +69,10 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'equipments',
@@ -87,7 +84,6 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update equipment' }
     }
@@ -97,8 +93,7 @@ export class EquipmentService {
     try {
       const existing = await this.prisma.equipment.findUnique({ where: { id } })
       const removed = await this.prisma.equipment.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'equipments',
@@ -109,12 +104,10 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'equipments',
@@ -125,7 +118,6 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete equipment' }
     }
@@ -135,8 +127,7 @@ export class EquipmentService {
     if (!items?.length) return { status: false, message: 'No equipments to create' }
     try {
       const result = await this.prisma.equipment.createMany({ data: items.map(i => ({ name: i.name, status: i.status ?? 'active', createdById: ctx.userId })), skipDuplicates: true })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'equipments',
@@ -146,12 +137,10 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Equipments created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'equipments',
@@ -162,7 +151,6 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create equipments' }
     }
@@ -175,8 +163,7 @@ export class EquipmentService {
         const existing = await this.prisma.equipment.findUnique({ where: { id: i.id } })
         await this.prisma.equipment.update({ where: { id: i.id }, data: { name: i.name ?? existing?.name, status: i.status ?? existing?.status ?? 'active' } })
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'equipments',
@@ -186,12 +173,10 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Equipments updated' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'equipments',
@@ -202,7 +187,6 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update equipments' }
     }
@@ -213,8 +197,7 @@ export class EquipmentService {
     try {
       const existing = await this.prisma.equipment.findMany({ where: { id: { in: ids } } })
       const result = await this.prisma.equipment.deleteMany({ where: { id: { in: ids } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'equipments',
@@ -224,12 +207,10 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Equipments deleted', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'equipments',
@@ -239,7 +220,6 @@ export class EquipmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete equipments' }
     }

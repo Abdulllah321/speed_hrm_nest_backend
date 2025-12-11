@@ -22,6 +22,14 @@ export class WorkingHoursPolicyService {
 
   async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      // If setting as default, unset all other policies first
+      if (body.isDefault) {
+        await this.prisma.workingHoursPolicy.updateMany({
+          where: { isDefault: true },
+          data: { isDefault: false },
+        })
+      }
+
       const created = await this.prisma.workingHoursPolicy.create({
         data: {
           name: body.name,
@@ -45,6 +53,7 @@ export class WorkingHoursPolicyService {
           gazzetedOvertimeRate: body.gazzetedOvertimeRate ?? null,
           dayOverrides: body.dayOverrides ?? null,
           status: body.status ?? 'active',
+          isDefault: body.isDefault ?? false,
           createdById: ctx.userId,
         },
       })
@@ -83,30 +92,43 @@ export class WorkingHoursPolicyService {
   async update(id: string, body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.workingHoursPolicy.findUnique({ where: { id } })
+      if (!existing) {
+        return { status: false, message: 'Working hours policy not found' }
+      }
+
+      // If setting as default, unset all other policies first
+      if (body.isDefault === true && !existing.isDefault) {
+        await this.prisma.workingHoursPolicy.updateMany({
+          where: { isDefault: true },
+          data: { isDefault: false },
+        })
+      }
+
       const updated = await this.prisma.workingHoursPolicy.update({
         where: { id },
         data: {
-          name: body.name,
-          startWorkingHours: body.startWorkingHours,
-          endWorkingHours: body.endWorkingHours,
-          shortDayMins: body.shortDayMins ?? null,
-          startBreakTime: body.startBreakTime ?? null,
-          endBreakTime: body.endBreakTime ?? null,
-          halfDayStartTime: body.halfDayStartTime ?? null,
-          lateStartTime: body.lateStartTime ?? null,
-          lateDeductionType: body.lateDeductionType ?? null,
-          applyDeductionAfterLates: body.applyDeductionAfterLates ?? null,
-          lateDeductionPercent: body.lateDeductionPercent ?? null,
-          halfDayDeductionType: body.halfDayDeductionType ?? null,
-          applyDeductionAfterHalfDays: body.applyDeductionAfterHalfDays ?? null,
-          halfDayDeductionAmount: body.halfDayDeductionAmount ?? null,
-          shortDayDeductionType: body.shortDayDeductionType ?? null,
-          applyDeductionAfterShortDays: body.applyDeductionAfterShortDays ?? null,
-          shortDayDeductionAmount: body.shortDayDeductionAmount ?? null,
-          overtimeRate: body.overtimeRate ?? null,
-          gazzetedOvertimeRate: body.gazzetedOvertimeRate ?? null,
-          dayOverrides: body.dayOverrides ?? null,
-          status: body.status ?? existing?.status ?? 'active',
+          name: body.name ?? existing.name,
+          startWorkingHours: body.startWorkingHours ?? existing.startWorkingHours,
+          endWorkingHours: body.endWorkingHours ?? existing.endWorkingHours,
+          shortDayMins: body.shortDayMins !== undefined ? body.shortDayMins : existing.shortDayMins,
+          startBreakTime: body.startBreakTime !== undefined ? body.startBreakTime : existing.startBreakTime,
+          endBreakTime: body.endBreakTime !== undefined ? body.endBreakTime : existing.endBreakTime,
+          halfDayStartTime: body.halfDayStartTime !== undefined ? body.halfDayStartTime : existing.halfDayStartTime,
+          lateStartTime: body.lateStartTime !== undefined ? body.lateStartTime : existing.lateStartTime,
+          lateDeductionType: body.lateDeductionType !== undefined ? body.lateDeductionType : existing.lateDeductionType,
+          applyDeductionAfterLates: body.applyDeductionAfterLates !== undefined ? body.applyDeductionAfterLates : existing.applyDeductionAfterLates,
+          lateDeductionPercent: body.lateDeductionPercent !== undefined ? body.lateDeductionPercent : existing.lateDeductionPercent,
+          halfDayDeductionType: body.halfDayDeductionType !== undefined ? body.halfDayDeductionType : existing.halfDayDeductionType,
+          applyDeductionAfterHalfDays: body.applyDeductionAfterHalfDays !== undefined ? body.applyDeductionAfterHalfDays : existing.applyDeductionAfterHalfDays,
+          halfDayDeductionAmount: body.halfDayDeductionAmount !== undefined ? body.halfDayDeductionAmount : existing.halfDayDeductionAmount,
+          shortDayDeductionType: body.shortDayDeductionType !== undefined ? body.shortDayDeductionType : existing.shortDayDeductionType,
+          applyDeductionAfterShortDays: body.applyDeductionAfterShortDays !== undefined ? body.applyDeductionAfterShortDays : existing.applyDeductionAfterShortDays,
+          shortDayDeductionAmount: body.shortDayDeductionAmount !== undefined ? body.shortDayDeductionAmount : existing.shortDayDeductionAmount,
+          overtimeRate: body.overtimeRate !== undefined ? body.overtimeRate : existing.overtimeRate,
+          gazzetedOvertimeRate: body.gazzetedOvertimeRate !== undefined ? body.gazzetedOvertimeRate : existing.gazzetedOvertimeRate,
+          dayOverrides: body.dayOverrides !== undefined ? body.dayOverrides : existing.dayOverrides,
+          status: body.status ?? existing.status,
+          isDefault: body.isDefault !== undefined ? body.isDefault : existing.isDefault,
         },
       })
 
@@ -176,6 +198,57 @@ export class WorkingHoursPolicyService {
           status: 'failure',
       })
       return { status: false, message: 'Failed to delete working hours policy' }
+    }
+  }
+
+  async setAsDefault(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const existing = await this.prisma.workingHoursPolicy.findUnique({ where: { id } })
+      if (!existing) {
+        return { status: false, message: 'Working hours policy not found' }
+      }
+
+      // Unset all other policies as default
+      await this.prisma.workingHoursPolicy.updateMany({
+        where: { isDefault: true },
+        data: { isDefault: false },
+      })
+
+      // Set this policy as default
+      const updated = await this.prisma.workingHoursPolicy.update({
+        where: { id },
+        data: { isDefault: true },
+      })
+
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'working_hours_policies',
+        entity: 'WorkingHoursPolicy',
+        entityId: id,
+        description: `Set working hours policy ${updated.name} as default`,
+        oldValues: JSON.stringify({ isDefault: existing.isDefault }),
+        newValues: JSON.stringify({ isDefault: true }),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { status: true, data: updated }
+    } catch (error: any) {
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'working_hours_policies',
+        entity: 'WorkingHoursPolicy',
+        entityId: id,
+        description: 'Failed to set working hours policy as default',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+      return { status: false, message: error?.message || 'Failed to set working hours policy as default' }
     }
   }
 }

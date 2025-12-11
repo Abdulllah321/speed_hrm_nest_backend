@@ -4,20 +4,20 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { MultipartFile } from 'fastify-multipart';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
-@UseGuards(JwtAuthGuard)
-@Controller('upload')
+@Controller('api')
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
-  @Post('single')
+  @Post('uploads')
+  @UseGuards(JwtAuthGuard)
   async uploadSingleFile(@Req() request: FastifyRequest) {
     const data = await request.file();
-    // Assuming req.user is available from an authentication guard
-    const createdById = request.user?.userId || null; 
+    const createdById = request.user?.userId || null;
     return this.uploadService.uploadFile(data, createdById);
   }
 
-  @Post('multiple')
+  @Post('uploads/multiple')
+  @UseGuards(JwtAuthGuard)
   async uploadMultipleFiles(@Req() request: FastifyRequest) {
     const parts = request.parts();
     const files: MultipartFile[] = [];
@@ -31,17 +31,20 @@ export class UploadController {
     return this.uploadService.uploadMultiple(files, createdById);
   }
 
-  @Get()
+  @Get('uploads')
+  @UseGuards(JwtAuthGuard)
   async listUploads() {
     return this.uploadService.listUploads();
   }
 
-  @Get(':id')
+  @Get('uploads/:id')
+  @UseGuards(JwtAuthGuard)
   async getUpload(@Param('id') id: string) {
     return this.uploadService.getUpload(id);
   }
 
-  @Get('download/:id')
+  @Get('uploads/download/:id')
+  @UseGuards(JwtAuthGuard)
   async downloadUpload(@Param('id') id: string, @Res() reply: FastifyReply) {
     const { item, stream } = await this.uploadService.downloadUpload(id);
     reply.header('Content-Type', item.mimetype);
@@ -49,7 +52,8 @@ export class UploadController {
     return reply.send(stream);
   }
 
-  @Delete(':id')
+  @Delete('uploads/:id')
+  @UseGuards(JwtAuthGuard)
   async deleteUpload(@Param('id') id: string) {
     return this.uploadService.deleteUpload(id);
   }

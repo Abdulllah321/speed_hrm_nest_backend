@@ -39,6 +39,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "csv-parse": "^6.1.0",
     "fastify": "^4.0.0",
     "fastify-multipart": "^5.0.0",
     "jsonwebtoken": "^9.0.3",

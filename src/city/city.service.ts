@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class CityService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async getAllCountries() {
     const countries = await this.prisma.country.findMany({ include: { cities: true }, orderBy: { name: 'asc' } })
@@ -37,8 +41,7 @@ export class CityService {
         data: items.map(i => ({ name: i.name, countryId: i.countryId, stateId: i.stateId, status: i.status ?? 'active', createdById: ctx.userId })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'cities',
@@ -48,12 +51,10 @@ export class CityService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Cities created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'cities',
@@ -64,7 +65,6 @@ export class CityService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create cities' }
     }

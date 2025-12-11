@@ -176,6 +176,7 @@ model LeavesPolicy {
   halfDayDeductionRate    Decimal?
   shortLeaveDeductionRate Decimal?
   status                  String                    @default("active")
+  isDefault               Boolean                   @default(false)
   createdById             String?
   createdBy               User?                     @relation("LeavesPolicyCreatedBy", fields: [createdById], references: [id])
   createdAt               DateTime                  @default(now())
@@ -343,6 +344,7 @@ model WorkingHoursPolicy {
   gazzetedOvertimeRate      Decimal?
   dayOverrides              Json?    // Stores day-wise overrides: { monday: { enabled, overrideHours, startTime, endTime, overrideBreak, startBreakTime, endBreakTime, dayType }, ... }
   status                    String   @default("active")
+  isDefault                 Boolean  @default(false)
   createdById               String?
   createdBy                 User?    @relation("WorkingHoursPolicyCreatedBy", fields: [createdById], references: [id])
   createdAt                 DateTime @default(now())

@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class EobiService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.eOBI.findMany({ orderBy: { createdAt: 'desc' } })
@@ -28,10 +32,8 @@ export class EobiService {
           yearMonth: body.yearMonth,
           status: body.status ?? 'active',
           createdById: ctx.userId,
-        },
-      })
-      await this.prisma.activityLog.create({
-        data: {
+      }})
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'eobis',
@@ -42,12 +44,10 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'eobis',
@@ -58,7 +58,6 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create EOBI' }
     }
@@ -80,8 +79,7 @@ export class EobiService {
         })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'eobis',
@@ -91,12 +89,10 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Created successfully' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'eobis',
@@ -107,7 +103,6 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create EOBIs' }
     }
@@ -130,8 +125,7 @@ export class EobiService {
           status: body.status ?? existing.status,
         },
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'eobis',
@@ -143,12 +137,10 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'eobis',
@@ -160,7 +152,6 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update EOBI' }
     }
@@ -171,8 +162,7 @@ export class EobiService {
       const existing = await this.prisma.eOBI.findUnique({ where: { id } })
       if (!existing) return { status: false, message: 'EOBI not found' }
       await this.prisma.eOBI.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'eobis',
@@ -183,12 +173,10 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Deleted successfully' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'eobis',
@@ -199,7 +187,6 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete EOBI' }
     }
@@ -209,8 +196,7 @@ export class EobiService {
     if (!ids?.length) return { status: false, message: 'No items to delete' }
     try {
       await this.prisma.eOBI.deleteMany({ where: { id: { in: ids } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'eobis',
@@ -220,12 +206,10 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Deleted successfully' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'eobis',
@@ -235,7 +219,6 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete EOBIs' }
     }
@@ -258,8 +241,7 @@ export class EobiService {
           },
         })
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'eobis',
@@ -269,12 +251,10 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Updated successfully' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'eobis',
@@ -285,7 +265,6 @@ export class EobiService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update EOBIs' }
     }

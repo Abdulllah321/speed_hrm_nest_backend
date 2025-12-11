@@ -57,6 +57,8 @@ model User {
   workingHoursPoliciesCreated WorkingHoursPolicy[] @relation("WorkingHoursPolicyCreatedBy")
   fileUploadsCreated          FileUpload[]         @relation("FileUploadCreatedBy")
   holidaysCreated            Holiday[]            @relation("HolidayCreatedBy")
+  attendancesCreated         Attendance[]         @relation("AttendanceCreatedBy")
+  attendancesUpdated         Attendance[]         @relation("AttendanceUpdatedBy")
 }
 
 model Role {

@@ -5,7 +5,14 @@ import 'dotenv/config'
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
-  app.register(import('fastify-multipart') as any);
+  
+  // Register multipart plugin for file uploads
+  await app.register(import('fastify-multipart') as any, {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB limit
+    },
+  });
+  
   const origins = (process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean);
   app.enableCors({
     origin: origins.length ? origins : true,

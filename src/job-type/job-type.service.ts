@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class JobTypeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.jobType.findMany({ orderBy: { createdAt: 'desc' } })
@@ -19,8 +23,7 @@ export class JobTypeService {
   async create(name: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const created = await this.prisma.jobType.create({ data: { name, status: 'active', createdById: ctx.userId } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'job-types',
@@ -31,12 +34,10 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'job-types',
@@ -47,7 +48,6 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create job type' }
     }
@@ -60,8 +60,7 @@ export class JobTypeService {
         data: names.map((n) => ({ name: n, status: 'active', createdById: ctx.userId })),
         skipDuplicates: true,
       })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'job-types',
@@ -71,12 +70,10 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Job types created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'job-types',
@@ -87,7 +84,6 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create job types' }
     }
@@ -97,8 +93,7 @@ export class JobTypeService {
     try {
       const existing = await this.prisma.jobType.findUnique({ where: { id } })
       const updated = await this.prisma.jobType.update({ where: { id }, data: { name } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'job-types',
@@ -110,12 +105,10 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'job-types',
@@ -127,7 +120,6 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update job type' }
     }
@@ -139,8 +131,7 @@ export class JobTypeService {
       for (const item of items) {
         await this.prisma.jobType.update({ where: { id: item.id }, data: { name: item.name } })
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'job-types',
@@ -150,12 +141,10 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Job types updated' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'job-types',
@@ -166,7 +155,6 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update job types' }
     }
@@ -176,8 +164,7 @@ export class JobTypeService {
     try {
       const existing = await this.prisma.jobType.findUnique({ where: { id } })
       const removed = await this.prisma.jobType.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'job-types',
@@ -188,12 +175,10 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'job-types',
@@ -204,7 +189,6 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete job type' }
     }
@@ -214,8 +198,7 @@ export class JobTypeService {
     if (!ids?.length) return { status: false, message: 'No items to delete' }
     try {
       const removed = await this.prisma.jobType.deleteMany({ where: { id: { in: ids } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'job-types',
@@ -225,12 +208,10 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Job types deleted' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'job-types',
@@ -241,7 +222,6 @@ export class JobTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete job types' }
     }

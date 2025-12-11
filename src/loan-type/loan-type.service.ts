@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
 export class LoanTypeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.loanType.findMany({ orderBy: { createdAt: 'desc' } })
@@ -19,8 +23,7 @@ export class LoanTypeService {
   async create(body: { name: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const created = await this.prisma.loanType.create({ data: { name: body.name, status: body.status ?? 'active', createdById: ctx.userId } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'loan-types',
@@ -31,12 +34,10 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: created }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'loan-types',
@@ -47,7 +48,6 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create loan type' }
     }
@@ -57,8 +57,7 @@ export class LoanTypeService {
     try {
       const existing = await this.prisma.loanType.findUnique({ where: { id } })
       const updated = await this.prisma.loanType.update({ where: { id }, data: { name: body.name ?? existing?.name, status: body.status ?? existing?.status ?? 'active' } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'loan-types',
@@ -70,12 +69,10 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: updated }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'loan-types',
@@ -87,7 +84,6 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update loan type' }
     }
@@ -97,8 +93,7 @@ export class LoanTypeService {
     try {
       const existing = await this.prisma.loanType.findUnique({ where: { id } })
       const removed = await this.prisma.loanType.delete({ where: { id } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'loan-types',
@@ -109,12 +104,10 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, data: removed }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'loan-types',
@@ -125,7 +118,6 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete loan type' }
     }
@@ -135,8 +127,7 @@ export class LoanTypeService {
     if (!items?.length) return { status: false, message: 'No loan types to create' }
     try {
       const result = await this.prisma.loanType.createMany({ data: items.map(i => ({ name: i.name, status: i.status ?? 'active', createdById: ctx.userId })), skipDuplicates: true })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'loan-types',
@@ -146,12 +137,10 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Loan types created', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'loan-types',
@@ -162,7 +151,6 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to create loan types' }
     }
@@ -175,8 +163,7 @@ export class LoanTypeService {
         const existing = await this.prisma.loanType.findUnique({ where: { id: i.id } })
         await this.prisma.loanType.update({ where: { id: i.id }, data: { name: i.name ?? existing?.name, status: i.status ?? existing?.status ?? 'active' } })
       }
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'loan-types',
@@ -186,12 +173,10 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Loan types updated' }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'loan-types',
@@ -202,7 +187,6 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to update loan types' }
     }
@@ -213,8 +197,7 @@ export class LoanTypeService {
     try {
       const existing = await this.prisma.loanType.findMany({ where: { id: { in: ids } } })
       const result = await this.prisma.loanType.deleteMany({ where: { id: { in: ids } } })
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'loan-types',
@@ -224,12 +207,10 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        },
       })
       return { status: true, message: 'Loan types deleted', data: result }
     } catch (error: any) {
-      await this.prisma.activityLog.create({
-        data: {
+      await this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'loan-types',
@@ -239,7 +220,6 @@ export class LoanTypeService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        },
       })
       return { status: false, message: 'Failed to delete loan types' }
     }
