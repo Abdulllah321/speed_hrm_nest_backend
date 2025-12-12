@@ -4,21 +4,21 @@ model Attendance {
   id                String    @id @default(uuid())
   employeeId        String
   employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date              DateTime  // Date of attendance (without time)
+  date              DateTime // Date of attendance (without time)
   checkIn           DateTime? // Check-in time
   checkOut          DateTime? // Check-out time
   status            String    @default("present") // present, absent, late, half-day, short-day, on-leave, holiday
   isRemote          Boolean   @default(false) // Remote attendance flag
-  location          String?   // Location/address for check-in (for remote attendance)
-  latitude          Decimal?  // GPS latitude
-  longitude         Decimal?  // GPS longitude
-  workingHours      Decimal?  // Calculated working hours in decimal format
-  overtimeHours     Decimal?  // Overtime hours
-  lateMinutes       Int?      // Late arrival in minutes
-  earlyLeaveMinutes Int?      // Early leave in minutes
-  breakDuration     Int?      // Break duration in minutes
-  notes             String?   // Additional notes or comments
-  approvedBy        String?   // User ID who approved this attendance
+  location          String? // Location/address for check-in (for remote attendance)
+  latitude          Decimal? // GPS latitude
+  longitude         Decimal? // GPS longitude
+  workingHours      Decimal? // Calculated working hours in decimal format
+  overtimeHours     Decimal? // Overtime hours
+  lateMinutes       Int? // Late arrival in minutes
+  earlyLeaveMinutes Int? // Early leave in minutes
+  breakDuration     Int? // Break duration in minutes
+  notes             String? // Additional notes or comments
+  approvedBy        String? // User ID who approved this attendance
   approvedAt        DateTime? // Approval timestamp
   createdById       String?
   createdBy         User?     @relation("AttendanceCreatedBy", fields: [createdById], references: [id])
@@ -29,4 +29,3 @@ model Attendance {
 
   @@unique([employeeId, date]) // One attendance record per employee per day (creates index automatically)
 }
-

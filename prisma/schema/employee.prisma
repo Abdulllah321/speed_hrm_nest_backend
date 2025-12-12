@@ -7,13 +7,19 @@ model Employee {
   employeeId             String                  @unique
   employeeName           String
   fatherHusbandName      String
-  department             String
-  subDepartment          String?
-  employeeGrade          String
+  departmentId           String
+  department             Department              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  subDepartmentId        String?
+  subDepartment          SubDepartment?          @relation(fields: [subDepartmentId], references: [id], onDelete: SetNull)
+  employeeGradeId        String
+  employeeGrade          EmployeeGrade           @relation(fields: [employeeGradeId], references: [id], onDelete: Restrict)
   attendanceId           String
-  designation            String
-  maritalStatus          String
-  employmentStatus       String
+  designationId          String
+  designation            Designation             @relation(fields: [designationId], references: [id], onDelete: Restrict)
+  maritalStatusId        String
+  maritalStatus          MaritalStatus           @relation(fields: [maritalStatusId], references: [id], onDelete: Restrict)
+  employmentStatusId     String
+  employmentStatus       EmployeeStatus          @relation(fields: [employmentStatusId], references: [id], onDelete: Restrict)
   probationExpiryDate    DateTime?
   cnicNumber             String                  @unique
   cnicExpiryDate         DateTime?
@@ -27,9 +33,12 @@ model Employee {
   emergencyContactPerson String?
   personalEmail          String?
   officialEmail          String                  @unique
-  country                String
-  province               String
-  city                   String
+  countryId              String
+  country                Country                 @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  stateId                String
+  state                  State                   @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  cityId                 String
+  city                   City                    @relation(fields: [cityId], references: [id], onDelete: Restrict)
   area                   String?
   employeeSalary         Decimal
   eobi                   Boolean                 @default(false)
@@ -38,9 +47,12 @@ model Employee {
   overtimeApplicable     Boolean                 @default(false)
   daysOff                String?
   reportingManager       String
-  workingHoursPolicy     String
-  branch                 String
-  leavesPolicy           String
+  workingHoursPolicyId   String
+  workingHoursPolicy     WorkingHoursPolicy      @relation(fields: [workingHoursPolicyId], references: [id], onDelete: Restrict)
+  branchId               String
+  branch                 Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  leavesPolicyId         String
+  leavesPolicy           LeavesPolicy            @relation(fields: [leavesPolicyId], references: [id], onDelete: Restrict)
   allowRemoteAttendance  Boolean                 @default(false)
   currentAddress         String?
   permanentAddress       String?
