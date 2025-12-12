@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards 
 import { AttendanceService } from './attendance.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import type { FastifyRequest } from 'fastify'
-import { MultipartFile } from 'fastify-multipart'
+import type { MultipartFile } from '@fastify/multipart'
 import * as fs from 'fs'
 import * as path from 'path'
 
