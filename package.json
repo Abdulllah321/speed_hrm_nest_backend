@@ -23,6 +23,7 @@
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
+    "check-seed": "bun run check-seed.ts",
     "prisma:deploy": "prisma generate && prisma migrate dev && prisma db push"
   },
   "dependencies": {

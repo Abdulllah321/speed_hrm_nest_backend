@@ -25,6 +25,9 @@ async function bootstrap() {
     methods: ['GET','HEAD','PUT','PATCH','POST','DELETE'],
     allowedHeaders: ['Content-Type','Authorization','X-Refresh-Token','X-New-Access-Token','X-New-Refresh-Token']
   });
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen({ 
+    port: parseInt(process.env.PORT ?? '3000'), 
+    host: process.env.HOSTNAME || '0.0.0.0' 
+  });
 }
 bootstrap();

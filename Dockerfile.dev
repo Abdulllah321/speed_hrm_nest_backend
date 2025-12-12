@@ -9,10 +9,15 @@ RUN bun install
 # Copy prisma schema
 COPY prisma ./prisma
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Copy source code
 COPY . .
 
 EXPOSE 3000
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["bun", "run", "start:dev"]
 
