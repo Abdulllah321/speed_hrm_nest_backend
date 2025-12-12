@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { MultipartFile } from 'fastify-multipart';
+import type { MultipartFile } from '@fastify/multipart';
 import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';

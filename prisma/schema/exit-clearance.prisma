@@ -5,6 +5,7 @@ model ExitClearance {
   employeeName            String
   designation             String?
   department              String?
+  subDepartment           String?
   location                String?
   leavingReason           String?
   contractEnd             DateTime?

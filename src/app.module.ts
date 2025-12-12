@@ -28,6 +28,7 @@ import { SalaryBreakupModule } from './salary-breakup/salary-breakup.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { HolidayModule } from './holiday/holiday.module';
 import { AttendanceModule } from './attendance/attendance.module';
+import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AttendanceModule } from './attendance/attendance.module';
     AuthModule,
     EmployeeModule,
     AttendanceModule,
+    ExitClearanceModule,
     CityModule,
     DepartmentModule,
     DesignationModule,

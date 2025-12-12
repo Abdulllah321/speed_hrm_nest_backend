@@ -1,7 +1,7 @@
 import { Controller, Post, Req, Get, Param, Res, Delete, UseGuards } from '@nestjs/common';
 import { UploadService } from './upload.service';
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { MultipartFile } from 'fastify-multipart';
+import type { MultipartFile } from '@fastify/multipart';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('api')
@@ -12,6 +12,9 @@ export class UploadController {
   @UseGuards(JwtAuthGuard)
   async uploadSingleFile(@Req() request: FastifyRequest) {
     const data = await request.file();
+    if (!data) {
+      return { status: false, message: 'No file provided' };
+    }
     const createdById = request.user?.userId || null;
     return this.uploadService.uploadFile(data, createdById);
   }
