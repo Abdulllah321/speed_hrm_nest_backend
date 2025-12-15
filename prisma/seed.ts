@@ -13,6 +13,10 @@ import {
   seedJobTypes,
   seedMaritalStatuses,
   seedHolidays,
+  seedBranches,
+  seedLeavesPolicies,
+  seedWorkingHoursPolicies,
+  seedEmployees,
 } from './seeds/master-data.js';
 import { seedQualifications } from './seeds/qualifications.js';
 
@@ -300,6 +304,18 @@ async function main() {
   await seedHolidays(prisma, adminUser.id);
   await seedEmployeeGrades(prisma, adminUser.id);
   await seedEmployeeStatuses(prisma, adminUser.id);
+  
+  // Seed Branches (needs Cities)
+  await seedBranches(prisma, adminUser.id);
+  
+  // Seed Leave Types and Leaves Policies
+  await seedLeavesPolicies(prisma, adminUser.id);
+  
+  // Seed Working Hours Policies
+  await seedWorkingHoursPolicies(prisma, adminUser.id);
+  
+  // Seed Employees (needs all master data)
+  await seedEmployees(prisma, adminUser.id);
 
   console.log('');
   console.log('═══════════════════════════════════════════');

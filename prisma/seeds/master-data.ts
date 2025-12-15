@@ -259,3 +259,591 @@ export async function seedHolidays(prisma: PrismaClient, createdById: string) {
   return { created, skipped };
 }
 
+export async function seedBranches(prisma: PrismaClient, createdById: string) {
+  console.log('🏢 Seeding branches...');
+  
+  // Get Pakistan and Lahore city for branches
+  const pakistan = await prisma.country.findFirst({ where: { iso: 'PK' } });
+  if (!pakistan) {
+    console.warn('⚠️  Pakistan not found, skipping branches');
+    return { created: 0, skipped: 0 };
+  }
+  
+  const lahore = await prisma.city.findFirst({ 
+    where: { 
+      name: 'Lahore',
+      countryId: pakistan.id 
+    } 
+  });
+  
+  const karachi = await prisma.city.findFirst({ 
+    where: { 
+      name: 'Karachi',
+      countryId: pakistan.id 
+    } 
+  });
+  
+  const islamabad = await prisma.city.findFirst({ 
+    where: { 
+      name: 'Islamabad',
+      countryId: pakistan.id 
+    } 
+  });
+
+  const branches = [
+    { name: 'Head Office', address: 'Main Street, Lahore', cityId: lahore?.id },
+    { name: 'Karachi Branch', address: 'Business District, Karachi', cityId: karachi?.id },
+    { name: 'Islamabad Branch', address: 'Blue Area, Islamabad', cityId: islamabad?.id },
+    { name: 'Faisalabad Branch', address: 'City Center, Faisalabad', cityId: null },
+    { name: 'Multan Branch', address: 'Cantonment Area, Multan', cityId: null },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  for (const branch of branches) {
+    try {
+      const existing = await prisma.branch.findFirst({ where: { name: branch.name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      await prisma.branch.create({
+        data: {
+          name: branch.name,
+          address: branch.address,
+          cityId: branch.cityId || undefined,
+          status: 'active',
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding branch "${branch.name}":`, error.message);
+    }
+  }
+  console.log(`✓ Branches: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
+export async function seedLeaveTypes(prisma: PrismaClient, createdById: string) {
+  console.log('📋 Seeding leave types...');
+  const leaveTypes = [
+    'Annual Leave',
+    'Sick Leave',
+    'Casual Leave',
+    'Emergency Leave',
+    'Maternity Leave',
+    'Paternity Leave',
+    'Compensatory Leave',
+    'Unpaid Leave',
+    'Half Day Leave',
+    'Short Leave',
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  const leaveTypeMap = new Map<string, string>();
+
+  for (const name of leaveTypes) {
+    try {
+      const existing = await prisma.leaveType.findFirst({ where: { name } });
+      if (existing) {
+        skipped++;
+        leaveTypeMap.set(name, existing.id);
+        continue;
+      }
+      const leaveType = await prisma.leaveType.create({
+        data: {
+          name,
+          status: 'active',
+          createdById,
+        },
+      });
+      leaveTypeMap.set(name, leaveType.id);
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding leave type "${name}":`, error.message);
+    }
+  }
+  console.log(`✓ Leave Types: ${created} created, ${skipped} skipped`);
+  return { created, skipped, leaveTypeMap };
+}
+
+export async function seedLeavesPolicies(prisma: PrismaClient, createdById: string) {
+  console.log('📜 Seeding leaves policies...');
+  
+  // First seed leave types if not already seeded
+  const leaveTypesResult = await seedLeaveTypes(prisma, createdById);
+  const leaveTypes = await prisma.leaveType.findMany();
+  const leaveTypeMap = new Map(leaveTypes.map(lt => [lt.name, lt.id]));
+
+  const policies = [
+    {
+      name: 'Standard Leave Policy',
+      details: 'Standard leave policy for all employees',
+      fullDayDeductionRate: 1.0,
+      halfDayDeductionRate: 0.5,
+      shortLeaveDeductionRate: 0.25,
+      isDefault: true,
+      leaveTypes: [
+        { name: 'Annual Leave', numberOfLeaves: 14 },
+        { name: 'Sick Leave', numberOfLeaves: 10 },
+        { name: 'Casual Leave', numberOfLeaves: 5 },
+        { name: 'Emergency Leave', numberOfLeaves: 3 },
+      ],
+    },
+    {
+      name: 'Executive Leave Policy',
+      details: 'Enhanced leave policy for executives',
+      fullDayDeductionRate: 1.0,
+      halfDayDeductionRate: 0.5,
+      shortLeaveDeductionRate: 0.25,
+      isDefault: false,
+      leaveTypes: [
+        { name: 'Annual Leave', numberOfLeaves: 20 },
+        { name: 'Sick Leave', numberOfLeaves: 15 },
+        { name: 'Casual Leave', numberOfLeaves: 7 },
+        { name: 'Emergency Leave', numberOfLeaves: 5 },
+        { name: 'Compensatory Leave', numberOfLeaves: 5 },
+      ],
+    },
+    {
+      name: 'Probation Leave Policy',
+      details: 'Limited leave policy for probationary employees',
+      fullDayDeductionRate: 1.0,
+      halfDayDeductionRate: 0.5,
+      shortLeaveDeductionRate: 0.25,
+      isDefault: false,
+      leaveTypes: [
+        { name: 'Sick Leave', numberOfLeaves: 5 },
+        { name: 'Emergency Leave', numberOfLeaves: 2 },
+      ],
+    },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const policy of policies) {
+    try {
+      const existing = await prisma.leavesPolicy.findFirst({ where: { name: policy.name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      const leavesPolicy = await prisma.leavesPolicy.create({
+        data: {
+          name: policy.name,
+          details: policy.details,
+          fullDayDeductionRate: policy.fullDayDeductionRate,
+          halfDayDeductionRate: policy.halfDayDeductionRate,
+          shortLeaveDeductionRate: policy.shortLeaveDeductionRate,
+          status: 'active',
+          isDefault: policy.isDefault,
+          createdById,
+        },
+      });
+
+      // Create leave type associations
+      for (const leaveTypeData of policy.leaveTypes) {
+        const leaveTypeId = leaveTypeMap.get(leaveTypeData.name);
+        if (leaveTypeId) {
+          await prisma.leavesPolicyLeaveType.create({
+            data: {
+              leavesPolicyId: leavesPolicy.id,
+              leaveTypeId,
+              numberOfLeaves: leaveTypeData.numberOfLeaves,
+            },
+          });
+        }
+      }
+
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding leaves policy "${policy.name}":`, error.message);
+    }
+  }
+  console.log(`✓ Leaves Policies: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
+export async function seedWorkingHoursPolicies(prisma: PrismaClient, createdById: string) {
+  console.log('⏰ Seeding working hours policies...');
+
+  const policies = [
+    {
+      name: 'Standard Working Hours',
+      startWorkingHours: '09:00',
+      endWorkingHours: '18:00',
+      shortDayMins: 240, // 4 hours
+      startBreakTime: '13:00',
+      endBreakTime: '14:00',
+      halfDayStartTime: '13:00',
+      lateStartTime: '09:15',
+      lateDeductionType: 'percentage',
+      applyDeductionAfterLates: 3,
+      lateDeductionPercent: 0.5,
+      halfDayDeductionType: 'amount',
+      applyDeductionAfterHalfDays: 2,
+      halfDayDeductionAmount: 500,
+      shortDayDeductionType: 'amount',
+      applyDeductionAfterShortDays: 1,
+      shortDayDeductionAmount: 1000,
+      overtimeRate: 1.5,
+      gazzetedOvertimeRate: 2.0,
+      isDefault: true,
+    },
+    {
+      name: 'Flexible Working Hours',
+      startWorkingHours: '08:00',
+      endWorkingHours: '17:00',
+      shortDayMins: 240,
+      startBreakTime: '12:30',
+      endBreakTime: '13:30',
+      halfDayStartTime: '12:30',
+      lateStartTime: '08:15',
+      lateDeductionType: 'percentage',
+      applyDeductionAfterLates: 5,
+      lateDeductionPercent: 0.3,
+      halfDayDeductionType: 'amount',
+      applyDeductionAfterHalfDays: 3,
+      halfDayDeductionAmount: 400,
+      shortDayDeductionType: 'amount',
+      applyDeductionAfterShortDays: 2,
+      shortDayDeductionAmount: 800,
+      overtimeRate: 1.5,
+      gazzetedOvertimeRate: 2.0,
+      isDefault: false,
+    },
+    {
+      name: 'Shift Working Hours',
+      startWorkingHours: '18:00',
+      endWorkingHours: '02:00',
+      shortDayMins: 240,
+      startBreakTime: '22:00',
+      endBreakTime: '22:30',
+      halfDayStartTime: '22:00',
+      lateStartTime: '18:15',
+      lateDeductionType: 'percentage',
+      applyDeductionAfterLates: 3,
+      lateDeductionPercent: 0.5,
+      halfDayDeductionType: 'amount',
+      applyDeductionAfterHalfDays: 2,
+      halfDayDeductionAmount: 600,
+      shortDayDeductionType: 'amount',
+      applyDeductionAfterShortDays: 1,
+      shortDayDeductionAmount: 1200,
+      overtimeRate: 2.0,
+      gazzetedOvertimeRate: 2.5,
+      isDefault: false,
+    },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const policy of policies) {
+    try {
+      const existing = await prisma.workingHoursPolicy.findFirst({ where: { name: policy.name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await prisma.workingHoursPolicy.create({
+        data: {
+          name: policy.name,
+          startWorkingHours: policy.startWorkingHours,
+          endWorkingHours: policy.endWorkingHours,
+          shortDayMins: policy.shortDayMins,
+          startBreakTime: policy.startBreakTime,
+          endBreakTime: policy.endBreakTime,
+          halfDayStartTime: policy.halfDayStartTime,
+          lateStartTime: policy.lateStartTime,
+          lateDeductionType: policy.lateDeductionType,
+          applyDeductionAfterLates: policy.applyDeductionAfterLates,
+          lateDeductionPercent: policy.lateDeductionPercent,
+          halfDayDeductionType: policy.halfDayDeductionType,
+          applyDeductionAfterHalfDays: policy.applyDeductionAfterHalfDays,
+          halfDayDeductionAmount: policy.halfDayDeductionAmount,
+          shortDayDeductionType: policy.shortDayDeductionType,
+          applyDeductionAfterShortDays: policy.applyDeductionAfterShortDays,
+          shortDayDeductionAmount: policy.shortDayDeductionAmount,
+          overtimeRate: policy.overtimeRate,
+          gazzetedOvertimeRate: policy.gazzetedOvertimeRate,
+          status: 'active',
+          isDefault: policy.isDefault,
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding working hours policy "${policy.name}":`, error.message);
+    }
+  }
+  console.log(`✓ Working Hours Policies: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
+export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
+  console.log('👥 Seeding employees...');
+
+  // Get required master data
+  const departments = await prisma.department.findMany();
+  const designations = await prisma.designation.findMany();
+  const employeeGrades = await prisma.employeeGrade.findMany();
+  const employeeStatuses = await prisma.employeeStatus.findMany();
+  const maritalStatuses = await prisma.maritalStatus.findMany();
+  const branches = await prisma.branch.findMany();
+  const workingHoursPolicies = await prisma.workingHoursPolicy.findMany();
+  const leavesPolicies = await prisma.leavesPolicy.findMany();
+  const pakistan = await prisma.country.findFirst({ where: { iso: 'PK' } });
+  
+  // Get states and cities
+  const punjab = pakistan ? await prisma.state.findFirst({ where: { name: 'Punjab', countryId: pakistan.id } }) : null;
+  const sindh = pakistan ? await prisma.state.findFirst({ where: { name: 'Sindh', countryId: pakistan.id } }) : null;
+  const lahoreCity = punjab ? await prisma.city.findFirst({ where: { name: 'Lahore', stateId: punjab.id } }) : null;
+  const karachiCity = sindh ? await prisma.city.findFirst({ where: { name: 'Karachi', stateId: sindh.id } }) : null;
+  const islamabadCity = punjab ? await prisma.city.findFirst({ where: { name: 'Islamabad', stateId: punjab.id } }) : null;
+
+  if (!departments.length || !designations.length || !employeeGrades.length || !pakistan) {
+    console.warn('⚠️  Required master data not found, skipping employee seeding');
+    return { created: 0, skipped: 0 };
+  }
+
+  const defaultDeptId = departments[0].id;
+  const defaultDesignationId = (designations.find(d => d.name.includes('Manager')) || designations[0]).id;
+  const defaultGradeId = (employeeGrades.find(g => g.grade === 'Grade 5') || employeeGrades[0]).id;
+  const defaultStatusId = (employeeStatuses.find(s => s.status === 'Active') || employeeStatuses[0]).id;
+  const defaultMaritalStatusId = maritalStatuses[0].id;
+  const defaultBranchId = branches[0]?.id;
+  const defaultWorkingHoursId = (workingHoursPolicies.find(p => p.isDefault) || workingHoursPolicies[0])?.id;
+  const defaultLeavesPolicyId = (leavesPolicies.find(p => p.isDefault) || leavesPolicies[0])?.id;
+
+  const employees = [
+    {
+      employeeId: 'EMP001',
+      employeeName: 'Ahmed Ali',
+      fatherHusbandName: 'Muhammad Ali',
+      departmentId: defaultDeptId,
+      designationId: defaultDesignationId,
+      employeeGradeId: defaultGradeId,
+      attendanceId: 'ATT001',
+      maritalStatusId: defaultMaritalStatusId,
+      employmentStatusId: defaultStatusId,
+      cnicNumber: '35202-1234567-1',
+      joiningDate: new Date('2023-01-15'),
+      dateOfBirth: new Date('1990-05-20'),
+      nationality: 'Pakistani',
+      gender: 'Male',
+      contactNumber: '0300-1234567',
+      emergencyContactNumber: '0300-7654321',
+      emergencyContactPerson: 'Fatima Ali',
+      personalEmail: 'ahmed.ali@email.com',
+      officialEmail: 'ahmed.ali@speedlimit.com',
+      countryId: pakistan.id,
+      stateId: punjab?.id || '',
+      cityId: lahoreCity?.id || '',
+      employeeSalary: 50000,
+      reportingManager: 'Admin',
+      workingHoursPolicyId: defaultWorkingHoursId || '',
+      branchId: defaultBranchId || '',
+      leavesPolicyId: defaultLeavesPolicyId || '',
+      bankName: 'Allied Bank',
+      accountNumber: '1234567890123',
+      accountTitle: 'Ahmed Ali',
+    },
+    {
+      employeeId: 'EMP002',
+      employeeName: 'Fatima Khan',
+      fatherHusbandName: 'Hassan Khan',
+      departmentId: defaultDeptId,
+      designationId: (designations.find(d => d.name.includes('Developer')) || designations[0]).id,
+      employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 4') || employeeGrades[0]).id,
+      attendanceId: 'ATT002',
+      maritalStatusId: defaultMaritalStatusId,
+      employmentStatusId: defaultStatusId,
+      cnicNumber: '35202-2345678-2',
+      joiningDate: new Date('2023-03-10'),
+      dateOfBirth: new Date('1992-08-15'),
+      nationality: 'Pakistani',
+      gender: 'Female',
+      contactNumber: '0300-2345678',
+      emergencyContactNumber: '0300-8765432',
+      emergencyContactPerson: 'Hassan Khan',
+      personalEmail: 'fatima.khan@email.com',
+      officialEmail: 'fatima.khan@speedlimit.com',
+      countryId: pakistan.id,
+      stateId: sindh?.id || '',
+      cityId: karachiCity?.id || '',
+      employeeSalary: 45000,
+      reportingManager: 'Ahmed Ali',
+      workingHoursPolicyId: defaultWorkingHoursId || '',
+      branchId: defaultBranchId || '',
+      leavesPolicyId: defaultLeavesPolicyId || '',
+      bankName: 'Meezan Bank',
+      accountNumber: '2345678901234',
+      accountTitle: 'Fatima Khan',
+    },
+    {
+      employeeId: 'EMP003',
+      employeeName: 'Hassan Raza',
+      fatherHusbandName: 'Raza Ahmed',
+      departmentId: (departments.find(d => d.name.includes('IT')) || departments[0]).id,
+      designationId: (designations.find(d => d.name.includes('Senior')) || designations[0]).id,
+      employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 6') || employeeGrades[0]).id,
+      attendanceId: 'ATT003',
+      maritalStatusId: defaultMaritalStatusId,
+      employmentStatusId: defaultStatusId,
+      cnicNumber: '35202-3456789-3',
+      joiningDate: new Date('2022-11-20'),
+      dateOfBirth: new Date('1988-12-10'),
+      nationality: 'Pakistani',
+      gender: 'Male',
+      contactNumber: '0300-3456789',
+      emergencyContactNumber: '0300-9876543',
+      emergencyContactPerson: 'Sara Raza',
+      personalEmail: 'hassan.raza@email.com',
+      officialEmail: 'hassan.raza@speedlimit.com',
+      countryId: pakistan.id,
+      stateId: punjab?.id || '',
+      cityId: islamabadCity?.id || '',
+      employeeSalary: 60000,
+      reportingManager: 'Admin',
+      workingHoursPolicyId: defaultWorkingHoursId || '',
+      branchId: branches[1]?.id || defaultBranchId || '',
+      leavesPolicyId: defaultLeavesPolicyId || '',
+      bankName: 'HBL',
+      accountNumber: '3456789012345',
+      accountTitle: 'Hassan Raza',
+    },
+    {
+      employeeId: 'EMP004',
+      employeeName: 'Sara Ahmed',
+      fatherHusbandName: 'Ahmed Khan',
+      departmentId: (departments.find(d => d.name.includes('HR')) || departments[0]).id,
+      designationId: (designations.find(d => d.name.includes('HR')) || designations[0]).id,
+      employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 5') || employeeGrades[0]).id,
+      attendanceId: 'ATT004',
+      maritalStatusId: (maritalStatuses.find(m => m.name === 'Married') || maritalStatuses[0]).id,
+      employmentStatusId: defaultStatusId,
+      cnicNumber: '35202-4567890-4',
+      joiningDate: new Date('2023-06-01'),
+      dateOfBirth: new Date('1991-03-25'),
+      nationality: 'Pakistani',
+      gender: 'Female',
+      contactNumber: '0300-4567890',
+      emergencyContactNumber: '0300-0987654',
+      emergencyContactPerson: 'Ahmed Khan',
+      personalEmail: 'sara.ahmed@email.com',
+      officialEmail: 'sara.ahmed@speedlimit.com',
+      countryId: pakistan.id,
+      stateId: punjab?.id || '',
+      cityId: lahoreCity?.id || '',
+      employeeSalary: 48000,
+      reportingManager: 'Admin',
+      workingHoursPolicyId: defaultWorkingHoursId || '',
+      branchId: defaultBranchId || '',
+      leavesPolicyId: defaultLeavesPolicyId || '',
+      bankName: 'UBL',
+      accountNumber: '4567890123456',
+      accountTitle: 'Sara Ahmed',
+    },
+    {
+      employeeId: 'EMP005',
+      employeeName: 'Muhammad Usman',
+      fatherHusbandName: 'Usman Ali',
+      departmentId: (departments.find(d => d.name.includes('Finance')) || departments[0]).id,
+      designationId: (designations.find(d => d.name.includes('Accountant')) || designations[0]).id,
+      employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 4') || employeeGrades[0]).id,
+      attendanceId: 'ATT005',
+      maritalStatusId: defaultMaritalStatusId,
+      employmentStatusId: defaultStatusId,
+      cnicNumber: '35202-5678901-5',
+      joiningDate: new Date('2023-09-15'),
+      dateOfBirth: new Date('1993-07-30'),
+      nationality: 'Pakistani',
+      gender: 'Male',
+      contactNumber: '0300-5678901',
+      emergencyContactNumber: '0300-1098765',
+      emergencyContactPerson: 'Ayesha Usman',
+      personalEmail: 'm.usman@email.com',
+      officialEmail: 'm.usman@speedlimit.com',
+      countryId: pakistan.id,
+      stateId: sindh?.id || '',
+      cityId: karachiCity?.id || '',
+      employeeSalary: 42000,
+      reportingManager: 'Admin',
+      workingHoursPolicyId: defaultWorkingHoursId || '',
+      branchId: branches[1]?.id || defaultBranchId || '',
+      leavesPolicyId: defaultLeavesPolicyId || '',
+      bankName: 'MCB Bank',
+      accountNumber: '5678901234567',
+      accountTitle: 'Muhammad Usman',
+    },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const emp of employees) {
+    try {
+      const existing = await prisma.employee.findFirst({ 
+        where: { 
+          OR: [
+            { employeeId: emp.employeeId },
+            { officialEmail: emp.officialEmail },
+            { cnicNumber: emp.cnicNumber }
+          ]
+        } 
+      });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await prisma.employee.create({
+        data: {
+          employeeId: emp.employeeId,
+          employeeName: emp.employeeName,
+          fatherHusbandName: emp.fatherHusbandName,
+          departmentId: emp.departmentId,
+          employeeGradeId: emp.employeeGradeId,
+          attendanceId: emp.attendanceId,
+          designationId: emp.designationId,
+          maritalStatusId: emp.maritalStatusId,
+          employmentStatusId: emp.employmentStatusId,
+          cnicNumber: emp.cnicNumber,
+          joiningDate: emp.joiningDate,
+          dateOfBirth: emp.dateOfBirth,
+          nationality: emp.nationality,
+          gender: emp.gender,
+          contactNumber: emp.contactNumber,
+          emergencyContactNumber: emp.emergencyContactNumber,
+          emergencyContactPerson: emp.emergencyContactPerson,
+          personalEmail: emp.personalEmail,
+          officialEmail: emp.officialEmail,
+          countryId: emp.countryId,
+          stateId: emp.stateId,
+          cityId: emp.cityId,
+          employeeSalary: emp.employeeSalary,
+          reportingManager: emp.reportingManager,
+          workingHoursPolicyId: emp.workingHoursPolicyId,
+          branchId: emp.branchId,
+          leavesPolicyId: emp.leavesPolicyId,
+          bankName: emp.bankName,
+          accountNumber: emp.accountNumber,
+          accountTitle: emp.accountTitle,
+          status: 'active',
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding employee "${emp.employeeName}":`, error.message);
+    }
+  }
+  console.log(`✓ Employees: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+

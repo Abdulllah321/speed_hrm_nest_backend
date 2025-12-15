@@ -1,0 +1,16 @@
+node_modules
+coverage
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.git
+.gitignore
+README.md
+.vscode
+.idea
+# Don't ignore entrypoint and check script
+!docker-entrypoint.sh
+!check-seed.ts
+
