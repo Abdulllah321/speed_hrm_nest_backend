@@ -7,12 +7,22 @@ export class EmployeeService {
   constructor(private prisma: PrismaService, private activityLogs: ActivityLogsService) {}
 
   async list() {
-    const employees = await this.prisma.employee.findMany({ orderBy: { createdAt: 'desc' } })
+    const employees = await this.prisma.employee.findMany({ 
+      orderBy: { createdAt: 'desc' },
+      include: {
+        qualifications: true,
+      },
+    })
     return { status: true, data: employees }
   }
 
   async get(id: string) {
-    const employee = await this.prisma.employee.findUnique({ where: { id } })
+    const employee = await this.prisma.employee.findUnique({ 
+      where: { id },
+      include: {
+        qualifications: true,
+      },
+    })
     if (!employee) return { status: false, message: 'Employee not found' }
     return { status: true, data: employee }
   }
@@ -73,6 +83,19 @@ export class EmployeeService {
           key: !!body.selectedEquipments?.includes('key'),
           tools: !!body.selectedEquipments?.includes('tools'),
           status: 'active',
+          qualifications: body.qualifications && Array.isArray(body.qualifications) && body.qualifications.length > 0
+            ? {
+                create: body.qualifications.map((q: any) => ({
+                  qualification: q.qualification || '',
+                  instituteId: q.instituteId || null,
+                  countryId: q.countryId || null,
+                  cityId: q.cityId || null,
+                  stateId: q.stateId || null,
+                  year: q.year ? parseInt(q.year) : null,
+                  grade: q.grade || null,
+                })),
+              }
+            : undefined,
         },
       })
 
@@ -110,6 +133,15 @@ export class EmployeeService {
   async update(id: string, body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.employee.findUnique({ where: { id } })
+      
+      // Handle qualifications update
+      if (body.qualifications !== undefined) {
+        // Delete existing qualifications
+        await this.prisma.employeeQualification.deleteMany({
+          where: { employeeId: id },
+        })
+      }
+
       const updated = await this.prisma.employee.update({
         where: { id },
         data: {
@@ -164,6 +196,19 @@ export class EmployeeService {
           key: body.selectedEquipments ? !!body.selectedEquipments?.includes('key') : existing?.key,
           tools: body.selectedEquipments ? !!body.selectedEquipments?.includes('tools') : existing?.tools,
           status: body.status ?? existing?.status,
+          qualifications: body.qualifications !== undefined && Array.isArray(body.qualifications) && body.qualifications.length > 0
+            ? {
+                create: body.qualifications.map((q: any) => ({
+                  qualification: q.qualification || '',
+                  instituteId: q.instituteId || null,
+                  countryId: q.countryId || null,
+                  cityId: q.cityId || null,
+                  stateId: q.stateId || null,
+                  year: q.year ? parseInt(q.year) : null,
+                  grade: q.grade || null,
+                })),
+              }
+            : undefined,
         },
       })
 

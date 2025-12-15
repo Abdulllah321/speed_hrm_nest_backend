@@ -60,6 +60,7 @@ model Employee {
   updatedAt              DateTime                @updatedAt
   qualifications         EmployeeQualification[]
   attendances            Attendance[]
+  exitClearances         ExitClearance[]
 }
 
 model EmployeeQualification {

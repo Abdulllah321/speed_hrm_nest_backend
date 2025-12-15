@@ -8,19 +8,67 @@ export class ExitClearanceService {
 
   async list() {
     const clearances = await this.prisma.exitClearance.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: clearances }
+    
+    // Fetch all departments and designations for mapping
+    const departments = await this.prisma.department.findMany({ include: { subDepartments: true } })
+    const designations = await this.prisma.designation.findMany()
+    
+    // Map IDs to names
+    const mappedClearances = clearances.map(clearance => {
+      const dept = departments.find(d => d.id === clearance.department)
+      const subDept = dept?.subDepartments.find(sd => sd.id === clearance.subDepartment)
+      const designation = designations.find(d => d.id === clearance.designation)
+      
+      return {
+        ...clearance,
+        department: dept?.name || clearance.department,
+        subDepartment: subDept?.name || clearance.subDepartment,
+        designation: designation?.name || clearance.designation,
+      }
+    })
+    
+    return { status: true, data: mappedClearances }
   }
 
   async get(id: string) {
     const clearance = await this.prisma.exitClearance.findUnique({ where: { id } })
     if (!clearance) return { status: false, message: 'Exit clearance not found' }
-    return { status: true, data: clearance }
+    
+    // Fetch department and designation for mapping
+    const department = clearance.department 
+      ? await this.prisma.department.findUnique({ 
+          where: { id: clearance.department }, 
+          include: { subDepartments: true } 
+        })
+      : null
+    
+    const subDepartment = department && clearance.subDepartment
+      ? department.subDepartments.find(sd => sd.id === clearance.subDepartment)
+      : null
+    
+    const designation = clearance.designation
+      ? await this.prisma.designation.findUnique({ where: { id: clearance.designation } })
+      : null
+    
+    const mappedClearance = {
+      ...clearance,
+      department: department?.name || clearance.department,
+      subDepartment: subDepartment?.name || clearance.subDepartment,
+      designation: designation?.name || clearance.designation,
+    }
+    
+    return { status: true, data: mappedClearance }
   }
 
   async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      if (!body.employeeId) {
+        return { status: false, message: 'Employee ID is required' }
+      }
+
       const created = await this.prisma.exitClearance.create({
         data: {
+          employeeId: body.employeeId,
           employeeName: body.employeeName,
           designation: body.designation ?? null,
           department: body.department ?? null,
@@ -105,6 +153,7 @@ export class ExitClearanceService {
       const updated = await this.prisma.exitClearance.update({
         where: { id },
         data: {
+          employeeId: body.employeeId !== undefined ? body.employeeId : existing.employeeId,
           employeeName: body.employeeName !== undefined ? body.employeeName : existing.employeeName,
           designation: body.designation !== undefined ? body.designation : existing.designation,
           department: body.department !== undefined ? body.department : existing.department,
