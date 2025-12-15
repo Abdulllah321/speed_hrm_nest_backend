@@ -59,6 +59,8 @@ model User {
   holidaysCreated             Holiday[]            @relation("HolidayCreatedBy")
   attendancesCreated          Attendance[]         @relation("AttendanceCreatedBy")
   attendancesUpdated          Attendance[]         @relation("AttendanceUpdatedBy")
+  equipmentAssigned           EmployeeEquipment[]  @relation("EquipmentAssignedBy")
+  equipmentReturned           EmployeeEquipment[]  @relation("EquipmentReturnedBy")
 }
 
 model Role {

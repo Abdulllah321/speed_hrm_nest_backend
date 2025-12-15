@@ -59,14 +59,6 @@ model Employee {
   bankName               String
   accountNumber          String
   accountTitle           String
-  laptop                 Boolean                 @default(false)
-  card                   Boolean                 @default(false)
-  mobileSim              Boolean                 @default(false)
-  key                    Boolean                 @default(false)
-  tools                  Boolean                 @default(false)
-  accountType            String?
-  password               String?
-  roles                  String?
   status                 String                  @default("active")
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
@@ -74,13 +66,15 @@ model Employee {
   attendances            Attendance[]
   exitClearances         ExitClearance[]
   attendanceRequestQueries AttendanceRequestQuery[]
+  equipmentAssignments  EmployeeEquipment[]
 }
 
 model EmployeeQualification {
   id            String     @id @default(uuid())
   employeeId    String
   employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  qualification String
+  qualificationId String
+  qualification   Qualification @relation(fields: [qualificationId], references: [id], onDelete: Restrict)
   instituteId   String?
   institute     Institute? @relation(fields: [instituteId], references: [id], onDelete: SetNull)
   countryId     String?
@@ -95,4 +89,26 @@ model EmployeeQualification {
   updatedAt     DateTime   @updatedAt
 
   @@index([employeeId])
+}
+
+model EmployeeEquipment {
+  id            String     @id @default(uuid())
+  employeeId    String
+  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  equipmentId   String
+  equipment     Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  assignedDate DateTime   @default(now())
+  returnedDate  DateTime?
+  status        String     @default("assigned") // assigned, returned
+  notes         String?
+  assignedById  String?
+  assignedBy    User?      @relation("EquipmentAssignedBy", fields: [assignedById], references: [id])
+  returnedById  String?
+  returnedBy    User?      @relation("EquipmentReturnedBy", fields: [returnedById], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([employeeId])
+  @@index([equipmentId])
+  @@index([status])
 }

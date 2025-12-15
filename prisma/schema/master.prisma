@@ -41,6 +41,8 @@ model Qualification {
   createdBy   User?    @relation("QualificationCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  employeeQualifications EmployeeQualification[]
 }
 
 model MaritalStatus {
@@ -204,13 +206,14 @@ model LeavesPolicyLeaveType {
 }
 
 model Equipment {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  status      String   @default("active")
+  id          String              @id @default(uuid())
+  name        String              @unique
+  status      String              @default("active")
   createdById String?
-  createdBy   User?    @relation("EquipmentCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User?               @relation("EquipmentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  assignments EmployeeEquipment[]
 }
 
 model SalaryBreakup {

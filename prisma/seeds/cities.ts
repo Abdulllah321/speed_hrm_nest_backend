@@ -3,111 +3,111 @@ import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 
 const PAKISTAN_STATES = [
-  { name: 'AZAD KASHMIR' },
-  { name: 'BALOCHISTAN' },
-  { name: 'FANA' },
-  { name: 'FATA' },
-  { name: 'KPK' },
-  { name: 'PUNJAB' },
-  { name: 'SINDH' },
+  { name: 'Azad Kashmir' },
+  { name: 'Balochistan' },
+  { name: 'Fana' },
+  { name: 'Fata' },
+  { name: 'Khyber Pakhtunkhwa' },
+  { name: 'Punjab' },
+  { name: 'Sindh' },
 ];
 
 function getStateByCoordinates(lat: number | undefined, lng: number | undefined, cityName: string): string {
   const knownCities: Record<string, string> = {
-    'Islamabad': 'FANA',
-    'Karachi': 'SINDH',
-    'Lahore': 'PUNJAB',
-    'Faisalabad': 'PUNJAB',
-    'Rawalpindi': 'PUNJAB',
-    'Multan': 'PUNJAB',
-    'Hyderabad': 'SINDH',
-    'Gujranwala': 'PUNJAB',
-    'Peshawar': 'KPK',
-    'Quetta': 'BALOCHISTAN',
-    'Sargodha': 'PUNJAB',
-    'Sialkot': 'PUNJAB',
-    'Bahawalpur': 'PUNJAB',
-    'Sukkur': 'SINDH',
-    'Larkana': 'SINDH',
-    'Sheikhupura': 'PUNJAB',
-    'Jhang': 'PUNJAB',
-    'Rahim Yar Khan': 'PUNJAB',
-    'Gujrat': 'PUNJAB',
-    'Kasur': 'PUNJAB',
-    'Mardan': 'KPK',
-    'Sahiwal': 'PUNJAB',
-    'Nawabshah': 'SINDH',
-    'Chiniot': 'PUNJAB',
-    'Kotri': 'SINDH',
-    'Khanpur': 'PUNJAB',
-    'Hafizabad': 'PUNJAB',
-    'Kohat': 'KPK',
-    'Jacobabad': 'SINDH',
-    'Shikarpur': 'SINDH',
-    'Muzaffargarh': 'PUNJAB',
-    'Khanewal': 'PUNJAB',
-    'Gojra': 'PUNJAB',
-    'Mandi Bahauddin': 'PUNJAB',
-    'Abbottabad': 'KPK',
-    'Mirpur Khas': 'SINDH',
-    'Chaman': 'BALOCHISTAN',
-    'Sibi': 'BALOCHISTAN',
-    'Turbat': 'BALOCHISTAN',
-    'Gwadar': 'BALOCHISTAN',
-    'Zhob': 'BALOCHISTAN',
-    'Dera Ismail Khan': 'KPK',
-    'Swat': 'KPK',
-    'Mingora': 'KPK',
-    'Bannu': 'KPK',
-    'Mansehra': 'KPK',
-    'Muzaffarabad': 'AZAD KASHMIR',
-    'Mirpur': 'AZAD KASHMIR',
-    'Rawalakot': 'AZAD KASHMIR',
-    'Dera Ghazi Khan': 'PUNJAB',
+    'Islamabad': 'Fana',
+    'Karachi': 'Sindh',
+    'Lahore': 'Punjab',
+    'Faisalabad': 'Punjab',
+    'Rawalpindi': 'Punjab',
+    'Multan': 'Punjab',
+    'Hyderabad': 'Sindh',
+    'Gujranwala': 'Punjab',
+    'Peshawar': 'Khyber Pakhtunkhwa',
+    'Quetta': 'Balochistan',
+    'Sargodha': 'Punjab',
+    'Sialkot': 'Punjab',
+    'Bahawalpur': 'Punjab',
+    'Sukkur': 'Sindh',
+    'Larkana': 'Sindh',
+    'Sheikhupura': 'Punjab',
+    'Jhang': 'Punjab',
+    'Rahim Yar Khan': 'Punjab',
+    'Gujrat': 'Punjab',
+    'Kasur': 'Punjab',
+    'Mardan': 'Khyber Pakhtunkhwa',
+    'Sahiwal': 'Punjab',
+    'Nawabshah': 'Sindh',
+    'Chiniot': 'Punjab',
+    'Kotri': 'Sindh',
+    'Khanpur': 'Punjab',
+    'Hafizabad': 'Punjab',
+    'Kohat': 'Khyber Pakhtunkhwa',
+    'Jacobabad': 'Sindh',
+    'Shikarpur': 'Sindh',
+    'Muzaffargarh': 'Punjab',
+    'Khanewal': 'Punjab',
+    'Gojra': 'Punjab',
+    'Mandi Bahauddin': 'Punjab',
+    'Abbottabad': 'Khyber Pakhtunkhwa',
+    'Mirpur Khas': 'Sindh',
+    'Chaman': 'Balochistan',
+    'Sibi': 'Balochistan',
+    'Turbat': 'Balochistan',
+    'Gwadar': 'Balochistan',
+    'Zhob': 'Balochistan',
+    'Dera Ismail Khan': 'Khyber Pakhtunkhwa',
+    'Swat': 'Khyber Pakhtunkhwa',
+    'Mingora': 'Khyber Pakhtunkhwa',
+    'Bannu': 'Khyber Pakhtunkhwa',
+    'Mansehra': 'Khyber Pakhtunkhwa',
+    'Muzaffarabad': 'Azad Kashmir',
+    'Mirpur': 'Azad Kashmir',
+    'Rawalakot': 'Azad Kashmir',
+    'Dera Ghazi Khan': 'Punjab',
   };
 
   if (knownCities[cityName]) {
     return knownCities[cityName];
   }
   if (!lat || !lng) {
-    return 'PUNJAB';
+    return 'Punjab';
   }
   if (lat >= 29 && lat <= 33 && lng >= 70 && lng <= 75) {
     if (lat >= 33.5 && lat <= 34 && lng >= 72.8 && lng <= 73.2) {
-      return 'FANA';
+      return 'Fana';
     }
     if (lat >= 33.5 && lng < 72) {
-      return 'KPK';
+      return 'Khyber Pakhtunkhwa';
     }
     if (lat >= 33.5 && lng >= 73.5) {
-      return 'AZAD KASHMIR';
+      return 'Azad Kashmir';
     }
-    return 'PUNJAB';
+    return 'Punjab';
   }
   if (lat >= 24 && lat < 29 && lng >= 67 && lng <= 71) {
-    return 'SINDH';
+    return 'Sindh';
   }
   if (lat >= 31 && lat <= 36 && lng >= 70 && lng <= 74) {
     if (lat < 33.5 || (lat >= 33.5 && lng < 72)) {
       if (lat >= 33 && lat <= 35 && lng >= 70 && lng <= 71.5) {
-        return 'FATA';
+        return 'Fata';
       }
-      return 'KPK';
+      return 'Khyber Pakhtunkhwa';
     }
     if (lat >= 33.5 && lng >= 73.5) {
-      return 'AZAD KASHMIR';
+      return 'Azad Kashmir';
     }
   }
   if (lat >= 25 && lat <= 32 && lng >= 60 && lng < 70) {
-    return 'BALOCHISTAN';
+    return 'Balochistan';
   }
   if (lat >= 33 && lat <= 36 && lng >= 73 && lng <= 75) {
-    return 'AZAD KASHMIR';
+    return 'Azad Kashmir';
   }
   if (lat >= 33.5 && lat <= 34 && lng >= 72.8 && lng <= 73.2) {
-    return 'FANA';
+    return 'Fana';
   }
-  return 'PUNJAB';
+  return 'Punjab';
 }
 
 export async function seedCities(prisma: PrismaClient) {
@@ -148,7 +148,7 @@ export async function seedCities(prisma: PrismaClient) {
   const pakistanCities = citiesData.filter(city => city.country === 'PK');
   let citiesCreated = 0;
   let citiesSkipped = 0;
-  const defaultStateId = stateMap.get('PUNJAB');
+  const defaultStateId = stateMap.get('Punjab');
   for (const city of pakistanCities) {
     try {
       const cityName = city.name?.trim();

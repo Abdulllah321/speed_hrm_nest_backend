@@ -586,11 +586,56 @@ export async function seedWorkingHoursPolicies(prisma: PrismaClient, createdById
   return { created, skipped };
 }
 
+export async function seedEquipments(prisma: PrismaClient, createdById: string) {
+  console.log('🖥️  Seeding equipments...');
+  const equipments = [
+    'Laptop',
+    'Desktop Computer',
+    'Monitor',
+    'Keyboard',
+    'Mouse',
+    'Headset',
+    'Mobile Phone',
+    'SIM Card',
+    'Access Card',
+    'Office Keys',
+    'Tools',
+    'Printer',
+    'Scanner',
+    'Tablet',
+    'USB Drive',
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  for (const name of equipments) {
+    try {
+      const existing = await prisma.equipment.findFirst({ where: { name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      await prisma.equipment.create({
+        data: {
+          name,
+          status: 'active',
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding equipment "${name}":`, error.message);
+    }
+  }
+  console.log(`✓ Equipments: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
 export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   console.log('👥 Seeding employees...');
 
   // Get required master data
-  const departments = await prisma.department.findMany();
+  const departments = await prisma.department.findMany({ include: { subDepartments: true } });
   const designations = await prisma.designation.findMany();
   const employeeGrades = await prisma.employeeGrade.findMany();
   const employeeStatuses = await prisma.employeeStatus.findMany();
@@ -598,7 +643,12 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   const branches = await prisma.branch.findMany();
   const workingHoursPolicies = await prisma.workingHoursPolicy.findMany();
   const leavesPolicies = await prisma.leavesPolicy.findMany();
+  const equipments = await prisma.equipment.findMany();
   const pakistan = await prisma.country.findFirst({ where: { iso: 'PK' } });
+  
+  // Map equipment names to IDs
+  const equipmentMap = new Map(equipments.map(eq => [eq.name.toLowerCase(), eq.id]));
+  const getEquipmentId = (name: string) => equipmentMap.get(name.toLowerCase());
   
   // Get states and cities
   const punjab = pakistan ? await prisma.state.findFirst({ where: { name: 'Punjab', countryId: pakistan.id } }) : null;
@@ -607,19 +657,42 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   const karachiCity = sindh ? await prisma.city.findFirst({ where: { name: 'Karachi', stateId: sindh.id } }) : null;
   const islamabadCity = punjab ? await prisma.city.findFirst({ where: { name: 'Islamabad', stateId: punjab.id } }) : null;
 
-  if (!departments.length || !designations.length || !employeeGrades.length || !pakistan) {
+  // Get first city from state if specific city not found
+  const punjabFirstCity = punjab ? await prisma.city.findFirst({ where: { stateId: punjab.id } }) : null;
+  const sindhFirstCity = sindh ? await prisma.city.findFirst({ where: { stateId: sindh.id } }) : null;
+
+  if (!departments.length || !designations.length || !employeeGrades.length || !pakistan || !punjab || !sindh) {
     console.warn('⚠️  Required master data not found, skipping employee seeding');
+    if (!punjab) console.warn('   Missing: Punjab state');
+    if (!sindh) console.warn('   Missing: Sindh state');
+    return { created: 0, skipped: 0 };
+  }
+
+  if (!branches.length || !workingHoursPolicies.length || !leavesPolicies.length) {
+    console.warn('⚠️  Required master data not found, skipping employee seeding');
+    if (!branches.length) console.warn('   Missing: Branches');
+    if (!workingHoursPolicies.length) console.warn('   Missing: Working Hours Policies');
+    if (!leavesPolicies.length) console.warn('   Missing: Leaves Policies');
+    return { created: 0, skipped: 0 };
+  }
+
+  // Ensure we have at least one city in each state
+  if (!punjabFirstCity || !sindhFirstCity) {
+    console.warn('⚠️  Required cities not found, skipping employee seeding');
+    if (!punjabFirstCity) console.warn('   Missing: Cities in Punjab state');
+    if (!sindhFirstCity) console.warn('   Missing: Cities in Sindh state');
     return { created: 0, skipped: 0 };
   }
 
   const defaultDeptId = departments[0].id;
+  const defaultSubDeptId = departments[0].subDepartments?.[0]?.id || null;
   const defaultDesignationId = (designations.find(d => d.name.includes('Manager')) || designations[0]).id;
   const defaultGradeId = (employeeGrades.find(g => g.grade === 'Grade 5') || employeeGrades[0]).id;
   const defaultStatusId = (employeeStatuses.find(s => s.status === 'Active') || employeeStatuses[0]).id;
   const defaultMaritalStatusId = maritalStatuses[0].id;
-  const defaultBranchId = branches[0]?.id;
-  const defaultWorkingHoursId = (workingHoursPolicies.find(p => p.isDefault) || workingHoursPolicies[0])?.id;
-  const defaultLeavesPolicyId = (leavesPolicies.find(p => p.isDefault) || leavesPolicies[0])?.id;
+  const defaultBranchId = branches[0].id;
+  const defaultWorkingHoursId = (workingHoursPolicies.find(p => p.isDefault) || workingHoursPolicies[0]).id;
+  const defaultLeavesPolicyId = (leavesPolicies.find(p => p.isDefault) || leavesPolicies[0]).id;
 
   const employees = [
     {
@@ -627,6 +700,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       employeeName: 'Ahmed Ali',
       fatherHusbandName: 'Muhammad Ali',
       departmentId: defaultDeptId,
+      subDepartmentId: defaultSubDeptId,
       designationId: defaultDesignationId,
       employeeGradeId: defaultGradeId,
       attendanceId: 'ATT001',
@@ -643,22 +717,30 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       personalEmail: 'ahmed.ali@email.com',
       officialEmail: 'ahmed.ali@speedlimit.com',
       countryId: pakistan.id,
-      stateId: punjab?.id || '',
-      cityId: lahoreCity?.id || '',
+      stateId: punjab.id,
+      cityId: lahoreCity?.id || punjabFirstCity.id,
       employeeSalary: 50000,
       reportingManager: 'Admin',
-      workingHoursPolicyId: defaultWorkingHoursId || '',
-      branchId: defaultBranchId || '',
-      leavesPolicyId: defaultLeavesPolicyId || '',
+      workingHoursPolicyId: defaultWorkingHoursId,
+      branchId: defaultBranchId,
+      leavesPolicyId: defaultLeavesPolicyId,
+      currentAddress: '123 Main Street, Model Town, Lahore',
+      permanentAddress: '123 Main Street, Model Town, Lahore',
       bankName: 'Allied Bank',
       accountNumber: '1234567890123',
       accountTitle: 'Ahmed Ali',
+      equipmentIds: [
+        getEquipmentId('Laptop'),
+        getEquipmentId('Access Card'),
+        getEquipmentId('SIM Card'),
+      ].filter(Boolean) as string[],
     },
     {
       employeeId: 'EMP002',
       employeeName: 'Fatima Khan',
       fatherHusbandName: 'Hassan Khan',
       departmentId: defaultDeptId,
+      subDepartmentId: defaultSubDeptId,
       designationId: (designations.find(d => d.name.includes('Developer')) || designations[0]).id,
       employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 4') || employeeGrades[0]).id,
       attendanceId: 'ATT002',
@@ -675,22 +757,29 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       personalEmail: 'fatima.khan@email.com',
       officialEmail: 'fatima.khan@speedlimit.com',
       countryId: pakistan.id,
-      stateId: sindh?.id || '',
-      cityId: karachiCity?.id || '',
+      stateId: sindh.id,
+      cityId: karachiCity?.id || sindhFirstCity.id,
       employeeSalary: 45000,
       reportingManager: 'Ahmed Ali',
-      workingHoursPolicyId: defaultWorkingHoursId || '',
-      branchId: defaultBranchId || '',
-      leavesPolicyId: defaultLeavesPolicyId || '',
+      workingHoursPolicyId: defaultWorkingHoursId,
+      branchId: defaultBranchId,
+      leavesPolicyId: defaultLeavesPolicyId,
+      currentAddress: '456 Commercial Area, Clifton, Karachi',
+      permanentAddress: '789 Residential Block, Gulshan-e-Iqbal, Karachi',
       bankName: 'Meezan Bank',
       accountNumber: '2345678901234',
       accountTitle: 'Fatima Khan',
+      equipmentIds: [
+        getEquipmentId('Laptop'),
+        getEquipmentId('Access Card'),
+      ].filter(Boolean) as string[],
     },
     {
       employeeId: 'EMP003',
       employeeName: 'Hassan Raza',
       fatherHusbandName: 'Raza Ahmed',
       departmentId: (departments.find(d => d.name.includes('IT')) || departments[0]).id,
+      subDepartmentId: (departments.find(d => d.name.includes('IT')) || departments[0]).subDepartments?.[0]?.id || null,
       designationId: (designations.find(d => d.name.includes('Senior')) || designations[0]).id,
       employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 6') || employeeGrades[0]).id,
       attendanceId: 'ATT003',
@@ -707,22 +796,31 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       personalEmail: 'hassan.raza@email.com',
       officialEmail: 'hassan.raza@speedlimit.com',
       countryId: pakistan.id,
-      stateId: punjab?.id || '',
-      cityId: islamabadCity?.id || '',
+      stateId: punjab.id,
+      cityId: islamabadCity?.id || punjabFirstCity.id,
       employeeSalary: 60000,
       reportingManager: 'Admin',
-      workingHoursPolicyId: defaultWorkingHoursId || '',
-      branchId: branches[1]?.id || defaultBranchId || '',
-      leavesPolicyId: defaultLeavesPolicyId || '',
+      workingHoursPolicyId: defaultWorkingHoursId,
+      branchId: branches[1]?.id || defaultBranchId,
+      leavesPolicyId: defaultLeavesPolicyId,
+      currentAddress: '321 Sector F-7, Islamabad',
+      permanentAddress: '321 Sector F-7, Islamabad',
       bankName: 'HBL',
       accountNumber: '3456789012345',
       accountTitle: 'Hassan Raza',
+      equipmentIds: [
+        getEquipmentId('Laptop'),
+        getEquipmentId('Access Card'),
+        getEquipmentId('SIM Card'),
+        getEquipmentId('Office Keys'),
+      ].filter(Boolean) as string[],
     },
     {
       employeeId: 'EMP004',
       employeeName: 'Sara Ahmed',
       fatherHusbandName: 'Ahmed Khan',
       departmentId: (departments.find(d => d.name.includes('HR')) || departments[0]).id,
+      subDepartmentId: (departments.find(d => d.name.includes('HR')) || departments[0]).subDepartments?.[0]?.id || null,
       designationId: (designations.find(d => d.name.includes('HR')) || designations[0]).id,
       employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 5') || employeeGrades[0]).id,
       attendanceId: 'ATT004',
@@ -739,22 +837,29 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       personalEmail: 'sara.ahmed@email.com',
       officialEmail: 'sara.ahmed@speedlimit.com',
       countryId: pakistan.id,
-      stateId: punjab?.id || '',
-      cityId: lahoreCity?.id || '',
+      stateId: punjab.id,
+      cityId: lahoreCity?.id || punjabFirstCity.id,
       employeeSalary: 48000,
       reportingManager: 'Admin',
-      workingHoursPolicyId: defaultWorkingHoursId || '',
-      branchId: defaultBranchId || '',
-      leavesPolicyId: defaultLeavesPolicyId || '',
+      workingHoursPolicyId: defaultWorkingHoursId,
+      branchId: defaultBranchId,
+      leavesPolicyId: defaultLeavesPolicyId,
+      currentAddress: '654 Garden Town, Lahore',
+      permanentAddress: '654 Garden Town, Lahore',
       bankName: 'UBL',
       accountNumber: '4567890123456',
       accountTitle: 'Sara Ahmed',
+      equipmentIds: [
+        getEquipmentId('Laptop'),
+        getEquipmentId('Access Card'),
+      ].filter(Boolean) as string[],
     },
     {
       employeeId: 'EMP005',
       employeeName: 'Muhammad Usman',
       fatherHusbandName: 'Usman Ali',
       departmentId: (departments.find(d => d.name.includes('Finance')) || departments[0]).id,
+      subDepartmentId: (departments.find(d => d.name.includes('Finance')) || departments[0]).subDepartments?.[0]?.id || null,
       designationId: (designations.find(d => d.name.includes('Accountant')) || designations[0]).id,
       employeeGradeId: (employeeGrades.find(g => g.grade === 'Grade 4') || employeeGrades[0]).id,
       attendanceId: 'ATT005',
@@ -771,16 +876,23 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       personalEmail: 'm.usman@email.com',
       officialEmail: 'm.usman@speedlimit.com',
       countryId: pakistan.id,
-      stateId: sindh?.id || '',
-      cityId: karachiCity?.id || '',
+      stateId: sindh.id,
+      cityId: karachiCity?.id || sindhFirstCity.id,
       employeeSalary: 42000,
       reportingManager: 'Admin',
-      workingHoursPolicyId: defaultWorkingHoursId || '',
-      branchId: branches[1]?.id || defaultBranchId || '',
-      leavesPolicyId: defaultLeavesPolicyId || '',
+      workingHoursPolicyId: defaultWorkingHoursId,
+      branchId: branches[1]?.id || defaultBranchId,
+      leavesPolicyId: defaultLeavesPolicyId,
+      currentAddress: '987 PECHS Block 6, Karachi',
+      permanentAddress: '987 PECHS Block 6, Karachi',
       bankName: 'MCB Bank',
       accountNumber: '5678901234567',
       accountTitle: 'Muhammad Usman',
+      equipmentIds: [
+        getEquipmentId('Laptop'),
+        getEquipmentId('Access Card'),
+        getEquipmentId('Tools'),
+      ].filter(Boolean) as string[],
     },
   ];
 
@@ -789,6 +901,18 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
 
   for (const emp of employees) {
     try {
+      // Validate required fields
+      if (!emp.stateId || !emp.cityId || !emp.workingHoursPolicyId || !emp.branchId || !emp.leavesPolicyId) {
+        console.error(`Error seeding employee "${emp.employeeName}": Missing required fields`, {
+          stateId: emp.stateId,
+          cityId: emp.cityId,
+          workingHoursPolicyId: emp.workingHoursPolicyId,
+          branchId: emp.branchId,
+          leavesPolicyId: emp.leavesPolicyId,
+        });
+        continue;
+      }
+
       const existing = await prisma.employee.findFirst({ 
         where: { 
           OR: [
@@ -832,10 +956,22 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
           workingHoursPolicyId: emp.workingHoursPolicyId,
           branchId: emp.branchId,
           leavesPolicyId: emp.leavesPolicyId,
+          currentAddress: emp.currentAddress,
+          permanentAddress: emp.permanentAddress,
+          subDepartmentId: emp.subDepartmentId,
           bankName: emp.bankName,
           accountNumber: emp.accountNumber,
           accountTitle: emp.accountTitle,
           status: 'active',
+          equipmentAssignments: emp.equipmentIds && emp.equipmentIds.length > 0
+            ? {
+                create: emp.equipmentIds.map((equipmentId: string) => ({
+                  equipmentId,
+                  assignedById: adminUserId,
+                  status: 'assigned',
+                })),
+              }
+            : undefined,
         },
       });
       created++;

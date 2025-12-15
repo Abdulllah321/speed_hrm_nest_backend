@@ -22,29 +22,29 @@ export class UploadService {
     const fullPath = path.join(this.uploadRoot, filename);
     const relativePath = path.join('uploads', filename);
 
-    await new Promise<void>((resolve, reject) => {
-      const writeStream = fs.createWriteStream(fullPath);
-      file.file.pipe(writeStream);
-      writeStream.on('finish', () => resolve());
-      writeStream.on('error', reject);
-    });
-
-    let finalSize = 0;
+    // Read buffer first before consuming the stream
     const buffer = await file.toBuffer();
-    finalSize = buffer.length;
+    let finalSize = buffer.length;
+    let finalBuffer = buffer;
 
+    // Process image if it's an image file
     if (file.mimetype.startsWith('image/')) {
       try {
-        const processedBuffer = await sharp(buffer)
+        finalBuffer = await sharp(buffer)
           .rotate()
           .jpeg({ quality: 85 })
           .toBuffer();
-        fs.writeFileSync(fullPath, processedBuffer);
-        finalSize = processedBuffer.length;
+        finalSize = finalBuffer.length;
       } catch (e) {
         console.warn('Image post-process failed:', e);
+        // If processing fails, use original buffer
+        finalBuffer = buffer;
+        finalSize = buffer.length;
       }
     }
+
+    // Write the (possibly processed) buffer to disk
+    fs.writeFileSync(fullPath, finalBuffer);
 
     const record = await this.prisma.fileUpload.create({
       data: {

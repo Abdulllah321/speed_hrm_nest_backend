@@ -48,11 +48,146 @@ export class EmployeeService {
     const employee = await this.prisma.employee.findUnique({ 
       where: { id },
       include: {
-        qualifications: true,
+        department: {
+          select: {
+            id: true,
+            name: true,
+            subDepartments: true,
+          },
+        },
+        subDepartment: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        employeeGrade: {
+          select: {
+            id: true,
+            grade: true,
+          },
+        },
+        designation: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        maritalStatus: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        employmentStatus: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+        country: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        state: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        city: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        workingHoursPolicy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        leavesPolicy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        qualifications: {
+          include: {
+            institute: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            country: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            state: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            city: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     })
     if (!employee) return { status: false, message: 'Employee not found' }
-    return { status: true, data: employee }
+    
+    // Map relations to IDs for form compatibility, while keeping relation objects
+    const mappedEmployee = {
+      ...employee,
+      department: employee.department?.id || employee.departmentId,
+      subDepartment: employee.subDepartment?.id || employee.subDepartmentId || null,
+      employeeGrade: employee.employeeGrade?.id || employee.employeeGradeId,
+      designation: employee.designation?.id || employee.designationId,
+      maritalStatus: employee.maritalStatus?.id || employee.maritalStatusId,
+      employmentStatus: employee.employmentStatus?.id || employee.employmentStatusId,
+      country: employee.country?.id || employee.countryId,
+      state: employee.state?.id || employee.stateId,
+      province: employee.state?.id || employee.stateId, // Alias for compatibility
+      city: employee.city?.id || employee.cityId,
+      workingHoursPolicy: employee.workingHoursPolicy?.id || employee.workingHoursPolicyId,
+      branch: employee.branch?.id || employee.branchId,
+      leavesPolicy: employee.leavesPolicy?.id || employee.leavesPolicyId,
+      // Explicitly preserve address fields
+      currentAddress: employee.currentAddress ?? null,
+      permanentAddress: employee.permanentAddress ?? null,
+      // Keep relation objects for display purposes
+      departmentRelation: employee.department,
+      subDepartmentRelation: employee.subDepartment,
+      employeeGradeRelation: employee.employeeGrade,
+      designationRelation: employee.designation,
+      maritalStatusRelation: employee.maritalStatus,
+      employmentStatusRelation: employee.employmentStatus,
+      countryRelation: employee.country,
+      stateRelation: employee.state,
+      cityRelation: employee.city,
+      workingHoursPolicyRelation: employee.workingHoursPolicy,
+      branchRelation: employee.branch,
+      leavesPolicyRelation: employee.leavesPolicy,
+    }
+    
+    return { status: true, data: mappedEmployee }
   }
 
   async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
@@ -273,19 +408,20 @@ export class EmployeeService {
           bankName: body.bankName,
           accountNumber: body.accountNumber,
           accountTitle: body.accountTitle,
-          accountType: body.accountType ?? null,
-          password: body.password ?? null,
-          roles: body.roles ?? null,
-          laptop: !!body.selectedEquipments?.includes('laptop'),
-          card: !!body.selectedEquipments?.includes('card'),
-          mobileSim: !!body.selectedEquipments?.includes('mobileSim'),
-          key: !!body.selectedEquipments?.includes('key'),
-          tools: !!body.selectedEquipments?.includes('tools'),
           status: 'active',
+          equipmentAssignments: body.selectedEquipments && Array.isArray(body.selectedEquipments) && body.selectedEquipments.length > 0
+            ? {
+                create: body.selectedEquipments.map((equipmentId: string) => ({
+                  equipmentId,
+                  assignedById: ctx.userId,
+                  status: 'assigned',
+                })),
+              }
+            : undefined,
           qualifications: body.qualifications && Array.isArray(body.qualifications) && body.qualifications.length > 0
             ? {
                 create: body.qualifications.map((q: any) => ({
-                  qualification: q.qualification || '',
+                  qualificationId: q.qualification || q.qualificationId || '',
                   instituteId: q.instituteId || null,
                   countryId: q.countryId || null,
                   cityId: q.cityId || null,
@@ -341,6 +477,22 @@ export class EmployeeService {
         })
       }
 
+      // Handle equipment assignments update
+      if (body.selectedEquipments !== undefined) {
+        // Mark existing assigned equipment as returned
+        await this.prisma.employeeEquipment.updateMany({
+          where: { 
+            employeeId: id,
+            status: 'assigned',
+          },
+          data: {
+            status: 'returned',
+            returnedDate: new Date(),
+            returnedById: ctx.userId,
+          },
+        })
+      }
+
       const updated = await this.prisma.employee.update({
         where: { id },
         data: {
@@ -386,19 +538,20 @@ export class EmployeeService {
           bankName: body.bankName ?? existing?.bankName,
           accountNumber: body.accountNumber ?? existing?.accountNumber,
           accountTitle: body.accountTitle ?? existing?.accountTitle,
-          accountType: body.accountType ?? existing?.accountType,
-          password: body.password ?? existing?.password,
-          roles: body.roles ?? existing?.roles,
-          laptop: body.selectedEquipments ? !!body.selectedEquipments?.includes('laptop') : existing?.laptop,
-          card: body.selectedEquipments ? !!body.selectedEquipments?.includes('card') : existing?.card,
-          mobileSim: body.selectedEquipments ? !!body.selectedEquipments?.includes('mobileSim') : existing?.mobileSim,
-          key: body.selectedEquipments ? !!body.selectedEquipments?.includes('key') : existing?.key,
-          tools: body.selectedEquipments ? !!body.selectedEquipments?.includes('tools') : existing?.tools,
           status: body.status ?? existing?.status,
+          equipmentAssignments: body.selectedEquipments !== undefined && Array.isArray(body.selectedEquipments) && body.selectedEquipments.length > 0
+            ? {
+                create: body.selectedEquipments.map((equipmentId: string) => ({
+                  equipmentId,
+                  assignedById: ctx.userId,
+                  status: 'assigned',
+                })),
+              }
+            : undefined,
           qualifications: body.qualifications !== undefined && Array.isArray(body.qualifications) && body.qualifications.length > 0
             ? {
                 create: body.qualifications.map((q: any) => ({
-                  qualification: q.qualification || '',
+                  qualificationId: q.qualification || q.qualificationId || '',
                   instituteId: q.instituteId || null,
                   countryId: q.countryId || null,
                   cityId: q.cityId || null,
@@ -424,8 +577,9 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated, message: 'Employee updated successfully' }
     } catch (error: any) {
+      console.error('Employee update error:', error)
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -439,7 +593,7 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to update employee' }
+      return { status: false, message: error?.message || 'Failed to update employee' }
     }
   }
 
