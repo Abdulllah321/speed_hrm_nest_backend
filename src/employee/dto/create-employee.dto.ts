@@ -16,15 +16,15 @@ export class CreateEmployeeDto {
 
   @IsNotEmpty()
   @IsString()
-  department: string;
+  departmentId: string;
 
   @IsOptional()
   @IsString()
-  subDepartment?: string;
+  subDepartmentId?: string;
 
   @IsNotEmpty()
   @IsString()
-  employeeGrade: string;
+  employeeGradeId: string;
 
   @IsNotEmpty()
   @IsString()
@@ -32,15 +32,23 @@ export class CreateEmployeeDto {
 
   @IsNotEmpty()
   @IsString()
-  designation: string;
+  designationId: string;
 
   @IsNotEmpty()
   @IsString()
-  maritalStatus: string;
+  maritalStatusId: string;
 
   @IsNotEmpty()
   @IsString()
-  employmentStatus: string;
+  employmentStatusId: string;
+
+  // Legacy fields for backward compatibility
+  department?: string;
+  subDepartment?: string;
+  employeeGrade?: string;
+  designation?: string;
+  maritalStatus?: string;
+  employmentStatus?: string;
 
   @IsOptional()
   @IsDateString()
@@ -96,15 +104,21 @@ export class CreateEmployeeDto {
 
   @IsNotEmpty()
   @IsString()
-  country: string;
+  countryId: string;
 
   @IsNotEmpty()
   @IsString()
-  province: string;
+  stateId: string;
 
   @IsNotEmpty()
   @IsString()
-  city: string;
+  cityId: string;
+
+  // Legacy fields for backward compatibility
+  country?: string;
+  province?: string;
+  state?: string;
+  city?: string;
 
   @IsOptional()
   @IsString()
@@ -141,15 +155,20 @@ export class CreateEmployeeDto {
 
   @IsNotEmpty()
   @IsString()
-  workingHoursPolicy: string;
+  workingHoursPolicyId: string;
 
   @IsNotEmpty()
   @IsString()
-  branch: string;
+  branchId: string;
 
   @IsNotEmpty()
   @IsString()
-  leavesPolicy: string;
+  leavesPolicyId: string;
+
+  // Legacy fields for backward compatibility
+  workingHoursPolicy?: string;
+  branch?: string;
+  leavesPolicy?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -220,13 +239,13 @@ export class UpdateEmployeeDto {
   employeeId?: string;
   employeeName?: string;
   fatherHusbandName?: string;
-  department?: string;
-  subDepartment?: string;
-  employeeGrade?: string;
+  departmentId?: string;
+  subDepartmentId?: string;
+  employeeGradeId?: string;
   attendanceId?: string;
-  designation?: string;
-  maritalStatus?: string;
-  employmentStatus?: string;
+  designationId?: string;
+  maritalStatusId?: string;
+  employmentStatusId?: string;
   probationExpiryDate?: string;
   cnicNumber?: string;
   cnicExpiryDate?: string;
@@ -240,9 +259,9 @@ export class UpdateEmployeeDto {
   emergencyContactPerson?: string;
   personalEmail?: string;
   officialEmail?: string;
-  country?: string;
-  province?: string;
-  city?: string;
+  countryId?: string;
+  stateId?: string;
+  cityId?: string;
   area?: string;
   employeeSalary?: number;
   eobi?: boolean;
@@ -251,6 +270,21 @@ export class UpdateEmployeeDto {
   overtimeApplicable?: boolean;
   daysOff?: string;
   reportingManager?: string;
+  workingHoursPolicyId?: string;
+  branchId?: string;
+  leavesPolicyId?: string;
+
+  // Legacy fields for backward compatibility
+  department?: string;
+  subDepartment?: string;
+  employeeGrade?: string;
+  designation?: string;
+  maritalStatus?: string;
+  employmentStatus?: string;
+  country?: string;
+  province?: string;
+  state?: string;
+  city?: string;
   workingHoursPolicy?: string;
   branch?: string;
   leavesPolicy?: string;
