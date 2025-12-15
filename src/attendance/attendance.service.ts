@@ -33,9 +33,9 @@ export class AttendanceService {
             id: true,
             employeeId: true,
             employeeName: true,
-            department: true,
-            subDepartment: true,
-            workingHoursPolicy: true,
+            departmentId: true,
+            subDepartmentId: true,
+            workingHoursPolicyId: true,
           },
         },
       },
@@ -53,9 +53,9 @@ export class AttendanceService {
             id: true,
             employeeId: true,
             employeeName: true,
-            department: true,
-            subDepartment: true,
-            workingHoursPolicy: true,
+            departmentId: true,
+            subDepartmentId: true,
+            workingHoursPolicyId: true,
           },
         },
       },
@@ -75,10 +75,10 @@ export class AttendanceService {
   ): Promise<{ workingHours: Decimal; overtimeHours: Decimal; lateMinutes: number; earlyLeaveMinutes: number; breakDuration: number }> {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
-      select: { workingHoursPolicy: true },
+      select: { workingHoursPolicyId: true },
     })
 
-    if (!employee || !employee.workingHoursPolicy) {
+    if (!employee || !employee.workingHoursPolicyId) {
       // Default calculation if no policy
       const hours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60)
       return {
@@ -91,7 +91,7 @@ export class AttendanceService {
     }
 
     const policy = await this.prisma.workingHoursPolicy.findUnique({
-      where: { name: employee.workingHoursPolicy },
+      where: { id: employee.workingHoursPolicyId },
     })
 
     if (!policy) {
