@@ -29,3 +29,28 @@ model Attendance {
 
   @@unique([employeeId, date]) // One attendance record per employee per day (creates index automatically)
 }
+
+model AttendanceRequestQuery {
+  id                  String    @id @default(uuid())
+  employeeId          String?
+  employee            Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeName        String?
+  department          String?
+  subDepartment       String?
+  attendanceDate      DateTime
+  clockInTimeRequest  String?
+  clockOutTimeRequest String?
+  breakIn             String?
+  breakOut            String?
+  query               String
+  approvalStatus      String    @default("pending")
+  approvedBy          String?
+  approvedAt          DateTime?
+  rejectionReason     String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([approvalStatus])
+  @@index([attendanceDate])
+}

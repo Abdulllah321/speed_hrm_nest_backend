@@ -29,6 +29,7 @@ import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { HolidayModule } from './holiday/holiday.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
+import { AttendanceRequestQueryModule } from './attendance-request-query/attendance-request-query.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
     EmployeeModule,
     AttendanceModule,
     ExitClearanceModule,
+    AttendanceRequestQueryModule,
     CityModule,
     DepartmentModule,
     DesignationModule,
