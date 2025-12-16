@@ -79,7 +79,6 @@ model Country {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employeeQualifications EmployeeQualification[]
   employees              Employee[]
 }
 

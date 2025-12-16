@@ -123,13 +123,13 @@ export class EmployeeService {
         },
         qualifications: {
           include: {
-            institute: {
+            qualification: {
               select: {
                 id: true,
                 name: true,
               },
             },
-            country: {
+            institute: {
               select: {
                 id: true,
                 name: true,
@@ -149,42 +149,68 @@ export class EmployeeService {
             },
           },
         },
+        equipmentAssignments: {
+          include: {
+            equipment: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     })
     if (!employee) return { status: false, message: 'Employee not found' }
     
+    // Type assertion since we know the query includes these relations
+    const emp = employee as typeof employee & {
+      department?: { id: string; name: string } | null;
+      subDepartment?: { id: string; name: string } | null;
+      employeeGrade?: { id: string; grade: string } | null;
+      designation?: { id: string; name: string } | null;
+      maritalStatus?: { id: string; name: string } | null;
+      employmentStatus?: { id: string; status: string } | null;
+      country?: { id: string; name: string } | null;
+      state?: { id: string; name: string } | null;
+      city?: { id: string; name: string } | null;
+      workingHoursPolicy?: { id: string; name: string } | null;
+      branch?: { id: string; name: string } | null;
+      leavesPolicy?: { id: string; name: string } | null;
+    };
+    
     // Map relations to IDs for form compatibility, while keeping relation objects
     const mappedEmployee = {
-      ...employee,
-      department: employee.department?.id || employee.departmentId,
-      subDepartment: employee.subDepartment?.id || employee.subDepartmentId || null,
-      employeeGrade: employee.employeeGrade?.id || employee.employeeGradeId,
-      designation: employee.designation?.id || employee.designationId,
-      maritalStatus: employee.maritalStatus?.id || employee.maritalStatusId,
-      employmentStatus: employee.employmentStatus?.id || employee.employmentStatusId,
-      country: employee.country?.id || employee.countryId,
-      state: employee.state?.id || employee.stateId,
-      province: employee.state?.id || employee.stateId, // Alias for compatibility
-      city: employee.city?.id || employee.cityId,
-      workingHoursPolicy: employee.workingHoursPolicy?.id || employee.workingHoursPolicyId,
-      branch: employee.branch?.id || employee.branchId,
-      leavesPolicy: employee.leavesPolicy?.id || employee.leavesPolicyId,
+      ...emp,
+      department: emp.department?.id || emp.departmentId,
+      subDepartment: emp.subDepartment?.id || emp.subDepartmentId || null,
+      employeeGrade: emp.employeeGrade?.id || emp.employeeGradeId,
+      designation: emp.designation?.id || emp.designationId,
+      maritalStatus: emp.maritalStatus?.id || emp.maritalStatusId,
+      employmentStatus: emp.employmentStatus?.id || emp.employmentStatusId,
+      country: emp.country?.id || emp.countryId,
+      state: emp.state?.id || emp.stateId,
+      province: emp.state?.id || emp.stateId, // Alias for compatibility
+      city: emp.city?.id || emp.cityId,
+      workingHoursPolicy: emp.workingHoursPolicy?.id || emp.workingHoursPolicyId,
+      branch: emp.branch?.id || emp.branchId,
+      leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
       // Explicitly preserve address fields
-      currentAddress: employee.currentAddress ?? null,
-      permanentAddress: employee.permanentAddress ?? null,
+      currentAddress: emp.currentAddress ?? null,
+      permanentAddress: emp.permanentAddress ?? null,
       // Keep relation objects for display purposes
-      departmentRelation: employee.department,
-      subDepartmentRelation: employee.subDepartment,
-      employeeGradeRelation: employee.employeeGrade,
-      designationRelation: employee.designation,
-      maritalStatusRelation: employee.maritalStatus,
-      employmentStatusRelation: employee.employmentStatus,
-      countryRelation: employee.country,
-      stateRelation: employee.state,
-      cityRelation: employee.city,
-      workingHoursPolicyRelation: employee.workingHoursPolicy,
-      branchRelation: employee.branch,
-      leavesPolicyRelation: employee.leavesPolicy,
+      departmentRelation: emp.department,
+      subDepartmentRelation: emp.subDepartment,
+      employeeGradeRelation: emp.employeeGrade,
+      designationRelation: emp.designation,
+      maritalStatusRelation: emp.maritalStatus,
+      employmentStatusRelation: emp.employmentStatus,
+      countryRelation: emp.country,
+      stateRelation: emp.state,
+      cityRelation: emp.city,
+      workingHoursPolicyRelation: emp.workingHoursPolicy,
+      branchRelation: emp.branch,
+      leavesPolicyRelation: emp.leavesPolicy,
     }
     
     return { status: true, data: mappedEmployee }
@@ -408,27 +434,43 @@ export class EmployeeService {
           bankName: body.bankName,
           accountNumber: body.accountNumber,
           accountTitle: body.accountTitle,
+          avatarUrl: body.avatarUrl ?? null,
           status: 'active',
           equipmentAssignments: body.selectedEquipments && Array.isArray(body.selectedEquipments) && body.selectedEquipments.length > 0
             ? {
-                create: body.selectedEquipments.map((equipmentId: string) => ({
-                  equipmentId,
-                  assignedById: ctx.userId,
-                  status: 'assigned',
-                })),
+                create: body.selectedEquipments
+                  .filter((equipmentId: string) => {
+                    // Only include valid UUIDs or non-empty strings
+                    if (!equipmentId || typeof equipmentId !== 'string' || equipmentId.trim().length === 0) {
+                      return false
+                    }
+                    // Check if it's a valid UUID format
+                    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(equipmentId.trim())
+                    if (!isUUID) {
+                      console.warn(`⚠️ Skipping invalid equipment ID format: ${equipmentId}. Equipment IDs must be UUIDs.`)
+                      return false
+                    }
+                    return true
+                  })
+                  .map((equipmentId: string) => ({
+                    equipmentId: equipmentId.trim(),
+                    assignedById: ctx.userId,
+                    status: 'assigned',
+                  })),
               }
             : undefined,
           qualifications: body.qualifications && Array.isArray(body.qualifications) && body.qualifications.length > 0
             ? {
-                create: body.qualifications.map((q: any) => ({
-                  qualificationId: q.qualification || q.qualificationId || '',
-                  instituteId: q.instituteId || null,
-                  countryId: q.countryId || null,
-                  cityId: q.cityId || null,
-                  stateId: q.stateId || null,
-                  year: q.year ? parseInt(q.year) : null,
-                  grade: q.grade || null,
-                })),
+                create: body.qualifications
+                  .filter((q: any) => q.qualification || q.qualificationId) // Only include if qualification ID exists
+                  .map((q: any) => ({
+                    qualificationId: q.qualification || q.qualificationId,
+                    instituteId: q.instituteId || null,
+                    cityId: q.cityId || null,
+                    stateId: q.stateId || null,
+                    year: q.year ? parseInt(q.year) : null,
+                    grade: q.grade || null,
+                  })),
               }
             : undefined,
         },
@@ -538,6 +580,7 @@ export class EmployeeService {
           bankName: body.bankName ?? existing?.bankName,
           accountNumber: body.accountNumber ?? existing?.accountNumber,
           accountTitle: body.accountTitle ?? existing?.accountTitle,
+          avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : existing?.avatarUrl ?? null,
           status: body.status ?? existing?.status,
           equipmentAssignments: body.selectedEquipments !== undefined && Array.isArray(body.selectedEquipments) && body.selectedEquipments.length > 0
             ? {
@@ -550,15 +593,16 @@ export class EmployeeService {
             : undefined,
           qualifications: body.qualifications !== undefined && Array.isArray(body.qualifications) && body.qualifications.length > 0
             ? {
-                create: body.qualifications.map((q: any) => ({
-                  qualificationId: q.qualification || q.qualificationId || '',
-                  instituteId: q.instituteId || null,
-                  countryId: q.countryId || null,
-                  cityId: q.cityId || null,
-                  stateId: q.stateId || null,
-                  year: q.year ? parseInt(q.year) : null,
-                  grade: q.grade || null,
-                })),
+                create: body.qualifications
+                  .filter((q: any) => q.qualification || q.qualificationId) // Only include if qualification ID exists
+                  .map((q: any) => ({
+                    qualificationId: q.qualification || q.qualificationId,
+                    instituteId: q.instituteId || null,
+                    cityId: q.cityId || null,
+                    stateId: q.stateId || null,
+                    year: q.year ? parseInt(q.year) : null,
+                    grade: q.grade || null,
+                  })),
               }
             : undefined,
         },
@@ -1188,14 +1232,25 @@ export class EmployeeService {
       }
 
       const results: any[] = []
-      const errors: Array<{ row: Record<string, string>; error: string }> = []
+      const errors: Array<{ row: Record<string, string>; error: string; stack?: string }> = []
 
-      for (const record of records) {
+      console.log(`\n📊 Starting CSV import. Total records to process: ${records.length}`)
+
+      for (let index = 0; index < records.length; index++) {
+        const record = records[index]
+        const rowNumber = index + 2 // +2 because index is 0-based and we skip header row
+        
+        console.log(`\n🔄 Processing row ${rowNumber}/${records.length}...`)
+        
         try {
           // Normalize column names with various formats (matching Excel format exactly)
           const employeeId = record['Employee ID'] || record['Employee-ID'] || record.EmployeeID || record.employeeId
           const cnicNumber = record['CNIC-Number'] || record['CNIC Number'] || record.CNICNumber || record.cnicNumber
           const officialEmail = record['Offcial-Email'] || record['Official-Email'] || record['Official Email'] || record.OfficialEmail || record.officialEmail
+          
+          console.log(`  Employee ID: ${employeeId || 'MISSING'}`)
+          console.log(`  CNIC: ${cnicNumber || 'MISSING'}`)
+          console.log(`  Email: ${officialEmail || 'MISSING'}`)
 
           // Check if employee already exists by employeeId
           if (employeeId) {
@@ -1242,9 +1297,12 @@ export class EmployeeService {
             }
           }
 
-          // Parse selected equipments
+          // Parse selected equipments - only if column exists and has value
           const selectedEquipments = record.SelectedEquipments || record.selectedEquipments || record['Selected Equipments'] || record['Selected-Equipments'] || ''
-          const equipmentList = selectedEquipments.split(',').map((e: string) => e.trim().toLowerCase())
+          // Filter out empty strings and only process if we have actual equipment names/IDs
+          const equipmentList = selectedEquipments && selectedEquipments.trim() 
+            ? selectedEquipments.split(',').map((e: string) => e.trim()).filter((e: string) => e.length > 0)
+            : []
 
           // Validate required fields
           if (!employeeId) {
@@ -1499,7 +1557,7 @@ export class EmployeeService {
               accountType: record.AccountType || record.accountType || record['Account Type'] || record['Account-Type'] || null,
               password: record.Password || record.password || null,
               roles: record.Roles || record.roles || null,
-              selectedEquipments: equipmentList,
+              selectedEquipments: equipmentList.length > 0 ? equipmentList : undefined,
               status: record.Status || record.status || 'active',
             },
             ctx,
@@ -1507,19 +1565,38 @@ export class EmployeeService {
 
           if (result.status) {
             results.push(result.data)
+            console.log(`✅ Successfully created employee: ${employeeId}`)
           } else {
-            console.error('Create employee failed:', result.message)
+            console.error(`❌ Create employee failed for ${employeeId}:`, result.message)
             errors.push({ row: record, error: result.message || 'Failed to create employee' })
           }
         } catch (error: any) {
-          console.error('Exception while creating employee:', error)
-          errors.push({ row: record, error: error.message || 'Unknown error occurred' })
+          console.error('❌ Exception while processing row:', error)
+          console.error('Row data:', JSON.stringify(record, null, 2))
+          console.error('Error stack:', error.stack)
+          errors.push({ 
+            row: record, 
+            error: error.message || 'Unknown error occurred',
+            stack: error.stack 
+          })
         }
       }
 
-      // Log errors for debugging
+      // Log errors for debugging with detailed information
       if (errors.length > 0) {
-        console.log('Import errors:', JSON.stringify(errors, null, 2))
+        console.error('❌ CSV Import Errors Summary:')
+        console.error(`Total errors: ${errors.length}`)
+        errors.forEach((err, index) => {
+          console.error(`\nError ${index + 1}:`)
+          console.error(`  Message: ${err.error}`)
+          console.error(`  Row data:`, JSON.stringify(err.row, null, 2))
+        })
+        console.error('\n📋 Full errors array:', JSON.stringify(errors, null, 2))
+      }
+      
+      // Log successful imports
+      if (results.length > 0) {
+        console.log(`✅ Successfully imported ${results.length} employee(s)`)
       }
 
       await this.activityLogs.log({

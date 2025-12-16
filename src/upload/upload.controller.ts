@@ -41,9 +41,22 @@ export class UploadController {
   }
 
   @Get('uploads/:id')
-  @UseGuards(JwtAuthGuard)
-  async getUpload(@Param('id') id: string) {
-    return this.uploadService.getUpload(id);
+  // Public endpoint for viewing images (no auth required)
+  async getUpload(@Param('id') id: string, @Res() reply: FastifyReply) {
+    try {
+      const item = await this.uploadService.getUpload(id);
+      if (!item || !item.path) {
+        return reply.status(404).send({ status: false, message: 'File not found' });
+      }
+      
+      const { stream } = await this.uploadService.downloadUpload(id);
+      reply.header('Content-Type', item.mimetype);
+      reply.header('Content-Disposition', `inline; filename="${item.filename}"`);
+      reply.header('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      return reply.send(stream);
+    } catch (error: any) {
+      return reply.status(404).send({ status: false, message: 'File not found' });
+    }
   }
 
   @Get('uploads/download/:id')

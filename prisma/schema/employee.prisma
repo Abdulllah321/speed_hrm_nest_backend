@@ -59,6 +59,7 @@ model Employee {
   bankName               String
   accountNumber          String
   accountTitle           String
+  avatarUrl              String?
   status                 String                  @default("active")
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
@@ -77,8 +78,6 @@ model EmployeeQualification {
   qualification   Qualification @relation(fields: [qualificationId], references: [id], onDelete: Restrict)
   instituteId   String?
   institute     Institute? @relation(fields: [instituteId], references: [id], onDelete: SetNull)
-  countryId     String?
-  country       Country?   @relation(fields: [countryId], references: [id], onDelete: SetNull)
   cityId        String?
   city          City?      @relation(fields: [cityId], references: [id], onDelete: SetNull)
   stateId       String?

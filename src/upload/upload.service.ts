@@ -54,10 +54,23 @@ export class UploadService {
         path: relativePath,
         createdById: createdById,
       },
-      select: { id: true, filename: true, mimetype: true, size: true, createdAt: true },
+      select: { id: true, filename: true, mimetype: true, size: true, createdAt: true, path: true },
     });
 
-    return record;
+    // Generate URL for the uploaded file
+    const fileUrl = `/api/uploads/${record.id}`;
+
+    return {
+      status: true,
+      data: {
+        id: record.id,
+        url: fileUrl,
+        filename: record.filename,
+        mimetype: record.mimetype,
+        size: record.size,
+        createdAt: record.createdAt,
+      },
+    };
   }
 
   async uploadMultiple(files: MultipartFile[], createdById: string | null = null) {
