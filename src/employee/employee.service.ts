@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import * as bcrypt from 'bcrypt'
 
 @Injectable()
 export class EmployeeService {
@@ -48,6 +49,12 @@ export class EmployeeService {
     const employee = await this.prisma.employee.findUnique({ 
       where: { id },
       include: {
+        user: {
+          select: {
+            id: true,
+            avatar: true,
+          },
+        },
         department: {
           select: {
             id: true,
@@ -165,6 +172,7 @@ export class EmployeeService {
     
     // Type assertion since we know the query includes these relations
     const emp = employee as typeof employee & {
+      user?: { id: string; avatar: string | null } | null;
       department?: { id: string; name: string } | null;
       subDepartment?: { id: string; name: string } | null;
       employeeGrade?: { id: string; grade: string } | null;
@@ -195,6 +203,8 @@ export class EmployeeService {
       workingHoursPolicy: emp.workingHoursPolicy?.id || emp.workingHoursPolicyId,
       branch: emp.branch?.id || emp.branchId,
       leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
+      // Avatar from user table
+      avatarUrl: emp.user?.avatar || null,
       // Explicitly preserve address fields
       currentAddress: emp.currentAddress ?? null,
       permanentAddress: emp.permanentAddress ?? null,
@@ -218,19 +228,6 @@ export class EmployeeService {
 
   async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      // Debug logging
-      console.log('🔍 Employee create called with body:', {
-        employeeId: body.employeeId,
-        employeeName: body.employeeName,
-        department: body.department,
-        country: body.country,
-        state: body.state,
-        city: body.city,
-        branch: body.branch,
-        workingHoursPolicy: body.workingHoursPolicy,
-        leavesPolicy: body.leavesPolicy,
-      })
-
       // Helper function to check if string is UUID
       const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
 
@@ -271,55 +268,46 @@ export class EmployeeService {
 
       // Resolve department (handle both ID and name)
       if (!isUUID(body.department)) {
-        console.log('🔄 Resolving department name to ID:', body.department)
         body.department = await this.findOrCreateDepartment(body.department, ctx)
       }
 
       // Resolve sub-department if provided (handle both ID and name)
       if (body.subDepartment && !isUUID(body.subDepartment)) {
-        console.log('🔄 Resolving sub-department name to ID:', body.subDepartment)
         body.subDepartment = await this.findOrCreateSubDepartment(body.subDepartment, body.department, ctx)
       }
 
       // Resolve designation (handle both ID and name)
       if (!isUUID(body.designation)) {
-        console.log('🔄 Resolving designation name to ID:', body.designation)
         body.designation = await this.findOrCreateDesignation(body.designation, ctx)
       }
 
       // Resolve employee grade (handle both ID and name)
       if (!isUUID(body.employeeGrade)) {
-        console.log('🔄 Resolving employee grade to ID:', body.employeeGrade)
         body.employeeGrade = await this.findOrCreateEmployeeGrade(body.employeeGrade, ctx)
       }
 
       // Resolve marital status (handle both ID and name)
       if (!isUUID(body.maritalStatus)) {
-        console.log('🔄 Resolving marital status name to ID:', body.maritalStatus)
         body.maritalStatus = await this.findOrCreateMaritalStatus(body.maritalStatus, ctx)
       }
 
       // Resolve employment status (handle both ID and name)
       if (!isUUID(body.employmentStatus)) {
-        console.log('🔄 Resolving employment status to ID:', body.employmentStatus)
         body.employmentStatus = await this.findOrCreateEmploymentStatus(body.employmentStatus, ctx)
       }
 
       // Resolve branch (handle both ID and name)
       if (!isUUID(body.branch)) {
-        console.log('🔄 Resolving branch name to ID:', body.branch)
         body.branch = await this.findOrCreateBranch(body.branch, ctx)
       }
 
       // Resolve working hours policy (handle both ID and name)
       if (!isUUID(body.workingHoursPolicy)) {
-        console.log('🔄 Resolving working hours policy name to ID:', body.workingHoursPolicy)
         body.workingHoursPolicy = await this.findOrCreateWorkingHoursPolicy(body.workingHoursPolicy, ctx)
       }
 
       // Resolve leaves policy (handle both ID and name)
       if (!isUUID(body.leavesPolicy)) {
-        console.log('🔄 Resolving leaves policy name to ID:', body.leavesPolicy)
         body.leavesPolicy = await this.findOrCreateLeavesPolicy(body.leavesPolicy, ctx)
       }
 
@@ -328,16 +316,12 @@ export class EmployeeService {
       let stateId = body.state
       let cityId = body.city
       
-      console.log('🔍 Processing country:', body.country, 'Is UUID?', isUUID(body.country))
-      
       if (!isUUID(body.country)) {
         // It's a name, resolve to ID
-        console.log('🔄 Resolving country name to ID:', body.country)
         countryId = await this.findCountryByName(body.country)
         if (!countryId) {
           throw new Error(`Country not found: ${body.country}`)
         }
-        console.log('✅ Country resolved to ID:', countryId)
       } else {
         // Verify the UUID exists
         const countryExists = await this.prisma.country.findUnique({ where: { id: body.country } })
@@ -346,16 +330,12 @@ export class EmployeeService {
         }
       }
 
-      console.log('🔍 Processing state:', body.state, 'Is UUID?', isUUID(body.state))
-      
       if (!isUUID(body.state)) {
         // It's a name, resolve to ID
-        console.log('🔄 Resolving state name to ID:', body.state)
         stateId = await this.findStateByName(body.state, countryId)
         if (!stateId) {
           throw new Error(`State not found: ${body.state}`)
         }
-        console.log('✅ State resolved to ID:', stateId)
       } else {
         // Verify the UUID exists
         const stateExists = await this.prisma.state.findUnique({ where: { id: body.state } })
@@ -364,16 +344,12 @@ export class EmployeeService {
         }
       }
 
-      console.log('🔍 Processing city:', body.city, 'Is UUID?', isUUID(body.city))
-      
       if (!isUUID(body.city)) {
         // It's a name, resolve to ID
-        console.log('🔄 Resolving city name to ID:', body.city)
         cityId = await this.findCityByName(body.city, stateId)
         if (!cityId) {
           throw new Error(`City not found: ${body.city}`)
         }
-        console.log('✅ City resolved to ID:', cityId)
       } else {
         // Verify the UUID exists
         const cityExists = await this.prisma.city.findUnique({ where: { id: body.city } })
@@ -382,15 +358,58 @@ export class EmployeeService {
         }
       }
 
-      console.log('✅ All foreign key validations passed, creating employee...')
-
       // Update body with resolved IDs
       body.country = countryId
       body.state = stateId
       body.city = cityId
 
+      // Create or find user if officialEmail is provided
+      let userId: string | null = null;
+      if (body.officialEmail) {
+        let user = await this.prisma.user.findUnique({
+          where: { email: body.officialEmail },
+        });
+
+        if (user) {
+          userId = user.id;
+          
+          // Update user avatar if provided
+          if (body.avatarUrl) {
+            await this.prisma.user.update({
+              where: { id: userId },
+              data: { avatar: body.avatarUrl },
+            });
+          }
+        } else {
+          // Create new user
+          const nameParts = body.employeeName.split(' ');
+          const firstName = nameParts[0] || body.employeeName;
+          const lastName = nameParts.slice(1).join(' ') || '';
+          
+          // Generate temporary password and hash it
+          const tempPassword = 'Welcome@' + Math.random().toString(36).substring(2, 10);
+          const hashedPassword = await bcrypt.hash(tempPassword, 10);
+          
+          user = await this.prisma.user.create({
+            data: {
+              email: body.officialEmail,
+              password: hashedPassword,
+              firstName: firstName,
+              lastName: lastName,
+              phone: body.contactNumber || null,
+              avatar: body.avatarUrl || null,
+              employeeId: body.employeeId,
+              mustChangePassword: true,
+              status: 'active',
+            },
+          });
+          userId = user.id;
+        }
+      }
+
       const created = await this.prisma.employee.create({
         data: {
+          userId: userId,
           employeeId: body.employeeId,
           employeeName: body.employeeName,
           fatherHusbandName: body.fatherHusbandName,
@@ -434,7 +453,6 @@ export class EmployeeService {
           bankName: body.bankName,
           accountNumber: body.accountNumber,
           accountTitle: body.accountTitle,
-          avatarUrl: body.avatarUrl ?? null,
           status: 'active',
           equipmentAssignments: body.selectedEquipments && Array.isArray(body.selectedEquipments) && body.selectedEquipments.length > 0
             ? {
@@ -447,7 +465,6 @@ export class EmployeeService {
                     // Check if it's a valid UUID format
                     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(equipmentId.trim())
                     if (!isUUID) {
-                      console.warn(`⚠️ Skipping invalid equipment ID format: ${equipmentId}. Equipment IDs must be UUIDs.`)
                       return false
                     }
                     return true
@@ -502,7 +519,6 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      console.error('Employee create error:', error)
       return { status: false, message: error?.message || 'Failed to create employee' }
     }
   }
@@ -580,7 +596,6 @@ export class EmployeeService {
           bankName: body.bankName ?? existing?.bankName,
           accountNumber: body.accountNumber ?? existing?.accountNumber,
           accountTitle: body.accountTitle ?? existing?.accountTitle,
-          avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : existing?.avatarUrl ?? null,
           status: body.status ?? existing?.status,
           equipmentAssignments: body.selectedEquipments !== undefined && Array.isArray(body.selectedEquipments) && body.selectedEquipments.length > 0
             ? {
@@ -608,6 +623,69 @@ export class EmployeeService {
         },
       })
 
+      // Handle user creation/update for avatar
+      if (body.officialEmail) {
+        if (updated.userId) {
+          // Employee already has a user, update avatar
+          if (body.avatarUrl !== undefined) {
+            await this.prisma.user.update({
+              where: { id: updated.userId },
+              data: { avatar: body.avatarUrl },
+            });
+         
+          }
+        } else {
+          // Employee doesn't have a user yet, create or link one
+          let user = await this.prisma.user.findUnique({
+            where: { email: body.officialEmail },
+          });
+
+          if (user) {
+            // User exists, link to employee
+            await this.prisma.employee.update({
+              where: { id: id },
+              data: { userId: user.id },
+            });
+            
+            if (body.avatarUrl !== undefined) {
+              await this.prisma.user.update({
+                where: { id: user.id },
+                data: { avatar: body.avatarUrl },
+              });
+            }
+          } else {
+            // Create new user
+            const nameParts = (body.employeeName || existing?.employeeName || '').split(' ');
+            const firstName = nameParts[0] || 'Employee';
+            const lastName = nameParts.slice(1).join(' ') || '';
+            
+            // Generate temporary password and hash it
+            const tempPassword = 'Welcome@' + Math.random().toString(36).substring(2, 10);
+            const hashedPassword = await bcrypt.hash(tempPassword, 10);
+            
+            user = await this.prisma.user.create({
+              data: {
+                email: body.officialEmail,
+                password: hashedPassword,
+                firstName: firstName,
+                lastName: lastName,
+                phone: body.contactNumber || existing?.contactNumber || null,
+                avatar: body.avatarUrl || null,
+                employeeId: body.employeeId || existing?.employeeId,
+                mustChangePassword: true,
+                status: 'active',
+              },
+            });
+            
+            // Link user to employee
+            await this.prisma.employee.update({
+              where: { id: id },
+              data: { userId: user.id },
+            });
+          }
+        }
+      }
+
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -623,7 +701,6 @@ export class EmployeeService {
       })
       return { status: true, data: updated, message: 'Employee updated successfully' }
     } catch (error: any) {
-      console.error('Employee update error:', error)
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -1234,23 +1311,15 @@ export class EmployeeService {
       const results: any[] = []
       const errors: Array<{ row: Record<string, string>; error: string; stack?: string }> = []
 
-      console.log(`\n📊 Starting CSV import. Total records to process: ${records.length}`)
-
       for (let index = 0; index < records.length; index++) {
         const record = records[index]
         const rowNumber = index + 2 // +2 because index is 0-based and we skip header row
-        
-        console.log(`\n🔄 Processing row ${rowNumber}/${records.length}...`)
         
         try {
           // Normalize column names with various formats (matching Excel format exactly)
           const employeeId = record['Employee ID'] || record['Employee-ID'] || record.EmployeeID || record.employeeId
           const cnicNumber = record['CNIC-Number'] || record['CNIC Number'] || record.CNICNumber || record.cnicNumber
           const officialEmail = record['Offcial-Email'] || record['Official-Email'] || record['Official Email'] || record.OfficialEmail || record.officialEmail
-          
-          console.log(`  Employee ID: ${employeeId || 'MISSING'}`)
-          console.log(`  CNIC: ${cnicNumber || 'MISSING'}`)
-          console.log(`  Email: ${officialEmail || 'MISSING'}`)
 
           // Check if employee already exists by employeeId
           if (employeeId) {
@@ -1410,9 +1479,7 @@ export class EmployeeService {
               continue
             }
             
-            console.log(`🔍 Resolving country: "${countryName}" for employee: ${employeeId}`)
             countryId = await this.findCountryByName(countryName)
-            console.log(`📍 Country resolution result: ${countryId ? countryId : 'NOT FOUND'}`)
             
             if (!countryId) {
               // Try to list some countries in the database for debugging
@@ -1420,7 +1487,6 @@ export class EmployeeService {
                 take: 5,
                 select: { name: true, nicename: true },
               })
-              console.log(`Available countries sample:`, sampleCountries)
               
               errors.push({ 
                 row: record, 
@@ -1435,9 +1501,7 @@ export class EmployeeService {
               continue
             }
             
-            console.log(`🔍 Resolving state: "${stateName}" in country: "${countryName}" for employee: ${employeeId}`)
             stateId = await this.findStateByName(stateName, countryId)
-            console.log(`📍 State resolution result: ${stateId ? stateId : 'NOT FOUND'}`)
             
             if (!stateId) {
               const sampleStates = await this.prisma.state.findMany({
@@ -1458,9 +1522,7 @@ export class EmployeeService {
               continue
             }
             
-            console.log(`🔍 Resolving city: "${cityName}" in state: "${stateName}" for employee: ${employeeId}`)
             cityId = await this.findCityByName(cityName, stateId)
-            console.log(`📍 City resolution result: ${cityId ? cityId : 'NOT FOUND'}`)
             
             if (!cityId) {
               const sampleCities = await this.prisma.city.findMany({
@@ -1565,38 +1627,16 @@ export class EmployeeService {
 
           if (result.status) {
             results.push(result.data)
-            console.log(`✅ Successfully created employee: ${employeeId}`)
           } else {
-            console.error(`❌ Create employee failed for ${employeeId}:`, result.message)
             errors.push({ row: record, error: result.message || 'Failed to create employee' })
           }
         } catch (error: any) {
-          console.error('❌ Exception while processing row:', error)
-          console.error('Row data:', JSON.stringify(record, null, 2))
-          console.error('Error stack:', error.stack)
           errors.push({ 
             row: record, 
             error: error.message || 'Unknown error occurred',
             stack: error.stack 
           })
         }
-      }
-
-      // Log errors for debugging with detailed information
-      if (errors.length > 0) {
-        console.error('❌ CSV Import Errors Summary:')
-        console.error(`Total errors: ${errors.length}`)
-        errors.forEach((err, index) => {
-          console.error(`\nError ${index + 1}:`)
-          console.error(`  Message: ${err.error}`)
-          console.error(`  Row data:`, JSON.stringify(err.row, null, 2))
-        })
-        console.error('\n📋 Full errors array:', JSON.stringify(errors, null, 2))
-      }
-      
-      // Log successful imports
-      if (results.length > 0) {
-        console.log(`✅ Successfully imported ${results.length} employee(s)`)
       }
 
       await this.activityLogs.log({

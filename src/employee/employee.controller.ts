@@ -94,7 +94,7 @@ export class EmployeeController {
       try {
         fs.unlinkSync(fullPath)
       } catch (e) {
-        console.warn('Failed to delete temp file:', e)
+        // Failed to delete temp file
       }
 
       return result
@@ -103,7 +103,7 @@ export class EmployeeController {
       try {
         fs.unlinkSync(fullPath)
       } catch (e) {
-        console.warn('Failed to delete temp file:', e)
+        // Failed to delete temp file
       }
       return { status: false, message: error?.message || 'Failed to process file' }
     }

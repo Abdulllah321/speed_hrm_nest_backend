@@ -59,7 +59,6 @@ model Employee {
   bankName               String
   accountNumber          String
   accountTitle           String
-  avatarUrl              String?
   status                 String                  @default("active")
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
