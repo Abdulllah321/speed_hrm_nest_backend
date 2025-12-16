@@ -54,3 +54,36 @@ model AttendanceRequestQuery {
   @@index([approvalStatus])
   @@index([attendanceDate])
 }
+
+model LeaveApplication {
+  id                  String    @id @default(uuid())
+  employeeId          String
+  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId         String
+  leaveType           LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  dayType             String    @default("fullDay") // fullDay, halfDay, shortLeave
+  fromDate            DateTime
+  toDate              DateTime
+  reasonForLeave      String
+  addressWhileOnLeave String
+  status              String    @default("pending") // pending, approved, rejected
+  approval1           String? // User ID of first approver
+  approval1Status     String? // pending, approved, rejected
+  approval1Date       DateTime?
+  approval2           String? // User ID of second approver (if needed)
+  approval2Status     String? // pending, approved, rejected
+  approval2Date       DateTime?
+  remarks             String?
+  createdById         String?
+  createdBy           User?     @relation("LeaveApplicationCreatedBy", fields: [createdById], references: [id])
+  updatedById         String?
+  updatedBy           User?     @relation("LeaveApplicationUpdatedBy", fields: [updatedById], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([leaveTypeId])
+  @@index([status])
+  @@index([fromDate])
+  @@index([toDate])
+}

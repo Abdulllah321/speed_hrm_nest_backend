@@ -70,6 +70,7 @@ model Employee {
   exitClearances         ExitClearance[]
   attendanceRequestQueries AttendanceRequestQuery[]
   equipmentAssignments  EmployeeEquipment[]
+  leaveApplications     LeaveApplication[]
 }
 
 model EmployeeQualification {

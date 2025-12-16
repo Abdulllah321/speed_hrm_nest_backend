@@ -170,6 +170,7 @@ model LeaveType {
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   leavesPolicies LeavesPolicyLeaveType[]
+  leaveApplications LeaveApplication[]
 }
 
 model LeavesPolicy {
