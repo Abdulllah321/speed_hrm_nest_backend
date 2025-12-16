@@ -205,6 +205,10 @@ export class EmployeeService {
       leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
       // Avatar from user table
       avatarUrl: emp.user?.avatar || null,
+      // EOBI Document URL
+      eobiDocumentUrl: emp.eobiDocumentUrl || null,
+      // Document URLs (JSON field)
+      documentUrls: emp.documentUrls || null,
       // Explicitly preserve address fields
       currentAddress: emp.currentAddress ?? null,
       permanentAddress: emp.permanentAddress ?? null,
@@ -440,6 +444,8 @@ export class EmployeeService {
           employeeSalary: body.employeeSalary as any,
           eobi: !!body.eobi,
           eobiNumber: body.eobiNumber ?? null,
+          eobiDocumentUrl: body.eobiDocumentUrl ?? null,
+          documentUrls: body.documentUrls ?? null,
           providentFund: !!body.providentFund,
           overtimeApplicable: !!body.overtimeApplicable,
           daysOff: body.daysOff ?? null,
@@ -505,6 +511,7 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      
       return { status: true, data: created }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -583,6 +590,8 @@ export class EmployeeService {
           employeeSalary: body.employeeSalary !== undefined ? (body.employeeSalary as any) : existing?.employeeSalary,
           eobi: body.eobi ?? existing?.eobi,
           eobiNumber: body.eobiNumber ?? existing?.eobiNumber,
+          eobiDocumentUrl: body.eobiDocumentUrl ?? existing?.eobiDocumentUrl ?? null,
+          documentUrls: body.documentUrls ?? existing?.documentUrls ?? null,
           providentFund: body.providentFund ?? existing?.providentFund,
           overtimeApplicable: body.overtimeApplicable ?? existing?.overtimeApplicable,
           daysOff: body.daysOff ?? existing?.daysOff,
@@ -699,6 +708,7 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      
       return { status: true, data: updated, message: 'Employee updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({

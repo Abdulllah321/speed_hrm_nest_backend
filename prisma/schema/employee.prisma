@@ -43,6 +43,9 @@ model Employee {
   employeeSalary         Decimal
   eobi                   Boolean                 @default(false)
   eobiNumber             String?
+  eobiDocumentUrl        String?
+  documentUrls           Json?
+
   providentFund          Boolean                 @default(false)
   overtimeApplicable     Boolean                 @default(false)
   daysOff                String?
