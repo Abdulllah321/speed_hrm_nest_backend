@@ -69,6 +69,7 @@ model Employee {
   attendances            Attendance[]
   exitClearances         ExitClearance[]
   attendanceRequestQueries AttendanceRequestQuery[]
+  attendanceExemptions   AttendanceExemption[]
   equipmentAssignments  EmployeeEquipment[]
   leaveApplications     LeaveApplication[]
 }

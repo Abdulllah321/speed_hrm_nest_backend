@@ -63,6 +63,8 @@ model User {
   equipmentReturned           EmployeeEquipment[]  @relation("EquipmentReturnedBy")
   leaveApplicationsCreated    LeaveApplication[]   @relation("LeaveApplicationCreatedBy")
   leaveApplicationsUpdated    LeaveApplication[]   @relation("LeaveApplicationUpdatedBy")
+  attendanceExemptionsCreated AttendanceExemption[] @relation("AttendanceExemptionCreatedBy")
+  attendanceExemptionsUpdated AttendanceExemption[] @relation("AttendanceExemptionUpdatedBy")
 }
 
 model Role {

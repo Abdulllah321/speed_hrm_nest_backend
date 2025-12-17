@@ -3,22 +3,22 @@ import { PrismaService } from '../prisma/prisma.service'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
 @Injectable()
-export class AttendanceRequestQueryService {
+export class AttendanceExemptionService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService
   ) {}
 
   async list() {
-    const queries = await this.prisma.attendanceRequestQuery.findMany({
+    const exemptions = await this.prisma.attendanceExemption.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         employee: {
           select: {
-            employeeId: true,
             departmentId: true,
             subDepartmentId: true,
             designationId: true,
+            employeeId: true,
           },
         },
       },
@@ -31,141 +31,122 @@ export class AttendanceRequestQueryService {
     const designations = await this.prisma.designation.findMany()
 
     // Map IDs to names
-    const mappedQueries = queries.map((query) => {
-      // Map department and subDepartment from AttendanceRequestQuery fields
-      const dept = query.department
-        ? departments.find((d) => d.id === query.department)
+    const mappedExemptions = exemptions.map((exemption) => {
+      // Map department and subDepartment from AttendanceExemption fields
+      const dept = exemption.department
+        ? departments.find((d) => d.id === exemption.department)
         : null
       const subDept =
-        dept && query.subDepartment
-          ? dept.subDepartments.find((sd) => sd.id === query.subDepartment)
+        dept && exemption.subDepartment
+          ? dept.subDepartments.find((sd) => sd.id === exemption.subDepartment)
           : null
 
       // Map designation from employee relation if available
-      const employeeDesignationId = query.employee?.designationId
+      const employeeDesignationId = exemption.employee?.designationId
       const designation = employeeDesignationId
         ? designations.find((d) => d.id === employeeDesignationId)
         : null
 
       return {
-        ...query,
-        employeeId: query.employee?.employeeId || query.employeeId, // Use actual employeeId from employee relation
-        department: dept?.name || query.department,
-        subDepartment: subDept?.name || query.subDepartment,
+        ...exemption,
+        department: dept?.name || exemption.department,
+        subDepartment: subDept?.name || exemption.subDepartment,
         designation: designation?.name || null,
+        employeeId: exemption.employee?.employeeId || exemption.employeeId,
       }
     })
 
-    return { status: true, data: mappedQueries }
+    return { status: true, data: mappedExemptions }
   }
 
   async get(id: string) {
-    const query = await this.prisma.attendanceRequestQuery.findUnique({
+    const exemption = await this.prisma.attendanceExemption.findUnique({
       where: { id },
       include: {
         employee: {
           select: {
-            employeeId: true,
             departmentId: true,
             subDepartmentId: true,
             designationId: true,
+            employeeId: true,
           },
         },
       },
     })
 
-    if (!query) {
-      return { status: false, message: 'Attendance request query not found' }
+    if (!exemption) {
+      return { status: false, message: 'Attendance exemption not found' }
     }
 
     // Fetch department and designation for mapping
-    const department = query.department
+    const department = exemption.department
       ? await this.prisma.department.findUnique({
-          where: { id: query.department },
+          where: { id: exemption.department },
           include: { subDepartments: true },
         })
       : null
 
     const subDepartment =
-      department && query.subDepartment
-        ? department.subDepartments.find((sd) => sd.id === query.subDepartment)
+      department && exemption.subDepartment
+        ? department.subDepartments.find((sd) => sd.id === exemption.subDepartment)
         : null
 
-    const designation = query.employee?.designationId
+    const designation = exemption.employee?.designationId
       ? await this.prisma.designation.findUnique({
-          where: { id: query.employee.designationId },
+          where: { id: exemption.employee.designationId },
         })
       : null
 
     return {
       status: true,
       data: {
-        ...query,
-        employeeId: query.employee?.employeeId || query.employeeId, // Use actual employeeId from employee relation
-        department: department?.name || query.department,
-        subDepartment: subDepartment?.name || query.subDepartment,
+        ...exemption,
+        department: department?.name || exemption.department,
+        subDepartment: subDepartment?.name || exemption.subDepartment,
         designation: designation?.name || null,
+        employeeId: exemption.employee?.employeeId || exemption.employeeId,
       },
     }
   }
 
   async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      const created = await this.prisma.attendanceRequestQuery.create({
+      const created = await this.prisma.attendanceExemption.create({
         data: {
           employeeId: body.employeeId || null,
           employeeName: body.employeeName || null,
           department: body.department || null,
           subDepartment: body.subDepartment || null,
           attendanceDate: new Date(body.attendanceDate),
-          clockInTimeRequest: body.clockInTimeRequest || null,
-          clockOutTimeRequest: body.clockOutTimeRequest || null,
-          breakIn: body.breakIn || null,
-          breakOut: body.breakOut || null,
-          query: body.query,
+          flagType: body.flagType,
+          exemptionType: body.exemptionType,
+          reason: body.reason,
           approvalStatus: body.approvalStatus || 'pending',
-        },
-      })
-
-      // Fetch the created record with employee relation to get actual employeeId
-      const createdWithEmployee = await this.prisma.attendanceRequestQuery.findUnique({
-        where: { id: created.id },
-        include: {
-          employee: {
-            select: {
-              employeeId: true,
-            },
-          },
+          createdById: ctx.userId || null,
         },
       })
 
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
+        module: 'attendance-exemption',
+        entity: 'AttendanceExemption',
         entityId: created.id,
-        description: `Created attendance request query for ${body.employeeName || 'Unknown'}`,
+        description: `Created attendance exemption for ${body.employeeName || 'Unknown'}`,
         newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
       })
 
-      return { 
-        status: true, 
-        data: createdWithEmployee ? {
-          ...createdWithEmployee,
-          employeeId: createdWithEmployee.employee?.employeeId || createdWithEmployee.employeeId,
-        } : created
-      }
+      return { status: true, data: created }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        description: 'Failed to create attendance request query',
+        module: 'attendance-exemption',
+        entity: 'AttendanceExemption',
+        description: 'Failed to create attendance exemption',
         errorMessage: error?.message,
         newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
@@ -175,7 +156,7 @@ export class AttendanceRequestQueryService {
 
       return {
         status: false,
-        message: error?.message || 'Failed to create attendance request query',
+        message: error?.message || 'Failed to create attendance exemption',
       }
     }
   }
@@ -186,14 +167,14 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string }
   ) {
     try {
-      const existing = await this.prisma.attendanceRequestQuery.findUnique({
+      const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
       })
       if (!existing) {
-        return { status: false, message: 'Attendance request query not found' }
+        return { status: false, message: 'Attendance exemption not found' }
       }
 
-      const updated = await this.prisma.attendanceRequestQuery.update({
+      const updated = await this.prisma.attendanceExemption.update({
         where: { id },
         data: {
           approvalStatus: body.approvalStatus || existing.approvalStatus,
@@ -203,28 +184,17 @@ export class AttendanceRequestQueryService {
               ? new Date()
               : null,
           rejectionReason: body.rejectionReason || null,
-        },
-      })
-
-      // Fetch the updated record with employee relation to get actual employeeId
-      const updatedWithEmployee = await this.prisma.attendanceRequestQuery.findUnique({
-        where: { id },
-        include: {
-          employee: {
-            select: {
-              employeeId: true,
-            },
-          },
+          updatedById: ctx.userId || null,
         },
       })
 
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
+        module: 'attendance-exemption',
+        entity: 'AttendanceExemption',
         entityId: id,
-        description: `Updated attendance request query status to ${body.approvalStatus}`,
+        description: `Updated attendance exemption status to ${body.approvalStatus}`,
         oldValues: JSON.stringify(existing),
         newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
@@ -232,21 +202,15 @@ export class AttendanceRequestQueryService {
         status: 'success',
       })
 
-      return { 
-        status: true, 
-        data: updatedWithEmployee ? {
-          ...updatedWithEmployee,
-          employeeId: updatedWithEmployee.employee?.employeeId || updatedWithEmployee.employeeId,
-        } : updated
-      }
+      return { status: true, data: updated }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
+        module: 'attendance-exemption',
+        entity: 'AttendanceExemption',
         entityId: id,
-        description: 'Failed to update attendance request query',
+        description: 'Failed to update attendance exemption',
         errorMessage: error?.message,
         newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
@@ -256,44 +220,44 @@ export class AttendanceRequestQueryService {
 
       return {
         status: false,
-        message: error?.message || 'Failed to update attendance request query',
+        message: error?.message || 'Failed to update attendance exemption',
       }
     }
   }
 
   async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      const existing = await this.prisma.attendanceRequestQuery.findUnique({
+      const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
       })
       if (!existing) {
-        return { status: false, message: 'Attendance request query not found' }
+        return { status: false, message: 'Attendance exemption not found' }
       }
 
-      await this.prisma.attendanceRequestQuery.delete({ where: { id } })
+      await this.prisma.attendanceExemption.delete({ where: { id } })
 
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
+        module: 'attendance-exemption',
+        entity: 'AttendanceExemption',
         entityId: id,
-        description: `Deleted attendance request query for ${existing.employeeName || 'Unknown'}`,
+        description: `Deleted attendance exemption for ${existing.employeeName || 'Unknown'}`,
         oldValues: JSON.stringify(existing),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
       })
 
-      return { status: true, message: 'Attendance request query deleted successfully' }
+      return { status: true, message: 'Attendance exemption deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
+        module: 'attendance-exemption',
+        entity: 'AttendanceExemption',
         entityId: id,
-        description: 'Failed to delete attendance request query',
+        description: 'Failed to delete attendance exemption',
         errorMessage: error?.message,
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
@@ -302,7 +266,7 @@ export class AttendanceRequestQueryService {
 
       return {
         status: false,
-        message: error?.message || 'Failed to delete attendance request query',
+        message: error?.message || 'Failed to delete attendance exemption',
       }
     }
   }

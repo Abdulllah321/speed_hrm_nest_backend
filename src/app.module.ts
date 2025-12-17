@@ -30,6 +30,7 @@ import { HolidayModule } from './holiday/holiday.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
 import { AttendanceRequestQueryModule } from './attendance-request-query/attendance-request-query.module';
+import { AttendanceExemptionModule } from './attendance-exemption/attendance-exemption.module';
 import { LeaveApplicationModule } from './leave-application/leave-application.module';
 
 @Module({
@@ -40,6 +41,7 @@ import { LeaveApplicationModule } from './leave-application/leave-application.mo
     AttendanceModule,
     ExitClearanceModule,
     AttendanceRequestQueryModule,
+    AttendanceExemptionModule,
     LeaveApplicationModule,
     CityModule,
     DepartmentModule,

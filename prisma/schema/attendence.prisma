@@ -87,3 +87,30 @@ model LeaveApplication {
   @@index([fromDate])
   @@index([toDate])
 }
+
+model AttendanceExemption {
+  id                String    @id @default(uuid())
+  employeeId        String?
+  employee          Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeName      String?
+  department        String?
+  subDepartment     String?
+  attendanceDate    DateTime
+  flagType          String // Late, Absent, Early Leave, Missing Check-in, Missing Check-out, Other
+  exemptionType     String // Medical Emergency, Family Emergency, Official Duty, Approved Leave, System Error, Other
+  reason            String
+  approvalStatus    String    @default("pending") // pending, approved, rejected
+  approvedBy        String?
+  approvedAt        DateTime?
+  rejectionReason   String?
+  createdById       String?
+  createdBy         User?     @relation("AttendanceExemptionCreatedBy", fields: [createdById], references: [id])
+  updatedById       String?
+  updatedBy         User?     @relation("AttendanceExemptionUpdatedBy", fields: [updatedById], references: [id])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([approvalStatus])
+  @@index([attendanceDate])
+}

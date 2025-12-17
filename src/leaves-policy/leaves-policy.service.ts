@@ -12,18 +12,48 @@ export class LeavesPolicyService {
   async list() {
     const items = await this.prisma.leavesPolicy.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { leaveTypes: true },
+      include: { 
+        leaveTypes: {
+          include: {
+            leaveType: true
+          }
+        }
+      },
     })
-    return { status: true, data: items }
+    // Transform the data to include leaveTypeName
+    const transformedItems = items.map(item => ({
+      ...item,
+      leaveTypes: item.leaveTypes.map(lt => ({
+        leaveTypeId: lt.leaveTypeId,
+        leaveTypeName: lt.leaveType.name,
+        numberOfLeaves: lt.numberOfLeaves,
+      }))
+    }))
+    return { status: true, data: transformedItems }
   }
 
   async get(id: string) {
     const item = await this.prisma.leavesPolicy.findUnique({
       where: { id },
-      include: { leaveTypes: true },
+      include: { 
+        leaveTypes: {
+          include: {
+            leaveType: true
+          }
+        }
+      },
     })
     if (!item) return { status: false, message: 'Leaves policy not found' }
-    return { status: true, data: item }
+    // Transform the data to include leaveTypeName
+    const transformedItem = {
+      ...item,
+      leaveTypes: item.leaveTypes.map(lt => ({
+        leaveTypeId: lt.leaveTypeId,
+        leaveTypeName: lt.leaveType.name,
+        numberOfLeaves: lt.numberOfLeaves,
+      }))
+    }
+    return { status: true, data: transformedItem }
   }
 
   async create(
@@ -74,6 +104,18 @@ export class LeavesPolicyService {
           skipDuplicates: true,
         })
       }
+      // Fetch the created record with leaveTypes included
+      const createdWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
+        where: { id: created.id },
+        include: { 
+          leaveTypes: {
+            include: {
+              leaveType: true
+            }
+          }
+        },
+      })
+      
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -86,7 +128,18 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, data: created }
+      
+      // Transform the data to include leaveTypeName
+      const transformedItem = createdWithLeaveTypes ? {
+        ...createdWithLeaveTypes,
+        leaveTypes: createdWithLeaveTypes.leaveTypes.map(lt => ({
+          leaveTypeId: lt.leaveTypeId,
+          leaveTypeName: lt.leaveType.name,
+          numberOfLeaves: lt.numberOfLeaves,
+        }))
+      } : created
+      
+      return { status: true, data: transformedItem }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -203,6 +256,18 @@ export class LeavesPolicyService {
           })
         }
       }
+      // Fetch the updated record with leaveTypes included
+      const updatedWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
+        where: { id },
+        include: { 
+          leaveTypes: {
+            include: {
+              leaveType: true
+            }
+          }
+        },
+      })
+      
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -216,7 +281,18 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, data: updated }
+      
+      // Transform the data to include leaveTypeName
+      const transformedItem = updatedWithLeaveTypes ? {
+        ...updatedWithLeaveTypes,
+        leaveTypes: updatedWithLeaveTypes.leaveTypes.map(lt => ({
+          leaveTypeId: lt.leaveTypeId,
+          leaveTypeName: lt.leaveType.name,
+          numberOfLeaves: lt.numberOfLeaves,
+        }))
+      } : updated
+      
+      return { status: true, data: transformedItem }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
