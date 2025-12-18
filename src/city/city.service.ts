@@ -30,7 +30,10 @@ export class CityService {
   }
 
   async getCities() {
-    const cities = await this.prisma.city.findMany({ orderBy: { name: 'asc' } })
+    const cities = await this.prisma.city.findMany({
+      include: { country: true, state: true },
+      orderBy: { name: 'asc' },
+    })
     return { status: true, data: cities }
   }
 
