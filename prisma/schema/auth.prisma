@@ -65,6 +65,7 @@ model User {
   leaveApplicationsUpdated    LeaveApplication[]   @relation("LeaveApplicationUpdatedBy")
   attendanceExemptionsCreated AttendanceExemption[] @relation("AttendanceExemptionCreatedBy")
   attendanceExemptionsUpdated AttendanceExemption[] @relation("AttendanceExemptionUpdatedBy")
+  policyAssignmentsCreated    WorkingHoursPolicyAssignment[] @relation("PolicyAssignmentCreatedBy")
 }
 
 model Role {

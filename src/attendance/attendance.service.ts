@@ -78,23 +78,35 @@ export class AttendanceService {
       select: { workingHoursPolicyId: true },
     })
 
-    if (!employee || !employee.workingHoursPolicyId) {
-      // Default calculation if no policy
-      const hours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60)
-      return {
-        workingHours: new Decimal(hours),
-        overtimeHours: new Decimal(0),
-        lateMinutes: 0,
-        earlyLeaveMinutes: 0,
-        breakDuration: 0,
-      }
-    }
+    // First, check for date-based policy assignment
+    const dateStart = new Date(date)
+    dateStart.setHours(0, 0, 0, 0)
+    const dateEnd = new Date(date)
+    dateEnd.setHours(23, 59, 59, 999)
 
-    const policy = await this.prisma.workingHoursPolicy.findUnique({
-      where: { id: employee.workingHoursPolicyId },
+    const policyAssignment = await this.prisma.workingHoursPolicyAssignment.findFirst({
+      where: {
+        employeeId,
+        startDate: { lte: dateEnd },
+        endDate: { gte: dateStart },
+      },
+      include: {
+        workingHoursPolicy: true,
+      },
+      orderBy: { createdAt: 'desc' }, // Most recent assignment takes precedence
     })
 
+    // Use assigned policy if exists, otherwise fall back to employee's default policy
+    let policy = policyAssignment?.workingHoursPolicy || null
+
+    if (!policy && employee?.workingHoursPolicyId) {
+      policy = await this.prisma.workingHoursPolicy.findUnique({
+        where: { id: employee.workingHoursPolicyId },
+      })
+    }
+
     if (!policy) {
+      // Default calculation if no policy
       const hours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60)
       return {
         workingHours: new Decimal(hours),
@@ -807,19 +819,42 @@ export class AttendanceService {
             },
           })
 
-          // Get employee's working hours policy to check weekly offs
+          // Check for date-based policy assignment first
+          const dateStart = new Date(date)
+          dateStart.setHours(0, 0, 0, 0)
+          const dateEnd = new Date(date)
+          dateEnd.setHours(23, 59, 59, 999)
+
+          const policyAssignment = await this.prisma.workingHoursPolicyAssignment.findFirst({
+            where: {
+              employeeId: employee.id,
+              startDate: { lte: dateEnd },
+              endDate: { gte: dateStart },
+            },
+            include: {
+              workingHoursPolicy: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          })
+
+          // Get employee's default working hours policy
           const employeeWithPolicy = await this.prisma.employee.findUnique({
             where: { id: employee.id },
             select: { workingHoursPolicyId: true },
           })
 
-          let isWeeklyOff = false
-          if (employeeWithPolicy?.workingHoursPolicyId) {
-            const policy = await this.prisma.workingHoursPolicy.findUnique({
+          // Use assigned policy if exists, otherwise use default
+          let policy = policyAssignment?.workingHoursPolicy || null
+          if (!policy && employeeWithPolicy?.workingHoursPolicyId) {
+            policy = await this.prisma.workingHoursPolicy.findUnique({
               where: { id: employeeWithPolicy.workingHoursPolicyId },
             })
+          }
+
+          let isWeeklyOff = false
+          if (policy) {
             // Check dayOverrides for weekly off days (dayType === 'off')
-            if (policy?.dayOverrides && typeof policy.dayOverrides === 'object') {
+            if (policy.dayOverrides && typeof policy.dayOverrides === 'object') {
               const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
               const dayName = dayNames[date.getDay()]
               const overrides = policy.dayOverrides as Record<string, any>

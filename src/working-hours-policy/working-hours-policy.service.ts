@@ -251,4 +251,350 @@ export class WorkingHoursPolicyService {
       return { status: false, message: error?.message || 'Failed to set working hours policy as default' }
     }
   }
+
+  // ==================== Policy Assignments ====================
+
+  async listAssignments(filters?: { employeeId?: string; policyId?: string }) {
+    const where: any = {}
+    if (filters?.employeeId) where.employeeId = filters.employeeId
+    if (filters?.policyId) where.workingHoursPolicyId = filters.policyId
+
+    const assignments = await this.prisma.workingHoursPolicyAssignment.findMany({
+      where,
+      include: {
+        employee: {
+          select: {
+            id: true,
+            employeeId: true,
+            employeeName: true,
+            departmentId: true,
+          },
+        },
+        workingHoursPolicy: {
+          select: {
+            id: true,
+            name: true,
+            startWorkingHours: true,
+            endWorkingHours: true,
+          },
+        },
+      },
+      orderBy: { startDate: 'asc' },
+    })
+    return { status: true, data: assignments }
+  }
+
+  async getAssignment(id: string) {
+    const assignment = await this.prisma.workingHoursPolicyAssignment.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            employeeId: true,
+            employeeName: true,
+          },
+        },
+        workingHoursPolicy: {
+          select: {
+            id: true,
+            name: true,
+            startWorkingHours: true,
+            endWorkingHours: true,
+          },
+        },
+      },
+    })
+    if (!assignment) return { status: false, message: 'Assignment not found' }
+    return { status: true, data: assignment }
+  }
+
+  async createAssignment(
+    body: {
+      employeeId: string
+      workingHoursPolicyId: string
+      startDate: string | Date
+      endDate: string | Date
+      notes?: string
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const startDate = new Date(body.startDate)
+      const endDate = new Date(body.endDate)
+      startDate.setHours(0, 0, 0, 0)
+      endDate.setHours(23, 59, 59, 999)
+
+      // Check for overlapping assignments
+      const overlapping = await this.prisma.workingHoursPolicyAssignment.findFirst({
+        where: {
+          employeeId: body.employeeId,
+          OR: [
+            {
+              AND: [
+                { startDate: { lte: startDate } },
+                { endDate: { gte: startDate } },
+              ],
+            },
+            {
+              AND: [
+                { startDate: { lte: endDate } },
+                { endDate: { gte: endDate } },
+              ],
+            },
+            {
+              AND: [
+                { startDate: { gte: startDate } },
+                { endDate: { lte: endDate } },
+              ],
+            },
+          ],
+        },
+      })
+
+      if (overlapping) {
+        return {
+          status: false,
+          message: 'Date range overlaps with an existing assignment',
+        }
+      }
+
+      const created = await this.prisma.workingHoursPolicyAssignment.create({
+        data: {
+          employeeId: body.employeeId,
+          workingHoursPolicyId: body.workingHoursPolicyId,
+          startDate,
+          endDate,
+          notes: body.notes || null,
+          createdById: ctx.userId,
+        },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+            },
+          },
+          workingHoursPolicy: {
+            select: {
+              id: true,
+              name: true,
+              startWorkingHours: true,
+              endWorkingHours: true,
+            },
+          },
+        },
+      })
+
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'create',
+        module: 'working_hours_policy_assignments',
+        entity: 'WorkingHoursPolicyAssignment',
+        entityId: created.id,
+        description: `Assigned policy ${created.workingHoursPolicy.name} to ${created.employee.employeeName}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { status: true, data: created }
+    } catch (error: any) {
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'create',
+        module: 'working_hours_policy_assignments',
+        entity: 'WorkingHoursPolicyAssignment',
+        description: 'Failed to create policy assignment',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+      return { status: false, message: error?.message || 'Failed to create policy assignment' }
+    }
+  }
+
+  async updateAssignment(
+    id: string,
+    body: {
+      startDate?: string | Date
+      endDate?: string | Date
+      notes?: string
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prisma.workingHoursPolicyAssignment.findUnique({ where: { id } })
+      if (!existing) {
+        return { status: false, message: 'Assignment not found' }
+      }
+
+      const startDate = body.startDate ? new Date(body.startDate) : existing.startDate
+      const endDate = body.endDate ? new Date(body.endDate) : existing.endDate
+
+      if (body.startDate) startDate.setHours(0, 0, 0, 0)
+      if (body.endDate) endDate.setHours(23, 59, 59, 999)
+
+      // Check for overlapping assignments (excluding current)
+      const overlapping = await this.prisma.workingHoursPolicyAssignment.findFirst({
+        where: {
+          id: { not: id },
+          employeeId: existing.employeeId,
+          OR: [
+            {
+              AND: [
+                { startDate: { lte: startDate } },
+                { endDate: { gte: startDate } },
+              ],
+            },
+            {
+              AND: [
+                { startDate: { lte: endDate } },
+                { endDate: { gte: endDate } },
+              ],
+            },
+            {
+              AND: [
+                { startDate: { gte: startDate } },
+                { endDate: { lte: endDate } },
+              ],
+            },
+          ],
+        },
+      })
+
+      if (overlapping) {
+        return {
+          status: false,
+          message: 'Date range overlaps with an existing assignment',
+        }
+      }
+
+      const updated = await this.prisma.workingHoursPolicyAssignment.update({
+        where: { id },
+        data: {
+          startDate,
+          endDate,
+          notes: body.notes !== undefined ? body.notes : existing.notes,
+        },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+            },
+          },
+          workingHoursPolicy: {
+            select: {
+              id: true,
+              name: true,
+              startWorkingHours: true,
+              endWorkingHours: true,
+            },
+          },
+        },
+      })
+
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'working_hours_policy_assignments',
+        entity: 'WorkingHoursPolicyAssignment',
+        entityId: id,
+        description: `Updated policy assignment for ${updated.employee.employeeName}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { status: true, data: updated }
+    } catch (error: any) {
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'working_hours_policy_assignments',
+        entity: 'WorkingHoursPolicyAssignment',
+        entityId: id,
+        description: 'Failed to update policy assignment',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+      return { status: false, message: error?.message || 'Failed to update policy assignment' }
+    }
+  }
+
+  async removeAssignment(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const existing = await this.prisma.workingHoursPolicyAssignment.findUnique({
+        where: { id },
+        include: {
+          employee: { select: { employeeName: true } },
+          workingHoursPolicy: { select: { name: true } },
+        },
+      })
+
+      if (!existing) {
+        return { status: false, message: 'Assignment not found' }
+      }
+
+      await this.prisma.workingHoursPolicyAssignment.delete({ where: { id } })
+
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'working_hours_policy_assignments',
+        entity: 'WorkingHoursPolicyAssignment',
+        entityId: id,
+        description: `Removed policy ${existing.workingHoursPolicy.name} from ${existing.employee.employeeName}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { status: true, message: 'Assignment removed successfully' }
+    } catch (error: any) {
+      await this.activityLogsService.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'working_hours_policy_assignments',
+        entity: 'WorkingHoursPolicyAssignment',
+        entityId: id,
+        description: 'Failed to remove policy assignment',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+      return { status: false, message: error?.message || 'Failed to remove policy assignment' }
+    }
+  }
+
+  async getEmployeeAssignments(employeeId: string) {
+    const assignments = await this.prisma.workingHoursPolicyAssignment.findMany({
+      where: { employeeId },
+      include: {
+        workingHoursPolicy: {
+          select: {
+            id: true,
+            name: true,
+            startWorkingHours: true,
+            endWorkingHours: true,
+          },
+        },
+      },
+      orderBy: { startDate: 'asc' },
+    })
+    return { status: true, data: assignments }
+  }
 }
