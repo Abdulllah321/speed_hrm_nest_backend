@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common'
 import { EmployeeService } from './employee.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import type { FastifyRequest } from 'fastify'
@@ -13,6 +13,12 @@ export class EmployeeController {
   @UseGuards(JwtAuthGuard)
   async list() {
     return this.service.list()
+  }
+
+  @Get('employees/for-attendance')
+  @UseGuards(JwtAuthGuard)
+  async listForAttendance(@Query('departmentId') departmentId?: string, @Query('subDepartmentId') subDepartmentId?: string) {
+    return this.service.listForAttendance({ departmentId, subDepartmentId })
   }
 
   @Get('employees/:id')

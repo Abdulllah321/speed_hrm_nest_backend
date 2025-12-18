@@ -45,6 +45,54 @@ export class EmployeeService {
     return { status: true, data: mappedEmployees }
   }
 
+  // Lightweight method to fetch only required fields for attendance management
+  async listForAttendance(filters?: { departmentId?: string; subDepartmentId?: string }) {
+    const where: any = {}
+    
+    if (filters?.departmentId) {
+      where.departmentId = filters.departmentId
+    }
+    
+    if (filters?.subDepartmentId) {
+      where.subDepartmentId = filters.subDepartmentId
+    }
+
+    const employees = await this.prisma.employee.findMany({ 
+      where,
+      select: {
+        id: true,
+        employeeId: true,
+        employeeName: true,
+        departmentId: true,
+        subDepartmentId: true,
+        workingHoursPolicyId: true,
+        department: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        subDepartment: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        workingHoursPolicy: {
+          select: {
+            id: true,
+            name: true,
+            startWorkingHours: true,
+            endWorkingHours: true,
+          },
+        },
+      },
+      orderBy: { employeeName: 'asc' },
+    })
+    
+    return { status: true, data: employees }
+  }
+
   async get(id: string) {
     const employee = await this.prisma.employee.findUnique({ 
       where: { id },

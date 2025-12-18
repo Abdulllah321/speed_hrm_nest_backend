@@ -7,9 +7,11 @@ export class AuthController {
   constructor(private service: AuthService) {}
 
   @Post('login')
-  async login(@Body() body: any) {
+  async login(@Body() body: any, @Req() req: any) {
     const { email, password } = body
-    return this.service.login(email, password)
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress
+    const userAgent = req.headers['user-agent']
+    return this.service.login(email, password, ipAddress, userAgent)
   }
 
   @Post('refresh-token')
@@ -26,13 +28,18 @@ export class AuthController {
   @Get('check-session')
   @UseGuards(JwtAuthGuard)
   async check(@Req() req: any) {
-    return this.service.checkSession(req.user.userId)
+    const authHeader = req.headers['authorization'] as string
+    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined
+    return this.service.checkSession(req.user.userId, accessToken)
   }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: any) {
-    return this.service.logout(req.user.userId)
+    // Extract token from Authorization header to invalidate only this session
+    const authHeader = req.headers['authorization'] as string
+    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined
+    return this.service.logout(req.user.userId, accessToken)
   }
 
   @Post('change-password')
