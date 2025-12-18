@@ -63,6 +63,11 @@ model Employee {
   accountNumber          String
   accountTitle           String
   status                 String                  @default("active")
+  // Rejoining tracking
+  isRejoined             Boolean                 @default(false)
+  originalJoiningDate    DateTime?               // First ever joining date (preserved on rejoin)
+  lastExitDate           DateTime?               // Date when employee last left
+  rejoinCount            Int                     @default(0)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   qualifications         EmployeeQualification[]
@@ -73,6 +78,31 @@ model Employee {
   equipmentAssignments   EmployeeEquipment[]
   leaveApplications      LeaveApplication[]
   policyAssignments      WorkingHoursPolicyAssignment[]
+  rejoiningHistory       EmployeeRejoiningHistory[]
+}
+
+model EmployeeRejoiningHistory {
+  id                 String   @id @default(uuid())
+  employeeId         String
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousEmployeeId String   // Old employee ID before rejoin
+  newEmployeeId      String   // New employee ID after rejoin
+  previousAttendanceId String // Old attendance ID
+  newAttendanceId    String   // New attendance ID
+  previousExitDate   DateTime // When employee left
+  rejoiningDate      DateTime // When employee rejoined
+  previousDepartmentId String?
+  newDepartmentId    String?
+  previousDesignationId String?
+  newDesignationId   String?
+  previousSalary     Decimal?
+  newSalary          Decimal?
+  remarks            String?
+  createdById        String?
+  createdBy          User?    @relation(fields: [createdById], references: [id])
+  createdAt          DateTime @default(now())
+
+  @@index([employeeId])
 }
 
 model EmployeeQualification {

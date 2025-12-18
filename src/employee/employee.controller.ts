@@ -21,6 +21,40 @@ export class EmployeeController {
     return this.service.listForAttendance({ departmentId, subDepartmentId })
   }
 
+  @Get('employees/dropdown')
+  @UseGuards(JwtAuthGuard)
+  async listForDropdown() {
+    return this.service.listForDropdown()
+  }
+
+  @Get('employees/rejoin/search')
+  @UseGuards(JwtAuthGuard)
+  async searchForRejoin(@Query('cnic') cnic: string) {
+    if (!cnic) {
+      return { status: false, message: 'CNIC is required' }
+    }
+    return this.service.findByCnicForRejoin(cnic)
+  }
+
+  @Post('employees/rejoin')
+  @UseGuards(JwtAuthGuard)
+  async rejoinEmployee(@Body() body: any, @Req() req) {
+    if (!body.cnic) {
+      return { status: false, message: 'CNIC is required' }
+    }
+    return this.service.rejoinEmployee(body.cnic, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Get('employees/:id/rejoining-history')
+  @UseGuards(JwtAuthGuard)
+  async getRejoiningHistory(@Param('id') id: string) {
+    return this.service.getRejoiningHistory(id)
+  }
+
   @Get('employees/:id')
   @UseGuards(JwtAuthGuard)
   async get(@Param('id') id: string) {

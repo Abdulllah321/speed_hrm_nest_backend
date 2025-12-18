@@ -93,6 +93,35 @@ export class EmployeeService {
     return { status: true, data: employees }
   }
 
+  // Minimal fields for dropdowns/selects
+  async listForDropdown() {
+    const employees = await this.prisma.employee.findMany({
+      select: {
+        id: true,
+        employeeId: true,
+        employeeName: true,
+        departmentId: true,
+        subDepartmentId: true,
+        department: {
+          select: { name: true },
+        },
+      },
+      orderBy: { employeeName: 'asc' },
+    })
+
+    return {
+      status: true,
+      data: employees.map((emp) => ({
+        id: emp.id,
+        employeeId: emp.employeeId,
+        employeeName: emp.employeeName,
+        departmentId: emp.departmentId,
+        subDepartmentId: emp.subDepartmentId,
+        departmentName: emp.department?.name || null,
+      })),
+    }
+  }
+
   async get(id: string) {
     const employee = await this.prisma.employee.findUnique({ 
       where: { id },
@@ -807,6 +836,227 @@ export class EmployeeService {
         status: 'failure',
       })
       return { status: false, message: 'Failed to delete employee' }
+    }
+  }
+
+  /**
+   * Find inactive employee by CNIC for rejoining
+   */
+  async findByCnicForRejoin(cnic: string) {
+    try {
+      const employee = await this.prisma.employee.findUnique({
+        where: { cnicNumber: cnic },
+        include: {
+          department: { select: { id: true, name: true } },
+          subDepartment: { select: { id: true, name: true } },
+          designation: { select: { id: true, name: true } },
+          employeeGrade: { select: { id: true, grade: true } },
+          maritalStatus: { select: { id: true, name: true } },
+          employmentStatus: { select: { id: true, status: true } },
+          country: { select: { id: true, name: true } },
+          state: { select: { id: true, name: true } },
+          city: { select: { id: true, name: true } },
+          branch: { select: { id: true, name: true } },
+          workingHoursPolicy: { select: { id: true, name: true } },
+          leavesPolicy: { select: { id: true, name: true } },
+          qualifications: {
+            include: {
+              qualification: { select: { id: true, name: true } },
+              institute: { select: { id: true, name: true } },
+            },
+          },
+          rejoiningHistory: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      })
+
+      if (!employee) {
+        return { status: false, message: 'No employee found with this CNIC', canRejoin: false }
+      }
+
+      // Check if employee is inactive (left the company)
+      const isInactive = employee.status === 'inactive' || employee.status === 'resigned' || employee.status === 'terminated'
+      
+      if (!isInactive) {
+        return { 
+          status: false, 
+          message: 'This employee is currently active. Cannot rejoin an active employee.', 
+          canRejoin: false,
+          data: { employeeName: employee.employeeName, status: employee.status }
+        }
+      }
+
+      return { 
+        status: true, 
+        canRejoin: true,
+        data: employee,
+        message: `Found inactive employee: ${employee.employeeName}. Ready for rejoining.`
+      }
+    } catch (error: any) {
+      return { status: false, message: error?.message || 'Error searching for employee', canRejoin: false }
+    }
+  }
+
+  /**
+   * Rejoin an existing inactive employee
+   */
+  async rejoinEmployee(
+    cnic: string,
+    body: {
+      employeeId: string;
+      attendanceId: string;
+      joiningDate: Date | string;
+      departmentId?: string;
+      subDepartmentId?: string;
+      designationId?: string;
+      employeeGradeId?: string;
+      employmentStatusId?: string;
+      employeeSalary?: number;
+      branchId?: string;
+      workingHoursPolicyId?: string;
+      leavesPolicyId?: string;
+      reportingManager?: string;
+      remarks?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string }
+  ) {
+    try {
+      // Find the employee by CNIC
+      const existing = await this.prisma.employee.findUnique({
+        where: { cnicNumber: cnic },
+      })
+
+      if (!existing) {
+        return { status: false, message: 'Employee not found with this CNIC' }
+      }
+
+      // Check if inactive
+      const isInactive = existing.status === 'inactive' || existing.status === 'resigned' || existing.status === 'terminated'
+      if (!isInactive) {
+        return { status: false, message: 'Cannot rejoin an active employee' }
+      }
+
+      // Check for duplicate employeeId
+      if (body.employeeId !== existing.employeeId) {
+        const duplicateEmpId = await this.prisma.employee.findUnique({
+          where: { employeeId: body.employeeId },
+        })
+        if (duplicateEmpId) {
+          return { status: false, message: `Employee ID ${body.employeeId} is already in use` }
+        }
+      }
+
+      // Create rejoining history record
+      await this.prisma.employeeRejoiningHistory.create({
+        data: {
+          employeeId: existing.id,
+          previousEmployeeId: existing.employeeId,
+          newEmployeeId: body.employeeId,
+          previousAttendanceId: existing.attendanceId,
+          newAttendanceId: body.attendanceId,
+          previousExitDate: existing.lastExitDate || existing.updatedAt,
+          rejoiningDate: new Date(body.joiningDate),
+          previousDepartmentId: existing.departmentId,
+          newDepartmentId: body.departmentId || existing.departmentId,
+          previousDesignationId: existing.designationId,
+          newDesignationId: body.designationId || existing.designationId,
+          previousSalary: existing.employeeSalary,
+          newSalary: body.employeeSalary ? body.employeeSalary : existing.employeeSalary,
+          remarks: body.remarks,
+          createdById: ctx.userId,
+        },
+      })
+
+      // Update the employee record
+      const rejoined = await this.prisma.employee.update({
+        where: { cnicNumber: cnic },
+        data: {
+          employeeId: body.employeeId,
+          attendanceId: body.attendanceId,
+          joiningDate: new Date(body.joiningDate),
+          departmentId: body.departmentId || existing.departmentId,
+          subDepartmentId: body.subDepartmentId !== undefined ? body.subDepartmentId : existing.subDepartmentId,
+          designationId: body.designationId || existing.designationId,
+          employeeGradeId: body.employeeGradeId || existing.employeeGradeId,
+          employmentStatusId: body.employmentStatusId || existing.employmentStatusId,
+          employeeSalary: body.employeeSalary || existing.employeeSalary,
+          branchId: body.branchId || existing.branchId,
+          workingHoursPolicyId: body.workingHoursPolicyId || existing.workingHoursPolicyId,
+          leavesPolicyId: body.leavesPolicyId || existing.leavesPolicyId,
+          reportingManager: body.reportingManager || existing.reportingManager,
+          status: 'active',
+          isRejoined: true,
+          originalJoiningDate: existing.originalJoiningDate || existing.joiningDate,
+          rejoinCount: existing.rejoinCount + 1,
+        },
+        include: {
+          department: { select: { id: true, name: true } },
+          designation: { select: { id: true, name: true } },
+        },
+      })
+
+      // Reactivate user if exists
+      if (existing.userId) {
+        await this.prisma.user.update({
+          where: { id: existing.userId },
+          data: { status: 'active' },
+        })
+      }
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'employees',
+        entity: 'Employee',
+        entityId: existing.id,
+        description: `Rejoined employee ${rejoined.employeeName} with new Employee ID: ${body.employeeId}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(rejoined),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { 
+        status: true, 
+        data: rejoined, 
+        message: `Employee ${rejoined.employeeName} has been successfully rejoined with Employee ID: ${body.employeeId}` 
+      }
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'employees',
+        entity: 'Employee',
+        description: `Failed to rejoin employee with CNIC: ${cnic}`,
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+      return { status: false, message: error?.message || 'Failed to rejoin employee' }
+    }
+  }
+
+  /**
+   * Get rejoining history for an employee
+   */
+  async getRejoiningHistory(employeeId: string) {
+    try {
+      const history = await this.prisma.employeeRejoiningHistory.findMany({
+        where: { employeeId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          createdBy: {
+            select: { firstName: true, lastName: true },
+          },
+        },
+      })
+      return { status: true, data: history }
+    } catch (error: any) {
+      return { status: false, message: error?.message || 'Failed to get rejoining history' }
     }
   }
 

@@ -999,7 +999,15 @@ export class AttendanceService {
     try {
       // Build employee filter
       const employeeWhere: any = {}
-      if (filters?.employeeId) employeeWhere.id = filters.employeeId
+      if (filters?.employeeId) {
+        // Handle multiple employee IDs (comma-separated)
+        const employeeIds = filters.employeeId.split(',').map(id => id.trim()).filter(Boolean)
+        if (employeeIds.length === 1) {
+          employeeWhere.id = employeeIds[0]
+        } else if (employeeIds.length > 1) {
+          employeeWhere.id = { in: employeeIds }
+        }
+      }
       if (filters?.departmentId) employeeWhere.departmentId = filters.departmentId
       if (filters?.subDepartmentId) employeeWhere.subDepartmentId = filters.subDepartmentId
 
