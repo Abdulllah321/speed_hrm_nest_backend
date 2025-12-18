@@ -26,6 +26,24 @@ export class AttendanceController {
     })
   }
 
+  @Get('attendances/summary')
+  @UseGuards(JwtAuthGuard)
+  async getSummary(
+    @Query('employeeId') employeeId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('subDepartmentId') subDepartmentId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.service.getProgressSummary({
+      employeeId,
+      departmentId,
+      subDepartmentId,
+      dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+      dateTo: dateTo ? new Date(dateTo) : undefined,
+    })
+  }
+
   @Get('attendances/:id')
   @UseGuards(JwtAuthGuard)
   async get(@Param('id') id: string) {

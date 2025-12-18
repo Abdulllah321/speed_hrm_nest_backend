@@ -18,20 +18,37 @@ function parseExpiryToMs(expiry: string) {
 export class AuthService {
   constructor(private prisma: PrismaService) {}
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, ipAddress?: string, userAgent?: string) {
     const user = await this.prisma.user.findUnique({ where: { email }, include: { role: { include: { permissions: { include: { permission: true } } } } } })
     if (!user) return { status: false, message: 'Invalid credentials' }
     if (user.status !== 'active') return { status: false, message: 'Account is not active' }
     const ok = await bcrypt.compare(password, user.password)
     if (!ok) return { status: false, message: 'Invalid credentials' }
+    
+    // Create new session and refresh token (does NOT invalidate existing sessions - allows multiple devices)
     const accessOpts: jwt.SignOptions = { expiresIn: authConfig.jwt.accessExpiresIn as any, issuer: authConfig.jwt.issuer }
     const accessToken = jwt.sign({ userId: user.id, email: user.email, roleId: user.roleId }, authConfig.jwt.accessSecret, accessOpts)
-    const family = crypto.randomUUID()
+    const family = crypto.randomUUID() // Each login gets a new family (new device)
     const refreshOpts: jwt.SignOptions = { expiresIn: authConfig.jwt.refreshExpiresIn as any, issuer: authConfig.jwt.issuer }
     const refreshToken = jwt.sign({ userId: user.id, family }, authConfig.jwt.refreshSecret, refreshOpts)
     const refreshTokenExpiryMs = parseExpiryToMs(authConfig.jwt.refreshExpiresIn)
+    
+    // Create refresh token for this device
     await this.prisma.refreshToken.create({ data: { userId: user.id, token: refreshToken, family, expiresAt: new Date(Date.now() + refreshTokenExpiryMs) } })
-    await this.prisma.session.create({ data: { userId: user.id, token: accessToken, isActive: true, ipAddress: null, userAgent: null, lastActivityAt: new Date(), expiresAt: new Date(Date.now() + (authConfig.security.sessionTimeout)) } })
+    
+    // Create new session for this device (doesn't affect other devices)
+    await this.prisma.session.create({ 
+      data: { 
+        userId: user.id, 
+        token: accessToken, 
+        isActive: true, 
+        ipAddress: ipAddress || null, 
+        userAgent: userAgent || null, 
+        lastActivityAt: new Date(), 
+        expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout) 
+      } 
+    })
+    
     return { status: true, data: { user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role?.name || null, permissions: user.role?.permissions.map(p => p.permission.name) || [] }, accessToken, refreshToken } }
   }
 
@@ -43,14 +60,52 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({ where: { id: decoded.userId } })
       if (!user || user.status !== 'active') return { status: false, message: 'User not found or inactive' }
       const refreshTokenExpiryMs = parseExpiryToMs(authConfig.jwt.refreshExpiresIn)
+      const accessTokenExpiryMs = parseExpiryToMs(authConfig.jwt.accessExpiresIn)
+      
+      // Revoke old refresh token (token rotation for security)
       await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { isRevoked: true } })
+      
       const family = decoded.family
       const accessOpts: jwt.SignOptions = { expiresIn: authConfig.jwt.accessExpiresIn as any, issuer: authConfig.jwt.issuer }
       const accessToken = jwt.sign({ userId: user.id, email: user.email, roleId: user.roleId }, authConfig.jwt.accessSecret, accessOpts)
       const refreshOpts: jwt.SignOptions = { expiresIn: authConfig.jwt.refreshExpiresIn as any, issuer: authConfig.jwt.issuer }
       const newRefreshToken = jwt.sign({ userId: user.id, family }, authConfig.jwt.refreshSecret, refreshOpts)
+      
+      // Create new refresh token with same family (same device)
       await this.prisma.refreshToken.create({ data: { userId: user.id, token: newRefreshToken, family, expiresAt: new Date(Date.now() + refreshTokenExpiryMs) } })
-      return { status: true, accessToken, refreshToken: newRefreshToken }
+      
+      // Update or create session with new access token
+      const existingSession = await this.prisma.session.findFirst({
+        where: { userId: user.id, isActive: true },
+        orderBy: { lastActivityAt: 'desc' }
+      })
+      
+      if (existingSession) {
+        // Update existing session with new token and extend expiry
+        await this.prisma.session.update({
+          where: { id: existingSession.id },
+          data: {
+            token: accessToken,
+            lastActivityAt: new Date(),
+            expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout)
+          }
+        })
+      } else {
+        // Create new session if none exists
+        await this.prisma.session.create({
+          data: {
+            userId: user.id,
+            token: accessToken,
+            isActive: true,
+            ipAddress: null,
+            userAgent: null,
+            lastActivityAt: new Date(),
+            expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout)
+          }
+        })
+      }
+      
+      return { status: true, data: { accessToken, refreshToken: newRefreshToken } }
     } catch {
       return { status: false, message: 'Invalid refresh token' }
     }
@@ -62,16 +117,53 @@ export class AuthService {
     return { status: true, data: user }
   }
 
-  async logout(userId: string) {
+  async logout(userId: string, accessToken?: string) {
+    // If accessToken is provided, only invalidate that specific session (single device logout)
+    if (accessToken) {
+      const session = await this.prisma.session.findFirst({ 
+        where: { userId, token: accessToken, isActive: true } 
+      })
+      if (session) {
+        // Invalidate only this session
+        await this.prisma.session.update({ 
+          where: { id: session.id }, 
+          data: { isActive: false } 
+        })
+        // Note: We don't revoke refresh tokens here to allow token refresh to work
+        // Refresh tokens will naturally expire, and users can manage sessions separately
+      }
+    } else {
+      // No token provided - invalidate all sessions (backward compatibility or admin action)
+      // This should rarely be used - prefer device-specific logout
     await this.prisma.session.updateMany({ where: { userId, isActive: true }, data: { isActive: false } })
     await this.prisma.refreshToken.updateMany({ where: { userId, isRevoked: false }, data: { isRevoked: true } })
+    }
     return { status: true, message: 'Logged out' }
   }
 
-  async checkSession(userId: string) {
+  async checkSession(userId: string, accessToken?: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } })
-    if (!user) return { status: false, message: 'User not found' }
-    return { status: true, data: { userId: user.id, email: user.email, roleId: user.roleId } }
+    if (!user) return { status: false, message: 'User not found', valid: false }
+    if (user.status !== 'active') return { status: false, message: 'User is not active', valid: false }
+    
+    // Update session activity if token is provided
+    if (accessToken) {
+      const session = await this.prisma.session.findFirst({
+        where: { userId, token: accessToken, isActive: true }
+      })
+      if (session) {
+        // Update last activity and extend session expiry
+        await this.prisma.session.update({
+          where: { id: session.id },
+          data: {
+            lastActivityAt: new Date(),
+            expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout)
+          }
+        })
+      }
+    }
+    
+    return { status: true, valid: true, data: { userId: user.id, email: user.email, roleId: user.roleId } }
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
@@ -125,5 +217,86 @@ export class AuthService {
   async getAllActivityLogs() {
     const logs = await this.prisma.activityLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
     return { status: true, data: logs }
+  }
+
+  /**
+   * Check if a user has a specific permission
+   * @param userId - User ID
+   * @param permissionName - Permission name (e.g., 'employees.create')
+   * @returns true if user has the permission, false otherwise
+   */
+  async hasPermission(userId: string, permissionName: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!user || !user.role) {
+      return false
+    }
+
+    return user.role.permissions.some(
+      (rolePermission) => rolePermission.permission.name === permissionName,
+    )
+  }
+
+  /**
+   * Get all permissions for a user
+   * @param userId - User ID
+   * @returns Array of permission names
+   */
+  async getUserPermissions(userId: string): Promise<string[]> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!user || !user.role) {
+      return []
+    }
+
+    return user.role.permissions.map((rp) => rp.permission.name)
+  }
+
+  /**
+   * Check if a user has any of the specified permissions
+   * @param userId - User ID
+   * @param permissionNames - Array of permission names
+   * @returns true if user has at least one of the permissions
+   */
+  async hasAnyPermission(userId: string, permissionNames: string[]): Promise<boolean> {
+    const userPermissions = await this.getUserPermissions(userId)
+    return permissionNames.some((permission) => userPermissions.includes(permission))
+  }
+
+  /**
+   * Check if a user has all of the specified permissions
+   * @param userId - User ID
+   * @param permissionNames - Array of permission names
+   * @returns true if user has all of the permissions
+   */
+  async hasAllPermissions(userId: string, permissionNames: string[]): Promise<boolean> {
+    const userPermissions = await this.getUserPermissions(userId)
+    return permissionNames.every((permission) => userPermissions.includes(permission))
   }
 }

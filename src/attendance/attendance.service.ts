@@ -525,8 +525,8 @@ export class AttendanceService {
   }
 
   /**
-   * Bulk upload attendance from CSV file
-   * Expected CSV format: EmployeeID,Date,CheckIn,CheckOut,Status,Location,Latitude,Longitude,Notes
+   * Bulk upload attendance from CSV or XLSX file
+   * Expected format: ID (or EmployeeID), DATE (or Date), CLOCK_IN (or CheckIn), CLOCK_OUT (or CheckOut), Status, Location, Notes
    */
   async bulkUploadFromCSV(
     filePath: string,
@@ -534,67 +534,382 @@ export class AttendanceService {
   ) {
     try {
       const fs = await import('fs')
+      const path = await import('path')
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        throw new Error('File not found')
+      }
+
+      // Detect file type from extension
+      const fileExtension = path.extname(filePath).toLowerCase()
+      let records: Array<Record<string, string>>
+
+      if (fileExtension === '.xlsx' || fileExtension === '.xls') {
+        // Parse Excel file
+        try {
+          const XLSX = await import('xlsx')
+          
+          // Read file buffer
+          const fileBuffer = fs.readFileSync(filePath)
+          
+          // Parse workbook from buffer
+          const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
+          
+          // Get first sheet
+          const sheetName = workbook.SheetNames[0]
+          if (!sheetName) {
+            throw new Error('Excel file has no sheets')
+          }
+
+          const worksheet = workbook.Sheets[sheetName]
+          
+          // Convert to array of arrays (first row is headers)
+          const excelData = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            defval: '', // Default value for empty cells
+            raw: false, // Convert all values to strings
+          }) as any[][]
+
+          // Validate we got data
+          if (!excelData || excelData.length === 0) {
+            throw new Error('Excel file is empty')
+          }
+
+          // Convert array of arrays to array of objects (first row is headers)
+          const headers = excelData[0] as string[]
+          if (!headers || headers.length === 0) {
+            throw new Error('Excel file has no header row')
+          }
+
+          records = excelData.slice(1)
+            .map((row: any[]) => {
+              const obj: Record<string, string> = {}
+              headers.forEach((header, index) => {
+                // Include all columns - extra columns like "Total No Of Employees" will be ignored when processing
+                if (header && String(header).trim().length > 0) {
+                  obj[String(header).trim()] = row[index] ? String(row[index]).trim() : ''
+                }
+              })
+              return obj
+            })
+            .filter((row: Record<string, string>) => {
+              // Filter out completely empty rows
+              const hasData = Object.values(row).some(val => val && String(val).trim().length > 0)
+              if (!hasData) return false
+              
+              // Check for required fields (ID and DATE) - case insensitive
+              const rowKeys = Object.keys(row).map(k => k.toLowerCase().trim())
+              const hasId = rowKeys.some(k => ['id', 'employeeid', 'employee_id', 'employee id'].includes(k)) &&
+                Object.entries(row).some(([key, val]) => {
+                  const lowerKey = key.toLowerCase().trim()
+                  return (['id', 'employeeid', 'employee_id', 'employee id'].includes(lowerKey) && val && String(val).trim().length > 0)
+                })
+              const hasDate = rowKeys.includes('date') &&
+                Object.entries(row).some(([key, val]) => {
+                  return (key.toLowerCase().trim() === 'date' && val && String(val).trim().length > 0)
+                })
+              
+              return hasId && hasDate
+            })
+        } catch (error: any) {
+          throw new Error(`Failed to parse Excel file: ${error.message}`)
+        }
+      } else {
+        // Parse CSV file
       const { parse } = await import('csv-parse/sync')
 
-      const fileContent = fs.readFileSync(filePath, 'utf-8')
-      const records = parse(fileContent, {
-        columns: true,
+        // Read file and validate it's a text file
+        let fileContent: string
+        try {
+          fileContent = fs.readFileSync(filePath, 'utf-8')
+        } catch (error: any) {
+          throw new Error('Invalid file format. The file appears to be corrupted or not a valid CSV file.')
+        }
+
+        // Validate file content is not empty
+        if (!fileContent || fileContent.trim().length === 0) {
+          throw new Error('The CSV file is empty')
+        }
+
+        // Try to parse CSV with better error handling
+        try {
+          // First, parse without columns to get raw data and handle inconsistent column counts
+          const rawData = parse(fileContent, {
         skip_empty_lines: true,
         trim: true,
-      }) as Array<Record<string, string>>
+            bom: true,
+            relax_quotes: true,
+            relax_column_count: true, // Allow inconsistent column counts
+            cast: false,
+          }) as any[][]
+
+          if (!rawData || rawData.length === 0) {
+            throw new Error('CSV file has no data')
+          }
+
+          // First row contains headers
+          const headers = rawData[0].map((h: any) => String(h || '').trim())
+          if (headers.length === 0) {
+            throw new Error('CSV file has no headers')
+          }
+
+          // Convert to array of objects, handling rows with fewer columns
+          const parsedRecords: Array<Record<string, string>> = []
+          for (let i = 1; i < rawData.length; i++) {
+            const row = rawData[i]
+            // Skip completely empty rows
+            if (!row || row.length === 0 || !row.some((cell: any) => cell && String(cell).trim().length > 0)) {
+              continue
+            }
+
+            const obj: Record<string, string> = {}
+            // Map row values to headers, handling cases where row has fewer columns
+            headers.forEach((header, index) => {
+              if (header && header.trim().length > 0) {
+                obj[header] = row[index] ? String(row[index]).trim() : ''
+              }
+            })
+            parsedRecords.push(obj)
+          }
+
+          // Filter records to only include those with required fields
+          // Extra columns like "Total No Of Employees" are automatically ignored
+          records = parsedRecords
+            .filter((row: Record<string, string>) => {
+              // Filter out completely empty rows
+              const hasData = Object.values(row).some(val => val && String(val).trim().length > 0)
+              if (!hasData) return false
+              
+              // Check for required fields (ID and DATE) - case insensitive
+              const rowKeys = Object.keys(row).map(k => k.toLowerCase().trim())
+              const hasId = rowKeys.some(k => ['id', 'employeeid', 'employee_id', 'employee id'].includes(k)) &&
+                Object.entries(row).some(([key, val]) => {
+                  const lowerKey = key.toLowerCase().trim()
+                  return (['id', 'employeeid', 'employee_id', 'employee id'].includes(lowerKey) && val && String(val).trim().length > 0)
+                })
+              const hasDate = rowKeys.includes('date') &&
+                Object.entries(row).some(([key, val]) => {
+                  return (key.toLowerCase().trim() === 'date' && val && String(val).trim().length > 0)
+                })
+              
+              return hasId && hasDate
+            })
+            .map((row: Record<string, string>) => {
+              // Create a clean record - extra columns are automatically ignored when we access specific fields
+              const cleanRow: Record<string, string> = {}
+              Object.keys(row).forEach(key => {
+                if (row[key] !== undefined && row[key] !== null) {
+                  cleanRow[key] = String(row[key]).trim()
+                }
+              })
+              return cleanRow
+            })
+        } catch (parseError: any) {
+          throw new Error(`Invalid CSV format: ${parseError.message}`)
+        }
+      }
+
+      // Validate we got records
+      if (!records || records.length === 0) {
+        throw new Error('No valid records found in file. Please check the file format.')
+      }
 
       const results: any[] = []
       const errors: Array<{ row: Record<string, string>; error: string }> = []
 
       for (const record of records) {
         try {
-          // Find employee by employeeId
+          // Find employee by employeeId - support multiple column name formats
+          const employeeIdValue = record.ID || record.id || record.EmployeeID || record.employeeId || record['Employee ID'] || record['ID']
           const employee = await this.prisma.employee.findUnique({
-            where: { employeeId: record.EmployeeID || record.employeeId || record['Employee ID'] },
+            where: { employeeId: employeeIdValue },
             select: { id: true, employeeId: true },
           })
 
           if (!employee) {
             errors.push({
               row: record,
-              error: `Employee not found: ${record.EmployeeID || record.employeeId || record['Employee ID']}`,
+              error: `Employee not found: ${employeeIdValue}`,
             })
             continue
           }
 
-          // Parse date
-          const date = new Date(record.Date || record.date)
+          // Parse date - support multiple column name formats
+          const dateValue = record.DATE || record.Date || record.date
+          const date = new Date(dateValue)
+          if (isNaN(date.getTime())) {
+            errors.push({ row: record, error: `Invalid date format: ${dateValue}` })
+            continue
+          }
           date.setHours(0, 0, 0, 0)
 
-          // Parse check-in and check-out times
-          const checkIn = record.CheckIn || record.checkIn || record['Check In']
-            ? new Date(`${record.Date || record.date}T${record.CheckIn || record.checkIn || record['Check In']}`)
-            : undefined
-          const checkOut = record.CheckOut || record.checkOut || record['Check Out']
-            ? new Date(`${record.Date || record.date}T${record.CheckOut || record.checkOut || record['Check Out']}`)
+          // Helper function to convert 12-hour time (HH:MM:SS AM/PM) to 24-hour format (HH:MM:SS)
+          const convertTo24Hour = (timeStr: string): string => {
+            if (!timeStr || !timeStr.trim()) return timeStr
+            
+            const trimmed = timeStr.trim().toUpperCase()
+            // Check if already in 24-hour format (no AM/PM)
+            if (!trimmed.includes('AM') && !trimmed.includes('PM')) {
+              return trimmed
+            }
+
+            // Extract time and AM/PM - handle formats like "9:45:00 AM" or "7:43:00 PM"
+            // Pattern: (hours):(minutes):(optional seconds) (AM/PM)
+            const match = trimmed.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)/)
+            if (!match) return timeStr // Return original if can't parse
+
+            let hours = parseInt(match[1], 10)
+            const minutes = match[2]
+            const seconds = match[3] || '00'
+            const ampm = match[4]
+
+            // Convert to 24-hour format
+            if (ampm === 'PM' && hours !== 12) {
+              hours += 12
+            } else if (ampm === 'AM' && hours === 12) {
+              hours = 0
+            }
+
+            // Format as HH:MM:SS
+            return `${hours.toString().padStart(2, '0')}:${minutes}:${seconds}`
+          }
+
+          // Get date string in YYYY-MM-DD format
+          const dateStr = date.toISOString().split('T')[0]
+
+          // Parse check-in and check-out times - support multiple column name formats
+          const checkInValue = record.CLOCK_IN || record.clock_in || record.ClockIn || record.CheckIn || record.checkIn || record['Check In'] || record['CLOCK_IN'] || record['Clock In']
+          const checkIn = checkInValue && checkInValue.trim()
+            ? (() => {
+                const time24 = convertTo24Hour(checkInValue)
+                const dateTimeStr = `${dateStr}T${time24}`
+                const parsed = new Date(dateTimeStr)
+                return isNaN(parsed.getTime()) ? undefined : parsed
+              })()
             : undefined
 
-          const result = await this.create(
-            {
+          const checkOutValue = record.CLOCK_OUT || record.clock_out || record.ClockOut || record.CheckOut || record.checkOut || record['Check Out'] || record['CLOCK_OUT'] || record['Clock Out']
+          const checkOut = checkOutValue && checkOutValue.trim()
+            ? (() => {
+                const time24 = convertTo24Hour(checkOutValue)
+                const dateTimeStr = `${dateStr}T${time24}`
+                const parsed = new Date(dateTimeStr)
+                return isNaN(parsed.getTime()) ? undefined : parsed
+              })()
+            : undefined
+          // Check if this date is a public holiday
+          const holiday = await this.prisma.holiday.findFirst({
+            where: {
+              dateFrom: { lte: date },
+              dateTo: { gte: date },
+              status: 'active',
+            },
+          })
+
+          // Get employee's working hours policy to check weekly offs
+          const employeeWithPolicy = await this.prisma.employee.findUnique({
+            where: { id: employee.id },
+            select: { workingHoursPolicyId: true },
+          })
+
+          let isWeeklyOff = false
+          if (employeeWithPolicy?.workingHoursPolicyId) {
+            const policy = await this.prisma.workingHoursPolicy.findUnique({
+              where: { id: employeeWithPolicy.workingHoursPolicyId },
+            })
+            // Check dayOverrides for weekly off days (dayType === 'off')
+            if (policy?.dayOverrides && typeof policy.dayOverrides === 'object') {
+              const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+              const dayName = dayNames[date.getDay()]
+              const overrides = policy.dayOverrides as Record<string, any>
+              const dayConfig = overrides[dayName]
+              if (dayConfig && dayConfig.dayType === 'off') {
+                isWeeklyOff = true
+              }
+            }
+          }
+
+          // Determine status: if it's holiday/weekly off with attendance, mark as overtime/present-on-holiday
+          let status = record.Status || record.status || 'present'
+          const isOnHolidayOrOff = !!holiday || isWeeklyOff
+
+          // Calculate working hours if check-in and check-out exist
+          let workingHours: Decimal | null = null
+          let overtimeHours: Decimal | null = null
+          let lateMinutes: number | null = null
+          let earlyLeaveMinutes: number | null = null
+          let breakDuration: number | null = null
+
+          if (checkIn && checkOut) {
+            const calculated = await this.calculateOvertime(employee.id, date, checkIn, checkOut)
+            workingHours = calculated.workingHours
+            lateMinutes = calculated.lateMinutes
+            earlyLeaveMinutes = calculated.earlyLeaveMinutes
+            breakDuration = calculated.breakDuration
+
+            // If on holiday/weekly off, all hours are overtime
+            if (isOnHolidayOrOff) {
+              overtimeHours = workingHours
+              status = 'present' // They worked on their off day
+            } else {
+              overtimeHours = calculated.overtimeHours
+            }
+          }
+
+          // Upsert: update if exists, create if not
+          const upserted = await this.prisma.attendance.upsert({
+            where: {
+              employeeId_date: {
+                employeeId: employee.id,
+                date: date,
+              },
+            },
+            update: {
+              checkIn: checkIn,
+              checkOut: checkOut,
+              status: status,
+              isRemote: record.IsRemote === 'true' || record.isRemote === 'true' || false,
+              location: record.Location || record.location || null,
+              latitude: record.Latitude || record.latitude ? new Decimal(parseFloat(record.Latitude || record.latitude)) : null,
+              longitude: record.Longitude || record.longitude ? new Decimal(parseFloat(record.Longitude || record.longitude)) : null,
+              workingHours: workingHours,
+              overtimeHours: overtimeHours,
+              lateMinutes: lateMinutes,
+              earlyLeaveMinutes: earlyLeaveMinutes,
+              breakDuration: breakDuration,
+              notes: record.Notes || record.notes || null,
+              updatedAt: new Date(),
+            },
+            create: {
               employeeId: employee.id,
               date: date,
               checkIn: checkIn,
               checkOut: checkOut,
-              status: record.Status || record.status || 'present',
+              status: status,
               isRemote: record.IsRemote === 'true' || record.isRemote === 'true' || false,
-              location: record.Location || record.location || undefined,
-              latitude: record.Latitude || record.latitude ? parseFloat(record.Latitude || record.latitude) : undefined,
-              longitude: record.Longitude || record.longitude ? parseFloat(record.Longitude || record.longitude) : undefined,
-              notes: record.Notes || record.notes || undefined,
+              location: record.Location || record.location || null,
+              latitude: record.Latitude || record.latitude ? new Decimal(parseFloat(record.Latitude || record.latitude)) : null,
+              longitude: record.Longitude || record.longitude ? new Decimal(parseFloat(record.Longitude || record.longitude)) : null,
+              workingHours: workingHours,
+              overtimeHours: overtimeHours,
+              lateMinutes: lateMinutes,
+              earlyLeaveMinutes: earlyLeaveMinutes,
+              breakDuration: breakDuration,
+              notes: record.Notes || record.notes || null,
+              createdById: ctx.userId,
             },
-            ctx,
-          )
+            include: {
+              employee: {
+                select: {
+                  employeeId: true,
+                  employeeName: true,
+                },
+              },
+            },
+          })
 
-          if (result.status) {
-            results.push(result.data)
-          } else {
-            errors.push({ row: record, error: result.message })
-          }
+          results.push(upserted)
         } catch (error: any) {
           errors.push({ row: record, error: error.message })
         }
@@ -632,6 +947,357 @@ export class AttendanceService {
         status: 'failure',
       })
       return { status: false, message: error?.message || 'Failed to process CSV file' }
+    }
+  }
+
+  /**
+   * Get attendance progress summary for employees
+   * Calculates comprehensive attendance statistics for the given date range
+   */
+  async getProgressSummary(filters?: {
+    employeeId?: string
+    departmentId?: string
+    subDepartmentId?: string
+    dateFrom?: Date
+    dateTo?: Date
+  }) {
+    try {
+      // Build employee filter
+      const employeeWhere: any = {}
+      if (filters?.employeeId) employeeWhere.id = filters.employeeId
+      if (filters?.departmentId) employeeWhere.departmentId = filters.departmentId
+      if (filters?.subDepartmentId) employeeWhere.subDepartmentId = filters.subDepartmentId
+
+      // Get employees with their related data
+      const employees = await this.prisma.employee.findMany({
+        where: employeeWhere,
+        include: {
+          department: {
+            select: { id: true, name: true },
+          },
+          subDepartment: {
+            select: { id: true, name: true },
+          },
+          designation: {
+            select: { id: true, name: true },
+          },
+          workingHoursPolicy: true,
+        },
+      })
+
+      // Get holidays for the date range
+      const dateFrom = filters?.dateFrom || new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      const dateTo = filters?.dateTo || new Date()
+      
+      // Normalize dates to start of day
+      const startDate = new Date(dateFrom)
+      startDate.setHours(0, 0, 0, 0)
+      const endDate = new Date(dateTo)
+      endDate.setHours(23, 59, 59, 999)
+
+      // Get all holidays (they're stored normalized to year 2000, so we check if they fall in the month/day range)
+      const allHolidays = await this.prisma.holiday.findMany({
+        where: { status: 'active' },
+      })
+
+      // Helper to check if a date is a holiday
+      const isHoliday = (date: Date): boolean => {
+        const month = date.getMonth() + 1
+        const day = date.getDate()
+        return allHolidays.some(holiday => {
+          const holidayFrom = new Date(holiday.dateFrom)
+          const holidayTo = new Date(holiday.dateTo)
+          const holidayMonthFrom = holidayFrom.getMonth() + 1
+          const holidayDayFrom = holidayFrom.getDate()
+          const holidayMonthTo = holidayTo.getMonth() + 1
+          const holidayDayTo = holidayTo.getDate()
+          
+          // Check if date falls within holiday range
+          if (holidayMonthFrom === holidayMonthTo) {
+            return month === holidayMonthFrom && day >= holidayDayFrom && day <= holidayDayTo
+          } else {
+            // Holiday spans across months
+            return (month === holidayMonthFrom && day >= holidayDayFrom) || 
+                   (month === holidayMonthTo && day <= holidayDayTo)
+          }
+        })
+      }
+
+      // Helper to check if a date is a weekend
+      const isWeekend = (date: Date): boolean => {
+        const day = date.getDay()
+        return day === 0 || day === 6 // Sunday or Saturday
+      }
+
+      // Helper to calculate scheduled hours per day based on working hours policy
+      const getScheduledHoursPerDay = (policy: any): number => {
+        if (!policy) return 8 // Default 8 hours
+        const start = policy.startWorkingHours || '09:00'
+        const end = policy.endWorkingHours || '17:00'
+        const [startHour, startMin] = start.split(':').map(Number)
+        const [endHour, endMin] = end.split(':').map(Number)
+        const startTime = startHour + startMin / 60
+        const endTime = endHour + endMin / 60
+        let hours = endTime - startTime
+        // Subtract break time if configured
+        if (policy.startBreakTime && policy.endBreakTime) {
+          const [breakStartHour, breakStartMin] = policy.startBreakTime.split(':').map(Number)
+          const [breakEndHour, breakEndMin] = policy.endBreakTime.split(':').map(Number)
+          const breakStart = breakStartHour + breakStartMin / 60
+          const breakEnd = breakEndHour + breakEndMin / 60
+          hours -= (breakEnd - breakStart)
+        }
+        return Math.max(0, hours)
+      }
+
+      // Helper to format hours as "Xh" or "Xh Ym"
+      const formatHours = (hours: number): string => {
+        if (hours === 0) return '0h'
+        const wholeHours = Math.floor(hours)
+        const minutes = Math.round((hours - wholeHours) * 60)
+        if (minutes === 0) return `${wholeHours}h`
+        return `${wholeHours}h ${minutes}m`
+      }
+
+      const results: Array<{
+        id: string
+        employeeId: string
+        employeeName: string
+        department: string
+        departmentName?: string
+        subDepartment?: string
+        subDepartmentName?: string
+        designation?: string
+        designationName?: string
+        days: number
+        scheduleDays: number
+        offDays: number
+        present: number
+        presentOnHoliday: number
+        leaves: number
+        absents: number
+        late: number
+        halfDay: number
+        shortDays: number
+        scheduleTime: string
+        actualWorkedTime: string
+        breakTime: string
+        absentTime: string
+        overtimeBeforeTime: string
+        overtimeAfterTime: string
+        shortExcessTime: string
+      }> = []
+
+      for (const employee of employees) {
+        // Get all attendance records for this employee in the date range
+        // Normalize date comparison - attendance.date is DateTime but we compare by date only
+        const attendances = await this.prisma.attendance.findMany({
+          where: {
+            employeeId: employee.id,
+            date: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+          orderBy: { date: 'asc' },
+        })
+
+        // Get approved leave applications for this employee in the date range
+        // Leave applications overlap if: (fromDate <= endDate) AND (toDate >= startDate)
+        const leaveApplications = await this.prisma.leaveApplication.findMany({
+          where: {
+            employeeId: employee.id,
+            status: 'approved',
+            fromDate: { lte: endDate },
+            toDate: { gte: startDate },
+          },
+        })
+
+        // Create a map of leave applications by date
+        const leaveMap = new Map<string, typeof leaveApplications[0]>()
+        leaveApplications.forEach(leave => {
+          const leaveStart = new Date(leave.fromDate)
+          leaveStart.setHours(0, 0, 0, 0)
+          const leaveEnd = new Date(leave.toDate)
+          leaveEnd.setHours(23, 59, 59, 999)
+          const currentLeaveDate = new Date(leaveStart)
+          while (currentLeaveDate <= leaveEnd) {
+            const dateKey = currentLeaveDate.toISOString().split('T')[0]
+            if (currentLeaveDate >= startDate && currentLeaveDate <= endDate) {
+              leaveMap.set(dateKey, leave)
+            }
+            currentLeaveDate.setDate(currentLeaveDate.getDate() + 1)
+          }
+        })
+
+        // Calculate date range statistics
+        const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        let scheduleDays = 0
+        let offDays = 0
+        let present = 0
+        let presentOnHoliday = 0
+        let leaves = 0
+        let absents = 0
+        let late = 0
+        let halfDay = 0
+        let shortDays = 0
+        let totalScheduleTime = 0
+        let totalActualWorkedTime = 0
+        let totalBreakTime = 0
+        let totalOvertimeAfter = 0
+
+        // Create a map of attendance by date for quick lookup
+        // Normalize date to YYYY-MM-DD format for comparison
+        const attendanceMap = new Map<string, typeof attendances[0]>()
+        attendances.forEach(att => {
+          const attDate = new Date(att.date)
+          attDate.setHours(0, 0, 0, 0)
+          const dateKey = attDate.toISOString().split('T')[0]
+          attendanceMap.set(dateKey, att)
+        })
+
+        // Iterate through each day in the range
+        const currentDate = new Date(startDate)
+        while (currentDate <= endDate) {
+          const dateKey = currentDate.toISOString().split('T')[0]
+          const attendance = attendanceMap.get(dateKey)
+          const leaveApplication = leaveMap.get(dateKey)
+          const isHolidayDate = isHoliday(currentDate)
+          const isWeekendDate = isWeekend(currentDate)
+
+          // Check if this is a scheduled working day (not weekend and not holiday)
+          if (!isWeekendDate && !isHolidayDate) {
+            scheduleDays++
+            const scheduledHours = getScheduledHoursPerDay(employee.workingHoursPolicy)
+            totalScheduleTime += scheduledHours
+
+            if (attendance) {
+              // Handle different attendance statuses according to schema
+              const status = attendance.status.toLowerCase()
+              
+              if (status === 'present') {
+                present++
+                // Count late if has lateMinutes > 0
+                if (attendance.lateMinutes && attendance.lateMinutes > 0) {
+                  late++
+                }
+              } else if (status === 'late') {
+                present++ // Late is still considered present
+                late++
+              } else if (status === 'absent') {
+                absents++
+              } else if (status === 'half-day' || status === 'halfday') {
+                halfDay++
+                present++ // Half day is partially present
+                // Count late if applicable
+                if (attendance.lateMinutes && attendance.lateMinutes > 0) {
+                  late++
+                }
+              } else if (status === 'short-day' || status === 'shortday') {
+                shortDays++
+                present++ // Short day is still present
+                // Count late if applicable
+                if (attendance.lateMinutes && attendance.lateMinutes > 0) {
+                  late++
+                }
+              } else if (status === 'on-leave' || status === 'onleave') {
+                leaves++
+                // Adjust scheduled time for leave days
+                totalScheduleTime -= scheduledHours
+                scheduleDays-- // Don't count leave days as scheduled
+              } else if (status === 'holiday') {
+                // Holiday status - treat as off day but check if present
+                offDays++
+                if (attendance.checkIn || attendance.checkOut) {
+                  presentOnHoliday++
+                }
+                scheduleDays-- // Don't count as scheduled day
+                totalScheduleTime -= scheduledHours // Remove from scheduled time
+                continue
+              }
+
+              // Sum working hours (only if checkIn and checkOut exist)
+              if (attendance.workingHours) {
+                totalActualWorkedTime += Number(attendance.workingHours)
+              }
+
+              // Sum break time
+              if (attendance.breakDuration) {
+                totalBreakTime += attendance.breakDuration / 60 // Convert minutes to hours
+              }
+
+              // Sum overtime
+              if (attendance.overtimeHours) {
+                totalOvertimeAfter += Number(attendance.overtimeHours)
+              }
+            } else {
+              // No attendance record - check if on approved leave
+              if (leaveApplication) {
+                leaves++
+                // Adjust scheduled time for leave days
+                totalScheduleTime -= scheduledHours
+                scheduleDays-- // Don't count leave days as scheduled
+              } else {
+                // No attendance and no leave = absent
+                absents++
+              }
+            }
+          } else {
+            // Weekend or holiday
+            offDays++
+            
+            // Check if present on holiday (holidays can have attendance if employee worked)
+            if (isHolidayDate && attendance) {
+              if (attendance.status === 'present' || attendance.checkIn || attendance.checkOut) {
+                presentOnHoliday++
+              }
+            }
+          }
+
+          // Move to next day
+          currentDate.setDate(currentDate.getDate() + 1)
+        }
+
+        // Calculate absent time (absent days * scheduled hours per day)
+        const scheduledHoursPerDay = getScheduledHoursPerDay(employee.workingHoursPolicy)
+        const absentTime = absents * scheduledHoursPerDay
+
+        // Calculate short/excess time (difference between scheduled and actual)
+        const shortExcessTime = totalScheduleTime - totalActualWorkedTime
+
+        results.push({
+          id: employee.id,
+          employeeId: employee.employeeId,
+          employeeName: employee.employeeName,
+          department: employee.departmentId,
+          departmentName: employee.department?.name,
+          subDepartment: employee.subDepartmentId ?? undefined,
+          subDepartmentName: employee.subDepartment?.name,
+          designation: employee.designationId ?? undefined,
+          designationName: employee.designation?.name,
+          days: totalDays,
+          scheduleDays,
+          offDays,
+          present,
+          presentOnHoliday,
+          leaves,
+          absents,
+          late,
+          halfDay,
+          shortDays,
+          scheduleTime: formatHours(totalScheduleTime),
+          actualWorkedTime: formatHours(totalActualWorkedTime),
+          breakTime: formatHours(totalBreakTime),
+          absentTime: formatHours(absentTime),
+          overtimeBeforeTime: '0h', // Not currently tracked separately
+          overtimeAfterTime: formatHours(totalOvertimeAfter),
+          shortExcessTime: formatHours(shortExcessTime),
+        })
+      }
+
+      return { status: true, data: results }
+    } catch (error: any) {
+      return { status: false, message: error?.message || 'Failed to get attendance progress summary' }
     }
   }
 }
