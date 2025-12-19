@@ -67,6 +67,8 @@ model User {
   attendanceExemptionsUpdated AttendanceExemption[] @relation("AttendanceExemptionUpdatedBy")
   policyAssignmentsCreated    WorkingHoursPolicyAssignment[] @relation("PolicyAssignmentCreatedBy")
   rejoiningHistoryCreated     EmployeeRejoiningHistory[]
+  requestForwardingConfigsCreated RequestForwardingConfiguration[] @relation("RequestForwardingConfigCreatedBy")
+  requestForwardingConfigsUpdated RequestForwardingConfiguration[] @relation("RequestForwardingConfigUpdatedBy")
 }
 
 model Role {

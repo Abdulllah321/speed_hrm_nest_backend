@@ -273,6 +273,7 @@ model Department {
   updatedAt      DateTime        @updatedAt
   subDepartments SubDepartment[]
   employees      Employee[]
+  requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingDepartment")
 }
 
 model SubDepartment {
@@ -285,6 +286,7 @@ model SubDepartment {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   employees    Employee[]
+  requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSubDepartment")
 
   @@unique([name, departmentId])
 }

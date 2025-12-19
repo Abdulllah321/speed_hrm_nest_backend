@@ -32,6 +32,7 @@ import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
 import { AttendanceRequestQueryModule } from './attendance-request-query/attendance-request-query.module';
 import { AttendanceExemptionModule } from './attendance-exemption/attendance-exemption.module';
 import { LeaveApplicationModule } from './leave-application/leave-application.module';
+import { RequestForwardingModule } from './request-forwarding/request-forwarding.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { LeaveApplicationModule } from './leave-application/leave-application.mo
     AttendanceRequestQueryModule,
     AttendanceExemptionModule,
     LeaveApplicationModule,
+    RequestForwardingModule,
     CityModule,
     DepartmentModule,
     DesignationModule,

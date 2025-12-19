@@ -79,6 +79,7 @@ model Employee {
   leaveApplications      LeaveApplication[]
   policyAssignments      WorkingHoursPolicyAssignment[]
   rejoiningHistory       EmployeeRejoiningHistory[]
+  requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
 }
 
 model EmployeeRejoiningHistory {
