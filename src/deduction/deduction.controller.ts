@@ -80,16 +80,4 @@ export class DeductionController {
       userAgent: req.headers['user-agent'],
     });
   }
-
-  @Get('deduction-heads')
-  @UseGuards(JwtAuthGuard)
-  async listDeductionHeads(@Query('status') status?: string) {
-    return this.service.listDeductionHeads(status);
-  }
-
-  @Get('deduction-heads/:id')
-  @UseGuards(JwtAuthGuard)
-  async getDeductionHead(@Param('id') id: string) {
-    return this.service.getDeductionHead(id);
-  }
 }

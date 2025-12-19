@@ -80,16 +80,4 @@ export class AllowanceController {
       userAgent: req.headers['user-agent'],
     });
   }
-
-  @Get('allowance-heads')
-  @UseGuards(JwtAuthGuard)
-  async listAllowanceHeads(@Query('status') status?: string) {
-    return this.service.listAllowanceHeads(status);
-  }
-
-  @Get('allowance-heads/:id')
-  @UseGuards(JwtAuthGuard)
-  async getAllowanceHead(@Param('id') id: string) {
-    return this.service.getAllowanceHead(id);
-  }
 }
