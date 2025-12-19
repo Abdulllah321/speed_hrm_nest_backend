@@ -69,6 +69,10 @@ model User {
   rejoiningHistoryCreated     EmployeeRejoiningHistory[]
   requestForwardingConfigsCreated RequestForwardingConfiguration[] @relation("RequestForwardingConfigCreatedBy")
   requestForwardingConfigsUpdated RequestForwardingConfiguration[] @relation("RequestForwardingConfigUpdatedBy")
+  allowancesCreated               Allowance[]                      @relation("AllowanceCreatedBy")
+  allowancesUpdated               Allowance[]                      @relation("AllowanceUpdatedBy")
+  deductionsCreated               Deduction[]                      @relation("DeductionCreatedBy")
+  deductionsUpdated               Deduction[]                      @relation("DeductionUpdatedBy")
 }
 
 model Role {

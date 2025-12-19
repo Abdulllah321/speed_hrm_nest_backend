@@ -132,23 +132,25 @@ model Branch {
 }
 
 model AllowanceHead {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  status      String   @default("active")
+  id          String     @id @default(uuid())
+  name        String     @unique
+  status      String     @default("active")
   createdById String?
-  createdBy   User?    @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User?      @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  allowances  Allowance[]
 }
 
 model DeductionHead {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  status      String   @default("active")
+  id          String     @id @default(uuid())
+  name        String     @unique
+  status      String     @default("active")
   createdById String?
-  createdBy   User?    @relation("DeductionHeadCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User?      @relation("DeductionHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deductions  Deduction[]
 }
 
 model LoanType {

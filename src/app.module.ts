@@ -33,6 +33,8 @@ import { AttendanceRequestQueryModule } from './attendance-request-query/attenda
 import { AttendanceExemptionModule } from './attendance-exemption/attendance-exemption.module';
 import { LeaveApplicationModule } from './leave-application/leave-application.module';
 import { RequestForwardingModule } from './request-forwarding/request-forwarding.module';
+import { AllowanceModule } from './allowance/allowance.module';
+import { DeductionModule } from './deduction/deduction.module';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { RequestForwardingModule } from './request-forwarding/request-forwarding
     AttendanceExemptionModule,
     LeaveApplicationModule,
     RequestForwardingModule,
+    AllowanceModule,
+    DeductionModule,
     CityModule,
     DepartmentModule,
     DesignationModule,

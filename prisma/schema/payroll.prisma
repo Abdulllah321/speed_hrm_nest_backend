@@ -1,0 +1,57 @@
+// Payroll related models
+
+model Allowance {
+  id              String        @id @default(uuid())
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  allowanceHeadId String
+  allowanceHead   AllowanceHead @relation(fields: [allowanceHeadId], references: [id], onDelete: Restrict)
+  amount          Decimal       @db.Decimal(10, 2)
+  month           String        // Format: "01" to "12"
+  year            String        // Format: "YYYY"
+  date            DateTime       // Full date for reference
+  isTaxable       Boolean       @default(false)
+  taxPercentage   Decimal?      @db.Decimal(5, 2) // Percentage (0-100)
+  notes           String?
+  status          String        @default("active") // active, inactive, cancelled
+  createdById     String?
+  createdBy       User?         @relation("AllowanceCreatedBy", fields: [createdById], references: [id])
+  updatedById     String?
+  updatedBy       User?         @relation("AllowanceUpdatedBy", fields: [updatedById], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([employeeId])
+  @@index([allowanceHeadId])
+  @@index([month, year])
+  @@index([status])
+  @@unique([employeeId, allowanceHeadId, month, year]) // One allowance per employee per type per month-year
+}
+
+model Deduction {
+  id              String        @id @default(uuid())
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  deductionHeadId String
+  deductionHead   DeductionHead @relation(fields: [deductionHeadId], references: [id], onDelete: Restrict)
+  amount          Decimal       @db.Decimal(10, 2)
+  month           String        // Format: "01" to "12"
+  year            String        // Format: "YYYY"
+  date            DateTime       // Full date for reference
+  isTaxable       Boolean       @default(false)
+  taxPercentage   Decimal?      @db.Decimal(5, 2) // Percentage (0-100)
+  notes           String?
+  status          String        @default("active") // active, inactive, cancelled
+  createdById     String?
+  createdBy       User?         @relation("DeductionCreatedBy", fields: [createdById], references: [id])
+  updatedById     String?
+  updatedBy       User?         @relation("DeductionUpdatedBy", fields: [updatedById], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([employeeId])
+  @@index([deductionHeadId])
+  @@index([month, year])
+  @@index([status])
+  @@unique([employeeId, deductionHeadId, month, year]) // One deduction per employee per type per month-year
+}

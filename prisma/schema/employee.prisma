@@ -80,6 +80,8 @@ model Employee {
   policyAssignments      WorkingHoursPolicyAssignment[]
   rejoiningHistory       EmployeeRejoiningHistory[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
+  allowances             Allowance[]
+  deductions             Deduction[]
 }
 
 model EmployeeRejoiningHistory {
