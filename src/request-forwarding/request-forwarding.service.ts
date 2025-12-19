@@ -250,25 +250,29 @@ export class RequestForwardingService {
     body: UpdateRequestForwardingDto,
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
+    // Validate request type
+    if (!['exemption', 'attendance'].includes(requestType)) {
+      throw new BadRequestException('Invalid request type. Must be "exemption" or "attendance"');
+    }
+
     const existing = await this.prisma.requestForwardingConfiguration.findUnique({
       where: { requestType },
       include: { approvalLevels: true },
     });
 
-    if (!existing) {
-      throw new NotFoundException(`Configuration not found for request type: ${requestType}`);
-    }
+    // Determine approval flow (use body value or existing, or default to auto-approved)
+    const approvalFlow = body.approvalFlow || existing?.approvalFlow || 'auto-approved';
 
-    // Validate approval flow if provided
-    if (body.approvalFlow && !['auto-approved', 'multi-level'].includes(body.approvalFlow)) {
+    // Validate approval flow
+    if (!['auto-approved', 'multi-level'].includes(approvalFlow)) {
       throw new BadRequestException('Invalid approval flow. Must be "auto-approved" or "multi-level"');
     }
 
     // Validate levels if multi-level
-    if (body.approvalFlow === 'multi-level' || (existing.approvalFlow === 'multi-level' && body.levels)) {
-      const levelsToValidate = body.levels || existing.approvalLevels;
+    if (approvalFlow === 'multi-level') {
+      const levelsToValidate = body.levels || existing?.approvalLevels || [];
       
-      if (!levelsToValidate || levelsToValidate.length === 0) {
+      if (levelsToValidate.length === 0) {
         throw new BadRequestException('At least one approval level is required for multi-level flow');
       }
 
@@ -298,17 +302,32 @@ export class RequestForwardingService {
       }
     }
 
-    // Update configuration with levels in a transaction
+    // Upsert configuration with levels in a transaction
     const result = await this.prisma.$transaction(async (tx) => {
-      // Update configuration
-      const configuration = await tx.requestForwardingConfiguration.update({
-        where: { requestType },
-        data: {
-          approvalFlow: body.approvalFlow,
-          status: body.status,
-          updatedById: ctx.userId,
-        },
-      });
+      let configuration;
+
+      if (existing) {
+        // Update existing configuration
+        configuration = await tx.requestForwardingConfiguration.update({
+          where: { requestType },
+          data: {
+            approvalFlow: approvalFlow,
+            status: body.status || existing.status,
+            updatedById: ctx.userId,
+          },
+        });
+      } else {
+        // Create new configuration if it doesn't exist
+        configuration = await tx.requestForwardingConfiguration.create({
+          data: {
+            requestType: requestType,
+            approvalFlow: approvalFlow,
+            status: body.status || 'active',
+            createdById: ctx.userId,
+            updatedById: ctx.userId,
+          },
+        });
+      }
 
       // If levels are provided, replace all existing levels
       if (body.levels !== undefined) {
@@ -318,7 +337,7 @@ export class RequestForwardingService {
         });
 
         // Create new levels if multi-level
-        if (body.approvalFlow === 'multi-level' && body.levels.length > 0) {
+        if (approvalFlow === 'multi-level' && body.levels.length > 0) {
           await tx.requestForwardingApprovalLevel.createMany({
             data: body.levels.map((level) => ({
               configurationId: configuration.id,
@@ -333,7 +352,7 @@ export class RequestForwardingService {
         }
       }
 
-      // Fetch updated configuration with relations
+      // Fetch configuration with relations
       return await tx.requestForwardingConfiguration.findUnique({
         where: { id: configuration.id },
         include: {
@@ -367,15 +386,16 @@ export class RequestForwardingService {
 
     // Log activity
     if (result) {
+      const action = existing ? 'update' : 'create';
       await this.activityLogs.log({
         userId: ctx.userId,
-        action: 'update',
+        action: action,
         module: 'request-forwarding',
         entity: 'RequestForwardingConfiguration',
         entityId: result.id,
-        description: `Updated request forwarding configuration for ${requestType}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
+        description: `${existing ? 'Updated' : 'Created'} request forwarding configuration for ${requestType}`,
+        oldValues: existing ? JSON.stringify(existing) : undefined,
+        newValues: JSON.stringify({ requestType, ...body }),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
