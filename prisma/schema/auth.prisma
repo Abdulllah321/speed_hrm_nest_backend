@@ -79,6 +79,10 @@ model User {
   loanRequestsApproved            LoanRequest[]                    @relation("LoanRequestApprovedBy")
   loanRequestsCreated             LoanRequest[]                    @relation("LoanRequestCreatedBy")
   loanRequestsUpdated             LoanRequest[]                    @relation("LoanRequestUpdatedBy")
+  overtimeRequestsCreated        OvertimeRequest[]               @relation("OvertimeRequestCreatedBy")
+  overtimeRequestsUpdated        OvertimeRequest[]                @relation("OvertimeRequestUpdatedBy")
+  incrementsCreated              Increment[]                     @relation("IncrementCreatedBy")
+  incrementsUpdated              Increment[]                     @relation("IncrementUpdatedBy")
 }
 
 model Role {
