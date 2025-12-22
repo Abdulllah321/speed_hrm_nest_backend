@@ -37,6 +37,8 @@ import { AllowanceModule } from './allowance/allowance.module';
 import { DeductionModule } from './deduction/deduction.module';
 import { AllowanceHeadModule } from './allowance-head/allowance-head.module';
 import { DeductionHeadModule } from './deduction-head/deduction-head.module';
+import { OvertimeRequestModule } from './overtime-request/overtime-request.module';
+import { IncrementModule } from './increment/increment.module';
 
 @Module({
   imports: [
@@ -53,6 +55,8 @@ import { DeductionHeadModule } from './deduction-head/deduction-head.module';
     DeductionModule,
     AllowanceHeadModule,
     DeductionHeadModule,
+    OvertimeRequestModule,
+    IncrementModule,
     CityModule,
     DepartmentModule,
     DesignationModule,

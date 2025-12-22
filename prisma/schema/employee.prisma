@@ -82,6 +82,8 @@ model Employee {
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
   allowances             Allowance[]
   deductions             Deduction[]
+  overtimeRequests       OvertimeRequest[] @relation("OvertimeRequestEmployee")
+  increments             Increment[] @relation("IncrementEmployee")
 }
 
 model EmployeeRejoiningHistory {

@@ -55,3 +55,62 @@ model Deduction {
   @@index([status])
   @@unique([employeeId, deductionHeadId, month, year]) // One deduction per employee per type per month-year
 }
+
+model OvertimeRequest {
+  id                    String   @id @default(uuid())
+  employeeId            String
+  employee              Employee @relation("OvertimeRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  overtimeType          String   // "weekday" | "holiday"
+  title                 String
+  description           String?
+  date                  DateTime
+  weekdayOvertimeHours  Decimal  @db.Decimal(5, 2) @default(0)
+  holidayOvertimeHours  Decimal  @db.Decimal(5, 2) @default(0)
+  status                String   @default("pending") // pending, approved, rejected, cancelled
+  approval1             String?  // First approval status
+  approval2             String?  // Second approval status
+  createdById           String?
+  createdBy             User?    @relation("OvertimeRequestCreatedBy", fields: [createdById], references: [id])
+  updatedById           String?
+  updatedBy             User?    @relation("OvertimeRequestUpdatedBy", fields: [updatedById], references: [id])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([overtimeType])
+  @@index([status])
+  @@index([date])
+}
+
+model Increment {
+  id                String        @id @default(uuid())
+  employeeId        String
+  employee          Employee      @relation("IncrementEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeGradeId   String?
+  employeeGrade     EmployeeGrade? @relation("IncrementEmployeeGrade", fields: [employeeGradeId], references: [id], onDelete: SetNull)
+  designationId     String?
+  designation       Designation?  @relation("IncrementDesignation", fields: [designationId], references: [id], onDelete: SetNull)
+  incrementType     String        // "Increment" | "Decrement"
+  incrementAmount   Decimal?      @db.Decimal(10, 2)
+  incrementPercentage Decimal?   @db.Decimal(5, 2) // Percentage (0-100)
+  incrementMethod   String        // "Amount" | "Percent"
+  salary            Decimal       @db.Decimal(10, 2)
+  promotionDate     DateTime
+  currentMonth      String        // Format: "01" to "12"
+  monthsOfIncrement Int
+  notes             String?
+  status            String        @default("active") // active, inactive, cancelled
+  createdById       String?
+  createdBy         User?         @relation("IncrementCreatedBy", fields: [createdById], references: [id])
+  updatedById       String?
+  updatedBy         User?         @relation("IncrementUpdatedBy", fields: [updatedById], references: [id])
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([employeeId])
+  @@index([employeeGradeId])
+  @@index([designationId])
+  @@index([incrementType])
+  @@index([currentMonth])
+  @@index([status])
+}

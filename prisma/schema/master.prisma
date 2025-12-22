@@ -9,6 +9,7 @@ model Designation {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   employees   Employee[]
+  increments  Increment[] @relation("IncrementDesignation")
 }
 
 model JobType {
@@ -314,6 +315,7 @@ model EmployeeGrade {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   employees   Employee[]
+  increments  Increment[] @relation("IncrementEmployeeGrade")
 }
 
 model EmployeeStatus {

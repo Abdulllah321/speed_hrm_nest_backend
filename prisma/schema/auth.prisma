@@ -73,6 +73,10 @@ model User {
   allowancesUpdated               Allowance[]                      @relation("AllowanceUpdatedBy")
   deductionsCreated               Deduction[]                      @relation("DeductionCreatedBy")
   deductionsUpdated               Deduction[]                      @relation("DeductionUpdatedBy")
+  overtimeRequestsCreated        OvertimeRequest[]               @relation("OvertimeRequestCreatedBy")
+  overtimeRequestsUpdated        OvertimeRequest[]                @relation("OvertimeRequestUpdatedBy")
+  incrementsCreated              Increment[]                     @relation("IncrementCreatedBy")
+  incrementsUpdated              Increment[]                     @relation("IncrementUpdatedBy")
 }
 
 model Role {
