@@ -245,13 +245,16 @@ model TaxSlab {
 }
 
 model BonusType {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  status      String   @default("active")
-  createdById String?
-  createdBy   User?    @relation("BonusTypeCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String   @unique
+  calculationType String   @default("Amount") // "Amount" | "Percentage"
+  amount          Decimal? @db.Decimal(10, 2) // Fixed amount (when calculationType is "Amount")
+  percentage      Decimal? @db.Decimal(5, 2) // Percentage (0-100, when calculationType is "Percentage")
+  status          String   @default("active")
+  createdById     String?
+  createdBy       User?    @relation("BonusTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model ApprovalSetting {

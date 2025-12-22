@@ -145,3 +145,31 @@ model Increment {
   @@index([currentMonth])
   @@index([status])
 }
+model Bonus {
+  id              String    @id @default(uuid())
+  employeeId      String
+  employee        Employee  @relation("BonusEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  bonusTypeId     String
+  bonusType       BonusType @relation("BonusBonusType", fields: [bonusTypeId], references: [id], onDelete: Restrict)
+  amount          Decimal   @db.Decimal(10, 2) // Calculated amount for this employee
+  calculationType String    // "Amount" | "Percentage" (from BonusType)
+  percentage      Decimal?  @db.Decimal(5, 2) // Percentage used (if calculationType is "Percentage")
+  bonusMonth      String    // Format: "01" to "12"
+  bonusYear       String    // Format: "YYYY"
+  bonusMonthYear  String    // Format: "YYYY-MM" for easy querying
+  notes           String?   @db.Text
+  status          String    @default("active") // active, inactive, cancelled
+  createdById     String?
+  createdBy       User?     @relation("BonusCreatedBy", fields: [createdById], references: [id])
+  updatedById     String?
+  updatedBy       User?     @relation("BonusUpdatedBy", fields: [updatedById], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([employeeId, bonusTypeId, bonusMonthYear]) // One bonus per employee per type per month-year
+  @@index([employeeId])
+  @@index([bonusTypeId])
+  @@index([bonusMonth, bonusYear])
+  @@index([bonusMonthYear])
+  @@index([status])
+}
