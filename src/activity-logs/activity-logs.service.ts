@@ -1,27 +1,28 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsGateway } from './activity-logs.gateway'
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsGateway } from './activity-logs.gateway';
 
 @Injectable()
 export class ActivityLogsService {
   constructor(
     private prisma: PrismaService,
-    @Inject(forwardRef(() => ActivityLogsGateway)) private gateway: ActivityLogsGateway
+    @Inject(forwardRef(() => ActivityLogsGateway))
+    private gateway: ActivityLogsGateway,
   ) {}
 
   async log(data: {
-    userId?: string
-    action: string
-    module: string
-    entity?: string
-    entityId?: string
-    description?: string
-    oldValues?: string
-    newValues?: string
-    errorMessage?: string
-    ipAddress?: string
-    userAgent?: string
-    status: 'success' | 'failure'
+    userId?: string;
+    action: string;
+    module: string;
+    entity?: string;
+    entityId?: string;
+    description?: string;
+    oldValues?: string;
+    newValues?: string;
+    errorMessage?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    status: 'success' | 'failure';
   }) {
     const created = await this.prisma.activityLog.create({
       data: {
@@ -38,9 +39,9 @@ export class ActivityLogsService {
         userAgent: data.userAgent,
         status: data.status,
       },
-    })
+    });
 
-    this.gateway.emitActivityLog(created)
-    return created
+    this.gateway.emitActivityLog(created);
+    return created;
   }
 }

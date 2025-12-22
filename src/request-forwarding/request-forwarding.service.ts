@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { CreateRequestForwardingDto } from './dto/create-request-forwarding.dto';
@@ -12,155 +16,193 @@ export class RequestForwardingService {
   ) {}
 
   async list() {
-    const configurations = await this.prisma.requestForwardingConfiguration.findMany({
-      include: {
-        approvalLevels: {
-          orderBy: { level: 'asc' },
-          include: {
-            specificEmployee: {
-              select: {
-                id: true,
-                employeeId: true,
-                employeeName: true,
+    const configurations =
+      await this.prisma.requestForwardingConfiguration.findMany({
+        include: {
+          approvalLevels: {
+            orderBy: { level: 'asc' },
+            include: {
+              specificEmployee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  employeeName: true,
+                },
               },
-            },
-            department: {
-              select: {
-                id: true,
-                name: true,
+              department: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
-            },
-            subDepartment: {
-              select: {
-                id: true,
-                name: true,
+              subDepartment: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
           },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+          createdBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          updatedBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
           },
         },
-        updatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      });
 
     return { status: true, data: configurations };
   }
 
   async getByRequestType(requestType: string) {
-    const configuration = await this.prisma.requestForwardingConfiguration.findUnique({
-      where: { requestType },
-      include: {
-        approvalLevels: {
-          orderBy: { level: 'asc' },
-          include: {
-            specificEmployee: {
-              select: {
-                id: true,
-                employeeId: true,
-                employeeName: true,
+    const configuration =
+      await this.prisma.requestForwardingConfiguration.findUnique({
+        where: { requestType },
+        include: {
+          approvalLevels: {
+            orderBy: { level: 'asc' },
+            include: {
+              specificEmployee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  employeeName: true,
+                },
               },
-            },
-            department: {
-              select: {
-                id: true,
-                name: true,
+              department: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
-            },
-            subDepartment: {
-              select: {
-                id: true,
-                name: true,
+              subDepartment: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
           },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+          createdBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          updatedBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
           },
         },
-        updatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
+      });
 
     if (!configuration) {
-      return { status: false, message: 'Request forwarding configuration not found' };
+      return {
+        status: false,
+        message: 'Request forwarding configuration not found',
+      };
     }
 
     return { status: true, data: configuration };
   }
 
-  async create(body: CreateRequestForwardingDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: CreateRequestForwardingDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     // Validate request type
-    if (!['exemption', 'attendance'].includes(body.requestType)) {
-      throw new BadRequestException('Invalid request type. Must be "exemption" or "attendance"');
+    if (
+      !['exemption', 'attendance', 'advance-salary', 'loan'].includes(
+        body.requestType,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid request type. Must be "exemption", "attendance", "advance-salary", or "loan"',
+      );
     }
 
     // Validate approval flow
     if (!['auto-approved', 'multi-level'].includes(body.approvalFlow)) {
-      throw new BadRequestException('Invalid approval flow. Must be "auto-approved" or "multi-level"');
+      throw new BadRequestException(
+        'Invalid approval flow. Must be "auto-approved" or "multi-level"',
+      );
     }
 
     // Check if configuration already exists for this request type
-    const existing = await this.prisma.requestForwardingConfiguration.findUnique({
-      where: { requestType: body.requestType },
-    });
+    const existing =
+      await this.prisma.requestForwardingConfiguration.findUnique({
+        where: { requestType: body.requestType },
+      });
 
     if (existing) {
-      throw new BadRequestException(`Configuration already exists for request type: ${body.requestType}`);
+      throw new BadRequestException(
+        `Configuration already exists for request type: ${body.requestType}`,
+      );
     }
 
     // Validate levels if multi-level
     if (body.approvalFlow === 'multi-level') {
       if (!body.levels || body.levels.length === 0) {
-        throw new BadRequestException('At least one approval level is required for multi-level flow');
+        throw new BadRequestException(
+          'At least one approval level is required for multi-level flow',
+        );
       }
 
       // Validate each level
       for (let i = 0; i < body.levels.length; i++) {
         const level = body.levels[i];
-        
-        if (level.approverType === 'specific-employee' && !level.specificEmployeeId) {
-          throw new BadRequestException(`Level ${level.level}: Specific employee is required`);
+
+        if (
+          level.approverType === 'specific-employee' &&
+          !level.specificEmployeeId
+        ) {
+          throw new BadRequestException(
+            `Level ${level.level}: Specific employee is required`,
+          );
         }
 
-        if (level.approverType === 'department-head' || level.approverType === 'sub-department-head') {
+        if (
+          level.approverType === 'department-head' ||
+          level.approverType === 'sub-department-head'
+        ) {
           if (!level.departmentHeadMode) {
-            throw new BadRequestException(`Level ${level.level}: Department head mode is required`);
+            throw new BadRequestException(
+              `Level ${level.level}: Department head mode is required`,
+            );
           }
 
           if (level.departmentHeadMode === 'specific') {
             if (!level.departmentId) {
-              throw new BadRequestException(`Level ${level.level}: Department is required when mode is specific`);
+              throw new BadRequestException(
+                `Level ${level.level}: Department is required when mode is specific`,
+              );
             }
 
-            if (level.approverType === 'sub-department-head' && !level.subDepartmentId) {
-              throw new BadRequestException(`Level ${level.level}: Sub-department is required when mode is specific`);
+            if (
+              level.approverType === 'sub-department-head' &&
+              !level.subDepartmentId
+            ) {
+              throw new BadRequestException(
+                `Level ${level.level}: Sub-department is required when mode is specific`,
+              );
             }
           }
         }
@@ -251,51 +293,80 @@ export class RequestForwardingService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     // Validate request type
-    if (!['exemption', 'attendance'].includes(requestType)) {
-      throw new BadRequestException('Invalid request type. Must be "exemption" or "attendance"');
+    if (
+      !['exemption', 'attendance', 'advance-salary', 'loan'].includes(
+        requestType,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid request type. Must be "exemption", "attendance", "advance-salary", or "loan"',
+      );
     }
 
-    const existing = await this.prisma.requestForwardingConfiguration.findUnique({
-      where: { requestType },
-      include: { approvalLevels: true },
-    });
+    const existing =
+      await this.prisma.requestForwardingConfiguration.findUnique({
+        where: { requestType },
+        include: { approvalLevels: true },
+      });
 
     // Determine approval flow (use body value or existing, or default to auto-approved)
-    const approvalFlow = body.approvalFlow || existing?.approvalFlow || 'auto-approved';
+    const approvalFlow =
+      body.approvalFlow || existing?.approvalFlow || 'auto-approved';
 
     // Validate approval flow
     if (!['auto-approved', 'multi-level'].includes(approvalFlow)) {
-      throw new BadRequestException('Invalid approval flow. Must be "auto-approved" or "multi-level"');
+      throw new BadRequestException(
+        'Invalid approval flow. Must be "auto-approved" or "multi-level"',
+      );
     }
 
     // Validate levels if multi-level
     if (approvalFlow === 'multi-level') {
       const levelsToValidate = body.levels || existing?.approvalLevels || [];
-      
+
       if (levelsToValidate.length === 0) {
-        throw new BadRequestException('At least one approval level is required for multi-level flow');
+        throw new BadRequestException(
+          'At least one approval level is required for multi-level flow',
+        );
       }
 
       // Validate each level
       for (let i = 0; i < levelsToValidate.length; i++) {
         const level = levelsToValidate[i];
-        
-        if (level.approverType === 'specific-employee' && !level.specificEmployeeId) {
-          throw new BadRequestException(`Level ${level.level}: Specific employee is required`);
+
+        if (
+          level.approverType === 'specific-employee' &&
+          !level.specificEmployeeId
+        ) {
+          throw new BadRequestException(
+            `Level ${level.level}: Specific employee is required`,
+          );
         }
 
-        if (level.approverType === 'department-head' || level.approverType === 'sub-department-head') {
+        if (
+          level.approverType === 'department-head' ||
+          level.approverType === 'sub-department-head'
+        ) {
           if (!level.departmentHeadMode) {
-            throw new BadRequestException(`Level ${level.level}: Department head mode is required`);
+            throw new BadRequestException(
+              `Level ${level.level}: Department head mode is required`,
+            );
           }
 
           if (level.departmentHeadMode === 'specific') {
             if (!level.departmentId) {
-              throw new BadRequestException(`Level ${level.level}: Department is required when mode is specific`);
+              throw new BadRequestException(
+                `Level ${level.level}: Department is required when mode is specific`,
+              );
             }
 
-            if (level.approverType === 'sub-department-head' && !level.subDepartmentId) {
-              throw new BadRequestException(`Level ${level.level}: Sub-department is required when mode is specific`);
+            if (
+              level.approverType === 'sub-department-head' &&
+              !level.subDepartmentId
+            ) {
+              throw new BadRequestException(
+                `Level ${level.level}: Sub-department is required when mode is specific`,
+              );
             }
           }
         }
@@ -333,14 +404,14 @@ export class RequestForwardingService {
       if (body.levels !== undefined) {
         // Delete existing levels
         await tx.requestForwardingApprovalLevel.deleteMany({
-          where: { configurationId: configuration.id },
+          where: { configurationId: configuration?.id },
         });
 
         // Create new levels if multi-level
         if (approvalFlow === 'multi-level' && body.levels.length > 0) {
           await tx.requestForwardingApprovalLevel.createMany({
             data: body.levels.map((level) => ({
-              configurationId: configuration.id,
+              configurationId: configuration?.id,
               level: level.level,
               approverType: level.approverType,
               departmentHeadMode: level.departmentHeadMode || null,
@@ -405,13 +476,19 @@ export class RequestForwardingService {
     return { status: true, data: result };
   }
 
-  async delete(requestType: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    const existing = await this.prisma.requestForwardingConfiguration.findUnique({
-      where: { requestType },
-    });
+  async delete(
+    requestType: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const existing =
+      await this.prisma.requestForwardingConfiguration.findUnique({
+        where: { requestType },
+      });
 
     if (!existing) {
-      throw new NotFoundException(`Configuration not found for request type: ${requestType}`);
+      throw new NotFoundException(
+        `Configuration not found for request type: ${requestType}`,
+      );
     }
 
     // Delete configuration (levels will be cascade deleted)

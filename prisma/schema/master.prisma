@@ -79,7 +79,7 @@ model Country {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employees              Employee[]
+  employees Employee[]
 }
 
 model City {
@@ -132,46 +132,47 @@ model Branch {
 }
 
 model AllowanceHead {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  status      String     @default("active")
+  id          String      @id @default(uuid())
+  name        String      @unique
+  status      String      @default("active")
   createdById String?
-  createdBy   User?      @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdBy   User?       @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   allowances  Allowance[]
 }
 
 model DeductionHead {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  status      String     @default("active")
+  id          String      @id @default(uuid())
+  name        String      @unique
+  status      String      @default("active")
   createdById String?
-  createdBy   User?      @relation("DeductionHeadCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdBy   User?       @relation("DeductionHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   deductions  Deduction[]
 }
 
 model LoanType {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  status      String   @default("active")
-  createdById String?
-  createdBy   User?    @relation("LoanTypeCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String        @id @default(uuid())
+  name         String        @unique
+  status       String        @default("active")
+  createdById  String?
+  createdBy    User?         @relation("LoanTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  loanRequests LoanRequest[]
 }
 
 model LeaveType {
-  id             String                  @id @default(uuid())
-  name           String                  @unique
-  status         String                  @default("active")
-  createdById    String?
-  createdBy      User?                   @relation("LeaveTypeCreatedBy", fields: [createdById], references: [id])
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  leavesPolicies LeavesPolicyLeaveType[]
+  id                String                  @id @default(uuid())
+  name              String                  @unique
+  status            String                  @default("active")
+  createdById       String?
+  createdBy         User?                   @relation("LeaveTypeCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  leavesPolicies    LeavesPolicyLeaveType[]
   leaveApplications LeaveApplication[]
 }
 
@@ -267,27 +268,27 @@ model ApprovalSetting {
 // Department related models
 
 model Department {
-  id             String          @id @default(uuid())
-  name           String          @unique
-  createdById    String?
-  createdBy      User?           @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  subDepartments SubDepartment[]
-  employees      Employee[]
+  id                              String                           @id @default(uuid())
+  name                            String                           @unique
+  createdById                     String?
+  createdBy                       User?                            @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  subDepartments                  SubDepartment[]
+  employees                       Employee[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingDepartment")
 }
 
 model SubDepartment {
-  id           String     @id @default(uuid())
-  name         String
-  departmentId String
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  createdById  String?
-  createdBy    User?      @relation("SubDepartmentCreatedBy", fields: [createdById], references: [id])
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  employees    Employee[]
+  id                              String                           @id @default(uuid())
+  name                            String
+  departmentId                    String
+  department                      Department                       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdById                     String?
+  createdBy                       User?                            @relation("SubDepartmentCreatedBy", fields: [createdById], references: [id])
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  employees                       Employee[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSubDepartment")
 
   @@unique([name, departmentId])
@@ -339,8 +340,8 @@ model ProvidentFund {
 }
 
 model WorkingHoursPolicy {
-  id                           String     @id @default(uuid())
-  name                         String     @unique
+  id                           String                         @id @default(uuid())
+  name                         String                         @unique
   startWorkingHours            String
   endWorkingHours              String
   shortDayMins                 Int?
@@ -360,12 +361,12 @@ model WorkingHoursPolicy {
   overtimeRate                 Decimal?
   gazzetedOvertimeRate         Decimal?
   dayOverrides                 Json? // Stores day-wise overrides: { monday: { enabled, overrideHours, startTime, endTime, overrideBreak, startBreakTime, endBreakTime, dayType }, ... }
-  status                       String     @default("active")
-  isDefault                    Boolean    @default(false)
+  status                       String                         @default("active")
+  isDefault                    Boolean                        @default(false)
   createdById                  String?
-  createdBy                    User?      @relation("WorkingHoursPolicyCreatedBy", fields: [createdById], references: [id])
-  createdAt                    DateTime   @default(now())
-  updatedAt                    DateTime   @updatedAt
+  createdBy                    User?                          @relation("WorkingHoursPolicyCreatedBy", fields: [createdById], references: [id])
+  createdAt                    DateTime                       @default(now())
+  updatedAt                    DateTime                       @updatedAt
   employees                    Employee[]
   assignments                  WorkingHoursPolicyAssignment[]
 }

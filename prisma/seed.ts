@@ -17,6 +17,8 @@ import {
   seedLeavesPolicies,
   seedWorkingHoursPolicies,
   seedEquipments,
+  seedAllowanceHeads,
+  seedDeductionHeads,
   seedEmployees,
 } from './seeds/master-data.js';
 import { seedQualifications } from './seeds/qualifications.js';
@@ -317,6 +319,12 @@ async function main() {
   
   // Seed Equipments
   await seedEquipments(prisma, adminUser.id);
+  
+  // Seed Allowance Heads
+  await seedAllowanceHeads(prisma, adminUser.id);
+  
+  // Seed Deduction Heads
+  await seedDeductionHeads(prisma, adminUser.id);
   
   // Seed Employees (needs all master data)
   await seedEmployees(prisma, adminUser.id);

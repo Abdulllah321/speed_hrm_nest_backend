@@ -35,6 +35,8 @@ import { LeaveApplicationModule } from './leave-application/leave-application.mo
 import { RequestForwardingModule } from './request-forwarding/request-forwarding.module';
 import { AllowanceModule } from './allowance/allowance.module';
 import { DeductionModule } from './deduction/deduction.module';
+import { AdvanceSalaryModule } from './advance-salary/advance-salary.module';
+import { LoanRequestModule } from './loan-request/loan-request.module';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { DeductionModule } from './deduction/deduction.module';
     RequestForwardingModule,
     AllowanceModule,
     DeductionModule,
+    AdvanceSalaryModule,
+    LoanRequestModule,
     CityModule,
     DepartmentModule,
     DesignationModule,

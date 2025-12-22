@@ -1,29 +1,29 @@
 // Employee related models
 
 model Employee {
-  id                     String                  @id @default(uuid())
-  userId                 String?                 @unique
-  user                   User?                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  employeeId             String                  @unique
+  id                     String         @id @default(uuid())
+  userId                 String?        @unique
+  user                   User?          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  employeeId             String         @unique
   employeeName           String
   fatherHusbandName      String
   departmentId           String
-  department             Department              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  department             Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   subDepartmentId        String?
-  subDepartment          SubDepartment?          @relation(fields: [subDepartmentId], references: [id], onDelete: SetNull)
+  subDepartment          SubDepartment? @relation(fields: [subDepartmentId], references: [id], onDelete: SetNull)
   employeeGradeId        String
-  employeeGrade          EmployeeGrade           @relation(fields: [employeeGradeId], references: [id], onDelete: Restrict)
+  employeeGrade          EmployeeGrade  @relation(fields: [employeeGradeId], references: [id], onDelete: Restrict)
   attendanceId           String
   designationId          String
-  designation            Designation             @relation(fields: [designationId], references: [id], onDelete: Restrict)
+  designation            Designation    @relation(fields: [designationId], references: [id], onDelete: Restrict)
   maritalStatusId        String
-  maritalStatus          MaritalStatus           @relation(fields: [maritalStatusId], references: [id], onDelete: Restrict)
+  maritalStatus          MaritalStatus  @relation(fields: [maritalStatusId], references: [id], onDelete: Restrict)
   employmentStatusId     String
-  employmentStatus       EmployeeStatus          @relation(fields: [employmentStatusId], references: [id], onDelete: Restrict)
+  employmentStatus       EmployeeStatus @relation(fields: [employmentStatusId], references: [id], onDelete: Restrict)
   probationExpiryDate    DateTime?
-  cnicNumber             String                  @unique
+  cnicNumber             String         @unique
   cnicExpiryDate         DateTime?
-  lifetimeCnic           Boolean                 @default(false)
+  lifetimeCnic           Boolean        @default(false)
   joiningDate            DateTime
   dateOfBirth            DateTime
   nationality            String
@@ -32,118 +32,125 @@ model Employee {
   emergencyContactNumber String?
   emergencyContactPerson String?
   personalEmail          String?
-  officialEmail          String                  @unique
+  officialEmail          String         @unique
   countryId              String
-  country                Country                 @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  country                Country        @relation(fields: [countryId], references: [id], onDelete: Restrict)
   stateId                String
-  state                  State                   @relation(fields: [stateId], references: [id], onDelete: Restrict)
+  state                  State          @relation(fields: [stateId], references: [id], onDelete: Restrict)
   cityId                 String
-  city                   City                    @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  city                   City           @relation(fields: [cityId], references: [id], onDelete: Restrict)
   area                   String?
   employeeSalary         Decimal
-  eobi                   Boolean                 @default(false)
+  eobi                   Boolean        @default(false)
   eobiNumber             String?
   eobiDocumentUrl        String?
   documentUrls           Json?
 
-  providentFund          Boolean                 @default(false)
-  overtimeApplicable     Boolean                 @default(false)
-  daysOff                String?
-  reportingManager       String
-  workingHoursPolicyId   String
-  workingHoursPolicy     WorkingHoursPolicy      @relation(fields: [workingHoursPolicyId], references: [id], onDelete: Restrict)
-  branchId               String
-  branch                 Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  leavesPolicyId         String
-  leavesPolicy           LeavesPolicy            @relation(fields: [leavesPolicyId], references: [id], onDelete: Restrict)
-  allowRemoteAttendance  Boolean                 @default(false)
-  currentAddress         String?
-  permanentAddress       String?
-  bankName               String
-  accountNumber          String
-  accountTitle           String
-  status                 String                  @default("active")
+  providentFund                   Boolean                          @default(false)
+  overtimeApplicable              Boolean                          @default(false)
+  daysOff                         String?
+  reportingManager                String
+  workingHoursPolicyId            String
+  workingHoursPolicy              WorkingHoursPolicy               @relation(fields: [workingHoursPolicyId], references: [id], onDelete: Restrict)
+  branchId                        String
+  branch                          Branch                           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  leavesPolicyId                  String
+  leavesPolicy                    LeavesPolicy                     @relation(fields: [leavesPolicyId], references: [id], onDelete: Restrict)
+  allowRemoteAttendance           Boolean                          @default(false)
+  currentAddress                  String?
+  permanentAddress                String?
+  bankName                        String
+  accountNumber                   String
+  accountTitle                    String
+  status                          String                           @default("active")
   // Rejoining tracking
-  isRejoined             Boolean                 @default(false)
-  originalJoiningDate    DateTime?               // First ever joining date (preserved on rejoin)
-  lastExitDate           DateTime?               // Date when employee last left
-  rejoinCount            Int                     @default(0)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-  qualifications         EmployeeQualification[]
-  attendances            Attendance[]
-  exitClearances         ExitClearance[]
-  attendanceRequestQueries AttendanceRequestQuery[]
-  attendanceExemptions   AttendanceExemption[]
-  equipmentAssignments   EmployeeEquipment[]
-  leaveApplications      LeaveApplication[]
-  policyAssignments      WorkingHoursPolicyAssignment[]
-  rejoiningHistory       EmployeeRejoiningHistory[]
+  isRejoined                      Boolean                          @default(false)
+  originalJoiningDate             DateTime? // First ever joining date (preserved on rejoin)
+  lastExitDate                    DateTime? // Date when employee last left
+  rejoinCount                     Int                              @default(0)
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  qualifications                  EmployeeQualification[]
+  attendances                     Attendance[]
+  exitClearances                  ExitClearance[]
+  attendanceRequestQueries        AttendanceRequestQuery[]
+  attendanceExemptions            AttendanceExemption[]
+  equipmentAssignments            EmployeeEquipment[]
+  leaveApplications               LeaveApplication[]
+  policyAssignments               WorkingHoursPolicyAssignment[]
+  rejoiningHistory                EmployeeRejoiningHistory[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
-  allowances             Allowance[]
-  deductions             Deduction[]
+  allowances                      Allowance[]
+  deductions                      Deduction[]
+  advanceSalaries                 AdvanceSalary[]
+  loanRequests                    LoanRequest[]
 }
 
 model EmployeeRejoiningHistory {
-  id                 String   @id @default(uuid())
-  employeeId         String
-  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  previousEmployeeId String   // Old employee ID before rejoin
-  newEmployeeId      String   // New employee ID after rejoin
-  previousAttendanceId String // Old attendance ID
-  newAttendanceId    String   // New attendance ID
-  previousExitDate   DateTime // When employee left
-  rejoiningDate      DateTime // When employee rejoined
-  previousDepartmentId String?
-  newDepartmentId    String?
+  id                    String   @id @default(uuid())
+  employeeId            String
+  employee              Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousEmployeeId    String // Old employee ID before rejoin
+  newEmployeeId         String // New employee ID after rejoin
+  previousAttendanceId  String // Old attendance ID
+  newAttendanceId       String // New attendance ID
+  previousExitDate      DateTime // When employee left
+  rejoiningDate         DateTime // When employee rejoined
+  previousDepartmentId  String?
+  newDepartmentId       String?
   previousDesignationId String?
-  newDesignationId   String?
-  previousSalary     Decimal?
-  newSalary          Decimal?
-  remarks            String?
-  createdById        String?
-  createdBy          User?    @relation(fields: [createdById], references: [id])
-  createdAt          DateTime @default(now())
+  newDesignationId      String?
+  previousSalary        Decimal?
+  newSalary             Decimal?
+  // Comprehensive change tracking - stores all field changes
+  previousValues        Json? // Complete snapshot of employee data before rejoin
+  newValues             Json? // Complete snapshot of employee data after rejoin
+  changedFields         Json? // Array of field names that were changed
+  remarks               String?
+  createdById           String?
+  createdBy             User?    @relation(fields: [createdById], references: [id])
+  createdAt             DateTime @default(now())
 
   @@index([employeeId])
+  @@index([rejoiningDate])
 }
 
 model EmployeeQualification {
-  id            String     @id @default(uuid())
-  employeeId    String
-  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   qualificationId String
   qualification   Qualification @relation(fields: [qualificationId], references: [id], onDelete: Restrict)
-  instituteId   String?
-  institute     Institute? @relation(fields: [instituteId], references: [id], onDelete: SetNull)
-  cityId        String?
-  city          City?      @relation(fields: [cityId], references: [id], onDelete: SetNull)
-  stateId       String?
-  state         State?     @relation(fields: [stateId], references: [id], onDelete: SetNull)
-  year          Int?
-  grade         String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  instituteId     String?
+  institute       Institute?    @relation(fields: [instituteId], references: [id], onDelete: SetNull)
+  cityId          String?
+  city            City?         @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  stateId         String?
+  state           State?        @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  year            Int?
+  grade           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([employeeId])
 }
 
 model EmployeeEquipment {
-  id            String     @id @default(uuid())
-  employeeId    String
-  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  equipmentId   String
-  equipment     Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
-  assignedDate DateTime   @default(now())
-  returnedDate  DateTime?
-  status        String     @default("assigned") // assigned, returned
-  notes         String?
-  assignedById  String?
-  assignedBy    User?      @relation("EquipmentAssignedBy", fields: [assignedById], references: [id])
-  returnedById  String?
-  returnedBy    User?      @relation("EquipmentReturnedBy", fields: [returnedById], references: [id])
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id           String    @id @default(uuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  equipmentId  String
+  equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  assignedDate DateTime  @default(now())
+  returnedDate DateTime?
+  status       String    @default("assigned") // assigned, returned
+  notes        String?
+  assignedById String?
+  assignedBy   User?     @relation("EquipmentAssignedBy", fields: [assignedById], references: [id])
+  returnedById String?
+  returnedBy   User?     @relation("EquipmentReturnedBy", fields: [returnedById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([employeeId])
   @@index([equipmentId])

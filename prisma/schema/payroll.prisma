@@ -7,9 +7,9 @@ model Allowance {
   allowanceHeadId String
   allowanceHead   AllowanceHead @relation(fields: [allowanceHeadId], references: [id], onDelete: Restrict)
   amount          Decimal       @db.Decimal(10, 2)
-  month           String        // Format: "01" to "12"
-  year            String        // Format: "YYYY"
-  date            DateTime       // Full date for reference
+  month           String // Format: "01" to "12"
+  year            String // Format: "YYYY"
+  date            DateTime // Full date for reference
   isTaxable       Boolean       @default(false)
   taxPercentage   Decimal?      @db.Decimal(5, 2) // Percentage (0-100)
   notes           String?
@@ -21,11 +21,11 @@ model Allowance {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  @@unique([employeeId, allowanceHeadId, month, year]) // One allowance per employee per type per month-year
   @@index([employeeId])
   @@index([allowanceHeadId])
   @@index([month, year])
   @@index([status])
-  @@unique([employeeId, allowanceHeadId, month, year]) // One allowance per employee per type per month-year
 }
 
 model Deduction {
@@ -35,9 +35,9 @@ model Deduction {
   deductionHeadId String
   deductionHead   DeductionHead @relation(fields: [deductionHeadId], references: [id], onDelete: Restrict)
   amount          Decimal       @db.Decimal(10, 2)
-  month           String        // Format: "01" to "12"
-  year            String        // Format: "YYYY"
-  date            DateTime       // Full date for reference
+  month           String // Format: "01" to "12"
+  year            String // Format: "YYYY"
+  date            DateTime // Full date for reference
   isTaxable       Boolean       @default(false)
   taxPercentage   Decimal?      @db.Decimal(5, 2) // Percentage (0-100)
   notes           String?
@@ -49,9 +49,40 @@ model Deduction {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  @@unique([employeeId, deductionHeadId, month, year]) // One deduction per employee per type per month-year
   @@index([employeeId])
   @@index([deductionHeadId])
   @@index([month, year])
   @@index([status])
-  @@unique([employeeId, deductionHeadId, month, year]) // One deduction per employee per type per month-year
+}
+
+model AdvanceSalary {
+  id                 String    @id @default(uuid())
+  employeeId         String
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount             Decimal   @db.Decimal(10, 2)
+  neededOn           DateTime // When the advance salary is needed
+  deductionMonth     String // Format: "01" to "12"
+  deductionYear      String // Format: "YYYY"
+  deductionMonthYear String // Format: "YYYY-MM" for easy querying
+  reason             String    @db.Text // Detailed reason for advance salary
+  approvalStatus     String    @default("pending") // pending, approved, rejected
+  approvedById       String?
+  approvedBy         User?     @relation("AdvanceSalaryApprovedBy", fields: [approvedById], references: [id])
+  approvedAt         DateTime?
+  rejectionReason    String?   @db.Text // Reason if rejected
+  status             String    @default("pending") // pending, active, completed, cancelled, rejected
+  createdById        String?
+  createdBy          User?     @relation("AdvanceSalaryCreatedBy", fields: [createdById], references: [id])
+  updatedById        String?
+  updatedBy          User?     @relation("AdvanceSalaryUpdatedBy", fields: [updatedById], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([deductionMonth, deductionYear])
+  @@index([deductionMonthYear])
+  @@index([approvalStatus])
+  @@index([status])
+  @@index([neededOn])
 }

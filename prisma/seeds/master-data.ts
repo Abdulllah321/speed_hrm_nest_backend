@@ -631,6 +631,106 @@ export async function seedEquipments(prisma: PrismaClient, createdById: string) 
   return { created, skipped };
 }
 
+export async function seedAllowanceHeads(prisma: PrismaClient, createdById: string) {
+  console.log('💰 Seeding allowance heads...');
+  const allowanceHeads = [
+    'Basic Salary',
+    'House Rent Allowance',
+    'Transport Allowance',
+    'Medical Allowance',
+    'Food Allowance',
+    'Fuel Allowance',
+    'Communication Allowance',
+    'Entertainment Allowance',
+    'Special Allowance',
+    'Overtime Allowance',
+    'Performance Bonus',
+    'Annual Bonus',
+    'Project Allowance',
+    'Travel Allowance',
+    'Uniform Allowance',
+    'Education Allowance',
+    'Child Care Allowance',
+    'Utility Allowance',
+    'Conveyance Allowance',
+    'City Compensatory Allowance',
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  for (const name of allowanceHeads) {
+    try {
+      const existing = await prisma.allowanceHead.findFirst({ where: { name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      await prisma.allowanceHead.create({
+        data: {
+          name,
+          status: 'active',
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding allowance head "${name}":`, error.message);
+    }
+  }
+  console.log(`✓ Allowance Heads: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
+export async function seedDeductionHeads(prisma: PrismaClient, createdById: string) {
+  console.log('📉 Seeding deduction heads...');
+  const deductionHeads = [
+    'Income Tax',
+    'Provident Fund',
+    'EOBI',
+    'Social Security',
+    'Late Coming Deduction',
+    'Absent Deduction',
+    'Half Day Deduction',
+    'Short Day Deduction',
+    'Leave Without Pay (LWP)',
+    'Advance Salary Deduction',
+    'Loan Deduction',
+    'Insurance Deduction',
+    'Penalty',
+    'Fine',
+    'Overpayment Recovery',
+    'Equipment Damage',
+    'Uniform Deduction',
+    'Training Cost Recovery',
+    'Notice Period Deduction',
+    'Other Deductions',
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  for (const name of deductionHeads) {
+    try {
+      const existing = await prisma.deductionHead.findFirst({ where: { name } });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      await prisma.deductionHead.create({
+        data: {
+          name,
+          status: 'active',
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding deduction head "${name}":`, error.message);
+    }
+  }
+  console.log(`✓ Deduction Heads: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
 export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   console.log('👥 Seeding employees...');
 
