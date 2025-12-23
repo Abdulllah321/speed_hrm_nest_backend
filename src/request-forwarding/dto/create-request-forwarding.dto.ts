@@ -8,7 +8,7 @@ export class CreateApprovalLevelDto {
 }
 
 export class CreateRequestForwardingDto {
-  requestType: string; // "exemption" | "attendance" | "advance-salary" | "loan"
+  requestType: string; // "exemption" | "attendance" | "advance-salary" | "loan" | "overtime" | "leave-encashment"
   approvalFlow: string; // "auto-approved" | "multi-level"
   levels?: CreateApprovalLevelDto[];
 }

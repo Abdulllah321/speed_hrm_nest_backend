@@ -83,8 +83,9 @@ model User {
   overtimeRequestsUpdated        OvertimeRequest[]                @relation("OvertimeRequestUpdatedBy")
   incrementsCreated              Increment[]                     @relation("IncrementCreatedBy")
   incrementsUpdated              Increment[]                     @relation("IncrementUpdatedBy")
-  bonusesCreated                 Bonus[]                         @relation("BonusCreatedBy")
-  bonusesUpdated                 Bonus[]                         @relation("BonusUpdatedBy")
+
+  bonuses Bonus[] @relation("BonusCreatedBy")
+  bonusesUpdated Bonus[] @relation("BonusUpdatedBy")
 }
 
 model Role {

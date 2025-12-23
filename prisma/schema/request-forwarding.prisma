@@ -2,7 +2,7 @@
 
 model RequestForwardingConfiguration {
   id           String   @id @default(uuid())
-  requestType  String // "exemption" | "attendance" | "advance-salary" | "loan"
+  requestType  String // "exemption" | "attendance" | "advance-salary" | "loan" | "overtime" | "leave-encashment"
   approvalFlow String // "auto-approved" | "multi-level"
   status       String   @default("active") // active, inactive
   createdById  String?
