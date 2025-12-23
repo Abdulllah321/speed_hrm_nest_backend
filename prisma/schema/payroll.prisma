@@ -157,6 +157,8 @@ model Bonus {
   bonusMonth      String    // Format: "01" to "12"
   bonusYear       String    // Format: "YYYY"
   bonusMonthYear  String    // Format: "YYYY-MM" for easy querying
+  paymentMethod   String    @default("with_salary") // "with_salary" | "separately"
+  adjustmentMethod String   @default("distributed-remaining-months") // "distributed-remaining-months" | "deduct-current-month"
   notes           String?   @db.Text
   status          String    @default("active") // active, inactive, cancelled
   createdById     String?
@@ -172,4 +174,5 @@ model Bonus {
   @@index([bonusMonth, bonusYear])
   @@index([bonusMonthYear])
   @@index([status])
+  @@index([paymentMethod])
 }
