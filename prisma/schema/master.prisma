@@ -255,6 +255,7 @@ model BonusType {
   createdBy       User?    @relation("BonusTypeCreatedBy", fields: [createdById], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  bonuses         Bonus[]  @relation("BonusBonusType")
 }
 
 model ApprovalSetting {
