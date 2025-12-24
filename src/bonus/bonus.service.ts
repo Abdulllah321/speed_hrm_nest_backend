@@ -57,6 +57,9 @@ export class BonusService {
               id: true,
               employeeId: true,
               employeeName: true,
+              bankName: true,
+              accountNumber: true,
+              accountTitle: true,
               department: {
                 select: {
                   id: true,
@@ -113,6 +116,9 @@ export class BonusService {
               id: true,
               employeeId: true,
               employeeName: true,
+              bankName: true,
+              accountNumber: true,
+              accountTitle: true,
               department: {
                 select: {
                   id: true,
@@ -520,6 +526,9 @@ export class BonusService {
               id: true,
               employeeId: true,
               employeeName: true,
+              bankName: true,
+              accountNumber: true,
+              accountTitle: true,
               department: {
                 select: {
                   id: true,

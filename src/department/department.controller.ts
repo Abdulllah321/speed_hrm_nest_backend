@@ -81,8 +81,8 @@ export class DepartmentController {
 
   @Post('sub-departments')
   @UseGuards(JwtAuthGuard)
-  async createSub(@Body() body: { name: string; departmentId: string }, @Req() req) {
-    const item = { name: body.name, departmentId: body.departmentId, createdById: req.user.userId }
+  async createSub(@Body() body: { name: string; departmentId: string; headId?: string }, @Req() req) {
+    const item = { name: body.name, departmentId: body.departmentId, createdById: req.user.userId, headId: body.headId } as any
     return this.service.createSubDepartments([item], {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -92,12 +92,13 @@ export class DepartmentController {
 
   @Post('sub-departments/bulk')
   @UseGuards(JwtAuthGuard)
-  async createSubBulk(@Body() body: { items: { name: string; departmentId: string }[] }, @Req() req) {
+  async createSubBulk(@Body() body: { items: { name: string; departmentId: string; headId?: string }[] }, @Req() req) {
     const subDepartmentsToCreate = (body.items || []).map(dto => ({
       name: dto.name,
       departmentId: dto.departmentId,
       createdById: req.user.userId,
-    }))
+      headId: dto.headId,
+    })) as any[]
     return this.service.createSubDepartments(subDepartmentsToCreate, {
       userId: req.user?.userId,
       ipAddress: req.ip,

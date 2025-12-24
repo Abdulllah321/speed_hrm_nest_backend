@@ -11,6 +11,8 @@ model Employee {
   department             Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   subDepartmentId        String?
   subDepartment          SubDepartment? @relation(fields: [subDepartmentId], references: [id], onDelete: SetNull)
+  departmentAsHead       Department?    @relation("DepartmentHead")
+  subDepartmentAsHead    SubDepartment? @relation("SubDepartmentHead")
   employeeGradeId        String
   employeeGrade          EmployeeGrade  @relation(fields: [employeeGradeId], references: [id], onDelete: Restrict)
   attendanceId           String

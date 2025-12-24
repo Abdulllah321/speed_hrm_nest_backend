@@ -42,6 +42,7 @@ import { DeductionHeadModule } from './deduction-head/deduction-head.module';
 import { OvertimeRequestModule } from './overtime-request/overtime-request.module';
 import { IncrementModule } from './increment/increment.module';
 import { BonusModule } from './bonus/bonus.module';
+import { BankModule } from './bank/bank.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { BonusModule } from './bonus/bonus.module';
     HolidayModule,
     UploadModule,
     ActivityLogsModule,
+    BankModule,
   ],
   controllers: [AppController],
   providers: [AppService],

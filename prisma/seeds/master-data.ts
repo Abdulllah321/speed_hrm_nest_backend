@@ -922,6 +922,61 @@ export async function seedBonusTypes(
   return { created, skipped };
 }
 
+export async function seedBanks(
+  prisma: PrismaClient,
+  createdById: string,
+) {
+  console.log('🏦 Seeding banks...');
+  const banks = [
+    { name: 'Meezan Bank', code: 'MEZAN', accountNumberPrefix: 'MEZ' },
+    { name: 'HBL (Habib Bank Limited)', code: 'HBL', accountNumberPrefix: 'HBL' },
+    { name: 'Allied Bank Limited', code: 'ABL', accountNumberPrefix: 'ABL' },
+    { name: 'Habib Metro Bank', code: 'HMB', accountNumberPrefix: 'HMB' },
+    { name: 'MCB Bank', code: 'MCB', accountNumberPrefix: 'MCB' },
+    { name: 'UBL (United Bank Limited)', code: 'UBL', accountNumberPrefix: 'UBL' },
+    { name: 'Bank Alfalah', code: 'BAFL', accountNumberPrefix: 'BAFL' },
+    { name: 'Standard Chartered Bank', code: 'SCB', accountNumberPrefix: 'SCB' },
+    { name: 'Faysal Bank', code: 'FBL', accountNumberPrefix: 'FBL' },
+    { name: 'Bank of Punjab', code: 'BOP', accountNumberPrefix: 'BOP' },
+    { name: 'Askari Bank', code: 'AKBL', accountNumberPrefix: 'AKBL' },
+    { name: 'JS Bank', code: 'JSBL', accountNumberPrefix: 'JSBL' },
+    { name: 'Soneri Bank', code: 'SNBL', accountNumberPrefix: 'SNBL' },
+    { name: 'Bank Islami', code: 'BIPL', accountNumberPrefix: 'BIPL' },
+    { name: 'Al Baraka Bank', code: 'ABPL', accountNumberPrefix: 'ABPL' },
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  for (const bank of banks) {
+    try {
+      const existing = await prisma.bank.findFirst({
+        where: { name: bank.name },
+      });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      await prisma.bank.create({
+        data: {
+          name: bank.name,
+          code: bank.code,
+          accountNumberPrefix: bank.accountNumberPrefix,
+          status: 'active',
+          createdById,
+        },
+      });
+      created++;
+    } catch (error: any) {
+      console.error(
+        `Error seeding bank "${bank.name}":`,
+        error.message,
+      );
+    }
+  }
+  console.log(`✓ Banks: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
 export async function seedSalaryBreakups(
   prisma: PrismaClient,
   createdById: string,

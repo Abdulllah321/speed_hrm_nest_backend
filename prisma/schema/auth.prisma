@@ -86,6 +86,8 @@ model User {
 
   bonuses Bonus[] @relation("BonusCreatedBy")
   bonusesUpdated Bonus[] @relation("BonusUpdatedBy")
+  banksCreated Bank[] @relation("BankCreatedBy")
+  banksUpdated Bank[] @relation("BankUpdatedBy")
 }
 
 model Role {

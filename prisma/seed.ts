@@ -20,6 +20,7 @@ import {
   seedAllowanceHeads,
   seedDeductionHeads,
   seedBonusTypes,
+  seedBanks,
   seedSalaryBreakups,
   seedProvidentFunds,
   seedLoanTypes,
@@ -1008,6 +1009,9 @@ async function main() {
 
   // Seed Bonus Types
   await seedBonusTypes(prisma, adminUser.id);
+
+  // Seed Banks
+  await seedBanks(prisma, adminUser.id);
 
   // Seed Salary Breakups
   await seedSalaryBreakups(prisma, adminUser.id);

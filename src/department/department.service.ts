@@ -12,12 +12,17 @@ export class DepartmentService {
 
   async getAllDepartments() {
     const departments = await this.prisma.department.findMany({
-      include: { subDepartments: true, createdBy: { select: { firstName: true, lastName: true } } },
+      include: { 
+        subDepartments: true, 
+        createdBy: { select: { firstName: true, lastName: true } },
+        head: { select: { id: true, employeeId: true, employeeName: true } }
+      },
       orderBy: { createdAt: 'desc' },
     })
     const data = departments.map(dept => ({
       ...dept,
       createdBy: dept.createdBy ? `${dept.createdBy.firstName} ${(dept.createdBy.lastName || '')}`.trim() : null,
+      headName: dept.head ? `${dept.head.employeeName} (${dept.head.employeeId})` : null,
     }))
     return { status: true, data }
   }
@@ -25,12 +30,17 @@ export class DepartmentService {
   async getDepartmentById(id: string) {
     const department = await this.prisma.department.findUnique({
       where: { id },
-      include: { subDepartments: true, createdBy: { select: { firstName: true, lastName: true } } },
+      include: { 
+        subDepartments: true, 
+        createdBy: { select: { firstName: true, lastName: true } },
+        head: { select: { id: true, employeeId: true, employeeName: true } }
+      },
     })
     if (!department) return { status: false, message: 'Department not found' }
     const data = {
       ...department,
       createdBy: department.createdBy ? `${department.createdBy.firstName} ${(department.createdBy.lastName || '')}`.trim() : null,
+      headName: department.head ? `${department.head.employeeName} (${department.head.employeeId})` : null,
     }
     return { status: true, data }
   }
@@ -71,7 +81,10 @@ export class DepartmentService {
       const existing = await this.prisma.department.findUnique({ where: { id } })
       const department = await this.prisma.department.update({
         where: { id },
-        data: { name: updateDepartmentDto.name },
+        data: { 
+          name: updateDepartmentDto.name,
+          headId: updateDepartmentDto.headId || null,
+        },
       })
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -109,7 +122,13 @@ export class DepartmentService {
     try {
       const updatedDepartments: any[] = []
       for (const dto of updateDepartmentDto) {
-        const department = await this.prisma.department.update({ where: { id: dto.id }, data: { name: dto.name } })
+        const department = await this.prisma.department.update({ 
+          where: { id: dto.id }, 
+          data: { 
+            name: dto.name,
+            headId: dto.headId || null,
+          } 
+        })
         updatedDepartments.push(department)
       }
       await this.activityLogs.log({
@@ -209,13 +228,18 @@ export class DepartmentService {
 
   async getAllSubDepartments() {
     const subDepartments = await this.prisma.subDepartment.findMany({
-      include: { department: true, createdBy: { select: { firstName: true, lastName: true } } },
+      include: { 
+        department: true, 
+        createdBy: { select: { firstName: true, lastName: true } },
+        head: { select: { id: true, employeeId: true, employeeName: true } }
+      },
       orderBy: { createdAt: 'desc' },
     })
     const data = subDepartments.map(sd => ({
       ...sd,
       departmentName: sd.department.name,
       createdBy: sd.createdBy ? `${sd.createdBy.firstName} ${(sd.createdBy.lastName || '')}`.trim() : null,
+      headName: sd.head ? `${sd.head.employeeName} (${sd.head.employeeId})` : null,
     }))
     return { status: true, data }
   }
@@ -223,13 +247,18 @@ export class DepartmentService {
   async getSubDepartmentsByDepartment(departmentId: string) {
     const subDepartments = await this.prisma.subDepartment.findMany({
       where: { departmentId },
-      include: { department: true, createdBy: { select: { firstName: true, lastName: true } } },
+      include: { 
+        department: true, 
+        createdBy: { select: { firstName: true, lastName: true } },
+        head: { select: { id: true, employeeId: true, employeeName: true } }
+      },
       orderBy: { createdAt: 'desc' },
     })
     const data = subDepartments.map(sd => ({
       ...sd,
       departmentName: sd.department.name,
       createdBy: sd.createdBy ? `${sd.createdBy.firstName} ${(sd.createdBy.lastName || '')}`.trim() : null,
+      headName: sd.head ? `${sd.head.employeeName} (${sd.head.employeeId})` : null,
     }))
     return { status: true, data }
   }
@@ -237,7 +266,12 @@ export class DepartmentService {
   async createSubDepartments(createSubDepartmentDto: CreateSubDepartmentDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const subDepartments = await this.prisma.subDepartment.createMany({
-        data: createSubDepartmentDto.map(dto => ({ name: dto.name, departmentId: dto.departmentId, createdById: dto.createdById })),
+        data: createSubDepartmentDto.map(dto => ({ 
+          name: dto.name, 
+          departmentId: dto.departmentId, 
+          createdById: dto.createdById,
+          headId: (dto as any).headId || null,
+        })),
         skipDuplicates: true,
       })
       await this.activityLogs.log({
@@ -271,22 +305,29 @@ export class DepartmentService {
 
   async updateSubDepartments(updateSubDepartmentDto: UpdateSubDepartmentDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      const subDepartments = await this.prisma.subDepartment.updateMany({
-        where: { id: { in: updateSubDepartmentDto.map(dto => dto.id) } },
-        data: updateSubDepartmentDto.map(dto => ({ name: dto.name })),
-      })
+      const updatedSubDepartments: any[] = []
+      for (const dto of updateSubDepartmentDto) {
+        const subDepartment = await this.prisma.subDepartment.update({
+          where: { id: dto.id },
+          data: { 
+            name: dto.name,
+            headId: dto.headId || null,
+          }
+        })
+        updatedSubDepartments.push(subDepartment)
+      }
       await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',
           module: 'sub-departments',
           entity: 'SubDepartment',
-          description: `Bulk updated sub-departments (${subDepartments.count})`,
+          description: `Bulk updated sub-departments (${updatedSubDepartments.length})`,
           newValues: JSON.stringify(updateSubDepartmentDto),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: subDepartments }
+      return { status: true, data: updatedSubDepartments }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -307,7 +348,13 @@ export class DepartmentService {
   async updateSubDepartment(id: string, updateSubDepartmentDto: UpdateSubDepartmentDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.subDepartment.findUnique({ where: { id } })
-      const subDepartment = await this.prisma.subDepartment.update({ where: { id }, data: { name: updateSubDepartmentDto.name } })
+      const subDepartment = await this.prisma.subDepartment.update({ 
+        where: { id }, 
+        data: { 
+          name: updateSubDepartmentDto.name,
+          headId: updateSubDepartmentDto.headId || null,
+        } 
+      })
       await this.activityLogs.log({
           userId: ctx?.userId,
           action: 'update',

@@ -276,6 +276,8 @@ model ApprovalSetting {
 model Department {
   id                              String                           @id @default(uuid())
   name                            String                           @unique
+  headId                          String? @unique
+  head                            Employee?                        @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   createdById                     String?
   createdBy                       User?                            @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
   createdAt                       DateTime                         @default(now())
@@ -290,6 +292,8 @@ model SubDepartment {
   name                            String
   departmentId                    String
   department                      Department                       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  headId                          String? @unique
+  head                            Employee?                        @relation("SubDepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   createdById                     String?
   createdBy                       User?                            @relation("SubDepartmentCreatedBy", fields: [createdById], references: [id])
   createdAt                       DateTime                         @default(now())
@@ -400,4 +404,18 @@ model Holiday {
   createdBy   User?    @relation("HolidayCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Bank {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  code        String?    @unique // Bank code/SWIFT code
+  accountNumberPrefix String? // Prefix for account numbers
+  status      String     @default("active")
+  createdById String?
+  createdBy   User?      @relation("BankCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?      @relation("BankUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
