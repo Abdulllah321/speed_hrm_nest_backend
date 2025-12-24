@@ -44,6 +44,7 @@ import { IncrementModule } from './increment/increment.module';
 import { BonusModule } from './bonus/bonus.module';
 import { BankModule } from './bank/bank.module';
 import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
+import { PayrollModule } from './payroll/payroll.module';
 
 @Module({
   imports: [
@@ -90,8 +91,9 @@ import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
     ActivityLogsModule,
     BankModule, // added swagger
     RebateNatureModule, // added swagger
+    PayrollModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

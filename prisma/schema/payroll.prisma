@@ -176,3 +176,50 @@ model Bonus {
   @@index([status])
   @@index([paymentMethod])
 }
+
+model Payroll {
+  id            String          @id @default(uuid())
+  month         String          // "01" to "12"
+  year          String          // "YYYY"
+  totalAmount   Decimal         @db.Decimal(15, 2)
+  status        String          @default("draft") // draft, processed, approved
+  generatedAt   DateTime        @default(now())
+  generatedById String?
+  generatedBy   User?           @relation("PayrollGeneratedBy", fields: [generatedById], references: [id])
+  details       PayrollDetail[]
+  
+  @@unique([month, year])
+}
+
+model PayrollDetail {
+  id                   String   @id @default(uuid())
+  payrollId            String
+  payroll              Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  employeeId           String
+  employee             Employee @relation(fields: [employeeId], references: [id])
+  
+  basicSalary          Decimal  @db.Decimal(10, 2)
+  totalAllowances      Decimal  @db.Decimal(10, 2) @default(0)
+  
+  // Deductions
+  totalDeductions      Decimal  @db.Decimal(10, 2) @default(0) // Sum of Head deductions
+  attendanceDeduction  Decimal  @db.Decimal(10, 2) @default(0) // Lates + Absents
+  loanDeduction        Decimal  @db.Decimal(10, 2) @default(0)
+  advanceSalaryDeduction Decimal @db.Decimal(10, 2) @default(0)
+  eobiDeduction        Decimal  @db.Decimal(10, 2) @default(0)
+  providentFundDeduction Decimal @db.Decimal(10, 2) @default(0)
+  taxDeduction         Decimal  @db.Decimal(10, 2) @default(0) // Final calculated tax
+  
+  // Additions
+  overtimeAmount       Decimal  @db.Decimal(10, 2) @default(0)
+  bonusAmount          Decimal  @db.Decimal(10, 2) @default(0)
+  
+  grossSalary          Decimal  @db.Decimal(10, 2)
+  netSalary            Decimal  @db.Decimal(10, 2)
+  
+  paymentStatus        String   @default("pending") // pending, paid
+  paymentDate          DateTime?
+  
+  @@unique([payrollId, employeeId])
+}
+

@@ -224,6 +224,7 @@ model SalaryBreakup {
   id          String   @id @default(uuid())
   name        String   @unique
   details     String?
+  percentage  Decimal? @db.Decimal(5, 2)
   status      String   @default("active")
   createdById String?
   createdBy   User?    @relation("SalaryBreakupCreatedBy", fields: [createdById], references: [id])
