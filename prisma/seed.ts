@@ -28,6 +28,7 @@ import {
   seedEmployees,
 } from './seeds/master-data.js';
 import { seedQualifications } from './seeds/qualifications.js';
+import { seedRebateNatures } from './seeds/rebate-natures.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -1024,6 +1025,9 @@ async function main() {
 
   // Seed Tax Slabs
   await seedTaxSlabs(prisma, adminUser.id);
+
+  // Seed Rebate Natures
+  await seedRebateNatures(prisma, adminUser.id);
 
   // Seed Employees (needs all master data)
   await seedEmployees(prisma, adminUser.id);

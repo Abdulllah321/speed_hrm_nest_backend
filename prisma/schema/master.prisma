@@ -1,13 +1,13 @@
 // Master data models
 
 model Designation {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  status      String     @default("active")
+  id          String      @id @default(uuid())
+  name        String      @unique
+  status      String      @default("active")
   createdById String?
-  createdBy   User?      @relation("DesignationCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdBy   User?       @relation("DesignationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   employees   Employee[]
   increments  Increment[] @relation("IncrementDesignation")
 }
@@ -276,7 +276,7 @@ model ApprovalSetting {
 model Department {
   id                              String                           @id @default(uuid())
   name                            String                           @unique
-  headId                          String? @unique
+  headId                          String?                          @unique
   head                            Employee?                        @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   createdById                     String?
   createdBy                       User?                            @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
@@ -292,7 +292,7 @@ model SubDepartment {
   name                            String
   departmentId                    String
   department                      Department                       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  headId                          String? @unique
+  headId                          String?                          @unique
   head                            Employee?                        @relation("SubDepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   createdById                     String?
   createdBy                       User?                            @relation("SubDepartmentCreatedBy", fields: [createdById], references: [id])
@@ -317,13 +317,13 @@ model EOBI {
 }
 
 model EmployeeGrade {
-  id          String     @id @default(uuid())
-  grade       String     @unique
-  status      String     @default("active")
+  id          String      @id @default(uuid())
+  grade       String      @unique
+  status      String      @default("active")
   createdById String?
-  createdBy   User?      @relation("EmployeeGradeCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdBy   User?       @relation("EmployeeGradeCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   employees   Employee[]
   increments  Increment[] @relation("IncrementEmployeeGrade")
 }
@@ -407,15 +407,50 @@ model Holiday {
 }
 
 model Bank {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  code        String?    @unique // Bank code/SWIFT code
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  code                String?  @unique // Bank code/SWIFT code
   accountNumberPrefix String? // Prefix for account numbers
-  status      String     @default("active")
-  createdById String?
-  createdBy   User?      @relation("BankCreatedBy", fields: [createdById], references: [id])
-  updatedById String?
-  updatedBy   User?      @relation("BankUpdatedBy", fields: [updatedById], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  status              String   @default("active")
+  createdById         String?
+  createdBy           User?    @relation("BankCreatedBy", fields: [createdById], references: [id])
+  updatedById         String?
+  updatedBy           User?    @relation("BankUpdatedBy", fields: [updatedById], references: [id])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model RebateNature {
+  id                      String   @id @default(uuid())
+  name                    String   @unique
+  status                  String   @default("active")
+  maxInvestmentPercentage Decimal? @db.Decimal(5, 2)
+  maxInvestmentAmount     Decimal? @db.Decimal(12, 2)
+  details                 String?
+  underSection            String?
+  isAgeDependent          Boolean  @default(false)
+  createdById             String?
+  createdBy               User?    @relation("RebateNatureCreatedBy", fields: [createdById], references: [id])
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  rebates                 Rebate[] @relation("RebateNatureRebate")
+}
+
+model Rebate {
+  id             String       @id @default(uuid())
+  employeeId     String
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  rebateNatureId String
+  rebateNature   RebateNature @relation("RebateNatureRebate", fields: [rebateNatureId], references: [id], onDelete: Restrict)
+  rebateAmount   Decimal      @db.Decimal(12, 2)
+  monthYear      String // YYYY-MM
+  attachment     String?
+  status         String       @default("pending") // pending, approved, rejected
+  remarks        String?
+  createdById    String?
+  createdBy      User?        @relation("RebateCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([employeeId, rebateNatureId, monthYear])
 }

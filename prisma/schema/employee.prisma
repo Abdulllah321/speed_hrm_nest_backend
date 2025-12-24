@@ -86,10 +86,11 @@ model Employee {
   deductions                      Deduction[]
   advanceSalaries                 AdvanceSalary[]
   loanRequests                    LoanRequest[]
-  overtimeRequests       OvertimeRequest[] @relation("OvertimeRequestEmployee")
-  increments             Increment[] @relation("IncrementEmployee")
+  overtimeRequests                OvertimeRequest[]                @relation("OvertimeRequestEmployee")
+  increments                      Increment[]                      @relation("IncrementEmployee")
 
-  bonuses Bonus[] @relation("BonusEmployee")
+  bonuses Bonus[]  @relation("BonusEmployee")
+  rebates Rebate[]
 }
 
 model EmployeeRejoiningHistory {

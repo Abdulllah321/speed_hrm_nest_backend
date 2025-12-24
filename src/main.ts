@@ -55,6 +55,21 @@ async function bootstrap() {
     }),
   );
   
+  /* Swagger Setup */
+  const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
+  const config = new DocumentBuilder()
+    .setTitle('Speed Limit API')
+    .setDescription('The Speed Limit API description')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
+
   const origins = (process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean);
   app.enableCors({
     origin: origins.length ? origins : true,

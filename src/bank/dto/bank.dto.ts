@@ -1,21 +1,21 @@
 import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class CreateBranchDto {
-  @ApiProperty({ example: 'Main Branch' })
+export class CreateBankDto {
+  @ApiProperty({ example: 'HBL' })
   @IsNotEmpty()
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: '123 Main St' })
+  @ApiPropertyOptional({ example: 'HBL123' })
   @IsOptional()
   @IsString()
-  address?: string;
+  code?: string;
 
-  @ApiPropertyOptional({ example: 'city-uuid' })
+  @ApiPropertyOptional({ example: '123' })
   @IsOptional()
   @IsString()
-  cityId?: string;
+  accountNumberPrefix?: string;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()
@@ -23,30 +23,29 @@ export class CreateBranchDto {
   status?: string;
 }
 
-export class UpdateBranchDto {
-  @ApiProperty({ example: 'branch-uuid' })
+export class UpdateBankDto {
+  @ApiProperty({ example: 'bank-uuid' })
   @IsNotEmpty()
   @IsString()
-  id: string;
+  id;
 
-  @ApiProperty({ example: 'Downtown Branch' })
-  @IsNotEmpty()
-  @IsString()
-  name: string;
-
-  @ApiPropertyOptional({ example: '456 Market St' })
+  @ApiPropertyOptional({ example: 'Meezan Bank' })
   @IsOptional()
   @IsString()
-  address?: string;
+  name?: string;
 
-  @ApiPropertyOptional({ example: 'city-uuid' })
+  @ApiPropertyOptional({ example: 'MZN123' })
   @IsOptional()
   @IsString()
-  cityId?: string;
+  code?: string;
+
+  @ApiPropertyOptional({ example: '456' })
+  @IsOptional()
+  @IsString()
+  accountNumberPrefix?: string;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()
   @IsString()
   status?: string;
 }
-

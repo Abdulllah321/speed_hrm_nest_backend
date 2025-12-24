@@ -8,36 +8,44 @@
   IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateBonusItemDto {
+  @ApiProperty({ example: 'emp-uuid' })
   @IsNotEmpty()
   @IsString()
   employeeId: string;
 
+  @ApiProperty({ example: 5000 })
   @IsNotEmpty()
   @IsNumber()
   amount: number;
 
+  @ApiPropertyOptional({ example: 10 })
   @IsOptional()
   @IsNumber()
   percentage?: number;
 }
 
 export class CreateBonusDto {
+  @ApiProperty({ example: 'bt-uuid' })
   @IsNotEmpty()
   @IsString()
   bonusTypeId: string;
 
+  @ApiProperty({ example: '2023-12' })
   @IsNotEmpty()
   @IsString()
   bonusMonthYear: string; // Format: "YYYY-MM"
 
+  @ApiProperty({ type: [CreateBonusItemDto] })
   @IsNotEmpty()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateBonusItemDto)
   bonuses: CreateBonusItemDto[];
 
+  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'] })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -45,6 +53,7 @@ export class CreateBonusDto {
   })
   paymentMethod?: string; // "with_salary" | "separately"
 
+  @ApiPropertyOptional({ example: 'deduct-current-month', enum: ['distributed-remaining-months', 'deduct-current-month'] })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
@@ -53,32 +62,39 @@ export class CreateBonusDto {
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
 
+  @ApiPropertyOptional({ example: 'Holiday Bonus' })
   @IsOptional()
   @IsString()
   notes?: string;
 }
 
 export class UpdateBonusDto {
+  @ApiPropertyOptional({ example: 'bt-uuid' })
   @IsOptional()
   @IsString()
   bonusTypeId?: string;
 
+  @ApiPropertyOptional({ example: 6000 })
   @IsOptional()
   @IsNumber()
   amount?: number;
 
+  @ApiPropertyOptional({ example: 12 })
   @IsOptional()
   @IsNumber()
   percentage?: number;
 
+  @ApiPropertyOptional({ example: 'Updated Notes' })
   @IsOptional()
   @IsString()
   notes?: string;
 
+  @ApiPropertyOptional({ example: 'approved' })
   @IsOptional()
   @IsString()
   status?: string;
 
+  @ApiPropertyOptional({ example: 'separately', enum: ['with_salary', 'separately'] })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -86,6 +102,7 @@ export class UpdateBonusDto {
   })
   paymentMethod?: string; // "with_salary" | "separately"
 
+  @ApiPropertyOptional({ example: 'distributed-remaining-months', enum: ['distributed-remaining-months', 'deduct-current-month'] })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
@@ -96,20 +113,24 @@ export class UpdateBonusDto {
 }
 
 export class BulkCreateBonusDto {
+  @ApiProperty({ example: 'bt-uuid' })
   @IsNotEmpty()
   @IsString()
   bonusTypeId: string;
 
+  @ApiProperty({ example: '2023-12' })
   @IsNotEmpty()
   @IsString()
   bonusMonthYear: string; // Format: "YYYY-MM"
 
+  @ApiProperty({ type: [CreateBonusItemDto] })
   @IsNotEmpty()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateBonusItemDto)
   bonuses: CreateBonusItemDto[];
 
+  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'] })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -117,6 +138,7 @@ export class BulkCreateBonusDto {
   })
   paymentMethod?: string; // "with_salary" | "separately"
 
+  @ApiPropertyOptional({ example: 'deduct-current-month', enum: ['distributed-remaining-months', 'deduct-current-month'] })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
@@ -125,6 +147,7 @@ export class BulkCreateBonusDto {
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
 
+  @ApiPropertyOptional({ example: 'Bulk Bonus' })
   @IsOptional()
   @IsString()
   notes?: string;

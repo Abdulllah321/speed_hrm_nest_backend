@@ -79,15 +79,17 @@ model User {
   loanRequestsApproved            LoanRequest[]                    @relation("LoanRequestApprovedBy")
   loanRequestsCreated             LoanRequest[]                    @relation("LoanRequestCreatedBy")
   loanRequestsUpdated             LoanRequest[]                    @relation("LoanRequestUpdatedBy")
-  overtimeRequestsCreated        OvertimeRequest[]               @relation("OvertimeRequestCreatedBy")
-  overtimeRequestsUpdated        OvertimeRequest[]                @relation("OvertimeRequestUpdatedBy")
-  incrementsCreated              Increment[]                     @relation("IncrementCreatedBy")
-  incrementsUpdated              Increment[]                     @relation("IncrementUpdatedBy")
+  overtimeRequestsCreated         OvertimeRequest[]                @relation("OvertimeRequestCreatedBy")
+  overtimeRequestsUpdated         OvertimeRequest[]                @relation("OvertimeRequestUpdatedBy")
+  incrementsCreated               Increment[]                      @relation("IncrementCreatedBy")
+  incrementsUpdated               Increment[]                      @relation("IncrementUpdatedBy")
 
-  bonuses Bonus[] @relation("BonusCreatedBy")
-  bonusesUpdated Bonus[] @relation("BonusUpdatedBy")
-  banksCreated Bank[] @relation("BankCreatedBy")
-  banksUpdated Bank[] @relation("BankUpdatedBy")
+  bonuses              Bonus[]        @relation("BonusCreatedBy")
+  bonusesUpdated       Bonus[]        @relation("BonusUpdatedBy")
+  banksCreated         Bank[]         @relation("BankCreatedBy")
+  banksUpdated         Bank[]         @relation("BankUpdatedBy")
+  rebateNaturesCreated RebateNature[] @relation("RebateNatureCreatedBy")
+  rebatesCreated       Rebate[]       @relation("RebateCreatedBy")
 }
 
 model Role {

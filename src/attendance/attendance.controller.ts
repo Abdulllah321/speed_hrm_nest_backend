@@ -2,16 +2,24 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards 
 import { AttendanceService } from './attendance.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import type { FastifyRequest } from 'fastify'
-import type { MultipartFile } from '@fastify/multipart'
 import * as fs from 'fs'
 import * as path from 'path'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger'
+import { CreateAttendanceDto, UpdateAttendanceDto } from './dto/create-attendance.dto'
 
+@ApiTags('Attendance')
 @Controller('api')
 export class AttendanceController {
   constructor(private service: AttendanceService) {}
 
   @Get('attendances')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List attendances' })
+  @ApiQuery({ name: 'employeeId', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  @ApiQuery({ name: 'status', required: false })
   async list(
     @Query('employeeId') employeeId?: string,
     @Query('dateFrom') dateFrom?: string,
@@ -28,6 +36,13 @@ export class AttendanceController {
 
   @Get('attendances/summary')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get attendance summary' })
+  @ApiQuery({ name: 'employeeId', required: false })
+  @ApiQuery({ name: 'departmentId', required: false })
+  @ApiQuery({ name: 'subDepartmentId', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
   async getSummary(
     @Query('employeeId') employeeId?: string,
     @Query('departmentId') departmentId?: string,
@@ -46,13 +61,17 @@ export class AttendanceController {
 
   @Get('attendances/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get attendance by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id)
   }
 
   @Post('attendances')
   @UseGuards(JwtAuthGuard)
-  async create(@Body() body: any, @Req() req: any) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create attendance' })
+  async create(@Body() body: CreateAttendanceDto, @Req() req: any) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -62,6 +81,8 @@ export class AttendanceController {
 
   @Post('attendances/date-range')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create attendance for date range' })
   async createForDateRange(@Body() body: any, @Req() req: any) {
     return this.service.createForDateRange(body, {
       userId: req.user?.userId,
@@ -72,7 +93,9 @@ export class AttendanceController {
 
   @Put('attendances/:id')
   @UseGuards(JwtAuthGuard)
-  async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update attendance' })
+  async update(@Param('id') id: string, @Body() body: UpdateAttendanceDto, @Req() req: any) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -82,6 +105,8 @@ export class AttendanceController {
 
   @Delete('attendances/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete attendance' })
   async delete(@Param('id') id: string, @Req() req: any) {
     return this.service.delete(id, {
       userId: req.user?.userId,
@@ -92,6 +117,8 @@ export class AttendanceController {
 
   @Post('attendances/bulk-upload')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk upload attendance from CSV' })
   async bulkUpload(@Req() request: FastifyRequest) {
     const data = await request.file()
     if (!data) {

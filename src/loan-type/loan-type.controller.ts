@@ -1,26 +1,35 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
 import { LoanTypeService } from './loan-type.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
+import { CreateLoanTypeDto, UpdateLoanTypeDto } from './dto/loan-type.dto'
 
+@ApiTags('Loan Type')
 @Controller('api')
 export class LoanTypeController {
   constructor(private service: LoanTypeService) {}
 
   @Get('loan-types')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all loan types' })
   async list() {
     return this.service.list()
   }
 
   @Get('loan-types/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get loan type by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id)
   }
 
   @Post('loan-types')
   @UseGuards(JwtAuthGuard)
-  async create(@Body() body: { name: string; status?: string }, @Req() req) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create loan type' })
+  async create(@Body() body: CreateLoanTypeDto, @Req() req) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -30,7 +39,9 @@ export class LoanTypeController {
 
   @Put('loan-types/:id')
   @UseGuards(JwtAuthGuard)
-  async update(@Param('id') id: string, @Body() body: { name: string; status?: string }, @Req() req) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update loan type' })
+  async update(@Param('id') id: string, @Body() body: UpdateLoanTypeDto, @Req() req) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -40,6 +51,8 @@ export class LoanTypeController {
 
   @Delete('loan-types/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete loan type' })
   async remove(@Param('id') id: string, @Req() req) {
     return this.service.remove(id, {
       userId: req.user?.userId,
@@ -50,7 +63,10 @@ export class LoanTypeController {
 
   @Post('loan-types/bulk')
   @UseGuards(JwtAuthGuard)
-  async createBulk(@Body() body: { items: { name: string; status?: string }[] }, @Req() req) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create loan types in bulk' })
+  @ApiBody({ type: CreateLoanTypeDto, isArray: true })
+  async createBulk(@Body() body: { items: CreateLoanTypeDto[] }, @Req() req) {
     return this.service.createBulk(body.items || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -60,8 +76,11 @@ export class LoanTypeController {
 
   @Put('loan-types/bulk')
   @UseGuards(JwtAuthGuard)
-  async updateBulk(@Body() body: { items: { id: string; name: string; status?: string }[] }, @Req() req) {
-    return this.service.updateBulk(body.items || [], {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update loan types in bulk' })
+  @ApiBody({ type: UpdateLoanTypeDto, isArray: true })
+  async updateBulk(@Body() body: { items: UpdateLoanTypeDto[] }, @Req() req) {
+    return this.service.updateBulk((body.items as any) || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
@@ -70,6 +89,9 @@ export class LoanTypeController {
 
   @Delete('loan-types/bulk')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete loan types in bulk' })
+  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
   async removeBulk(@Body() body: { ids: string[] }, @Req() req) {
     return this.service.removeBulk(body.ids || [], {
       userId: req.user?.userId,

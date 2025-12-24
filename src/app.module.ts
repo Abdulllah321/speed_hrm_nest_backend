@@ -43,51 +43,53 @@ import { OvertimeRequestModule } from './overtime-request/overtime-request.modul
 import { IncrementModule } from './increment/increment.module';
 import { BonusModule } from './bonus/bonus.module';
 import { BankModule } from './bank/bank.module';
+import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
 
 @Module({
   imports: [
     PrismaModule,
-    AuthModule,
-    EmployeeModule,
-    AttendanceModule,
-    ExitClearanceModule,
-    AttendanceRequestQueryModule,
-    AttendanceExemptionModule,
-    LeaveApplicationModule,
-    RequestForwardingModule,
-    AllowanceModule,
-    DeductionModule,
-    AdvanceSalaryModule,
-    LoanRequestModule,
-    AllowanceHeadModule,
-    DeductionHeadModule,
-    OvertimeRequestModule,
-    IncrementModule,
-    BonusModule,
-    CityModule,
-    DepartmentModule,
-    DesignationModule,
-    EmployeeGradeModule,
-    EmployeeStatusModule,
-    BranchModule,
-    EquipmentModule,
-    WorkingHoursPolicyModule,
-    JobTypeModule,
-    InstituteModule,
-    QualificationModule,
-    ProvidentFundModule,
-    TaxSlabModule,
-    MaritalStatusModule,
-    LeaveTypeModule,
-    LeavesPolicyModule,
-    LoanTypeModule,
-    EobiModule,
-    BonusTypeModule,
-    SalaryBreakupModule,
-    HolidayModule,
-    UploadModule,
+    AuthModule, // added swagger
+    EmployeeModule, // added swagger
+    AttendanceModule, // added swagger
+    ExitClearanceModule, // added swagger
+    AttendanceRequestQueryModule, // added swagger
+    AttendanceExemptionModule, // added swagger
+    LeaveApplicationModule, // added swagger
+    RequestForwardingModule, // added swagger
+    AllowanceModule, // added swagger
+    DeductionModule, // added swagger
+    AdvanceSalaryModule, // added swagger
+    LoanRequestModule, // added swagger
+    AllowanceHeadModule, // added swagger
+    DeductionHeadModule, // added swagger
+    OvertimeRequestModule, // added swagger
+    IncrementModule, // added swagger
+    BonusModule, // added swagger
+    CityModule, // added swagger
+    DepartmentModule, // added swagger
+    DesignationModule, // added swagger
+    EmployeeGradeModule, // added swagger
+    EmployeeStatusModule, // added swagger
+    BranchModule, // added swagger
+    EquipmentModule, // added swagger
+    WorkingHoursPolicyModule, // added swagger
+    JobTypeModule, // added swagger
+    InstituteModule, // added swagger
+    QualificationModule, // added swagger
+    ProvidentFundModule, // added swagger
+    TaxSlabModule, // added swagger
+    MaritalStatusModule, // added swagger
+    LeaveTypeModule, // added swagger
+    LeavesPolicyModule, // added swagger
+    LoanTypeModule, // added swagger
+    EobiModule, // added swagger
+    BonusTypeModule, // added swagger
+    SalaryBreakupModule, // added swagger
+    HolidayModule, // added swagger
+    UploadModule, // added swagger
     ActivityLogsModule,
-    BankModule,
+    BankModule, // added swagger
+    RebateNatureModule, // added swagger
   ],
   controllers: [AppController],
   providers: [AppService],

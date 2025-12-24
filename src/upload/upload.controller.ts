@@ -3,13 +3,29 @@ import { UploadService } from './upload.service';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 
+@ApiTags('Upload')
 @Controller('api')
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
   @Post('uploads')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a single file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
   async uploadSingleFile(@Req() request: FastifyRequest) {
     const data = await request.file();
     if (!data) {
@@ -21,6 +37,23 @@ export class UploadController {
 
   @Post('uploads/multiple')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload multiple files' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+    },
+  })
   async uploadMultipleFiles(@Req() request: FastifyRequest) {
     const parts = request.parts();
     const files: MultipartFile[] = [];
@@ -36,11 +69,14 @@ export class UploadController {
 
   @Get('uploads')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all uploads' })
   async listUploads() {
     return this.uploadService.listUploads();
   }
 
   @Get('uploads/:id')
+  @ApiOperation({ summary: 'View upload (image)' })
   // Public endpoint for viewing images (no auth required)
   async getUpload(@Param('id') id: string, @Res() reply: FastifyReply) {
     try {
@@ -61,6 +97,8 @@ export class UploadController {
 
   @Get('uploads/download/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Download upload file' })
   async downloadUpload(@Param('id') id: string, @Res() reply: FastifyReply) {
     const { item, stream } = await this.uploadService.downloadUpload(id);
     reply.header('Content-Type', item.mimetype);
@@ -70,6 +108,8 @@ export class UploadController {
 
   @Delete('uploads/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete upload' })
   async deleteUpload(@Param('id') id: string) {
     return this.uploadService.deleteUpload(id);
   }

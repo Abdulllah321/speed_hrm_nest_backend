@@ -11,40 +11,37 @@ import {
 } from '@nestjs/common';
 import { BankService } from './bank.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import { CreateBankDto, UpdateBankDto } from './dto/bank.dto';
 
-interface AuthenticatedRequest {
-  user?: { userId?: string };
-  ip?: string;
-  headers?: { 'user-agent'?: string };
-}
-
+@ApiTags('Bank')
 @Controller('api')
 export class BankController {
   constructor(private service: BankService) {}
 
   @Get('banks')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all banks' })
   async list() {
     return this.service.list();
   }
 
   @Get('banks/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get bank by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('banks')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create bank' })
   async create(
-    @Body()
-    body: {
-      name: string;
-      code?: string;
-      accountNumberPrefix?: string;
-      status?: string;
-    },
-    @Req() req: AuthenticatedRequest,
+    @Body() body: CreateBankDto,
+    @Req() req: any,
   ) {
     return this.service.create(body, {
       userId: req.user?.userId,
@@ -55,17 +52,15 @@ export class BankController {
 
   @Post('banks/bulk')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create banks in bulk' })
+  @ApiBody({ type: CreateBankDto, isArray: true })
   async createBulk(
     @Body()
     body: {
-      items: {
-        name: string;
-        code?: string;
-        accountNumberPrefix?: string;
-        status?: string;
-      }[];
+      items: CreateBankDto[];
     },
-    @Req() req: AuthenticatedRequest,
+    @Req() req: any,
   ) {
     return this.service.createBulk(body.items ?? [], {
       userId: req.user?.userId,
@@ -76,16 +71,12 @@ export class BankController {
 
   @Put('banks/:id')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update bank' })
   async update(
     @Param('id') id: string,
-    @Body()
-    body: {
-      name?: string;
-      code?: string;
-      accountNumberPrefix?: string;
-      status?: string;
-    },
-    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateBankDto,
+    @Req() req: any,
   ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
@@ -96,7 +87,9 @@ export class BankController {
 
   @Delete('banks/:id')
   @UseGuards(JwtAuthGuard)
-  async remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete bank' })
+  async remove(@Param('id') id: string, @Req() req: any) {
     return this.service.remove(id, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -106,20 +99,17 @@ export class BankController {
 
   @Put('banks/bulk')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update banks in bulk' })
+  @ApiBody({ type: UpdateBankDto, isArray: true })
   async updateBulk(
     @Body()
     body: {
-      items: {
-        id: string;
-        name: string;
-        code?: string;
-        accountNumberPrefix?: string;
-        status?: string;
-      }[];
+      items: UpdateBankDto[];
     },
-    @Req() req: AuthenticatedRequest,
+    @Req() req: any,
   ) {
-    return this.service.updateBulk(body.items ?? [], {
+    return this.service.updateBulk((body.items as any) ?? [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers?.['user-agent'],
@@ -128,9 +118,12 @@ export class BankController {
 
   @Delete('banks/bulk')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete banks in bulk' })
+  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
   async removeBulk(
     @Body() body: { ids: string[] },
-    @Req() req: AuthenticatedRequest,
+    @Req() req: any,
   ) {
     return this.service.removeBulk(body.ids ?? [], {
       userId: req.user?.userId,
