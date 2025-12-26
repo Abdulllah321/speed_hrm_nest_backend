@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common'
+import { Controller, Get, Param, UseGuards, Post, Body } from '@nestjs/common'
 import { EmployeeStatusService } from './employee-status.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
@@ -6,7 +6,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 @ApiTags('Employee Status')
 @Controller('api')
 export class EmployeeStatusController {
-  constructor(private service: EmployeeStatusService) {}
+  constructor(private service: EmployeeStatusService) { }
 
   @Get('employee-statuses')
   @UseGuards(JwtAuthGuard)
@@ -22,5 +22,16 @@ export class EmployeeStatusController {
   @ApiOperation({ summary: 'Get employee status by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id)
+  }
+
+  @Post('employee-statuses/bulk')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk create employee statuses' })
+  async bulkCreate(@Body() body: { items: { status: string; statusType?: string }[] }) {
+    if (!body || !Array.isArray(body.items)) {
+      return { status: false, message: 'Invalid payload, expected object with items array' };
+    }
+    return this.service.bulkCreate(body.items);
   }
 }
