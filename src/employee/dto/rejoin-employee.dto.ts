@@ -187,17 +187,42 @@ export class RejoinEmployeeDto {
   remarks?: string;
 
   // Legacy fields for backward compatibility
+  @IsOptional()
   department?: string;
+  @IsOptional()
   subDepartment?: string;
+  @IsOptional()
   employeeGrade?: string;
+  @IsOptional()
   designation?: string;
+  @IsOptional()
   maritalStatus?: string;
+  @IsOptional()
   employmentStatus?: string;
+  @IsOptional()
   country?: string;
+  @IsOptional()
   province?: string;
+  @IsOptional()
   state?: string;
+  @IsOptional()
   city?: string;
+  @IsOptional()
   workingHoursPolicy?: string;
+  @IsOptional()
   branch?: string;
+  @IsOptional()
   leavesPolicy?: string;
+
+  @IsOptional()
+  emergencyContactPersonName?: string;
+
+  @IsOptional()
+  selectedEquipments?: any;
+
+  @IsOptional()
+  avatarUrl?: string;
+
+  @IsOptional()
+  qualifications?: any;
 }
