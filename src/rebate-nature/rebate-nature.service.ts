@@ -40,6 +40,52 @@ export class RebateNatureService {
     });
   }
 
+  async findFixedRebateNatures() {
+    const fixedNatures = await this.prisma.rebateNature.findMany({
+      where: {
+        type: 'fixed',
+        status: 'active',
+      },
+      orderBy: [
+        { category: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+
+    // Group by category
+    const grouped = fixedNatures.reduce((acc, nature) => {
+      const category = nature.category || 'Other';
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(nature);
+      return acc;
+    }, {} as Record<string, typeof fixedNatures>);
+
+    return grouped;
+  }
+
+  async findAllByType(type: 'fixed' | 'other') {
+    return this.prisma.rebateNature.findMany({
+      where: {
+        type,
+        status: 'active',
+      },
+      include: {
+        createdBy: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: [
+        { category: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+  }
+
   async findOne(id: string) {
     const rebateNature = await this.prisma.rebateNature.findUnique({
       where: { id },

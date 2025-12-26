@@ -423,6 +423,8 @@ model Bank {
 model RebateNature {
   id                      String   @id @default(uuid())
   name                    String   @unique
+  type                    String   @default("other") // "fixed" or "other"
+  category                String?  // For fixed type: Education, Consumer, Banking, Vehicle, Telephone, Property
   status                  String   @default("active")
   maxInvestmentPercentage Decimal? @db.Decimal(5, 2)
   maxInvestmentAmount     Decimal? @db.Decimal(12, 2)
