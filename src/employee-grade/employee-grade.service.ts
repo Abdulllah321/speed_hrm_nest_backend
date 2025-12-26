@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class EmployeeGradeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async list() {
     const items = await this.prisma.employeeGrade.findMany({
@@ -16,5 +16,33 @@ export class EmployeeGradeService {
     const item = await this.prisma.employeeGrade.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'Grade not found' };
     return { status: true, data: item };
+  }
+
+  async bulkCreate(items: { grade: string; status?: string }[]) {
+    try {
+      const validData = items
+        .filter((item) => item.grade && item.grade.trim().length > 0)
+        .map((item) => ({
+          grade: item.grade.trim(),
+          status: item.status || 'Active',
+        }));
+
+      if (validData.length === 0) {
+        return { status: false, message: 'No valid data provided' };
+      }
+
+      await this.prisma.employeeGrade.createMany({
+        data: validData,
+        skipDuplicates: true,
+      });
+
+      return { status: true, message: 'Employee grades created successfully' };
+    } catch (error) {
+      let errorMessage = 'Failed to create employee grades';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      return { status: false, message: errorMessage };
+    }
   }
 }
