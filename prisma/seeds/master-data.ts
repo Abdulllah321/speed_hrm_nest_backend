@@ -983,11 +983,11 @@ export async function seedSalaryBreakups(
 ) {
   console.log('💵 Seeding salary breakups...');
   const salaryBreakups = [
-    { name: 'Basic Salary', details: 'Base salary component' },
-    { name: 'Gross Salary', details: 'Total salary before deductions' },
-    { name: 'Net Salary', details: 'Salary after all deductions' },
-    { name: 'Cost to Company (CTC)', details: 'Total cost of employment' },
-    { name: 'Take Home Salary', details: 'Net amount received by employee' },
+    { name: 'Basic Salary', details: 'Base salary component',percentage: 50 },
+    { name: 'Gross Salary', details: 'Total salary before deductions',percentage: 10 },
+    { name: 'Net Salary', details: 'Salary after all deductions',percentage: 10 },
+    { name: 'Cost to Company (CTC)', details: 'Total cost of employment',percentage: 10 },
+    { name: 'Take Home Salary', details: 'Net amount received by employee',percentage: 10 },
   ];
 
   let created = 0;
@@ -1007,6 +1007,7 @@ export async function seedSalaryBreakups(
           details: breakup.details,
           status: 'active',
           createdById,
+          percentage: breakup.percentage,
         },
       });
       created++;

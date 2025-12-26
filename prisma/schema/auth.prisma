@@ -89,7 +89,8 @@ model User {
   banksCreated         Bank[]         @relation("BankCreatedBy")
   banksUpdated         Bank[]         @relation("BankUpdatedBy")
   rebateNaturesCreated RebateNature[] @relation("RebateNatureCreatedBy")
-  rebatesCreated       Rebate[]       @relation("RebateCreatedBy")
+  rebalesCreated       Rebate[]       @relation("RebateCreatedBy")
+  payrollsGenerated    Payroll[]      @relation("PayrollGeneratedBy")
 }
 
 model Role {

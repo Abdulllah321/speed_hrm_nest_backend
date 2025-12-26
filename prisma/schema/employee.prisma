@@ -91,6 +91,7 @@ model Employee {
 
   bonuses Bonus[]  @relation("BonusEmployee")
   rebates Rebate[]
+  payrollDetails PayrollDetail[]
 }
 
 model EmployeeRejoiningHistory {
