@@ -24,7 +24,8 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "check-seed": "bun run check-seed.ts",
-    "prisma:deploy": "prisma generate && prisma migrate dev && prisma db push"
+    "prisma:deploy": "prisma generate && prisma migrate dev && prisma db push",
+    "prisma:seed:reset": "prisma migrate reset && prisma generate && prisma db push && prisma db seed"
   },
   "dependencies": {
     "@fastify/multipart": "^9.3.0",

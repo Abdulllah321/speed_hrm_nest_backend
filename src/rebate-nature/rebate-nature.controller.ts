@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -16,7 +17,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
 @ApiTags('Rebate Nature')
-@Controller('rebate-nature')
+@Controller('api/rebate-nature')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 
@@ -31,10 +32,20 @@ export class RebateNatureController {
     return this.rebateNatureService.create(createRebateNatureDto, req.user.id);
   }
 
+  @Get('fixed/grouped')
+  @ApiOperation({ summary: 'Get fixed rebate natures grouped by category' })
+  @ApiResponse({ status: 200, description: 'Return fixed rebate natures grouped by category.' })
+  findFixedGrouped() {
+    return this.rebateNatureService.findFixedRebateNatures();
+  }
+
   @Get()
-  @ApiOperation({ summary: 'Get all rebate natures' })
-  @ApiResponse({ status: 200, description: 'Return all rebate natures.' })
-  findAll() {
+  @ApiOperation({ summary: 'Get all rebate natures or filter by type' })
+  @ApiResponse({ status: 200, description: 'Return all rebate natures or filtered by type.' })
+  findAll(@Query('type') type?: string) {
+    if (type === 'fixed' || type === 'other') {
+      return this.rebateNatureService.findAllByType(type);
+    }
     return this.rebateNatureService.findAll();
   }
 

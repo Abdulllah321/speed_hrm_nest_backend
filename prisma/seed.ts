@@ -26,6 +26,7 @@ import {
   seedLoanTypes,
   seedTaxSlabs,
   seedEmployees,
+  seedFixedRebateNatures,
 } from './seeds/master-data.js';
 import { seedQualifications } from './seeds/qualifications.js';
 import { seedRebateNatures } from './seeds/rebate-natures.js';
@@ -1028,6 +1029,9 @@ async function main() {
 
   // Seed Rebate Natures
   await seedRebateNatures(prisma, adminUser.id);
+
+  // Seed Fixed Rebate Natures
+  await seedFixedRebateNatures(prisma, adminUser.id);
 
   // Seed Employees (needs all master data)
   await seedEmployees(prisma, adminUser.id);
