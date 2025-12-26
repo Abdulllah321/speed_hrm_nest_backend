@@ -18,52 +18,58 @@ export class CreateEmployeeDto {
   @IsString()
   fatherHusbandName: string;
 
-  @ApiProperty({ example: 'dept-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'dept-uuid' })
+  @IsOptional()
   @IsString()
-  departmentId: string;
+  departmentId?: string;
 
   @ApiPropertyOptional({ example: 'subdept-uuid' })
   @IsOptional()
   @IsString()
   subDepartmentId?: string;
 
-  @ApiProperty({ example: 'grade-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'grade-uuid' })
+  @IsOptional()
   @IsString()
-  employeeGradeId: string;
+  employeeGradeId?: string;
 
   @ApiProperty({ example: 'attendance-id-123' })
   @IsNotEmpty()
   @IsString()
   attendanceId: string;
 
-  @ApiProperty({ example: 'designation-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'designation-uuid' })
+  @IsOptional()
   @IsString()
-  designationId: string;
+  designationId?: string;
 
-  @ApiProperty({ example: 'marital-status-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'marital-status-uuid' })
+  @IsOptional()
   @IsString()
-  maritalStatusId: string;
+  maritalStatusId?: string;
 
-  @ApiProperty({ example: 'emp-status-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'emp-status-uuid' })
+  @IsOptional()
   @IsString()
-  employmentStatusId: string;
+  employmentStatusId?: string;
 
   @ApiPropertyOptional()
+  @IsOptional()
   department?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   subDepartment?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   employeeGrade?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   designation?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   maritalStatus?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   employmentStatus?: string;
 
   @ApiPropertyOptional({ example: '2024-06-01' })
@@ -131,28 +137,32 @@ export class CreateEmployeeDto {
   @IsEmail()
   officialEmail: string;
 
-  @ApiProperty({ example: 'country-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'country-uuid' })
+  @IsOptional()
   @IsString()
-  countryId: string;
+  countryId?: string;
 
-  @ApiProperty({ example: 'state-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'state-uuid' })
+  @IsOptional()
   @IsString()
-  stateId: string;
+  stateId?: string;
 
-  @ApiProperty({ example: 'city-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'city-uuid' })
+  @IsOptional()
   @IsString()
-  cityId: string;
+  cityId?: string;
 
   @ApiPropertyOptional()
+  @IsOptional()
   country?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   province?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   state?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   city?: string;
 
   @ApiPropertyOptional({ example: 'DHA Phase 6' })
@@ -196,26 +206,29 @@ export class CreateEmployeeDto {
   @IsString()
   reportingManager: string;
 
-  @ApiProperty({ example: 'policy-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'policy-uuid' })
+  @IsOptional()
   @IsString()
-  workingHoursPolicyId: string;
+  workingHoursPolicyId?: string;
 
-  @ApiProperty({ example: 'branch-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'branch-uuid' })
+  @IsOptional()
   @IsString()
-  branchId: string;
+  branchId?: string;
 
-  @ApiProperty({ example: 'leaves-policy-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'leaves-policy-uuid' })
+  @IsOptional()
   @IsString()
-  leavesPolicyId: string;
+  leavesPolicyId?: string;
 
   @ApiPropertyOptional()
+  @IsOptional()
   workingHoursPolicy?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   branch?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   leavesPolicy?: string;
 
   @ApiPropertyOptional({ example: false })
@@ -292,145 +305,311 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  emergencyContactPersonName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  selectedEquipments?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  avatarUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  eobiDocumentUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  documentUrls?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  qualifications?: any;
 }
 
 export class UpdateEmployeeDto {
-  @ApiProperty({ example: 'uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'uuid' })
+  @IsOptional()
   @IsString()
-  id: string;
+  id?: string;
 
   @ApiPropertyOptional({ example: 'EMP-001' })
+  @IsOptional()
+  @IsString()
   employeeId?: string;
   @ApiPropertyOptional({ example: 'John Doe' })
+  @IsOptional()
+  @IsString()
   employeeName?: string;
   @ApiPropertyOptional({ example: 'Richard Doe' })
+  @IsOptional()
+  @IsString()
   fatherHusbandName?: string;
   @ApiPropertyOptional({ example: 'dept-uuid' })
+  @IsOptional()
+  @IsString()
   departmentId?: string;
   @ApiPropertyOptional({ example: 'subdept-uuid' })
+  @IsOptional()
+  @IsString()
   subDepartmentId?: string;
   @ApiPropertyOptional({ example: 'grade-uuid' })
+  @IsOptional()
+  @IsString()
   employeeGradeId?: string;
   @ApiPropertyOptional({ example: 'attendance-id' })
+  @IsOptional()
+  @IsString()
   attendanceId?: string;
   @ApiPropertyOptional({ example: 'designation-uuid' })
+  @IsOptional()
+  @IsString()
   designationId?: string;
   @ApiPropertyOptional({ example: 'marital-status-uuid' })
+  @IsOptional()
+  @IsString()
   maritalStatusId?: string;
   @ApiPropertyOptional({ example: 'emp-status-uuid' })
+  @IsOptional()
+  @IsString()
   employmentStatusId?: string;
   @ApiPropertyOptional({ example: '2024-06-01' })
+  @IsOptional()
+  @IsDateString()
   probationExpiryDate?: string;
   @ApiPropertyOptional({ example: '42101-1234567-1' })
+  @IsOptional()
+  @IsString()
   cnicNumber?: string;
   @ApiPropertyOptional({ example: '2030-01-01' })
+  @IsOptional()
+  @IsDateString()
   cnicExpiryDate?: string;
   @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
   lifetimeCnic?: boolean;
   @ApiPropertyOptional({ example: '2024-01-01' })
+  @IsOptional()
+  @IsDateString()
   joiningDate?: string;
   @ApiPropertyOptional({ example: '1990-01-01' })
+  @IsOptional()
+  @IsDateString()
   dateOfBirth?: string;
   @ApiPropertyOptional({ example: 'Pakistani' })
+  @IsOptional()
+  @IsString()
   nationality?: string;
   @ApiPropertyOptional({ example: 'Male' })
+  @IsOptional()
+  @IsString()
   gender?: string;
   @ApiPropertyOptional({ example: '+923001234567' })
+  @IsOptional()
+  @IsString()
   contactNumber?: string;
   @ApiPropertyOptional({ example: '+923007654321' })
+  @IsOptional()
+  @IsString()
   emergencyContactNumber?: string;
   @ApiPropertyOptional({ example: 'Jane Doe' })
+  @IsOptional()
+  @IsString()
   emergencyContactPerson?: string;
   @ApiPropertyOptional({ example: 'john.personal@example.com' })
+  @IsOptional()
+  @IsEmail()
   personalEmail?: string;
   @ApiPropertyOptional({ example: 'john.official@company.com' })
+  @IsOptional()
+  @IsEmail()
   officialEmail?: string;
   @ApiPropertyOptional({ example: 'country-uuid' })
+  @IsOptional()
+  @IsString()
   countryId?: string;
   @ApiPropertyOptional({ example: 'state-uuid' })
+  @IsOptional()
+  @IsString()
   stateId?: string;
   @ApiPropertyOptional({ example: 'city-uuid' })
+  @IsOptional()
+  @IsString()
   cityId?: string;
   @ApiPropertyOptional({ example: 'DHA' })
+  @IsOptional()
+  @IsString()
   area?: string;
   @ApiPropertyOptional({ example: 150000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   employeeSalary?: number;
   @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
   eobi?: boolean;
   @ApiPropertyOptional({ example: 'EOBI-123' })
+  @IsOptional()
+  @IsString()
   eobiNumber?: string;
   @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
   providentFund?: boolean;
   @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
   overtimeApplicable?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   daysOff?: string;
   @ApiPropertyOptional({ example: 'manager-uuid' })
+  @IsOptional()
+  @IsString()
   reportingManager?: string;
   @ApiPropertyOptional({ example: 'policy-uuid' })
+  @IsOptional()
+  @IsString()
   workingHoursPolicyId?: string;
   @ApiPropertyOptional({ example: 'branch-uuid' })
+  @IsOptional()
+  @IsString()
   branchId?: string;
   @ApiPropertyOptional({ example: 'leaves-policy-uuid' })
+  @IsOptional()
+  @IsString()
   leavesPolicyId?: string;
 
   // Legacy fields for backward compatibility
   @ApiPropertyOptional()
+  @IsOptional()
   department?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   subDepartment?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   employeeGrade?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   designation?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   maritalStatus?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   employmentStatus?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   country?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   province?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   state?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   city?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   workingHoursPolicy?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   branch?: string;
   @ApiPropertyOptional()
+  @IsOptional()
   leavesPolicy?: string;
   @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
   allowRemoteAttendance?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   currentAddress?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   permanentAddress?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   bankName?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   accountNumber?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   accountTitle?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
   laptop?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
   card?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
   mobileSim?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
   key?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
   tools?: boolean;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   accountType?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   password?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   roles?: string;
   @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  emergencyContactPersonName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  selectedEquipments?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  avatarUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  eobiDocumentUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  documentUrls?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  qualifications?: any;
 }
 
