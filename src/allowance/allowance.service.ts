@@ -208,6 +208,8 @@ export class AllowanceService {
               where: { id: existing.id },
               data: {
                 amount: allowanceItem.amount,
+                type: allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
+                adjustmentMethod: allowanceItem.adjustmentMethod || null,
                 isTaxable: allowanceItem.isTaxable ?? false,
                 taxPercentage: allowanceItem.taxPercentage ? allowanceItem.taxPercentage : null,
                 notes: allowanceItem.notes ?? null,
@@ -225,6 +227,8 @@ export class AllowanceService {
                 month: body.month,
                 year: body.year,
                 date: date,
+                type: allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
+                adjustmentMethod: allowanceItem.adjustmentMethod || null,
                 isTaxable: allowanceItem.isTaxable ?? false,
                 taxPercentage: allowanceItem.taxPercentage ? allowanceItem.taxPercentage : null,
                 notes: allowanceItem.notes ?? null,
@@ -292,6 +296,8 @@ export class AllowanceService {
         data: {
           ...(body.allowanceHeadId && { allowanceHeadId: body.allowanceHeadId }),
           ...(body.amount !== undefined && { amount: body.amount }),
+          ...(body.type && { type: body.type }),
+          ...(body.adjustmentMethod !== undefined && { adjustmentMethod: body.adjustmentMethod }),
           ...(body.isTaxable !== undefined && { isTaxable: body.isTaxable }),
           ...(body.taxPercentage !== undefined && { taxPercentage: body.taxPercentage }),
           ...(body.notes !== undefined && { notes: body.notes }),

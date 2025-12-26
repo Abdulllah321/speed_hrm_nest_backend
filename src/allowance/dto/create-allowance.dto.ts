@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsBoolean, IsDateString, IsArray, ValidateNested } from 'class-validator';
+import { IsNotEmpty, IsString, IsNumber, IsOptional, IsBoolean, IsDateString, IsArray, ValidateNested, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -18,6 +18,11 @@ export class CreateAllowanceItemDto {
   @IsNumber()
   amount: number;
 
+  @ApiPropertyOptional({ example: 'specific', enum: ['recurring', 'specific'], description: 'Type of allowance: recurring or specific' })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
@@ -32,6 +37,14 @@ export class CreateAllowanceItemDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 'distributed-remaining-months', enum: ['distributed-remaining-months', 'deduct-current-month'], description: 'Adjustment method for allowance' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
+    message: 'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
+  })
+  adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
 }
 
 export class CreateAllowanceDto {
@@ -69,6 +82,11 @@ export class UpdateAllowanceDto {
   @IsNumber()
   amount?: number;
 
+  @ApiPropertyOptional({ example: 'specific', enum: ['recurring', 'specific'], description: 'Type of allowance: recurring or specific' })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
@@ -88,6 +106,14 @@ export class UpdateAllowanceDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ example: 'distributed-remaining-months', enum: ['distributed-remaining-months', 'deduct-current-month'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
+    message: 'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
+  })
+  adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
 }
 
 export class BulkCreateAllowanceDto {

@@ -1,11 +1,15 @@
 import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
 import { PayrollService } from './payroll.service';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
-@Controller('api/payroll')
+@ApiTags('Payroll')
+@Controller('api')
 export class PayrollController {
     constructor(private readonly payrollService: PayrollService) { }
 
-    @Post('preview')
+    @Post('payroll/preview')
+    @ApiOperation({ summary: 'Preview payroll' })
+    @ApiResponse({ status: 200, description: 'Payroll preview generated successfully' })
     async previewPayroll(
         @Body('month') month: string,
         @Body('year') year: string,
@@ -14,7 +18,9 @@ export class PayrollController {
         return this.payrollService.previewPayroll(month, year, employeeIds);
     }
 
-    @Post('confirm')
+    @Post('payroll/confirm')
+    @ApiOperation({ summary: 'Confirm payroll' })
+    @ApiResponse({ status: 200, description: 'Payroll confirmed successfully' })
     async confirmPayroll(
         @Body('month') month: string,
         @Body('year') year: string,
@@ -24,17 +30,16 @@ export class PayrollController {
         return this.payrollService.confirmPayroll({ month, year, generatedBy, details });
     }
 
-    @Get()
+    @Get('payroll')
+    @ApiOperation({ summary: 'Get all payrolls' })
+    @ApiResponse({ status: 200, description: 'Returns list of payrolls' })
     async getAllPayrolls(@Query('year') year?: string) {
-        // Basic listing, can be expanded
-        // We can use prisma to findMany
-        // For now, let's just return a placeholder or implement a findAll in service
-        // But the user asked for generation logic specifically.
-        // I'll stick to the core task logic first.
         return { message: "Use /generate to create payroll" };
     }
 
-    @Get(':id')
+    @Get('payroll/:id')
+    @ApiOperation({ summary: 'Get payroll by id' })
+    @ApiResponse({ status: 200, description: 'Returns payroll details' })
     async getPayrollDetails(@Param('id') id: string) {
         return this.payrollService.getPayrollById(id);
     }
