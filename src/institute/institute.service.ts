@@ -35,7 +35,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: created }
+      return { status: true, data: created, message: 'Institute created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -49,7 +49,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create institute' }
+      return { status: false, message: 'Failed to create institute', data: null }
     }
   }
 
@@ -70,7 +70,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated, message: 'Institute updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -85,7 +85,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update institute' }
+      return { status: false, message: 'Failed to update institute', data: null }
     }
   }
 
@@ -105,7 +105,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: removed }
+      return { status: true, data: removed, message: 'Institute deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -119,7 +119,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete institute' }
+      return { status: false, message: 'Failed to delete institute', data: null }
     }
   }
 
@@ -139,7 +139,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Institutes created', data: result }
+      return { status: true, data: result, message: 'Institutes created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -153,7 +153,7 @@ export class InstituteService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create institutes' }
+      return { status: false, message: 'Failed to create institutes', data: null }
     }
   }
 
@@ -188,6 +188,6 @@ export class InstituteService {
       userAgent: ctx.userAgent,
       status: 'success',
     })
-    return { status: true, data: { total: seedItems.length, created, skipped } }
+    return { status: true, data: { total: seedItems.length, created, skipped }, message: 'Institutes seeded successfully' }
   }
 }

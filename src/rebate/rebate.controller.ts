@@ -45,12 +45,14 @@ export class RebateController {
     @Query('monthYear') monthYear?: string,
     @Query('status') status?: string,
   ) {
-    return this.service.list({
+    const result = await this.service.list({
       employeeId,
       rebateNatureId,
       monthYear,
       status,
     });
+    // Return data array directly for consistency with other endpoints
+    return result.status ? result.data : [];
   }
 
   @Get('rebates/:id')

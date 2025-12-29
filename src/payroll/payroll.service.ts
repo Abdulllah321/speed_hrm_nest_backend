@@ -59,6 +59,13 @@ export class PayrollService {
                         status: true,
                     }
                 },
+                increments: {
+                    where: {
+                        status: 'active',
+                        promotionDate: { lte: new Date(Number(year), Number(month), 0) }, // Increments effective on or before the end of payroll month
+                    },
+                    orderBy: { promotionDate: 'asc' },
+                },
             },
         });
 
@@ -73,10 +80,22 @@ export class PayrollService {
         const previewData: any[] = []; // Explicitly type as any[] or define an interface
 
         for (const employee of employees) {
-            // "employeeSalary" is treated as the Total Monthly Package (Gross before ad-hoc)
-            const packageAmount = new Decimal(employee.employeeSalary);
+            const monthStartDate = new Date(`${year}-${month}-01`);
+            const monthEndDate = new Date(Number(year), Number(month), 0);
+            const totalDaysInMonth = monthEndDate.getDate();
 
-            // Calculate breakup components
+            // Calculate effective salary considering increments/decrements during the month
+            const { effectivePackage, incrementBreakup } = this.calculateEffectiveSalary(
+                employee,
+                monthStartDate,
+                monthEndDate,
+                totalDaysInMonth
+            );
+
+            // "effectivePackage" is the effective monthly package considering increments/decrements
+            const packageAmount = effectivePackage;
+
+            // Calculate breakup components using effective package
             const salaryBreakup = salaryBreakups.map(breakup => {
                 let amount = new Decimal(0);
                 if (breakup.percentage !== null && breakup.percentage !== undefined) {
@@ -178,6 +197,7 @@ export class PayrollService {
                 overtimeAmount: overtimeAmount.toNumber(),
                 bonusBreakup,
                 bonusAmount: bonusAmount.toNumber(),
+                incrementBreakup,
                 deductionBreakup,
                 totalDeductions: totalAdHocDeductions.toNumber(),
                 attendanceBreakup,
@@ -379,6 +399,105 @@ export class PayrollService {
         }
 
         return { loanDeduction, advanceSalaryDeduction };
+    }
+
+    private calculateEffectiveSalary(
+        employee: any,
+        monthStartDate: Date,
+        monthEndDate: Date,
+        totalDaysInMonth: number
+    ): { effectivePackage: Decimal; incrementBreakup: any[] } {
+        const baseSalary = new Decimal(employee.employeeSalary);
+        const incrementBreakup: any[] = [];
+
+        // Normalize dates to start of day for accurate comparison
+        const normalizeDate = (date: Date): Date => {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        };
+
+        const monthStart = normalizeDate(monthStartDate);
+        const monthEnd = normalizeDate(monthEndDate);
+
+        // If no increments, return base salary
+        if (!employee.increments || employee.increments.length === 0) {
+            return { effectivePackage: baseSalary, incrementBreakup: [] };
+        }
+
+        // Filter increments that are effective before or during this month
+        // Get the most recent increment before the month starts to know the starting salary
+        const incrementsBeforeMonth = employee.increments.filter((inc: any) => {
+            const incDate = normalizeDate(new Date(inc.promotionDate));
+            return incDate < monthStart;
+        }).sort((a: any, b: any) => 
+            new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime()
+        );
+
+        // Starting salary: If there's an increment before the month, use that salary; otherwise use base salary
+        let currentSalary = incrementsBeforeMonth.length > 0 
+            ? new Decimal(incrementsBeforeMonth[0].salary)
+            : baseSalary;
+
+        // Find increments that occur during this month
+        const incrementsInMonth = employee.increments.filter((inc: any) => {
+            const incDate = normalizeDate(new Date(inc.promotionDate));
+            return incDate >= monthStart && incDate <= monthEnd;
+        }).sort((a: any, b: any) => 
+            new Date(a.promotionDate).getTime() - new Date(b.promotionDate).getTime()
+        );
+
+        let effectivePackage = new Decimal(0);
+
+        if (incrementsInMonth.length === 0) {
+            // No increment during this month, use current salary for entire month
+            effectivePackage = currentSalary;
+        } else {
+            // Calculate proportional salary for each period
+            let lastDate = monthStart;
+            
+            for (const increment of incrementsInMonth) {
+                const incrementDate = normalizeDate(new Date(increment.promotionDate));
+                // Calculate days from lastDate (inclusive) to incrementDate (exclusive)
+                const daysBeforeIncrement = Math.max(0, Math.floor((incrementDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
+                
+                if (daysBeforeIncrement > 0) {
+                    // Add salary for days before this increment
+                    effectivePackage = effectivePackage.add(
+                        currentSalary.mul(daysBeforeIncrement).div(totalDaysInMonth)
+                    );
+                }
+
+                // Record increment/decrement info
+                incrementBreakup.push({
+                    id: increment.id,
+                    type: increment.incrementType,
+                    date: increment.promotionDate,
+                    oldSalary: currentSalary.toNumber(),
+                    newSalary: Number(increment.salary),
+                    amount: increment.incrementAmount ? Number(increment.incrementAmount) : null,
+                    percentage: increment.incrementPercentage ? Number(increment.incrementPercentage) : null,
+                    method: increment.incrementMethod,
+                    daysBefore: daysBeforeIncrement,
+                });
+
+                // Update current salary to new salary
+                currentSalary = new Decimal(increment.salary);
+                // Start counting from the day after the increment date
+                lastDate = new Date(incrementDate);
+                lastDate.setDate(lastDate.getDate() + 1);
+            }
+
+            // Add salary for remaining days after last increment
+            const daysAfterLastIncrement = Math.max(0, Math.floor((monthEnd.getTime() - lastDate.getTime() + (1000 * 60 * 60 * 24)) / (1000 * 60 * 60 * 24)));
+            if (daysAfterLastIncrement > 0) {
+                effectivePackage = effectivePackage.add(
+                    currentSalary.mul(daysAfterLastIncrement).div(totalDaysInMonth)
+                );
+            }
+        }
+
+        return { effectivePackage, incrementBreakup };
     }
 
     private async calculateAttendanceDeductions(employee: any, month: string, year: string, policy: any, basicSalary: Decimal): Promise<{ attendanceDeduction: Decimal; attendanceBreakup: any }> {

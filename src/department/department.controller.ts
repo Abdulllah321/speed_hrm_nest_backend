@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards, Req } from '@nestjs/common'
 import { DepartmentService } from './department.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import {  UpdateDepartmentDto, UpdateSubDepartmentDto } from './dto/department-dto'
+import {  UpdateDepartmentDto, UpdateSubDepartmentDto, BulkUpdateDepartmentDto, BulkUpdateDepartmentItemDto } from './dto/department-dto'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
 
 @ApiTags('Department')
@@ -50,8 +50,8 @@ export class DepartmentController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update departments in bulk' })
-  @ApiBody({ type: UpdateDepartmentDto, isArray: true })
-  async updateBulk(@Body() body: { items: UpdateDepartmentDto[] }, @Req() req) {
+  @ApiBody({ type: BulkUpdateDepartmentDto })
+  async updateBulk(@Body() body: BulkUpdateDepartmentDto, @Req() req) {
     return this.service.updateDepartments(body.items || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -153,7 +153,7 @@ export class DepartmentController {
   @ApiOperation({ summary: 'Update sub-departments in bulk' })
   @ApiBody({ type: UpdateSubDepartmentDto, isArray: true })
   async updateSubBulk(@Body() updateSubDepartmentDto: UpdateSubDepartmentDto[], @Req() req) {
-    return this.service.updateSubDepartments(updateSubDepartmentDto, {
+    return this.service.updateSubDepartments(updateSubDepartmentDto || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

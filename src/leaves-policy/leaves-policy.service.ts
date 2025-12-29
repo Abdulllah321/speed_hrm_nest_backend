@@ -139,7 +139,7 @@ export class LeavesPolicyService {
         }))
       } : created
       
-      return { status: true, data: transformedItem }
+      return { status: true, data: transformedItem ,message: 'Leaves policy created successfully'}
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -153,7 +153,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to create leaves policy' }
+      return { status: false, message: 'Failed to create leaves policy', data: null }
     }
   }
 
@@ -183,7 +183,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, message: 'Created successfully' }
+      return { status: true, data: res, message: 'Leaves policies created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -197,7 +197,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to create leaves policies' }
+      return { status: false, message: 'Failed to create leaves policies', data: null }
     }
   }
 
@@ -292,7 +292,7 @@ export class LeavesPolicyService {
         }))
       } : updated
       
-      return { status: true, data: transformedItem }
+      return { status: true, data: transformedItem ,message: 'Leaves policy updated successfully'}
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -307,7 +307,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to update leaves policy' }
+      return { status: false, message: 'Failed to update leaves policy', data: null }
     }
   }
 
@@ -328,7 +328,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, message: 'Deleted successfully' }
+      return { status: true, data: existing, message: 'Leaves policy deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -342,7 +342,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to delete leaves policy' }
+      return { status: false, message: 'Failed to delete leaves policy', data: null }
     }
   }
 
@@ -361,7 +361,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, message: 'Deleted successfully' }
+      return { status: true, data: ids, message: 'Leaves policies deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -374,7 +374,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to delete leaves policies' }
+      return { status: false, message: 'Failed to delete leaves policies', data: null }
     }
   }
 
@@ -405,7 +405,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
-      return { status: true, message: 'Updated successfully' }
+      return { status: true, data: items, message: 'Leaves policies updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -419,7 +419,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: 'Failed to update leaves policies' }
+      return { status: false, message: 'Failed to update leaves policies', data: null }
     }
   }
 
@@ -456,7 +456,7 @@ export class LeavesPolicyService {
         status: 'success',
       })
 
-      return { status: true, data: updated }
+      return { status: true, data: updated ,message: 'Leaves policy set as default successfully'}
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -470,7 +470,7 @@ export class LeavesPolicyService {
         userAgent: ctx.userAgent,
         status: 'failure',
       })
-      return { status: false, message: error?.message || 'Failed to set leaves policy as default' }
+      return { status: false, message: error?.message || 'Failed to set leaves policy as default', data: null }
     }
   }
 }
