@@ -7,7 +7,7 @@ export class EobiService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.eOBI.findMany({ orderBy: { createdAt: 'desc' } })
@@ -32,32 +32,33 @@ export class EobiService {
           yearMonth: body.yearMonth,
           status: body.status ?? 'active',
           createdById: ctx.userId,
-      }})
-      await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'eobis',
-          entity: 'EOBI',
-          entityId: created.id,
-          description: `Created EOBI ${created.name}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        }
       })
-      return { status: true, data: created }
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'create',
+        module: 'eobis',
+        entity: 'EOBI',
+        entityId: created.id,
+        description: `Created EOBI ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+      return { status: true, data: created, message: 'Created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: 'Failed to create EOBI',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: 'Failed to create EOBI',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create EOBI' }
     }
@@ -80,29 +81,29 @@ export class EobiService {
         skipDuplicates: true,
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: `Bulk created ${res.count} EOBIs`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: `Bulk created ${res.count} EOBIs`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: 'Failed bulk create EOBIs',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: 'Failed bulk create EOBIs',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create EOBIs' }
     }
@@ -126,32 +127,32 @@ export class EobiService {
         },
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'eobis',
-          entity: 'EOBI',
-          entityId: id,
-          description: `Updated EOBI ${updated.name}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'eobis',
+        entity: 'EOBI',
+        entityId: id,
+        description: `Updated EOBI ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated, message: 'Updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'eobis',
-          entity: 'EOBI',
-          entityId: id,
-          description: 'Failed to update EOBI',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'eobis',
+        entity: 'EOBI',
+        entityId: id,
+        description: 'Failed to update EOBI',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update EOBI' }
     }
@@ -163,30 +164,30 @@ export class EobiService {
       if (!existing) return { status: false, message: 'EOBI not found' }
       await this.prisma.eOBI.delete({ where: { id } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'eobis',
-          entity: 'EOBI',
-          entityId: id,
-          description: `Deleted EOBI ${existing.name}`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'eobis',
+        entity: 'EOBI',
+        entityId: id,
+        description: `Deleted EOBI ${existing.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'eobis',
-          entity: 'EOBI',
-          entityId: id,
-          description: 'Failed to delete EOBI',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'eobis',
+        entity: 'EOBI',
+        entityId: id,
+        description: 'Failed to delete EOBI',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete EOBI' }
     }
@@ -197,28 +198,28 @@ export class EobiService {
     try {
       await this.prisma.eOBI.deleteMany({ where: { id: { in: ids } } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: `Bulk deleted ${ids.length} EOBIs`,
-          oldValues: JSON.stringify(ids),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: `Bulk deleted ${ids.length} EOBIs`,
+        oldValues: JSON.stringify(ids),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: 'Failed bulk delete EOBIs',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: 'Failed bulk delete EOBIs',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete EOBIs' }
     }
@@ -242,29 +243,29 @@ export class EobiService {
         })
       }
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: `Bulk updated ${items.length} EOBIs`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: `Bulk updated ${items.length} EOBIs`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'eobis',
-          entity: 'EOBI',
-          description: 'Failed bulk update EOBIs',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'eobis',
+        entity: 'EOBI',
+        description: 'Failed bulk update EOBIs',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update EOBIs' }
     }

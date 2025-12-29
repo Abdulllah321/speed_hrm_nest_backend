@@ -7,7 +7,7 @@ export class DesignationService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.designation.findMany({ orderBy: { createdAt: 'desc' } })
@@ -24,30 +24,30 @@ export class DesignationService {
     try {
       const created = await this.prisma.designation.create({ data: { name, status: 'active', createdById: ctx.userId } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'designations',
-          entity: 'Designation',
-          entityId: created.id,
-          description: `Created designation ${name}`,
-          newValues: JSON.stringify({ name }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'designations',
+        entity: 'Designation',
+        entityId: created.id,
+        description: `Created designation ${name}`,
+        newValues: JSON.stringify({ name }),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
-      return { status: true, data: created , message: 'Designation created successfully'}
+      return { status: true, data: created, message: 'Designation created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'designations',
-          entity: 'Designation',
-          description: 'Failed to create designation',
-          errorMessage: error?.message,
-          newValues: JSON.stringify({ name }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'designations',
+        entity: 'Designation',
+        description: 'Failed to create designation',
+        errorMessage: error?.message,
+        newValues: JSON.stringify({ name }),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create designation', data: null }
     }
@@ -61,29 +61,29 @@ export class DesignationService {
         skipDuplicates: true,
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'designations',
-          entity: 'Designation',
-          description: `Bulk created designations (${result.count})`,
-          newValues: JSON.stringify(names),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'designations',
+        entity: 'Designation',
+        description: `Bulk created designations (${result.count})`,
+        newValues: JSON.stringify(names),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: result, message: 'Designations created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'designations',
-          entity: 'Designation',
-          description: 'Failed bulk create designations',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(names),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'designations',
+        entity: 'Designation',
+        description: 'Failed bulk create designations',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(names),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create designations', data: null }
     }
@@ -94,32 +94,32 @@ export class DesignationService {
       const existing = await this.prisma.designation.findUnique({ where: { id } })
       const updated = await this.prisma.designation.update({ where: { id }, data: { name } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'designations',
-          entity: 'Designation',
-          entityId: id,
-          description: `Updated designation ${name}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify({ name }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'designations',
+        entity: 'Designation',
+        entityId: id,
+        description: `Updated designation ${name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify({ name }),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: updated, message: 'Designation updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'designations',
-          entity: 'Designation',
-          entityId: id,
-          description: 'Failed to update designation',
-          errorMessage: error?.message,
-          newValues: JSON.stringify({ name }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'designations',
+        entity: 'Designation',
+        entityId: id,
+        description: 'Failed to update designation',
+        errorMessage: error?.message,
+        newValues: JSON.stringify({ name }),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update designation', data: null }
     }
@@ -132,29 +132,29 @@ export class DesignationService {
         await this.prisma.designation.update({ where: { id: item.id }, data: { name: item.name } })
       }
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'designations',
-          entity: 'Designation',
-          description: `Bulk updated designations (${items.length})`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'designations',
+        entity: 'Designation',
+        description: `Bulk updated designations (${items.length})`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: items, message: 'Designations updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'designations',
-          entity: 'Designation',
-          description: 'Failed bulk update designations',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'designations',
+        entity: 'Designation',
+        description: 'Failed bulk update designations',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update designations', data: null }
     }
@@ -165,30 +165,30 @@ export class DesignationService {
       const existing = await this.prisma.designation.findUnique({ where: { id } })
       const removed = await this.prisma.designation.delete({ where: { id } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'designations',
-          entity: 'Designation',
-          entityId: id,
-          description: `Deleted designation ${existing?.name}`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'designations',
+        entity: 'Designation',
+        entityId: id,
+        description: `Deleted designation ${existing?.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: removed, message: 'Designation deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'designations',
-          entity: 'Designation',
-          entityId: id,
-          description: 'Failed to delete designation',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'designations',
+        entity: 'Designation',
+        entityId: id,
+        description: 'Failed to delete designation',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete designation', data: null }
     }
@@ -199,29 +199,29 @@ export class DesignationService {
     try {
       const removed = await this.prisma.designation.deleteMany({ where: { id: { in: ids } } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'designations',
-          entity: 'Designation',
-          description: `Bulk deleted designations (${removed.count})`,
-          oldValues: JSON.stringify(ids),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'designations',
+        entity: 'Designation',
+        description: `Bulk deleted designations (${removed.count})`,
+        oldValues: JSON.stringify(ids),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: ids, message: 'Designations deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'designations',
-          entity: 'Designation',
-          description: 'Failed bulk delete designations',
-          errorMessage: error?.message,
-          oldValues: JSON.stringify(ids),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'designations',
+        entity: 'Designation',
+        description: 'Failed bulk delete designations',
+        errorMessage: error?.message,
+        oldValues: JSON.stringify(ids),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete designations', data: null }
     }

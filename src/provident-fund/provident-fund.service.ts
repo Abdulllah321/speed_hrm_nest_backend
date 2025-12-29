@@ -7,7 +7,7 @@ export class ProvidentFundService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.providentFund.findMany({ orderBy: { createdAt: 'desc' } })
@@ -34,30 +34,30 @@ export class ProvidentFundService {
         },
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          entityId: created.id,
-          description: `Created provident fund ${created.name}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        entityId: created.id,
+        description: `Created provident fund ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
-      return { status: true, data: created }
+      return { status: true, data: created, message: 'Created successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          description: 'Failed to create provident fund',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        description: 'Failed to create provident fund',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create provident fund' }
     }
@@ -79,29 +79,29 @@ export class ProvidentFundService {
         skipDuplicates: true,
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          description: `Bulk created ${res.count} provident funds`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        description: `Bulk created ${res.count} provident funds`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          description: 'Failed bulk create provident funds',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        description: 'Failed bulk create provident funds',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create provident funds' }
     }
@@ -124,32 +124,32 @@ export class ProvidentFundService {
         },
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          entityId: id,
-          description: `Updated provident fund ${updated.name}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        entityId: id,
+        description: `Updated provident fund ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated, message: 'Updated successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          entityId: id,
-          description: 'Failed to update provident fund',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        entityId: id,
+        description: 'Failed to update provident fund',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update provident fund' }
     }
@@ -161,30 +161,30 @@ export class ProvidentFundService {
       if (!existing) return { status: false, message: 'Provident fund not found' }
       await this.prisma.providentFund.delete({ where: { id } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          entityId: id,
-          description: `Deleted provident fund ${existing.name}`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        entityId: id,
+        description: `Deleted provident fund ${existing.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'provident-funds',
-          entity: 'ProvidentFund',
-          entityId: id,
-          description: 'Failed to delete provident fund',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'provident-funds',
+        entity: 'ProvidentFund',
+        entityId: id,
+        description: 'Failed to delete provident fund',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete provident fund' }
     }

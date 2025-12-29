@@ -7,7 +7,7 @@ export class BankService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.bank.findMany({
@@ -53,7 +53,7 @@ export class BankService {
         userAgent: ctx.userAgent,
         status: 'success',
       });
-      return { status: true, data: created };
+      return { status: true, data: created, message: 'Created successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -162,7 +162,7 @@ export class BankService {
         userAgent: ctx.userAgent,
         status: 'success',
       });
-      return { status: true, data: updated };
+      return { status: true, data: updated, message: 'Updated successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,

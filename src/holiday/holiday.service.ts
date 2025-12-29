@@ -8,7 +8,7 @@ export class HolidayService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.holiday.findMany({
@@ -99,7 +99,7 @@ export class HolidayService {
         status: 'success',
       })
 
-      return { status: true, data: created }
+      return { status: true, data: created, message: 'Holiday created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -195,7 +195,7 @@ export class HolidayService {
         dateTo: this.normalizeToCurrentYear(updated.dateTo, currentYear),
       }
 
-      return { status: true, data: normalizedUpdated }
+      return { status: true, data: normalizedUpdated, message: 'Holiday updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -241,7 +241,7 @@ export class HolidayService {
         status: 'success',
       })
 
-      return { status: true, data: removed }
+      return { status: true, data: removed, message: 'Holiday deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
