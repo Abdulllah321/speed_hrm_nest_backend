@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards, Post, Body } from '@nestjs/common'
+import { Controller, Get, Param, UseGuards, Post, Body, Put, Delete } from '@nestjs/common'
 import { EmployeeGradeService } from './employee-grade.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
@@ -22,6 +22,30 @@ export class EmployeeGradeController {
   @ApiOperation({ summary: 'Get employee grade by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id)
+  }
+
+  @Post('employee-grades')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create employee grade' })
+  async create(@Body() body: { grade: string; status?: string }) {
+    return this.service.create(body)
+  }
+
+  @Put('employee-grades/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update employee grade' })
+  async update(@Param('id') id: string, @Body() body: { grade?: string; status?: string }) {
+    return this.service.update(id, body)
+  }
+
+  @Delete('employee-grades/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete employee grade' })
+  async delete(@Param('id') id: string) {
+    return this.service.delete(id)
   }
 
   @Post('employee-grades/bulk')

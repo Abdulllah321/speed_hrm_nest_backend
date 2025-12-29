@@ -7,7 +7,7 @@ export class BranchService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.branch.findMany({ orderBy: { createdAt: 'desc' } })
@@ -25,37 +25,37 @@ export class BranchService {
       const created = await this.prisma.branch.create({
         data: {
           name: body.name,
-          address: body.address ?? null,
-          cityId: body.cityId ?? null,
+          address: body.address || null,
+          cityId: body.cityId?.trim() || null,
           status: body.status ?? 'active',
           createdById: ctx.userId,
         },
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'branches',
-          entity: 'Branch',
-          entityId: created.id,
-          description: `Created branch ${created.name}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'branches',
+        entity: 'Branch',
+        entityId: created.id,
+        description: `Created branch ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: created }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'branches',
-          entity: 'Branch',
-          description: 'Failed to create branch',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'branches',
+        entity: 'Branch',
+        description: 'Failed to create branch',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create branch' }
     }
@@ -68,40 +68,40 @@ export class BranchService {
         where: { id },
         data: {
           name: body.name ?? existing?.name,
-          address: body.address ?? existing?.address,
-          cityId: body.cityId ?? existing?.cityId,
+          address: body.address !== undefined ? body.address : existing?.address,
+          cityId: body.cityId !== undefined ? (body.cityId?.trim() || null) : existing?.cityId,
           status: body.status ?? existing?.status ?? 'active',
         },
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'branches',
-          entity: 'Branch',
-          entityId: id,
-          description: `Updated branch ${updated.name}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'branches',
+        entity: 'Branch',
+        entityId: id,
+        description: `Updated branch ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: updated }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'branches',
-          entity: 'Branch',
-          entityId: id,
-          description: 'Failed to update branch',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'branches',
+        entity: 'Branch',
+        entityId: id,
+        description: 'Failed to update branch',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
-      return { status: false, message: 'Failed to update branch' }
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to update branch' }
     }
   }
 
@@ -110,30 +110,30 @@ export class BranchService {
       const existing = await this.prisma.branch.findUnique({ where: { id } })
       const removed = await this.prisma.branch.delete({ where: { id } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'branches',
-          entity: 'Branch',
-          entityId: id,
-          description: `Deleted branch ${existing?.name}`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'branches',
+        entity: 'Branch',
+        entityId: id,
+        description: `Deleted branch ${existing?.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: removed }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'branches',
-          entity: 'Branch',
-          entityId: id,
-          description: 'Failed to delete branch',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'branches',
+        entity: 'Branch',
+        entityId: id,
+        description: 'Failed to delete branch',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete branch' }
     }
@@ -148,37 +148,37 @@ export class BranchService {
       const result = await this.prisma.branch.createMany({
         data: items.map((i) => ({
           name: i.name,
-          address: i.address ?? null,
-          cityId: i.cityId ?? null,
+          address: i.address || null,
+          cityId: i.cityId?.trim() || null,
           status: i.status ?? 'active',
           createdById: ctx.userId,
         })),
         skipDuplicates: true,
       })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'branches',
-          entity: 'Branch',
-          description: `Bulk created branches (${result.count})`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'branches',
+        entity: 'Branch',
+        description: `Bulk created branches (${result.count})`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Branches created', data: result }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'branches',
-          entity: 'Branch',
-          description: 'Failed to bulk create branches',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'branches',
+        entity: 'Branch',
+        description: 'Failed to bulk create branches',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create branches' }
     }
@@ -196,36 +196,36 @@ export class BranchService {
           where: { id: i.id },
           data: {
             name: i.name ?? existing?.name,
-            address: i.address ?? existing?.address,
-            cityId: i.cityId ?? existing?.cityId,
+            address: i.address !== undefined ? i.address : existing?.address,
+            cityId: i.cityId !== undefined ? (i.cityId?.trim() || null) : existing?.cityId,
             status: i.status ?? existing?.status ?? 'active',
           },
         })
       }
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'branches',
-          entity: 'Branch',
-          description: `Bulk updated branches (${items.length})`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'branches',
+        entity: 'Branch',
+        description: `Bulk updated branches (${items.length})`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Branches updated' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'branches',
-          entity: 'Branch',
-          description: 'Failed to bulk update branches',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'branches',
+        entity: 'Branch',
+        description: 'Failed to bulk update branches',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update branches' }
     }
@@ -237,28 +237,28 @@ export class BranchService {
       const existing = await this.prisma.branch.findMany({ where: { id: { in: ids } } })
       const result = await this.prisma.branch.deleteMany({ where: { id: { in: ids } } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'branches',
-          entity: 'Branch',
-          description: `Bulk deleted branches (${result.count})`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'branches',
+        entity: 'Branch',
+        description: `Bulk deleted branches (${result.count})`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, message: 'Branches deleted', data: result }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'branches',
-          entity: 'Branch',
-          description: 'Failed to bulk delete branches',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'branches',
+        entity: 'Branch',
+        description: 'Failed to bulk delete branches',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete branches' }
     }

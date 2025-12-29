@@ -27,7 +27,7 @@ export class UpdateBankDto {
   @ApiProperty({ example: 'bank-uuid' })
   @IsNotEmpty()
   @IsString()
-  id;
+  id: string;
 
   @ApiPropertyOptional({ example: 'Meezan Bank' })
   @IsOptional()

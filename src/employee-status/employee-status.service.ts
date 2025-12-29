@@ -16,6 +16,44 @@ export class EmployeeStatusService {
     return { status: true, data: item }
   }
 
+  async create(data: { status: string; statusType?: string }) {
+    try {
+      if (!data.status) {
+        return { status: false, message: 'Status name is required' };
+      }
+      const item = await this.prisma.employeeStatus.create({
+        data: {
+          status: data.status,
+          statusType: data.statusType || 'Active',
+        },
+      });
+      return { status: true, data: item, message: 'Employee status created successfully' };
+    } catch (error) {
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to create status' };
+    }
+  }
+
+  async update(id: string, data: { status?: string; statusType?: string }) {
+    try {
+      const item = await this.prisma.employeeStatus.update({
+        where: { id },
+        data,
+      });
+      return { status: true, data: item, message: 'Employee status updated successfully' };
+    } catch (error) {
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to update status' };
+    }
+  }
+
+  async delete(id: string) {
+    try {
+      await this.prisma.employeeStatus.delete({ where: { id } });
+      return { status: true, message: 'Employee status deleted successfully' };
+    } catch (error) {
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete status' };
+    }
+  }
+
   async bulkCreate(items: { status: string; statusType?: string }[]) {
     try {
       const validData = items

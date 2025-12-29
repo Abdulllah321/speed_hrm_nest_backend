@@ -37,13 +37,13 @@ export class PayrollService {
                 },
                 loanRequests: { where: { status: 'approved' } },
                 advanceSalaries: { where: { deductionMonth: month, deductionYear: year, status: 'approved' } },
-                bonuses: { 
+                bonuses: {
                     where: { bonusMonth: month, bonusYear: year, status: 'active' },
                     include: { bonusType: { select: { id: true, name: true } } }
                 },
                 rebates: { where: { monthYear: `${year}-${month}`, status: 'approved' }, include: { rebateNature: true } },
-                leaveApplications: { 
-                    where: { 
+                leaveApplications: {
+                    where: {
                         status: 'approved',
                         OR: [
                             {
@@ -96,7 +96,7 @@ export class PayrollService {
 
             // A. Calculate Allowances (Ad-hoc additional allowances)
             const totalAdHocAllowances = this.calculateAllowances(employee.allowances);
-            
+
             // Prepare allowance breakdown
             const allowanceBreakup = employee.allowances.map((allow) => ({
                 id: allow.id,
@@ -114,7 +114,7 @@ export class PayrollService {
 
             // D. Calculate Bonuses
             const bonusAmount = this.calculateBonuses(employee.bonuses);
-            
+
             // Prepare bonus breakdown (only bonuses with paymentMethod 'with_salary')
             const bonusBreakup = employee.bonuses
                 .filter(b => b.paymentMethod === 'with_salary')
@@ -125,7 +125,7 @@ export class PayrollService {
                     calculationType: bonus.calculationType,
                     percentage: bonus.percentage ? Number(bonus.percentage) : null,
                 }));
-            
+
             // Prepare deduction breakdown (excluding tax, attendance, loan, advance, eobi, pf which are calculated separately)
             const deductionBreakup = employee.deductions.map((ded) => ({
                 id: ded.id,
@@ -407,15 +407,15 @@ export class PayrollService {
         // Helper function to check if date has approved leave
         const hasApprovedLeave = (date: Date): boolean => {
             if (!employee.leaveApplications || employee.leaveApplications.length === 0) return false;
-            
+
             const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            
+
             return employee.leaveApplications.some((leave: any) => {
                 const fromDate = new Date(leave.fromDate);
                 const toDate = new Date(leave.toDate);
                 fromDate.setHours(0, 0, 0, 0);
                 toDate.setHours(23, 59, 59, 999);
-                
+
                 return dateOnly >= fromDate && dateOnly <= toDate;
             });
         };
@@ -423,7 +423,6 @@ export class PayrollService {
         // Count leave days
         let leaveDaysCount = 0;
         const totalDaysInMonth = new Date(Number(year), Number(month), 0).getDate();
-        
         // Process attendances
         for (const att of attendances) {
             const attDate = new Date(att.date);
@@ -517,7 +516,7 @@ export class PayrollService {
         }
 
         // Late Deduction Logic
-        const chargeableLates = policy && policy.applyDeductionAfterLates 
+        const chargeableLates = policy && policy.applyDeductionAfterLates
             ? Math.max(0, lateCount - policy.applyDeductionAfterLates)
             : lateCount;
         if (policy && policy.lateDeductionType && chargeableLates > 0 && policy.lateDeductionPercent) {
@@ -636,7 +635,7 @@ export class PayrollService {
         }
 
         let taxDeduction = new Decimal(0);
-        let taxSlabUsed = null;
+        let taxSlabUsed: { minAmount: number; maxAmount: number; rate: number } | null = null;
 
         if (taxableIncome.gt(0)) {
             const slab = await this.prisma.taxSlab.findFirst({
