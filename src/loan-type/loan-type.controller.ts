@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from 
 import { LoanTypeService } from './loan-type.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { CreateLoanTypeDto, UpdateLoanTypeDto } from './dto/loan-type.dto'
+import { CreateLoanTypeDto, UpdateLoanTypeDto, BulkUpdateLoanTypeDto, BulkUpdateLoanTypeItemDto } from './dto/loan-type.dto'
 
 @ApiTags('Loan Type')
 @Controller('api')
@@ -78,9 +78,9 @@ export class LoanTypeController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update loan types in bulk' })
-  @ApiBody({ type: UpdateLoanTypeDto, isArray: true })
-  async updateBulk(@Body() body: { items: UpdateLoanTypeDto[] }, @Req() req) {
-    return this.service.updateBulk((body.items as any) || [], {
+  @ApiBody({ type: BulkUpdateLoanTypeDto })
+  async updateBulk(@Body() body: BulkUpdateLoanTypeDto, @Req() req) {
+    return this.service.updateBulk(body.items || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

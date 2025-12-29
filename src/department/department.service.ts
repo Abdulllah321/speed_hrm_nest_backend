@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service'
-import { CreateSubDepartmentDto, UpdateDepartmentDto, UpdateSubDepartmentDto } from './dto/department-dto'
+import { CreateSubDepartmentDto, UpdateDepartmentDto, UpdateSubDepartmentDto, BulkUpdateDepartmentItemDto } from './dto/department-dto'
 
 @Injectable()
 export class DepartmentService {
@@ -60,7 +60,7 @@ export class DepartmentService {
           newValues: JSON.stringify(names),
           status: 'success',
       })
-      return { status: true, data: departments }
+      return { status: true, data: departments, message: 'Departments created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: createdById,
@@ -72,7 +72,7 @@ export class DepartmentService {
           newValues: JSON.stringify(names),
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create departments' }
+      return { status: false, message: 'Failed to create departments', data: null }
     }
   }
 
@@ -99,7 +99,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: department }
+      return { status: true, data: department, message: 'Department updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -114,14 +114,23 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update department' }
+      return { status: false, message: 'Failed to update department', data: null }
     }
   }
 
-  async updateDepartments(updateDepartmentDto: UpdateDepartmentDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateDepartments(updateDepartmentDto: BulkUpdateDepartmentItemDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      // Filter out items with empty or invalid IDs (for bulk updates, id is required)
+      const validDtos = (updateDepartmentDto || []).filter(dto => dto.id && dto.id.trim().length > 0)
+      if (validDtos.length === 0) {
+        return { status: false, message: 'No valid department IDs provided' }
+      }
+      
       const updatedDepartments: any[] = []
-      for (const dto of updateDepartmentDto) {
+      for (const dto of validDtos) {
+        if (!dto.id) {
+          continue // Skip items without ID (shouldn't happen due to filter, but defensive check)
+        }
         const department = await this.prisma.department.update({ 
           where: { id: dto.id }, 
           data: { 
@@ -142,7 +151,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: updatedDepartments }
+      return { status: true, data: updatedDepartments, message: 'Departments updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -156,7 +165,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update departments' }
+      return { status: false, message: 'Failed to update departments', data: null }
     }
   }
 
@@ -174,7 +183,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: departments }
+      return { status: true, data: departments, message: 'Departments deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -188,7 +197,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete departments' }
+      return { status: false, message: 'Failed to delete departments', data: null }
     }
   }
 
@@ -208,7 +217,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: department }
+      return { status: true, data: department, message: 'Department deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -222,7 +231,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete department' }
+      return { status: false, message: 'Failed to delete department', data: null }
     }
   }
 
@@ -241,7 +250,7 @@ export class DepartmentService {
       createdBy: sd.createdBy ? `${sd.createdBy.firstName} ${(sd.createdBy.lastName || '')}`.trim() : null,
       headName: sd.head ? `${sd.head.employeeName} (${sd.head.employeeId})` : null,
     }))
-    return { status: true, data }
+    return { status: true, data, message: 'Sub-departments fetched successfully' }
   }
 
   async getSubDepartmentsByDepartment(departmentId: string) {
@@ -260,7 +269,7 @@ export class DepartmentService {
       createdBy: sd.createdBy ? `${sd.createdBy.firstName} ${(sd.createdBy.lastName || '')}`.trim() : null,
       headName: sd.head ? `${sd.head.employeeName} (${sd.head.employeeId})` : null,
     }))
-    return { status: true, data }
+    return { status: true, data, message: 'Sub-departments fetched successfully' }
   }
 
   async createSubDepartments(createSubDepartmentDto: CreateSubDepartmentDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
@@ -285,7 +294,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: subDepartments }
+      return { status: true, data: subDepartments, message: 'Sub-departments created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -299,14 +308,23 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create sub-departments' }
+      return { status: false, message: 'Failed to create sub-departments', data: null }
     }
   }
 
   async updateSubDepartments(updateSubDepartmentDto: UpdateSubDepartmentDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      // Filter out items with empty or invalid IDs (for bulk updates, id is required)
+      const validDtos = (updateSubDepartmentDto || []).filter(dto => dto.id && dto.id.trim().length > 0)
+      if (validDtos.length === 0) {
+        return { status: false, message: 'No valid sub-department IDs provided' }
+      }
+      
       const updatedSubDepartments: any[] = []
-      for (const dto of updateSubDepartmentDto) {
+      for (const dto of validDtos) {
+        if (!dto.id) {
+          continue // Skip items without ID (shouldn't happen due to filter, but defensive check)
+        }
         const subDepartment = await this.prisma.subDepartment.update({
           where: { id: dto.id },
           data: { 
@@ -327,7 +345,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: updatedSubDepartments }
+      return { status: true, data: updatedSubDepartments, message: 'Sub-departments updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -341,7 +359,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update sub-departments' }
+      return { status: false, message: 'Failed to update sub-departments', data: null }
     }
   }
 
@@ -368,7 +386,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: subDepartment }
+      return { status: true, data: subDepartment, message: 'Sub-department updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -383,7 +401,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update sub-department' }
+      return { status: false, message: 'Failed to update sub-department', data: null }
     }
   }
 
@@ -401,7 +419,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: subDepartments }
+      return { status: true, data: subDepartments, message: 'Sub-departments deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -415,7 +433,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete sub-departments' }
+      return { status: false, message: 'Failed to delete sub-departments', data: null }
     }
   }
 
@@ -435,7 +453,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'success',
       })
-      return { status: true, data: subDepartment }
+      return { status: true, data: subDepartment, message: 'Sub-department deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx?.userId,
@@ -449,7 +467,7 @@ export class DepartmentService {
           userAgent: ctx?.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete sub-department' }
+      return { status: false, message: 'Failed to delete sub-department', data: null   }
     }
   }
 }

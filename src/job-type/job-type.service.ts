@@ -35,7 +35,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: created }
+      return { status: true, data: created, message: 'Job type created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -49,7 +49,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create job type' }
+      return { status: false, message: 'Failed to create job type', data: null }
     }
   }
 
@@ -71,7 +71,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Job types created', data: result }
+      return { status: true, data: result, message: 'Job types created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -85,7 +85,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create job types' }
+      return { status: false, message: 'Failed to create job types', data: null }
     }
   }
 
@@ -106,7 +106,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated, message: 'Job type updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -121,7 +121,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update job type' }
+      return { status: false, message: 'Failed to update job type', data: null }
     }
   }
 
@@ -142,7 +142,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Job types updated' }
+      return { status: true, data: items, message: 'Job types updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -156,7 +156,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update job types' }
+      return { status: false, message: 'Failed to update job types', data: null }
     }
   }
 
@@ -176,7 +176,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: removed }
+      return { status: true, data: removed, message: 'Job type deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -190,7 +190,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete job type' }
+      return { status: false, message: 'Failed to delete job type', data: null }
     }
   }
 
@@ -209,7 +209,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Job types deleted' }
+      return { status: true, data: ids, message: 'Job types deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -223,7 +223,7 @@ export class JobTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete job types' }
+      return { status: false, message: 'Failed to delete job types', data: null }
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { UpdateLoanTypeDto, BulkUpdateLoanTypeItemDto } from './dto/loan-type.dto'
 
 @Injectable()
 export class LoanTypeService {
@@ -35,7 +36,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: created }
+      return { status: true, data: created , message: 'Loan type created successfully'  }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -70,7 +71,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated , message: 'Loan type updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -85,7 +86,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update loan type' }
+      return { status: false, message: 'Failed to update loan type', data: null }
     }
   }
 
@@ -105,7 +106,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: removed }
+      return { status: true, data: removed , message: 'Loan type deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -119,7 +120,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete loan type' }
+      return { status: false, message: 'Failed to delete loan type', data: null }
     }
   }
 
@@ -138,7 +139,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Loan types created', data: result }
+      return { status: true, data: result , message: 'Loan types created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -152,29 +153,42 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create loan types' }
+      return { status: false, message: 'Failed to create loan types', data: null }
     }
   }
 
-  async updateBulk(items: { id: string; name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No loan types to update' }
+  async updateBulk(items: BulkUpdateLoanTypeItemDto[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    // Filter out items with empty or invalid IDs
+    const validItems = (items || []).filter(item => item.id && item.id.trim().length > 0);
+    if (validItems.length === 0) {
+      return { status: false, message: 'No valid loan type IDs provided' };
+    }
+    
     try {
-      for (const i of items) {
-        const existing = await this.prisma.loanType.findUnique({ where: { id: i.id } })
-        await this.prisma.loanType.update({ where: { id: i.id }, data: { name: i.name ?? existing?.name, status: i.status ?? existing?.status ?? 'active' } })
+      const updatedItems: any[] = [];
+      for (const i of validItems) {
+        if (!i.id) {
+          continue;
+        }
+        const existing = await this.prisma.loanType.findUnique({ where: { id: i.id } });
+        const updated = await this.prisma.loanType.update({ 
+          where: { id: i.id }, 
+          data: { name: i.name, status: i.status ?? existing?.status ?? 'active' } 
+        });
+        updatedItems.push(updated);
       }
       await this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'loan-types',
           entity: 'LoanType',
-          description: `Bulk updated loan types (${items.length})`,
+          description: `Bulk updated loan types (${updatedItems.length})`,
           newValues: JSON.stringify(items),
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Loan types updated' }
+        return { status: true, data: updatedItems, message: 'Loan types updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -188,7 +202,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update loan types' }
+      return { status: false, message: 'Failed to update loan types', data: null }
     }
   }
 
@@ -208,7 +222,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Loan types deleted', data: result }
+      return { status: true, data: result, message: 'Loan types deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -221,7 +235,7 @@ export class LoanTypeService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete loan types' }
+      return { status: false, message: 'Failed to delete loan types', data: null }
     }
   }
 }

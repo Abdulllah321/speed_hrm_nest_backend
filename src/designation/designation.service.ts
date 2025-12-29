@@ -35,7 +35,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: created }
+      return { status: true, data: created , message: 'Designation created successfully'}
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -49,7 +49,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create designation' }
+      return { status: false, message: 'Failed to create designation', data: null }
     }
   }
 
@@ -71,7 +71,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Designations created', data: result }
+      return { status: true, data: result, message: 'Designations created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -85,7 +85,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to create designations' }
+      return { status: false, message: 'Failed to create designations', data: null }
     }
   }
 
@@ -106,7 +106,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: updated }
+      return { status: true, data: updated, message: 'Designation updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -121,7 +121,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update designation' }
+      return { status: false, message: 'Failed to update designation', data: null }
     }
   }
 
@@ -142,7 +142,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Designations updated' }
+      return { status: true, data: items, message: 'Designations updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -156,7 +156,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to update designations' }
+      return { status: false, message: 'Failed to update designations', data: null }
     }
   }
 
@@ -176,7 +176,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, data: removed }
+      return { status: true, data: removed, message: 'Designation deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -190,7 +190,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete designation' }
+      return { status: false, message: 'Failed to delete designation', data: null }
     }
   }
 
@@ -209,7 +209,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'success',
       })
-      return { status: true, message: 'Designations deleted' }
+      return { status: true, data: ids, message: 'Designations deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
           userId: ctx.userId,
@@ -223,7 +223,7 @@ export class DesignationService {
           userAgent: ctx.userAgent,
           status: 'failure',
       })
-      return { status: false, message: 'Failed to delete designations' }
+      return { status: false, message: 'Failed to delete designations', data: null }
     }
   }
 }

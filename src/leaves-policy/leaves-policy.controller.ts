@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from 
 import { LeavesPolicyService } from './leaves-policy.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { CreateLeavesPolicyDto, UpdateLeavesPolicyDto } from './dto/leaves-policy.dto'
+import { CreateLeavesPolicyDto, UpdateLeavesPolicyDto, BulkUpdateLeavesPolicyDto } from './dto/leaves-policy.dto'
 
 @ApiTags('Leaves Policy')
 @Controller('api')
@@ -88,12 +88,12 @@ export class LeavesPolicyController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update leaves policies in bulk' })
-  @ApiBody({ type: UpdateLeavesPolicyDto, isArray: true })
+  @ApiBody({ type: BulkUpdateLeavesPolicyDto })
   async updateBulk(
-    @Body() body: { items: UpdateLeavesPolicyDto[] },
+    @Body() body: BulkUpdateLeavesPolicyDto,
     @Req() req: any,
   ) {
-    return this.service.updateBulk((body.items as any) ?? [], {
+    return this.service.updateBulk(body.items ?? [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
