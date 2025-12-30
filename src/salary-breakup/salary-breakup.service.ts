@@ -60,4 +60,108 @@ export class SalaryBreakupService {
       return { status: false, message: 'Failed to create salary breakup' }
     }
   }
+
+  async update(
+    id: string,
+    body: { name: string; details?: any; percentage?: number; status?: string },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string }
+  ) {
+    try {
+      const existing = await this.prisma.salaryBreakup.findUnique({
+        where: { id },
+      })
+
+      if (!existing) {
+        return { status: false, message: 'Salary breakup not found' }
+      }
+
+      const updated = await this.prisma.salaryBreakup.update({
+        where: { id },
+        data: {
+          name: body.name,
+          details: body.details !== undefined 
+            ? (typeof body.details === 'string' ? body.details : JSON.stringify(body.details))
+            : existing.details,
+          percentage: body.percentage !== undefined ? body.percentage : existing.percentage,
+          status: body.status ?? existing.status,
+        },
+      })
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: updated.id,
+        description: `Updated salary breakup ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { status: true, data: updated, message: 'Salary breakup updated successfully' }
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: id,
+        description: 'Failed to update salary breakup',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+
+      return { status: false, message: error?.message || 'Failed to update salary breakup' }
+    }
+  }
+
+  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const existing = await this.prisma.salaryBreakup.findUnique({
+        where: { id },
+      })
+
+      if (!existing) {
+        return { status: false, message: 'Salary breakup not found' }
+      }
+
+      await this.prisma.salaryBreakup.delete({ where: { id } })
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: id,
+        description: `Deleted salary breakup ${existing.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      })
+
+      return { status: true, message: 'Salary breakup deleted successfully' }
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: id,
+        description: 'Failed to delete salary breakup',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      })
+
+      return { status: false, message: error?.message || 'Failed to delete salary breakup' }
+    }
+  }
 }

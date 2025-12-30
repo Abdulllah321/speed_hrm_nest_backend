@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
 import { SalaryBreakupService } from './salary-breakup.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
-import { CreateSalaryBreakupDto } from './dto/salary-breakup.dto'
+import { CreateSalaryBreakupDto, UpdateSalaryBreakupDto } from './dto/salary-breakup.dto'
 
 @ApiTags('Salary Breakup')
 @Controller('api')
@@ -34,6 +34,34 @@ export class SalaryBreakupController {
     @Req() req: any
   ) {
     return this.service.create(body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Put('salary-breakups/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update salary breakup' })
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateSalaryBreakupDto,
+    @Req() req: any
+  ) {
+    return this.service.update(id, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Delete('salary-breakups/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete salary breakup' })
+  async remove(@Param('id') id: string, @Req() req: any) {
+    return this.service.remove(id, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

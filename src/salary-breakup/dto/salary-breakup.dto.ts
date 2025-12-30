@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSalaryBreakupDto {
@@ -19,10 +20,10 @@ export class CreateSalaryBreakupDto {
 }
 
 export class UpdateSalaryBreakupDto {
-  @ApiProperty({ example: 'breakup-uuid' })
-  @IsNotEmpty()
-  @IsString()
-  id: string;
+  @ApiPropertyOptional({ example: 'breakup-uuid' })
+  @IsOptional()
+  @IsString({ message: 'id must be a string' })
+  id?: string;
 
   @ApiProperty({ example: 'House Rent Allowance' })
   @IsNotEmpty()
@@ -33,6 +34,12 @@ export class UpdateSalaryBreakupDto {
   @IsOptional()
   @IsString()
   details?: string;
+
+  @ApiPropertyOptional({ example: 50.5 })
+  @IsOptional()
+  @IsNumber({}, { message: 'Percentage must be a number' })
+  @Type(() => Number)
+  percentage?: number;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()

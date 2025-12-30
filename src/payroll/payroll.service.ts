@@ -96,8 +96,31 @@ export class PayrollService {
             const packageAmount = effectivePackage;
 
             // Calculate breakup components using effective package
+            // Parse details to get component-level taxability information
             const salaryBreakup = salaryBreakups.map(breakup => {
                 let amount = new Decimal(0);
+                let isTaxable = false;
+                
+                // Parse details JSON to check if this component is taxable
+                try {
+                    if (breakup.details) {
+                        const details = typeof breakup.details === 'string' ? JSON.parse(breakup.details) : breakup.details;
+                        if (Array.isArray(details) && details.length > 0) {
+                            // If details is an array, find the entry matching this breakup's name
+                            const matchingEntry = details.find((entry: any) => entry.typeName === breakup.name);
+                            if (matchingEntry && matchingEntry.isTaxable) {
+                                isTaxable = true;
+                            }
+                        } else if (typeof details === 'object' && details.isTaxable) {
+                            // If details is an object with isTaxable property
+                            isTaxable = details.isTaxable === true;
+                        }
+                    }
+                } catch (e) {
+                    // If parsing fails, default to not taxable
+                    isTaxable = false;
+                }
+                
                 if (breakup.percentage !== null && breakup.percentage !== undefined) {
                     amount = packageAmount.mul(new Decimal(breakup.percentage)).div(100);
                 }
@@ -105,7 +128,8 @@ export class PayrollService {
                     id: breakup.id,
                     name: breakup.name,
                     percentage: breakup.percentage ? new Decimal(breakup.percentage).toNumber() : null,
-                    amount: amount.toNumber()
+                    amount: amount.toNumber(),
+                    isTaxable: isTaxable
                 };
             });
 
@@ -126,7 +150,8 @@ export class PayrollService {
             }));
 
             // B. Calculate Overtime (Using calculated Basic Salary for rate)
-            const { overtimeAmount, overtimeBreakup } = await this.calculateOvertime(employee, month, year, employee.workingHoursPolicy, calculatedBasicSalary);
+            // Include overtime from both overtimeRequests and attendance records (holidays/weekends)
+            const { overtimeAmount, overtimeBreakup } = await this.calculateOvertime(employee, month, year, employee.workingHoursPolicy, calculatedBasicSalary, monthStartDate, monthEndDate);
 
             // C. Calculate Attendance Deductions (Lates/Absents) (using calculated Basic Salary for rate)
             const { attendanceDeduction, attendanceBreakup } = await this.calculateAttendanceDeductions(employee, month, year, employee.workingHoursPolicy, calculatedBasicSalary);
@@ -161,7 +186,8 @@ export class PayrollService {
             const grossSalary = new Decimal(salaryBreakupTotal || packageAmount.toNumber()).add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount);
 
             // F. Calculate Tax (with Rebates)
-            const { taxDeduction, taxBreakup } = await this.calculateTax(grossSalary, employee.rebates);
+            // Tax is calculated based on taxable salary breakup components, not gross salary
+            const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, employee.rebates, packageAmount);
 
             // G. Calculate EOBI & PF
             const { eobiDeduction, providentFundDeduction } = this.calculateEOBI_PF(employee);
@@ -673,7 +699,7 @@ export class PayrollService {
         return { attendanceDeduction: deduction, attendanceBreakup };
     }
 
-    private async calculateOvertime(employee: any, month: string, year: string, policy: any, basicSalary: Decimal): Promise<{ overtimeAmount: Decimal; overtimeBreakup: any[] }> {
+    private async calculateOvertime(employee: any, month: string, year: string, policy: any, basicSalary: Decimal, monthStartDate: Date, monthEndDate: Date): Promise<{ overtimeAmount: Decimal; overtimeBreakup: any[] }> {
         // Fetch approved OvertimeRequests for this month
         const startDate = new Date(`${year}-${month}-01`);
         const endDate = new Date(Number(year), Number(month), 0);
@@ -708,6 +734,7 @@ export class PayrollService {
             holidayMultiplier = new Decimal(policy.gazzetedOvertimeRate);
         }
 
+        // Process overtime requests
         for (const ot of overtimes) {
             const weekdayHours = new Decimal(ot.weekdayOvertimeHours || 0);
             const holidayHours = new Decimal(ot.holidayOvertimeHours || 0);
@@ -727,20 +754,187 @@ export class PayrollService {
                     holidayHours: holidayHours.toNumber(),
                     amount: otTotal.toNumber(),
                     type: ot.overtimeType,
+                    source: 'overtime_request',
                 });
+            }
+        }
+
+        // Fetch ALL attendance records for the month to check for overtime on holidays/weekends
+        // We need all records with checkIn/checkOut to identify holidays/off days even if overtimeHours is not set
+        const attendances = await this.prisma.attendance.findMany({
+            where: {
+                employeeId: employee.id,
+                date: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+                checkIn: { not: null },
+                checkOut: { not: null },
+            },
+            orderBy: { date: 'asc' },
+        });
+
+        // Fetch all active holidays for date checking
+        const allHolidays = await this.prisma.holiday.findMany({
+            where: { status: 'active' },
+        });
+
+        // Helper to check if a date is a holiday
+        const isHoliday = (date: Date): boolean => {
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            return allHolidays.some(holiday => {
+                const holidayFrom = new Date(holiday.dateFrom);
+                const holidayTo = new Date(holiday.dateTo);
+                const holidayMonthFrom = holidayFrom.getMonth() + 1;
+                const holidayDayFrom = holidayFrom.getDate();
+                const holidayMonthTo = holidayTo.getMonth() + 1;
+                const holidayDayTo = holidayTo.getDate();
+                
+                // Check if date falls within holiday range
+                if (holidayMonthFrom === holidayMonthTo) {
+                    return month === holidayMonthFrom && day >= holidayDayFrom && day <= holidayDayTo;
+                } else {
+                    // Holiday spans across months
+                    return (month === holidayMonthFrom && day >= holidayDayFrom) || 
+                           (month === holidayMonthTo && day <= holidayDayTo);
+                }
+            });
+        };
+
+        // Helper to check if a date is a weekend
+        const isWeekend = (date: Date): boolean => {
+            const day = date.getDay();
+            return day === 0 || day === 6; // Sunday or Saturday
+        };
+
+        // Helper to check if a date is a weekly off day based on policy
+        // Weekends (Saturday/Sunday) are typically off days, but check policy overrides
+        const isWeeklyOff = (date: Date): boolean => {
+            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayName = dayNames[date.getDay()];
+            
+            // If policy has dayOverrides, check if this day is marked as off
+            if (policy && policy.dayOverrides && typeof policy.dayOverrides === 'object') {
+                const overrides = policy.dayOverrides as Record<string, any>;
+                const dayConfig = overrides[dayName];
+                if (dayConfig && dayConfig.dayType === 'off') {
+                    return true;
+                }
+                // If day is explicitly enabled/working, it's not an off day
+                if (dayConfig && dayConfig.enabled && dayConfig.dayType !== 'off') {
+                    return false;
+                }
+            }
+            
+            // Default: Weekends (Saturday=6, Sunday=0) are off days if no policy override
+            const dayOfWeek = date.getDay();
+            return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
+        };
+
+        // Process attendance records for overtime
+        // Track dates already covered by overtime requests to avoid double counting
+        const overtimeRequestDates = new Set(
+            overtimes.map(ot => new Date(ot.date).toDateString())
+        );
+
+        for (const attendance of attendances) {
+            const attDate = new Date(attendance.date);
+            const attDateString = attDate.toDateString();
+            const isHolidayDate = isHoliday(attDate);
+            const isWeekendDate = isWeekend(attDate);
+            const isOffDay = isWeeklyOff(attDate);
+            const isOnHolidayOrOff = isHolidayDate || isOffDay;
+
+            // Skip if already covered by overtime request (unless it's a holiday/off day - those always count)
+            if (overtimeRequestDates.has(attDateString) && !isOnHolidayOrOff) {
+                continue;
+            }
+
+            // Get overtimeHours from attendance record (already calculated by attendance service)
+            // Convert to Decimal if it's not already
+            let otHours: Decimal | null = null;
+            if (attendance.overtimeHours) {
+                otHours = attendance.overtimeHours instanceof Decimal 
+                    ? attendance.overtimeHours 
+                    : new Decimal(attendance.overtimeHours);
+            }
+
+            // For holidays/off days: use overtimeHours if available, otherwise all working hours are overtime
+            if (isOnHolidayOrOff && attendance.checkIn && attendance.checkOut) {
+                if (!otHours || otHours.eq(0)) {
+                    // If no overtimeHours calculated, use workingHours (all hours worked are overtime on holidays/off days)
+                    otHours = attendance.workingHours 
+                        ? (attendance.workingHours instanceof Decimal 
+                            ? attendance.workingHours 
+                            : new Decimal(attendance.workingHours))
+                        : new Decimal(0);
+                }
+                
+                if (otHours && otHours.gt(0)) {
+                    const overtimeAmt = hourlyRate.mul(holidayMultiplier).mul(otHours);
+                    amount = amount.add(overtimeAmt);
+                    overtimeBreakup.push({
+                        id: `attendance-${attendance.id}`,
+                        title: isHolidayDate ? 'Holiday Work' : 'Weekly Off Work',
+                        date: attendance.date,
+                        weekdayHours: 0,
+                        holidayHours: otHours.toNumber(),
+                        amount: overtimeAmt.toNumber(),
+                        type: isHolidayDate ? 'holiday' : 'weekly_off',
+                        source: 'attendance',
+                    });
+                }
+            } else if (otHours && otHours.gt(0)) {
+                // Regular overtime (already calculated in attendance service)
+                // Only add if not already covered by overtime request
+                if (!overtimeRequestDates.has(attDateString)) {
+                    const overtimeAmt = hourlyRate.mul(rateMultiplier).mul(otHours);
+                    
+                    if (overtimeAmt.gt(0)) {
+                        amount = amount.add(overtimeAmt);
+                        overtimeBreakup.push({
+                            id: `attendance-${attendance.id}`,
+                            title: isWeekendDate ? 'Weekend Overtime' : 'Regular Overtime',
+                            date: attendance.date,
+                            weekdayHours: otHours.toNumber(),
+                            holidayHours: 0,
+                            amount: overtimeAmt.toNumber(),
+                            type: isWeekendDate ? 'weekend' : 'regular',
+                            source: 'attendance',
+                        });
+                    }
+                }
             }
         }
 
         return { overtimeAmount: amount, overtimeBreakup };
     }
 
-    private async calculateTax(grossSalary: Decimal, rebates: any[]): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
-        const annualIncome = grossSalary.mul(12);
+    private async calculateTax(salaryBreakup: Array<{ id: string; name: string; percentage: number | null; amount: number; isTaxable?: boolean }>, rebates: any[], packageAmount: Decimal): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
+        // Calculate taxable income from salary breakup components only (not gross salary)
+        // Sum up amounts from components marked as taxable
+        let monthlyTaxableAmount = new Decimal(0);
+        const taxableComponents: Array<{ name: string; amount: number }> = [];
+        
+        for (const component of salaryBreakup) {
+            if (component.isTaxable && component.amount > 0) {
+                monthlyTaxableAmount = monthlyTaxableAmount.add(new Decimal(component.amount));
+                taxableComponents.push({
+                    name: component.name,
+                    amount: component.amount,
+                });
+            }
+        }
 
-        let taxableIncome = annualIncome;
+        // Convert to annual taxable income
+        const annualTaxableIncome = monthlyTaxableAmount.mul(12);
+
+        let taxableIncome = annualTaxableIncome;
         let totalRebateAmount = new Decimal(0);
         const rebateBreakup: any[] = [];
 
+        // Apply rebates (reduce taxable income by rebate amounts)
         if (rebates && rebates.length > 0) {
             for (const rebate of rebates) {
                 const rebateAmount = new Decimal(rebate.rebateAmount);
@@ -754,9 +948,15 @@ export class PayrollService {
             }
         }
 
+        // Ensure taxable income is not negative
+        if (taxableIncome.lt(0)) {
+            taxableIncome = new Decimal(0);
+        }
+
         let taxDeduction = new Decimal(0);
         let taxSlabUsed: { minAmount: number; maxAmount: number; rate: number } | null = null;
 
+        // Apply tax slab to taxable income
         if (taxableIncome.gt(0)) {
             const slab = await this.prisma.taxSlab.findFirst({
                 where: {
@@ -781,10 +981,15 @@ export class PayrollService {
             }
         }
 
+        // Calculate annual gross from taxable components for display (backward compatibility)
+        const annualGross = annualTaxableIncome;
+
         const taxBreakup = {
-            annualGross: annualIncome.toNumber(),
+            annualGross: annualGross.toNumber(), // Annual taxable components amount (for display)
+            annualTaxableComponents: annualTaxableIncome.toNumber(),
+            taxableComponents: taxableComponents, // Breakdown of taxable components
             totalRebate: totalRebateAmount.toNumber(),
-            taxableIncome: taxableIncome.toNumber(),
+            taxableIncome: taxableIncome.toNumber(), // Taxable income after rebates
             taxSlab: taxSlabUsed,
             monthlyTax: taxDeduction.toNumber(),
             rebateBreakup,

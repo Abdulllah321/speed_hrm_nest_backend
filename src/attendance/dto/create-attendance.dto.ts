@@ -92,10 +92,10 @@ export class CreateAttendanceDto {
 }
 
 export class UpdateAttendanceDto {
-  @ApiProperty({ example: 'attendance-uuid' })
-  @IsNotEmpty()
-  @IsString()
-  id: string;
+  @ApiPropertyOptional({ example: 'attendance-uuid' })
+  @IsOptional()
+  @IsString({ message: 'id must be a string' })
+  id?: string;
 
   @ApiPropertyOptional({ example: '2023-10-01T09:00:00Z' })
   @IsOptional()
