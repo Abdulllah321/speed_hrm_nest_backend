@@ -1,5 +1,5 @@
-import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNotEmpty, IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSalaryBreakupDto {
@@ -8,10 +8,22 @@ export class CreateSalaryBreakupDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: 'Basic salary component' })
+  @ApiProperty({ example: 50.5 })
+  @IsNotEmpty()
+  @IsNumber({}, { message: 'Percentage must be a number' })
+  @Type(() => Number)
+  percentage: number;
+
+  @ApiPropertyOptional({ example: true })
   @IsOptional()
-  @IsString()
-  details?: string;
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true' || value === 'yes';
+    return false;
+  })
+  @Type(() => Boolean)
+  isTaxable?: boolean;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()
@@ -30,16 +42,22 @@ export class UpdateSalaryBreakupDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: 'HRA component' })
-  @IsOptional()
-  @IsString()
-  details?: string;
-
-  @ApiPropertyOptional({ example: 50.5 })
-  @IsOptional()
+  @ApiProperty({ example: 50.5 })
+  @IsNotEmpty()
   @IsNumber({}, { message: 'Percentage must be a number' })
   @Type(() => Number)
-  percentage?: number;
+  percentage: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true' || value === 'yes';
+    return false;
+  })
+  @Type(() => Boolean)
+  isTaxable?: boolean;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()

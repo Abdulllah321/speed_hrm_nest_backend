@@ -18,14 +18,15 @@ export class SalaryBreakupService {
   }
 
   async create(
-    body: { name: string; details?: any; status?: string },
+    body: { name: string; percentage: number; isTaxable?: boolean; status?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string }
   ) {
     try {
       const created = await this.prisma.salaryBreakup.create({
         data: {
           name: body.name,
-          details: typeof body.details === 'string' ? body.details : JSON.stringify(body.details ?? null),
+          percentage: body.percentage,
+          details: body.isTaxable !== undefined ? JSON.stringify({ isTaxable: body.isTaxable }) : null,
           status: body.status ?? 'active',
           createdById: ctx.userId,
         },
@@ -63,7 +64,7 @@ export class SalaryBreakupService {
 
   async update(
     id: string,
-    body: { name: string; details?: any; percentage?: number; status?: string },
+    body: { name: string; percentage: number; isTaxable?: boolean; status?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string }
   ) {
     try {
@@ -79,10 +80,10 @@ export class SalaryBreakupService {
         where: { id },
         data: {
           name: body.name,
-          details: body.details !== undefined 
-            ? (typeof body.details === 'string' ? body.details : JSON.stringify(body.details))
+          percentage: body.percentage,
+          details: body.isTaxable !== undefined 
+            ? JSON.stringify({ isTaxable: body.isTaxable })
             : existing.details,
-          percentage: body.percentage !== undefined ? body.percentage : existing.percentage,
           status: body.status ?? existing.status,
         },
       })
