@@ -43,4 +43,46 @@ export class PayrollController {
     async getPayrollDetails(@Param('id') id: string) {
         return this.payrollService.getPayrollById(id);
     }
+
+    @Get('payroll/report')
+    @ApiOperation({ summary: 'Get payroll report' })
+    @ApiResponse({ status: 200, description: 'Returns payroll report data' })
+    async getPayrollReport(
+        @Query('month') month?: string,
+        @Query('year') year?: string,
+        @Query('departmentId') departmentId?: string,
+        @Query('subDepartmentId') subDepartmentId?: string,
+        @Query('employeeId') employeeId?: string,
+    ) {
+        return this.payrollService.getPayrollReport({ month, year, departmentId, subDepartmentId, employeeId });
+    }
+
+    @Get('payroll/bank-report')
+    @ApiOperation({ summary: 'Get bank salary transfer report' })
+    @ApiResponse({ status: 200, description: 'Returns bank report data' })
+    async getBankReport(
+        @Query('month') month: string,
+        @Query('year') year: string,
+        @Query('bankName') bankName: string,
+    ) {
+        return this.payrollService.getBankReport({ month, year, bankName });
+    }
+
+    @Get('payroll/payslips')
+    @ApiOperation({ summary: 'Get confirmed payrolls for payslips' })
+    async getPayslips(
+        @Query('month') month?: string,
+        @Query('year') year?: string,
+        @Query('departmentId') departmentId?: string,
+        @Query('subDepartmentId') subDepartmentId?: string,
+        @Query('employeeId') employeeId?: string,
+    ) {
+        return this.payrollService.getPayslips({ month, year, departmentId, subDepartmentId, employeeId });
+    }
+
+    @Get('payroll/payslip/:detailId')
+    @ApiOperation({ summary: 'Get detailed payslip info' })
+    async getPayslipDetail(@Param('detailId') detailId: string) {
+        return this.payrollService.getPayslipDetail(detailId);
+    }
 }
