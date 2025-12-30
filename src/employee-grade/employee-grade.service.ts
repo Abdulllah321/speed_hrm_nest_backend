@@ -18,6 +18,44 @@ export class EmployeeGradeService {
     return { status: true, data: item };
   }
 
+  async create(data: { grade: string; status?: string }) {
+    try {
+      if (!data.grade) {
+        return { status: false, message: 'Grade name is required' };
+      }
+      const item = await this.prisma.employeeGrade.create({
+        data: {
+          grade: data.grade,
+          status: data.status || 'Active',
+        },
+      });
+      return { status: true, data: item, message: 'Employee grade created successfully' };
+    } catch (error) {
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to create grade' };
+    }
+  }
+
+  async update(id: string, data: { grade?: string; status?: string }) {
+    try {
+      const item = await this.prisma.employeeGrade.update({
+        where: { id },
+        data,
+      });
+      return { status: true, data: item, message: 'Employee grade updated successfully' };
+    } catch (error) {
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to update grade' };
+    }
+  }
+
+  async delete(id: string) {
+    try {
+      await this.prisma.employeeGrade.delete({ where: { id } });
+      return { status: true, message: 'Employee grade deleted successfully' };
+    } catch (error) {
+      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete grade' };
+    }
+  }
+
   async bulkCreate(items: { grade: string; status?: string }[]) {
     try {
       const validData = items

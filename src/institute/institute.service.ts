@@ -7,7 +7,7 @@ export class InstituteService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.institute.findMany({ orderBy: { createdAt: 'desc' } })
@@ -24,30 +24,30 @@ export class InstituteService {
     try {
       const created = await this.prisma.institute.create({ data: { name: body.name, status: body.status ?? 'active', createdById: ctx.userId } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'institutes',
-          entity: 'Institute',
-          entityId: created.id,
-          description: `Created institute ${created.name}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'institutes',
+        entity: 'Institute',
+        entityId: created.id,
+        description: `Created institute ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: created, message: 'Institute created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'institutes',
-          entity: 'Institute',
-          description: 'Failed to create institute',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'institutes',
+        entity: 'Institute',
+        description: 'Failed to create institute',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create institute', data: null }
     }
@@ -58,32 +58,32 @@ export class InstituteService {
       const existing = await this.prisma.institute.findUnique({ where: { id } })
       const updated = await this.prisma.institute.update({ where: { id }, data: { name: body.name ?? existing?.name, status: body.status ?? existing?.status ?? 'active' } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'institutes',
-          entity: 'Institute',
-          entityId: id,
-          description: `Updated institute ${updated.name}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'institutes',
+        entity: 'Institute',
+        entityId: id,
+        description: `Updated institute ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: updated, message: 'Institute updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'institutes',
-          entity: 'Institute',
-          entityId: id,
-          description: 'Failed to update institute',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'institutes',
+        entity: 'Institute',
+        entityId: id,
+        description: 'Failed to update institute',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to update institute', data: null }
     }
@@ -94,30 +94,30 @@ export class InstituteService {
       const existing = await this.prisma.institute.findUnique({ where: { id } })
       const removed = await this.prisma.institute.delete({ where: { id } })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'institutes',
-          entity: 'Institute',
-          entityId: id,
-          description: `Deleted institute ${existing?.name}`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'institutes',
+        entity: 'Institute',
+        entityId: id,
+        description: `Deleted institute ${existing?.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: removed, message: 'Institute deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'institutes',
-          entity: 'Institute',
-          entityId: id,
-          description: 'Failed to delete institute',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'institutes',
+        entity: 'Institute',
+        entityId: id,
+        description: 'Failed to delete institute',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to delete institute', data: null }
     }
@@ -129,29 +129,29 @@ export class InstituteService {
     try {
       const result = await this.prisma.institute.createMany({ data, skipDuplicates: true })
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'institutes',
-          entity: 'Institute',
-          description: `Created institutes (${result.count})`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'institutes',
+        entity: 'Institute',
+        description: `Created institutes (${result.count})`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       })
       return { status: true, data: result, message: 'Institutes created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'institutes',
-          entity: 'Institute',
-          description: 'Failed to create institutes',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'institutes',
+        entity: 'Institute',
+        description: 'Failed to create institutes',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       })
       return { status: false, message: 'Failed to create institutes', data: null }
     }

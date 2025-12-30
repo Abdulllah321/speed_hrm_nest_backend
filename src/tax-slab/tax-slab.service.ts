@@ -7,7 +7,7 @@ export class TaxSlabService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.taxSlab.findMany({
@@ -44,30 +44,30 @@ export class TaxSlabService {
         },
       });
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          entityId: created.id,
-          description: `Created tax slab ${created.name}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        entityId: created.id,
+        description: `Created tax slab ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       });
-      return { status: true, data: created };
+      return { status: true, data: created, message: 'Created successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          description: 'Failed to create tax slab',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        description: 'Failed to create tax slab',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       });
       return { status: false, message: 'Failed to create tax slab' };
     }
@@ -97,29 +97,29 @@ export class TaxSlabService {
         skipDuplicates: true,
       });
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          description: `Bulk created ${res.count} tax slabs`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        description: `Bulk created ${res.count} tax slabs`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       });
       return { status: true, message: 'Created successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          description: 'Failed bulk create tax slabs',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'create',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        description: 'Failed bulk create tax slabs',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       });
       return { status: false, message: 'Failed to create tax slabs' };
     }
@@ -150,32 +150,32 @@ export class TaxSlabService {
         },
       });
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          entityId: id,
-          description: `Updated tax slab ${updated.name}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        entityId: id,
+        description: `Updated tax slab ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       });
-      return { status: true, data: updated };
+      return { status: true, data: updated, message: 'Updated successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          entityId: id,
-          description: 'Failed to update tax slab',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        entityId: id,
+        description: 'Failed to update tax slab',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       });
       return { status: false, message: 'Failed to update tax slab' };
     }
@@ -190,30 +190,30 @@ export class TaxSlabService {
       if (!existing) return { status: false, message: 'Tax slab not found' };
       await this.prisma.taxSlab.delete({ where: { id } });
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          entityId: id,
-          description: `Deleted tax slab ${existing.name}`,
-          oldValues: JSON.stringify(existing),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        entityId: id,
+        description: `Deleted tax slab ${existing.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       });
       return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          entityId: id,
-          description: 'Failed to delete tax slab',
-          errorMessage: error?.message,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        entityId: id,
+        description: 'Failed to delete tax slab',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       });
       return { status: false, message: 'Failed to delete tax slab' };
     }
@@ -322,29 +322,29 @@ export class TaxSlabService {
         });
       }
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          description: `Bulk updated ${items.length} tax slabs`,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        description: `Bulk updated ${items.length} tax slabs`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
       });
       return { status: true, message: 'Updated successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'tax-slabs',
-          entity: 'TaxSlab',
-          description: 'Failed bulk update tax slabs',
-          errorMessage: error?.message,
-          newValues: JSON.stringify(items),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'failure',
+        userId: ctx.userId,
+        action: 'update',
+        module: 'tax-slabs',
+        entity: 'TaxSlab',
+        description: 'Failed bulk update tax slabs',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
       });
       return { status: false, message: 'Failed to update tax slabs' };
     }

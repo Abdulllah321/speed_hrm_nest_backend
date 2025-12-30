@@ -37,13 +37,13 @@ export class PayrollService {
                 },
                 loanRequests: { where: { status: 'approved' } },
                 advanceSalaries: { where: { deductionMonth: month, deductionYear: year, status: 'approved' } },
-                bonuses: { 
+                bonuses: {
                     where: { bonusMonth: month, bonusYear: year, status: 'active' },
                     include: { bonusType: { select: { id: true, name: true } } }
                 },
                 rebates: { where: { monthYear: `${year}-${month}`, status: 'approved' }, include: { rebateNature: true } },
-                leaveApplications: { 
-                    where: { 
+                leaveApplications: {
+                    where: {
                         status: 'approved',
                         OR: [
                             {
@@ -139,7 +139,7 @@ export class PayrollService {
 
             // A. Calculate Allowances (Ad-hoc additional allowances)
             const totalAdHocAllowances = this.calculateAllowances(employee.allowances);
-            
+
             // Prepare allowance breakdown
             const allowanceBreakup = employee.allowances.map((allow) => ({
                 id: allow.id,
@@ -158,7 +158,7 @@ export class PayrollService {
 
             // D. Calculate Bonuses
             const bonusAmount = this.calculateBonuses(employee.bonuses);
-            
+
             // Prepare bonus breakdown (only bonuses with paymentMethod 'with_salary')
             const bonusBreakup = employee.bonuses
                 .filter(b => b.paymentMethod === 'with_salary')
@@ -169,7 +169,7 @@ export class PayrollService {
                     calculationType: bonus.calculationType,
                     percentage: bonus.percentage ? Number(bonus.percentage) : null,
                 }));
-            
+
             // Prepare deduction breakdown (excluding tax, attendance, loan, advance, eobi, pf which are calculated separately)
             const deductionBreakup = employee.deductions.map((ded) => ({
                 id: ded.id,
@@ -253,6 +253,19 @@ export class PayrollService {
         this.logger.log(`Confirming payroll for ${month}/${year}`);
 
         try {
+            // Fetch employees for bank info snapshot
+            const employeeIds = details.map(d => d.employeeId);
+            const employeesInfo = await this.prisma.employee.findMany({
+                where: { id: { in: employeeIds } },
+                select: {
+                    id: true,
+                    accountNumber: true,
+                    bankName: true,
+                }
+            });
+
+            const employeeMap = new Map(employeesInfo.map(e => [e.id, e]));
+
             // Check if payroll already exists
             let payroll = await this.prisma.payroll.findFirst({
                 where: {
@@ -262,7 +275,7 @@ export class PayrollService {
             });
 
             if (payroll) {
-                if (payroll.status !== 'draft') {
+                if (payroll.status !== 'draft' && payroll.status !== 'confirmed') {
                     throw new BadRequestException('Payroll for this month is already processed/approved.');
                 }
             } else {
@@ -272,14 +285,13 @@ export class PayrollService {
                         month,
                         year,
                         totalAmount: 0,
-                        status: 'draft',
+                        status: 'confirmed',
                         generatedBy: generatedBy ? { connect: { id: generatedBy } } : undefined,
                     }
                 });
             }
 
             // Remove existing details for submitted employees
-            const employeeIds = details.map(d => d.employeeId);
             await this.prisma.payrollDetail.deleteMany({
                 where: {
                     payrollId: payroll.id,
@@ -287,24 +299,40 @@ export class PayrollService {
                 }
             });
 
-            const payrollDetailsData: any[] = details.map(d => ({
-                payrollId: payroll.id,
-                employeeId: d.employeeId,
-                basicSalary: new Decimal(d.basicSalary),
-                totalAllowances: new Decimal(d.totalAllowances),
-                totalDeductions: new Decimal(d.totalDeductions),
-                attendanceDeduction: new Decimal(d.attendanceDeduction),
-                loanDeduction: new Decimal(d.loanDeduction),
-                advanceSalaryDeduction: new Decimal(d.advanceSalaryDeduction),
-                eobiDeduction: new Decimal(d.eobiDeduction),
-                providentFundDeduction: new Decimal(d.providentFundDeduction),
-                taxDeduction: new Decimal(d.taxDeduction),
-                overtimeAmount: new Decimal(d.overtimeAmount),
-                bonusAmount: new Decimal(d.bonusAmount),
-                grossSalary: new Decimal(d.grossSalary),
-                netSalary: new Decimal(d.netSalary),
-                paymentStatus: 'pending',
-            }));
+            const payrollDetailsData: any[] = details.map(d => {
+                const empInfo = employeeMap.get(d.employeeId);
+                return {
+                    payrollId: payroll.id,
+                    employeeId: d.employeeId,
+                    basicSalary: new Decimal(d.basicSalary),
+                    totalAllowances: new Decimal(d.totalAllowances),
+                    totalDeductions: new Decimal(d.totalDeductions),
+                    attendanceDeduction: new Decimal(d.attendanceDeduction),
+                    loanDeduction: new Decimal(d.loanDeduction),
+                    advanceSalaryDeduction: new Decimal(d.advanceSalaryDeduction),
+                    eobiDeduction: new Decimal(d.eobiDeduction),
+                    providentFundDeduction: new Decimal(d.providentFundDeduction),
+                    taxDeduction: new Decimal(d.taxDeduction),
+                    overtimeAmount: new Decimal(d.overtimeAmount),
+                    bonusAmount: new Decimal(d.bonusAmount),
+                    grossSalary: new Decimal(d.grossSalary),
+                    netSalary: new Decimal(d.netSalary),
+                    paymentStatus: 'pending',
+                    // Save breakdowns
+                    salaryBreakup: d.salaryBreakup || [],
+                    allowanceBreakup: d.allowanceBreakup || [],
+                    deductionBreakup: d.deductionBreakup || [],
+                    taxBreakup: d.taxBreakup || {},
+                    attendanceBreakup: d.attendanceBreakup || {},
+                    overtimeBreakup: d.overtimeBreakup || [],
+                    bonusBreakup: d.bonusBreakup || [],
+                    incrementBreakup: d.incrementBreakup || [],
+                    // Snapshot bank info
+                    accountNumber: empInfo?.accountNumber,
+                    bankName: empInfo?.bankName,
+                    paymentMode: 'Bank Transfer', // Default or fetch if available
+                };
+            });
 
             // Bulk create details
             if (payrollDetailsData.length > 0) {
@@ -321,7 +349,10 @@ export class PayrollService {
 
             await this.prisma.payroll.update({
                 where: { id: payroll.id },
-                data: { totalAmount: aggregate._sum.netSalary || new Decimal(0) }
+                data: {
+                    totalAmount: aggregate._sum.netSalary || new Decimal(0),
+                    status: 'confirmed'
+                }
             });
 
             // Log Component
@@ -360,6 +391,208 @@ export class PayrollService {
             include: { details: { include: { employee: true } } }
         })
     }
+
+    async getPayrollReport(filters: { month?: string; year?: string; departmentId?: string; subDepartmentId?: string; employeeId?: string }) {
+        const where: Prisma.PayrollDetailWhereInput = {};
+
+        if (filters.month || filters.year) {
+            where.payroll = {
+                ...(filters.month && filters.month !== 'all' && { month: filters.month }),
+                ...(filters.year && filters.year !== 'all' && { year: filters.year }),
+            };
+        }
+
+        if (filters.employeeId && filters.employeeId !== 'all') {
+            where.employeeId = filters.employeeId;
+        }
+
+        if ((filters.departmentId && filters.departmentId !== 'all') || (filters.subDepartmentId && filters.subDepartmentId !== 'all')) {
+            where.employee = {
+                ...(filters.departmentId && filters.departmentId !== 'all' && { departmentId: filters.departmentId }),
+                ...(filters.subDepartmentId && filters.subDepartmentId !== 'all' && { subDepartmentId: filters.subDepartmentId }),
+            };
+        }
+
+        return this.prisma.payrollDetail.findMany({
+            where,
+            include: {
+                employee: {
+                    include: {
+                        department: true,
+                        subDepartment: true,
+                        designation: true,
+                        country: true,
+                        state: true,
+                        city: true,
+                        branch: true,
+                    }
+                },
+                payroll: true,
+            },
+            orderBy: {
+                employee: {
+                    employeeName: 'asc'
+                }
+            }
+        });
+    }
+
+    async getBankReport(filters: { month: string; year: string; bankName: string }) {
+        return this.prisma.payrollDetail.findMany({
+            where: {
+                bankName: filters.bankName,
+                payroll: {
+                    month: filters.month,
+                    year: filters.year,
+                    status: { in: ['draft', 'confirmed'] }, // Show both for flexibility
+                },
+            },
+            include: {
+                employee: {
+                    select: {
+                        employeeId: true,
+                        employeeName: true,
+                    }
+                },
+            },
+            orderBy: {
+                employee: {
+                    employeeName: 'asc'
+                }
+            }
+        });
+    }
+
+    async getPayslips(filters: { month?: string; year?: string; departmentId?: string; subDepartmentId?: string; employeeId?: string }) {
+        const payrollWhere: Prisma.PayrollWhereInput = {
+            status: { in: ['draft', 'confirmed'] },
+        };
+
+        if (filters.month && filters.month !== 'all') {
+            payrollWhere.month = filters.month;
+        }
+        if (filters.year && filters.year !== 'all') {
+            payrollWhere.year = filters.year;
+        }
+
+        const where: Prisma.PayrollDetailWhereInput = {
+            payroll: payrollWhere
+        };
+
+        if (filters.employeeId && filters.employeeId !== 'all') {
+            where.employeeId = filters.employeeId;
+        }
+
+        if ((filters.departmentId && filters.departmentId !== 'all') || (filters.subDepartmentId && filters.subDepartmentId !== 'all')) {
+            where.employee = {
+                ...(filters.departmentId && filters.departmentId !== 'all' && { departmentId: filters.departmentId }),
+                ...(filters.subDepartmentId && filters.subDepartmentId !== 'all' && { subDepartmentId: filters.subDepartmentId }),
+            };
+        }
+
+        return this.prisma.payrollDetail.findMany({
+            where,
+            include: {
+                employee: {
+                    select: {
+                        employeeId: true,
+                        employeeName: true,
+                        officialEmail: true,
+                        department: { select: { name: true } },
+                        subDepartment: { select: { name: true } },
+                    }
+                },
+                payroll: true,
+            },
+            orderBy: {
+                employee: {
+                    employeeName: 'asc'
+                }
+            }
+        });
+    }
+
+    async getPayslipDetail(detailId: string) {
+        const detail = await this.prisma.payrollDetail.findUnique({
+            where: { id: detailId },
+            include: {
+                employee: {
+                    include: {
+                        department: true,
+                        subDepartment: true,
+                        designation: true,
+                        employeeGrade: true,
+                    }
+                },
+                payroll: true,
+            }
+        });
+
+        if (!detail) {
+            throw new BadRequestException("Payslip not found");
+        }
+
+        // 1. Calculate PF Balances
+        const allPreviousDetails = await this.prisma.payrollDetail.findMany({
+            where: {
+                employeeId: detail.employeeId,
+                payroll: {
+                    status: 'confirmed',
+                    OR: [
+                        { year: { lt: detail.payroll.year } },
+                        { year: detail.payroll.year, month: { lt: detail.payroll.month } }
+                    ]
+                }
+            }
+        });
+
+        // Sum up both employee and employer contributions (assuming matching)
+        const pfOpeningBalance = allPreviousDetails.reduce((sum, d) =>
+            sum.add(new Decimal(d.providentFundDeduction).mul(2)), new Decimal(0));
+
+        const pfAddedDuringMonth = new Decimal(detail.providentFundDeduction).mul(2);
+
+        // Withdrawal: Placeholder as there's no model for it yet
+        const pfWithdrawalAmount = new Decimal(0);
+
+        const pfClosingBalance = pfOpeningBalance.add(pfAddedDuringMonth).minus(pfWithdrawalAmount);
+
+        // 2. Calculate Loan Balances
+        // Fetch all approved loan requests for this employee
+        const approvedLoans = await this.prisma.loanRequest.findMany({
+            where: {
+                employeeId: detail.employeeId,
+                status: { in: ['approved', 'disbursed', 'completed'] }
+            }
+        });
+
+        // For simplicity, we'll take the sum of all loans if multiple exist
+        const totalLoanAmount = approvedLoans.reduce((sum, loan) => sum.add(new Decimal(loan.amount)), new Decimal(0));
+
+        // Total paid in previous months
+        const loanPaidAmount = allPreviousDetails.reduce((sum, d) => sum.add(new Decimal(d.loanDeduction)), new Decimal(0));
+
+        const loanDeductedThisMonth = new Decimal(detail.loanDeduction);
+
+        const loanClosingBalance = totalLoanAmount.minus(loanPaidAmount).minus(loanDeductedThisMonth);
+
+        return {
+            ...detail,
+            pfBalances: {
+                opening: pfOpeningBalance.toNumber(),
+                added: pfAddedDuringMonth.toNumber(),
+                withdrawal: pfWithdrawalAmount.toNumber(),
+                closing: pfClosingBalance.toNumber(),
+            },
+            loanBalances: {
+                totalAmount: totalLoanAmount.toNumber(),
+                paidAmount: loanPaidAmount.toNumber(),
+                deductedThisMonth: loanDeductedThisMonth.toNumber(),
+                closingBalance: Math.max(0, loanClosingBalance.toNumber()),
+            }
+        };
+    }
+
 
     // --- Helper Methods ---
 
@@ -456,12 +689,12 @@ export class PayrollService {
         const incrementsBeforeMonth = employee.increments.filter((inc: any) => {
             const incDate = normalizeDate(new Date(inc.promotionDate));
             return incDate < monthStart;
-        }).sort((a: any, b: any) => 
+        }).sort((a: any, b: any) =>
             new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime()
         );
 
         // Starting salary: If there's an increment before the month, use that salary; otherwise use base salary
-        let currentSalary = incrementsBeforeMonth.length > 0 
+        let currentSalary = incrementsBeforeMonth.length > 0
             ? new Decimal(incrementsBeforeMonth[0].salary)
             : baseSalary;
 
@@ -469,7 +702,7 @@ export class PayrollService {
         const incrementsInMonth = employee.increments.filter((inc: any) => {
             const incDate = normalizeDate(new Date(inc.promotionDate));
             return incDate >= monthStart && incDate <= monthEnd;
-        }).sort((a: any, b: any) => 
+        }).sort((a: any, b: any) =>
             new Date(a.promotionDate).getTime() - new Date(b.promotionDate).getTime()
         );
 
@@ -481,12 +714,12 @@ export class PayrollService {
         } else {
             // Calculate proportional salary for each period
             let lastDate = monthStart;
-            
+
             for (const increment of incrementsInMonth) {
                 const incrementDate = normalizeDate(new Date(increment.promotionDate));
                 // Calculate days from lastDate (inclusive) to incrementDate (exclusive)
                 const daysBeforeIncrement = Math.max(0, Math.floor((incrementDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
-                
+
                 if (daysBeforeIncrement > 0) {
                     // Add salary for days before this increment
                     effectivePackage = effectivePackage.add(
@@ -552,15 +785,15 @@ export class PayrollService {
         // Helper function to check if date has approved leave
         const hasApprovedLeave = (date: Date): boolean => {
             if (!employee.leaveApplications || employee.leaveApplications.length === 0) return false;
-            
+
             const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            
+
             return employee.leaveApplications.some((leave: any) => {
                 const fromDate = new Date(leave.fromDate);
                 const toDate = new Date(leave.toDate);
                 fromDate.setHours(0, 0, 0, 0);
                 toDate.setHours(23, 59, 59, 999);
-                
+
                 return dateOnly >= fromDate && dateOnly <= toDate;
             });
         };
@@ -568,7 +801,6 @@ export class PayrollService {
         // Count leave days
         let leaveDaysCount = 0;
         const totalDaysInMonth = new Date(Number(year), Number(month), 0).getDate();
-        
         // Process attendances
         for (const att of attendances) {
             const attDate = new Date(att.date);
@@ -662,7 +894,7 @@ export class PayrollService {
         }
 
         // Late Deduction Logic
-        const chargeableLates = policy && policy.applyDeductionAfterLates 
+        const chargeableLates = policy && policy.applyDeductionAfterLates
             ? Math.max(0, lateCount - policy.applyDeductionAfterLates)
             : lateCount;
         if (policy && policy.lateDeductionType && chargeableLates > 0 && policy.lateDeductionPercent) {

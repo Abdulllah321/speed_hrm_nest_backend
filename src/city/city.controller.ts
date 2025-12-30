@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Req, UseGuards, Put, Delete } from '@nestjs/common'
 import { CityService } from './city.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
@@ -7,7 +7,7 @@ import { CreateCityDto } from './dto/city.dto'
 @ApiTags('City')
 @Controller('api')
 export class CityController {
-  constructor(private service: CityService) {}
+  constructor(private service: CityService) { }
 
   @Get('countries')
   @ApiOperation({ summary: 'List all countries' })
@@ -65,6 +65,56 @@ export class CityController {
   })
   async createCitiesBulk(@Body() body: { items: { name: string; countryId: string; stateId: string; status?: string }[] }, @Req() req) {
     return this.service.createCitiesBulk(body.items || [], {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+  @Post('cities')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create city' })
+  @ApiBody({ schema: { type: 'object', properties: { name: { type: 'string', example: 'Lahore' }, countryId: { type: 'string' }, stateId: { type: 'string' }, status: { type: 'string', example: 'active' } } } })
+  async create(@Body() body: { name: string; countryId: string; stateId: string; status?: string }, @Req() req) {
+    return this.service.create(body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Put('cities/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update city' })
+  @ApiBody({ schema: { type: 'object', properties: { name: { type: 'string', example: 'Lahore' }, countryId: { type: 'string' }, stateId: { type: 'string' }, status: { type: 'string', example: 'active' } } } })
+  async update(@Param('id') id: string, @Body() body: { name?: string; countryId?: string; stateId?: string; status?: string }, @Req() req) {
+    return this.service.update(id, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Delete('cities/bulk')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete cities in bulk' })
+  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
+  async removeBulk(@Body() body: { ids: string[] }, @Req() req) {
+    return this.service.removeBulk(body.ids || [], {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    })
+  }
+
+  @Delete('cities/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete city' })
+  async remove(@Param('id') id: string, @Req() req) {
+    return this.service.remove(id, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
