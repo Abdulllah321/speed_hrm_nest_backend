@@ -127,10 +127,19 @@ export class AttendanceService {
     let startBreak = policy.startBreakTime
     let endBreak = policy.endBreakTime
     let expectedHours = this.parseTimeToHours(endTime) - this.parseTimeToHours(startTime)
+    let isDayOff = false
+
+    // If it's a weekend, default to 0 expected hours (unless overridden)
+    if (dayName === 'saturday' || dayName === 'sunday') {
+      expectedHours = 0
+      isDayOff = true
+    }
 
     if (policy.dayOverrides && typeof policy.dayOverrides === 'object') {
       const overrides = policy.dayOverrides as any
       if (overrides[dayName]?.enabled) {
+        // If override is enabled for this day, it might be a working day now
+        isDayOff = false
         const override = overrides[dayName]
         if (override.overrideHours) {
           startTime = override.startTime || startTime
@@ -159,10 +168,10 @@ export class AttendanceService {
     }
 
     // Calculate late minutes
-    const lateMinutes = Math.max(0, (checkInHours - startHours) * 60)
+    const lateMinutes = isDayOff ? 0 : Math.max(0, (checkInHours - startHours) * 60)
 
     // Calculate early leave minutes
-    const earlyLeaveMinutes = Math.max(0, (endHours - checkOutHours) * 60)
+    const earlyLeaveMinutes = isDayOff ? 0 : Math.max(0, (endHours - checkOutHours) * 60)
 
     // Calculate total working hours (excluding break)
     const totalHours = checkOutHours - checkInHours - (breakDuration / 60)
@@ -337,9 +346,43 @@ export class AttendanceService {
       const results: any[] = []
       const errors: Array<{ date: string; error: string }> = []
 
+      // Fetch all active holidays
+      const holidays = await this.prisma.holiday.findMany({
+        where: { status: 'active' },
+      })
+
       // Iterate through each day in the range
       const currentDate = new Date(fromDate)
       while (currentDate <= toDate) {
+        // Skip Weekends (Saturday & Sunday)
+        if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+          currentDate.setDate(currentDate.getDate() + 1)
+          continue
+        }
+
+        // Skip Holidays (Recurring check)
+        const isHoliday = holidays.some(holiday => {
+          const holidayStart = new Date(holiday.dateFrom)
+          const holidayEnd = new Date(holiday.dateTo)
+
+          // Normalize years to current date's year for comparison
+          holidayStart.setFullYear(currentDate.getFullYear())
+          holidayEnd.setFullYear(currentDate.getFullYear())
+
+          // Reset hours for comparison
+          const checkDate = new Date(currentDate)
+          checkDate.setHours(0, 0, 0, 0)
+          holidayStart.setHours(0, 0, 0, 0)
+          holidayEnd.setHours(23, 59, 59, 999)
+
+          return checkDate >= holidayStart && checkDate <= holidayEnd
+        })
+
+        if (isHoliday) {
+          currentDate.setDate(currentDate.getDate() + 1)
+          continue
+        }
+
         const dateStr = currentDate.toISOString().split('T')[0]
         const checkInDateTime = body.checkIn ? new Date(`${dateStr}T${body.checkIn}`) : undefined
         const checkOutDateTime = body.checkOut ? new Date(`${dateStr}T${body.checkOut}`) : undefined
@@ -1214,6 +1257,17 @@ export class AttendanceService {
             const scheduledHours = getScheduledHoursPerDay(employee.workingHoursPolicy)
             totalScheduleTime += scheduledHours
 
+            // Check for approved leave application FIRST
+            // This ensures we count the leave even if they are marked Present
+            let isApprovedLeave = false
+            if (leaveApplication) {
+              leaves++
+              isApprovedLeave = true
+              // Adjust scheduled time for leave days
+              totalScheduleTime -= scheduledHours
+              scheduleDays-- // Don't count leave days as scheduled
+            }
+
             if (attendance) {
               // Handle different attendance statuses according to schema
               const status = attendance.status.toLowerCase()
@@ -1228,7 +1282,9 @@ export class AttendanceService {
                 present++ // Late is still considered present
                 late++
               } else if (status === 'absent') {
-                absents++
+                if (!isApprovedLeave) {
+                  absents++
+                }
               } else if (status === 'half-day' || status === 'halfday') {
                 halfDay++
                 present++ // Half day is partially present
@@ -1244,18 +1300,26 @@ export class AttendanceService {
                   late++
                 }
               } else if (status === 'on-leave' || status === 'onleave') {
-                leaves++
-                // Adjust scheduled time for leave days
-                totalScheduleTime -= scheduledHours
-                scheduleDays-- // Don't count leave days as scheduled
+                // Only count if not already counted as approved leave
+                if (!isApprovedLeave) {
+                  leaves++
+                  // Adjust scheduled time for leave days
+                  totalScheduleTime -= scheduledHours
+                  scheduleDays-- // Don't count leave days as scheduled
+                }
               } else if (status === 'holiday') {
                 // Holiday status - treat as off day but check if present
                 offDays++
                 if (attendance.checkIn || attendance.checkOut) {
                   presentOnHoliday++
                 }
-                scheduleDays-- // Don't count as scheduled day
-                totalScheduleTime -= scheduledHours // Remove from scheduled time
+
+                // Revert the schedule addition at the top if it turns out to be a holiday status
+                // But wait, if it was !isHolidayDate, how can status be holiday?
+                // Edge case: Master list says it's workday, but attendance says holiday (override?)
+                // For now, let's treat it consistent with logic above: remove from schedule
+                scheduleDays--
+                totalScheduleTime -= scheduledHours
                 continue
               }
 
@@ -1274,14 +1338,8 @@ export class AttendanceService {
                 totalOvertimeAfter += Number(attendance.overtimeHours)
               }
             } else {
-              // No attendance record - check if on approved leave
-              if (leaveApplication) {
-                leaves++
-                // Adjust scheduled time for leave days
-                totalScheduleTime -= scheduledHours
-                scheduleDays-- // Don't count leave days as scheduled
-              } else {
-                // No attendance and no leave = absent
+              // No attendance record - check if absent (unless on leave)
+              if (!isApprovedLeave) {
                 absents++
               }
             }
