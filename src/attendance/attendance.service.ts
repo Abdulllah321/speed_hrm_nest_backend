@@ -8,7 +8,7 @@ export class AttendanceService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(filters?: {
     employeeId?: string
@@ -561,13 +561,13 @@ export class AttendanceService {
         // Parse Excel file
         try {
           const XLSX = await import('xlsx')
-          
+
           // Read file buffer
           const fileBuffer = fs.readFileSync(filePath)
-          
+
           // Parse workbook from buffer
           const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
-          
+
           // Get first sheet
           const sheetName = workbook.SheetNames[0]
           if (!sheetName) {
@@ -575,7 +575,7 @@ export class AttendanceService {
           }
 
           const worksheet = workbook.Sheets[sheetName]
-          
+
           // Convert to array of arrays (first row is headers)
           const excelData = XLSX.utils.sheet_to_json(worksheet, {
             header: 1,
@@ -609,7 +609,7 @@ export class AttendanceService {
               // Filter out completely empty rows
               const hasData = Object.values(row).some(val => val && String(val).trim().length > 0)
               if (!hasData) return false
-              
+
               // Check for required fields (ID and DATE) - case insensitive
               const rowKeys = Object.keys(row).map(k => k.toLowerCase().trim())
               const hasId = rowKeys.some(k => ['id', 'employeeid', 'employee_id', 'employee id'].includes(k)) &&
@@ -621,7 +621,7 @@ export class AttendanceService {
                 Object.entries(row).some(([key, val]) => {
                   return (key.toLowerCase().trim() === 'date' && val && String(val).trim().length > 0)
                 })
-              
+
               return hasId && hasDate
             })
         } catch (error: any) {
@@ -629,7 +629,7 @@ export class AttendanceService {
         }
       } else {
         // Parse CSV file
-      const { parse } = await import('csv-parse/sync')
+        const { parse } = await import('csv-parse/sync')
 
         // Read file and validate it's a text file
         let fileContent: string
@@ -648,8 +648,8 @@ export class AttendanceService {
         try {
           // First, parse without columns to get raw data and handle inconsistent column counts
           const rawData = parse(fileContent, {
-        skip_empty_lines: true,
-        trim: true,
+            skip_empty_lines: true,
+            trim: true,
             bom: true,
             relax_quotes: true,
             relax_column_count: true, // Allow inconsistent column counts
@@ -692,7 +692,7 @@ export class AttendanceService {
               // Filter out completely empty rows
               const hasData = Object.values(row).some(val => val && String(val).trim().length > 0)
               if (!hasData) return false
-              
+
               // Check for required fields (ID and DATE) - case insensitive
               const rowKeys = Object.keys(row).map(k => k.toLowerCase().trim())
               const hasId = rowKeys.some(k => ['id', 'employeeid', 'employee_id', 'employee id'].includes(k)) &&
@@ -704,7 +704,7 @@ export class AttendanceService {
                 Object.entries(row).some(([key, val]) => {
                   return (key.toLowerCase().trim() === 'date' && val && String(val).trim().length > 0)
                 })
-              
+
               return hasId && hasDate
             })
             .map((row: Record<string, string>) => {
@@ -759,7 +759,7 @@ export class AttendanceService {
           // Helper function to convert 12-hour time (HH:MM:SS AM/PM) to 24-hour format (HH:MM:SS)
           const convertTo24Hour = (timeStr: string): string => {
             if (!timeStr || !timeStr.trim()) return timeStr
-            
+
             const trimmed = timeStr.trim().toUpperCase()
             // Check if already in 24-hour format (no AM/PM)
             if (!trimmed.includes('AM') && !trimmed.includes('PM')) {
@@ -794,21 +794,21 @@ export class AttendanceService {
           const checkInValue = record.CLOCK_IN || record.clock_in || record.ClockIn || record.CheckIn || record.checkIn || record['Check In'] || record['CLOCK_IN'] || record['Clock In']
           const checkIn = checkInValue && checkInValue.trim()
             ? (() => {
-                const time24 = convertTo24Hour(checkInValue)
-                const dateTimeStr = `${dateStr}T${time24}`
-                const parsed = new Date(dateTimeStr)
-                return isNaN(parsed.getTime()) ? undefined : parsed
-              })()
+              const time24 = convertTo24Hour(checkInValue)
+              const dateTimeStr = `${dateStr}T${time24}`
+              const parsed = new Date(dateTimeStr)
+              return isNaN(parsed.getTime()) ? undefined : parsed
+            })()
             : undefined
 
           const checkOutValue = record.CLOCK_OUT || record.clock_out || record.ClockOut || record.CheckOut || record.checkOut || record['Check Out'] || record['CLOCK_OUT'] || record['Clock Out']
           const checkOut = checkOutValue && checkOutValue.trim()
             ? (() => {
-                const time24 = convertTo24Hour(checkOutValue)
-                const dateTimeStr = `${dateStr}T${time24}`
-                const parsed = new Date(dateTimeStr)
-                return isNaN(parsed.getTime()) ? undefined : parsed
-              })()
+              const time24 = convertTo24Hour(checkOutValue)
+              const dateTimeStr = `${dateStr}T${time24}`
+              const parsed = new Date(dateTimeStr)
+              return isNaN(parsed.getTime()) ? undefined : parsed
+            })()
             : undefined
           // Check if this date is a public holiday
           const holiday = await this.prisma.holiday.findFirst({
@@ -1031,7 +1031,7 @@ export class AttendanceService {
       // Get holidays for the date range
       const dateFrom = filters?.dateFrom || new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       const dateTo = filters?.dateTo || new Date()
-      
+
       // Normalize dates to start of day
       const startDate = new Date(dateFrom)
       startDate.setHours(0, 0, 0, 0)
@@ -1054,14 +1054,14 @@ export class AttendanceService {
           const holidayDayFrom = holidayFrom.getDate()
           const holidayMonthTo = holidayTo.getMonth() + 1
           const holidayDayTo = holidayTo.getDate()
-          
+
           // Check if date falls within holiday range
           if (holidayMonthFrom === holidayMonthTo) {
             return month === holidayMonthFrom && day >= holidayDayFrom && day <= holidayDayTo
           } else {
             // Holiday spans across months
-            return (month === holidayMonthFrom && day >= holidayDayFrom) || 
-                   (month === holidayMonthTo && day <= holidayDayTo)
+            return (month === holidayMonthFrom && day >= holidayDayFrom) ||
+              (month === holidayMonthTo && day <= holidayDayTo)
           }
         })
       }
@@ -1217,7 +1217,7 @@ export class AttendanceService {
             if (attendance) {
               // Handle different attendance statuses according to schema
               const status = attendance.status.toLowerCase()
-              
+
               if (status === 'present') {
                 present++
                 // Count late if has lateMinutes > 0
@@ -1288,7 +1288,7 @@ export class AttendanceService {
           } else {
             // Weekend or holiday
             offDays++
-            
+
             // Check if present on holiday (holidays can have attendance if employee worked)
             if (isHolidayDate && attendance) {
               if (attendance.status === 'present' || attendance.checkIn || attendance.checkOut) {

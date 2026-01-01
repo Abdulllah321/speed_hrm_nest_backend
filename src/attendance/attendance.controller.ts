@@ -10,7 +10,7 @@ import { CreateAttendanceDto, UpdateAttendanceDto } from './dto/create-attendanc
 @ApiTags('Attendance')
 @Controller('api')
 export class AttendanceController {
-  constructor(private service: AttendanceService) {}
+  constructor(private service: AttendanceService) { }
 
   @Get('attendances')
   @UseGuards(JwtAuthGuard)

@@ -9,20 +9,20 @@ import 'dotenv/config'
 async function bootstrap() {
   // Create Fastify adapter first
   const adapter = new FastifyAdapter();
-  
+
   // Register multipart plugin on the adapter BEFORE creating the app
   await adapter.register(fastifyMultipart as any, {
     limits: {
       fileSize: 50 * 1024 * 1024, // 50MB limit
     },
   });
-  
+
   // Now create the NestJS application with the configured adapter
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter);
-  
+
   // Global exception filter for user-friendly error responses
   app.useGlobalFilters(new GlobalExceptionFilter());
-  
+
   // Global validation pipe for DTO validation
   app.useGlobalPipes(
     new ValidationPipe({
@@ -41,12 +41,12 @@ async function bootstrap() {
             messages: Object.values(constraints),
           };
         });
-        
+
         const messages = errors.map((error) => {
           const constraints = error.constraints || {};
           return Object.values(constraints).join(', ');
         });
-        
+
         return new BadRequestException({
           message: messages.join('; '),
           errors: formattedErrors,
@@ -54,7 +54,7 @@ async function bootstrap() {
       },
     }),
   );
-  
+
   /* Swagger Setup */
   const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
   const config = new DocumentBuilder()
@@ -74,12 +74,12 @@ async function bootstrap() {
   app.enableCors({
     origin: origins.length ? origins : true,
     credentials: true,
-    methods: ['GET','HEAD','PUT','PATCH','POST','DELETE'],
-    allowedHeaders: ['Content-Type','Authorization','X-Refresh-Token','X-New-Access-Token','X-New-Refresh-Token']
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-New-Access-Token', 'X-New-Refresh-Token']
   });
-  await app.listen({ 
-    port: parseInt(process.env.PORT ?? '3000'), 
-    host: process.env.HOSTNAME || '0.0.0.0' 
+  await app.listen({
+    port: parseInt(process.env.PORT ?? '3000'),
+    host: process.env.HOSTNAME || '0.0.0.0'
   });
 }
 bootstrap();
