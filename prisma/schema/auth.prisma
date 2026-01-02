@@ -91,6 +91,15 @@ model User {
   rebateNaturesCreated RebateNature[] @relation("RebateNatureCreatedBy")
   rebalesCreated       Rebate[]       @relation("RebateCreatedBy")
   payrollsGenerated    Payroll[]      @relation("PayrollGeneratedBy")
+  preferences          UserPreference[]
+  socialSecurityInstitutionsCreated SocialSecurityInstitution[] @relation("SocialSecurityInstitutionCreatedBy")
+  socialSecurityInstitutionsUpdated SocialSecurityInstitution[] @relation("SocialSecurityInstitutionUpdatedBy")
+  socialSecurityEmployerRegistrationsCreated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationCreatedBy")
+  socialSecurityEmployerRegistrationsUpdated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationUpdatedBy")
+  socialSecurityEmployeeRegistrationsCreated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationCreatedBy")
+  socialSecurityEmployeeRegistrationsUpdated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationUpdatedBy")
+  socialSecurityContributionsCreated SocialSecurityContribution[] @relation("SocialSecurityContributionCreatedBy")
+  socialSecurityContributionsUpdated SocialSecurityContribution[] @relation("SocialSecurityContributionUpdatedBy")
 }
 
 model Role {
@@ -204,4 +213,18 @@ model BlacklistedToken {
   createdAt DateTime @default(now())
 
   @@index([token])
+}
+
+model UserPreference {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String   // e.g., "table-column-visibility-employees-table"
+  value     String   // JSON string of the preference value
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@index([key])
 }

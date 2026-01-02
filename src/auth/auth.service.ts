@@ -112,7 +112,36 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { role: { include: { permissions: { include: { permission: true } } } } } })
+    const user = await this.prisma.user.findUnique({ 
+      where: { id: userId }, 
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatar: true,
+        employeeId: true,
+        status: true,
+        roleId: true,
+        createdAt: true,
+        updatedAt: true,
+        role: { 
+          include: { 
+            permissions: { include: { permission: true } } 
+          } 
+        },
+        preferences: {
+          select: {
+            id: true,
+            key: true,
+            value: true,
+            createdAt: true,
+            updatedAt: true,
+          }
+        }
+      }
+    })
     if (!user) return { status: false, message: 'User not found' }
     return { status: true, data: user }
   }
