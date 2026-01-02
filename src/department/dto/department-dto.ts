@@ -9,35 +9,47 @@ export class CreateDepartmentDto {
   @IsNotEmpty()
   @IsString()
   createdById: string
+
+  @IsOptional()
+  @IsString()
+  allocationId?: string
 }
 
 export class UpdateDepartmentDto {
-    @IsOptional()
-    @IsString({ message: 'id must be a string' })
-    id?: string  
+  @IsOptional()
+  @IsString({ message: 'id must be a string' })
+  id?: string
 
-    @IsNotEmpty()
-    @IsString()
-    name: string
+  @IsNotEmpty()
+  @IsString()
+  name: string
 
-    @IsOptional()
-    @IsString()
-    headId?: string
+  @IsOptional()
+  @IsString()
+  headId?: string
+
+  @IsOptional()
+  @IsString()
+  allocationId?: string
 }
 
 // DTO for bulk updates where id is required in each item
 export class BulkUpdateDepartmentItemDto {
-    @IsNotEmpty({ message: 'id must be a string, id should not be empty' })
-    @IsString({ message: 'id must be a string, id should not be empty' })
-    id: string  
+  @IsNotEmpty({ message: 'id must be a string, id should not be empty' })
+  @IsString({ message: 'id must be a string, id should not be empty' })
+  id: string
 
-    @IsNotEmpty()
-    @IsString()
-    name: string
+  @IsNotEmpty()
+  @IsString()
+  name: string
 
-    @IsOptional()
-    @IsString()
-    headId?: string
+  @IsOptional()
+  @IsString()
+  headId?: string
+
+  @IsOptional()
+  @IsString()
+  allocationId?: string
 }
 
 export class BulkUpdateDepartmentDto {
@@ -68,7 +80,7 @@ export class CreateSubDepartmentDto {
 export class UpdateSubDepartmentDto {
   @IsOptional()
   @IsString({ message: 'id must be a string' })
-  id?: string  
+  id?: string
 
   @IsNotEmpty()
   @IsString()

@@ -10,7 +10,7 @@ export class EmployeeService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const employees = await this.prisma.employee.findMany({
@@ -215,7 +215,7 @@ export class EmployeeService {
             name: true,
           },
         },
-        branch: {
+        location: {
           select: {
             id: true,
             name: true,
@@ -268,21 +268,21 @@ export class EmployeeService {
         // Include rejoining history summary if requested
         ...(includeHistory
           ? {
-              rejoiningHistory: {
-                select: {
-                  id: true,
-                  rejoiningDate: true,
-                  previousEmployeeId: true,
-                  newEmployeeId: true,
-                  remarks: true,
-                  createdAt: true,
-                },
-                orderBy: {
-                  rejoiningDate: 'desc',
-                },
-                take: 1, // Latest rejoin only
+            rejoiningHistory: {
+              select: {
+                id: true,
+                rejoiningDate: true,
+                previousEmployeeId: true,
+                newEmployeeId: true,
+                remarks: true,
+                createdAt: true,
               },
-            }
+              orderBy: {
+                rejoiningDate: 'desc',
+              },
+              take: 1, // Latest rejoin only
+            },
+          }
           : {}),
       },
     });
@@ -301,7 +301,7 @@ export class EmployeeService {
       state?: { id: string; name: string } | null;
       city?: { id: string; name: string } | null;
       workingHoursPolicy?: { id: string; name: string } | null;
-      branch?: { id: string; name: string } | null;
+      location?: { id: string; name: string } | null;
       leavesPolicy?: { id: string; name: string } | null;
       rejoiningHistory?: Array<{
         id: string;
@@ -328,7 +328,7 @@ export class EmployeeService {
       city: emp.city?.id || emp.cityId,
       workingHoursPolicy:
         emp.workingHoursPolicy?.id || emp.workingHoursPolicyId,
-      branch: emp.branch?.id || emp.branchId,
+      location: emp.location?.id || emp.locationId,
       leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
       // Avatar from user table
       avatarUrl: emp.user?.avatar || null,
@@ -350,20 +350,20 @@ export class EmployeeService {
       stateRelation: emp.state,
       cityRelation: emp.city,
       workingHoursPolicyRelation: emp.workingHoursPolicy,
-      branchRelation: emp.branch,
+      locationRelation: emp.location,
       leavesPolicyRelation: emp.leavesPolicy,
       // Add rejoining context if requested
       ...(includeHistory &&
-      emp.rejoiningHistory &&
-      emp.rejoiningHistory.length > 0
+        emp.rejoiningHistory &&
+        emp.rejoiningHistory.length > 0
         ? {
-            lastRejoinInfo: {
-              date: emp.rejoiningHistory[0].rejoiningDate,
-              remarks: emp.rejoiningHistory[0].remarks,
-            },
-            hasRejoinHistory: emp.isRejoined,
-            rejoinCount: emp.rejoinCount,
-          }
+          lastRejoinInfo: {
+            date: emp.rejoiningHistory[0].rejoiningDate,
+            remarks: emp.rejoiningHistory[0].remarks,
+          },
+          hasRejoinHistory: emp.isRejoined,
+          rejoinCount: emp.rejoinCount,
+        }
         : {}),
     };
 
@@ -491,14 +491,17 @@ export class EmployeeService {
       if (!(body as { city?: unknown }).city) {
         throw new Error('City is required');
       }
-      if (!(body as { branch?: unknown }).branch) {
-        throw new Error('Branch is required');
+      if (!(body as { location?: unknown }).location) {
+        throw new Error('Location is required');
       }
       if (!(body as { workingHoursPolicy?: unknown }).workingHoursPolicy) {
         throw new Error('Working Hours Policy is required');
       }
       if (!(body as { leavesPolicy?: unknown }).leavesPolicy) {
         throw new Error('Leaves Policy is required');
+      }
+      if (!(body as { allocation?: unknown }).allocation) {
+        throw new Error('Allocation is required');
       }
 
       // Resolve department (handle both ID and name)
@@ -576,13 +579,13 @@ export class EmployeeService {
         resolvedEmploymentStatus = employmentStatusValue;
       }
 
-      // Resolve branch (handle both ID and name)
-      const branchValue = getBodyString('branch');
-      let resolvedBranch: string;
-      if (!isUUID(branchValue)) {
-        resolvedBranch = await this.findOrCreateBranch(branchValue, ctx);
+      // Resolve location (handle both ID and name)
+      const locationValue = getBodyString('location');
+      let resolvedLocation: string;
+      if (!isUUID(locationValue)) {
+        resolvedLocation = await this.findOrCreateLocation(locationValue, ctx);
       } else {
-        resolvedBranch = branchValue;
+        resolvedLocation = locationValue;
       }
 
       // Resolve working hours policy (handle both ID and name)
@@ -607,6 +610,18 @@ export class EmployeeService {
         );
       } else {
         resolvedLeavesPolicy = leavesPolicyValue;
+      }
+
+      // Resolve allocation (handle both ID and name)
+      const allocationValue = getBodyString('allocation');
+      let resolvedAllocation: string;
+      if (!isUUID(allocationValue)) {
+        resolvedAllocation = await this.findOrCreateAllocation(
+          allocationValue,
+          ctx,
+        );
+      } else {
+        resolvedAllocation = allocationValue;
       }
 
       // Resolve country, state, city - handle both IDs and names
@@ -833,16 +848,17 @@ export class EmployeeService {
           eobiDocumentUrl: eobiDocumentUrlValue || null,
           ...(documentUrlsValue
             ? {
-                documentUrls: documentUrlsValue as Prisma.InputJsonValue,
-              }
+              documentUrls: documentUrlsValue as Prisma.InputJsonValue,
+            }
             : {}),
           providentFund: !!providentFundValue,
           overtimeApplicable: !!overtimeApplicableValue,
           daysOff: daysOffValue || null,
           reportingManager: reportingManagerValue,
           workingHoursPolicyId: resolvedWorkingHoursPolicy,
-          branchId: resolvedBranch,
+          locationId: resolvedLocation,
           leavesPolicyId: resolvedLeavesPolicy,
+          allocationId: resolvedAllocation,
           allowRemoteAttendance: !!allowRemoteAttendanceValue,
           currentAddress: currentAddressValue || null,
           permanentAddress: permanentAddressValue || null,
@@ -852,118 +868,118 @@ export class EmployeeService {
           status: 'active',
           equipmentAssignments:
             selectedEquipmentsValue &&
-            Array.isArray(selectedEquipmentsValue) &&
-            selectedEquipmentsValue.length > 0
+              Array.isArray(selectedEquipmentsValue) &&
+              selectedEquipmentsValue.length > 0
               ? {
-                  create: (selectedEquipmentsValue as unknown[])
-                    .filter((equipmentId): equipmentId is string => {
-                      // Only include valid UUIDs or non-empty strings
-                      if (
-                        !equipmentId ||
-                        typeof equipmentId !== 'string' ||
-                        equipmentId.trim().length === 0
-                      ) {
-                        return false;
-                      }
-                      // Check if it's a valid UUID format
-                      const isValidUUID =
-                        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                          equipmentId.trim(),
-                        );
-                      if (!isValidUUID) {
-                        return false;
-                      }
-                      return true;
-                    })
-                    .map((equipmentId: string) => ({
-                      equipmentId: equipmentId.trim(),
-                      assignedById: ctx.userId,
-                      status: 'assigned',
-                    })),
-                }
+                create: (selectedEquipmentsValue as unknown[])
+                  .filter((equipmentId): equipmentId is string => {
+                    // Only include valid UUIDs or non-empty strings
+                    if (
+                      !equipmentId ||
+                      typeof equipmentId !== 'string' ||
+                      equipmentId.trim().length === 0
+                    ) {
+                      return false;
+                    }
+                    // Check if it's a valid UUID format
+                    const isValidUUID =
+                      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                        equipmentId.trim(),
+                      );
+                    if (!isValidUUID) {
+                      return false;
+                    }
+                    return true;
+                  })
+                  .map((equipmentId: string) => ({
+                    equipmentId: equipmentId.trim(),
+                    assignedById: ctx.userId,
+                    status: 'assigned',
+                  })),
+              }
               : undefined,
           qualifications:
             qualificationsValue &&
-            Array.isArray(qualificationsValue) &&
-            qualificationsValue.length > 0
+              Array.isArray(qualificationsValue) &&
+              qualificationsValue.length > 0
               ? {
-                  create: (
-                    qualificationsValue as Array<{
-                      qualification?: unknown;
-                      qualificationId?: unknown;
-                      instituteId?: unknown;
-                      cityId?: unknown;
-                      stateId?: unknown;
-                      year?: unknown;
-                      grade?: unknown;
-                    }>
-                  )
-                    .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
-                    .map((q) => {
-                      // Safely convert qualification/qualificationId to string
-                      const qualificationIdValue =
-                        q.qualification || q.qualificationId;
-                      const qualificationIdStr =
-                        typeof qualificationIdValue === 'string'
-                          ? qualificationIdValue
-                          : typeof qualificationIdValue === 'number'
-                            ? String(qualificationIdValue)
-                            : '';
+                create: (
+                  qualificationsValue as Array<{
+                    qualification?: unknown;
+                    qualificationId?: unknown;
+                    instituteId?: unknown;
+                    cityId?: unknown;
+                    stateId?: unknown;
+                    year?: unknown;
+                    grade?: unknown;
+                  }>
+                )
+                  .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
+                  .map((q) => {
+                    // Safely convert qualification/qualificationId to string
+                    const qualificationIdValue =
+                      q.qualification || q.qualificationId;
+                    const qualificationIdStr =
+                      typeof qualificationIdValue === 'string'
+                        ? qualificationIdValue
+                        : typeof qualificationIdValue === 'number'
+                          ? String(qualificationIdValue)
+                          : '';
 
-                      // Safely convert other fields
-                      const instituteIdStr =
-                        q.instituteId && typeof q.instituteId === 'string'
-                          ? q.instituteId
-                          : q.instituteId &&
-                              (typeof q.instituteId === 'number' ||
-                                typeof q.instituteId === 'bigint')
-                            ? String(q.instituteId)
-                            : null;
+                    // Safely convert other fields
+                    const instituteIdStr =
+                      q.instituteId && typeof q.instituteId === 'string'
+                        ? q.instituteId
+                        : q.instituteId &&
+                          (typeof q.instituteId === 'number' ||
+                            typeof q.instituteId === 'bigint')
+                          ? String(q.instituteId)
+                          : null;
 
-                      const cityIdStr =
-                        q.cityId && typeof q.cityId === 'string'
-                          ? q.cityId
-                          : q.cityId &&
-                              (typeof q.cityId === 'number' ||
-                                typeof q.cityId === 'bigint')
-                            ? String(q.cityId)
-                            : null;
+                    const cityIdStr =
+                      q.cityId && typeof q.cityId === 'string'
+                        ? q.cityId
+                        : q.cityId &&
+                          (typeof q.cityId === 'number' ||
+                            typeof q.cityId === 'bigint')
+                          ? String(q.cityId)
+                          : null;
 
-                      const stateIdStr =
-                        q.stateId && typeof q.stateId === 'string'
-                          ? q.stateId
-                          : q.stateId &&
-                              (typeof q.stateId === 'number' ||
-                                typeof q.stateId === 'bigint')
-                            ? String(q.stateId)
-                            : null;
+                    const stateIdStr =
+                      q.stateId && typeof q.stateId === 'string'
+                        ? q.stateId
+                        : q.stateId &&
+                          (typeof q.stateId === 'number' ||
+                            typeof q.stateId === 'bigint')
+                          ? String(q.stateId)
+                          : null;
 
-                      const yearValue =
-                        q.year && typeof q.year === 'number'
-                          ? q.year
-                          : q.year && typeof q.year === 'string'
-                            ? parseInt(q.year, 10)
-                            : null;
+                    const yearValue =
+                      q.year && typeof q.year === 'number'
+                        ? q.year
+                        : q.year && typeof q.year === 'string'
+                          ? parseInt(q.year, 10)
+                          : null;
 
-                      const gradeStr =
-                        q.grade && typeof q.grade === 'string'
-                          ? q.grade
-                          : q.grade &&
-                              (typeof q.grade === 'number' ||
-                                typeof q.grade === 'bigint')
-                            ? String(q.grade)
-                            : null;
+                    const gradeStr =
+                      q.grade && typeof q.grade === 'string'
+                        ? q.grade
+                        : q.grade &&
+                          (typeof q.grade === 'number' ||
+                            typeof q.grade === 'bigint')
+                          ? String(q.grade)
+                          : null;
 
-                      return {
-                        qualificationId: qualificationIdStr,
-                        instituteId: instituteIdStr,
-                        cityId: cityIdStr,
-                        stateId: stateIdStr,
-                        year: yearValue,
-                        grade: gradeStr,
-                      };
-                    }),
-                }
+                    return {
+                      qualificationId: qualificationIdStr,
+                      instituteId: instituteIdStr,
+                      cityId: cityIdStr,
+                      stateId: stateIdStr,
+                      year: yearValue,
+                      grade: gradeStr,
+                    };
+                  }),
+              }
               : undefined,
         },
       });
@@ -1135,7 +1151,7 @@ export class EmployeeService {
           workingHoursPolicy?: unknown;
         }
       ).workingHoursPolicy as string | undefined;
-      const branchValue = (body as { branch?: unknown }).branch as
+      const locationValue = (body as { location?: unknown }).location as
         | string
         | undefined;
       const leavesPolicyValue = (body as { leavesPolicy?: unknown })
@@ -1218,8 +1234,8 @@ export class EmployeeService {
             eobiDocumentUrlValue ?? existing?.eobiDocumentUrl ?? null,
           ...(documentUrlsValue !== undefined
             ? {
-                documentUrls: documentUrlsValue as Prisma.InputJsonValue,
-              }
+              documentUrls: documentUrlsValue as Prisma.InputJsonValue,
+            }
             : {}),
           providentFund: providentFundValue ?? existing?.providentFund,
           overtimeApplicable:
@@ -1228,7 +1244,7 @@ export class EmployeeService {
           reportingManager: reportingManagerValue ?? existing?.reportingManager,
           workingHoursPolicyId:
             workingHoursPolicyValue ?? existing?.workingHoursPolicyId,
-          branchId: branchValue ?? existing?.branchId,
+          locationId: locationValue ?? existing?.locationId,
           leavesPolicyId: leavesPolicyValue ?? existing?.leavesPolicyId,
           allowRemoteAttendance:
             allowRemoteAttendanceValue ?? existing?.allowRemoteAttendance,
@@ -1240,113 +1256,113 @@ export class EmployeeService {
           status: statusValue ?? existing?.status,
           equipmentAssignments:
             selectedEquipmentsValue !== undefined &&
-            Array.isArray(selectedEquipmentsValue) &&
-            selectedEquipmentsValue.length > 0
+              Array.isArray(selectedEquipmentsValue) &&
+              selectedEquipmentsValue.length > 0
               ? {
-                  create: (selectedEquipmentsValue as unknown[])
-                    .filter((equipmentId): equipmentId is string => {
-                      if (
-                        !equipmentId ||
-                        typeof equipmentId !== 'string' ||
-                        equipmentId.trim().length === 0
-                      ) {
-                        return false;
-                      }
-                      const isValidUUID =
-                        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                          equipmentId.trim(),
-                        );
-                      return isValidUUID;
-                    })
-                    .map((equipmentId: string) => ({
-                      equipmentId: equipmentId.trim(),
-                      assignedById: ctx.userId,
-                      status: 'assigned',
-                    })),
-                }
+                create: (selectedEquipmentsValue as unknown[])
+                  .filter((equipmentId): equipmentId is string => {
+                    if (
+                      !equipmentId ||
+                      typeof equipmentId !== 'string' ||
+                      equipmentId.trim().length === 0
+                    ) {
+                      return false;
+                    }
+                    const isValidUUID =
+                      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                        equipmentId.trim(),
+                      );
+                    return isValidUUID;
+                  })
+                  .map((equipmentId: string) => ({
+                    equipmentId: equipmentId.trim(),
+                    assignedById: ctx.userId,
+                    status: 'assigned',
+                  })),
+              }
               : undefined,
           qualifications:
             qualificationsValue !== undefined &&
-            Array.isArray(qualificationsValue) &&
-            qualificationsValue.length > 0
+              Array.isArray(qualificationsValue) &&
+              qualificationsValue.length > 0
               ? {
-                  create: (
-                    qualificationsValue as Array<{
-                      qualification?: unknown;
-                      qualificationId?: unknown;
-                      instituteId?: unknown;
-                      cityId?: unknown;
-                      stateId?: unknown;
-                      year?: unknown;
-                      grade?: unknown;
-                    }>
-                  )
-                    .filter((q) => q.qualification || q.qualificationId)
-                    .map((q) => {
-                      // Safely convert qualification/qualificationId to string
-                      const qualificationIdValue =
-                        q.qualification || q.qualificationId;
-                      const qualificationIdStr =
-                        typeof qualificationIdValue === 'string'
-                          ? qualificationIdValue
-                          : typeof qualificationIdValue === 'number'
-                            ? String(qualificationIdValue)
-                            : '';
+                create: (
+                  qualificationsValue as Array<{
+                    qualification?: unknown;
+                    qualificationId?: unknown;
+                    instituteId?: unknown;
+                    cityId?: unknown;
+                    stateId?: unknown;
+                    year?: unknown;
+                    grade?: unknown;
+                  }>
+                )
+                  .filter((q) => q.qualification || q.qualificationId)
+                  .map((q) => {
+                    // Safely convert qualification/qualificationId to string
+                    const qualificationIdValue =
+                      q.qualification || q.qualificationId;
+                    const qualificationIdStr =
+                      typeof qualificationIdValue === 'string'
+                        ? qualificationIdValue
+                        : typeof qualificationIdValue === 'number'
+                          ? String(qualificationIdValue)
+                          : '';
 
-                      // Safely convert other fields
-                      const instituteIdStr =
-                        q.instituteId && typeof q.instituteId === 'string'
-                          ? q.instituteId
-                          : q.instituteId &&
-                              (typeof q.instituteId === 'number' ||
-                                typeof q.instituteId === 'bigint')
-                            ? String(q.instituteId)
-                            : null;
+                    // Safely convert other fields
+                    const instituteIdStr =
+                      q.instituteId && typeof q.instituteId === 'string'
+                        ? q.instituteId
+                        : q.instituteId &&
+                          (typeof q.instituteId === 'number' ||
+                            typeof q.instituteId === 'bigint')
+                          ? String(q.instituteId)
+                          : null;
 
-                      const cityIdStr =
-                        q.cityId && typeof q.cityId === 'string'
-                          ? q.cityId
-                          : q.cityId &&
-                              (typeof q.cityId === 'number' ||
-                                typeof q.cityId === 'bigint')
-                            ? String(q.cityId)
-                            : null;
+                    const cityIdStr =
+                      q.cityId && typeof q.cityId === 'string'
+                        ? q.cityId
+                        : q.cityId &&
+                          (typeof q.cityId === 'number' ||
+                            typeof q.cityId === 'bigint')
+                          ? String(q.cityId)
+                          : null;
 
-                      const stateIdStr =
-                        q.stateId && typeof q.stateId === 'string'
-                          ? q.stateId
-                          : q.stateId &&
-                              (typeof q.stateId === 'number' ||
-                                typeof q.stateId === 'bigint')
-                            ? String(q.stateId)
-                            : null;
+                    const stateIdStr =
+                      q.stateId && typeof q.stateId === 'string'
+                        ? q.stateId
+                        : q.stateId &&
+                          (typeof q.stateId === 'number' ||
+                            typeof q.stateId === 'bigint')
+                          ? String(q.stateId)
+                          : null;
 
-                      const yearValue =
-                        q.year && typeof q.year === 'number'
-                          ? q.year
-                          : q.year && typeof q.year === 'string'
-                            ? parseInt(q.year, 10)
-                            : null;
+                    const yearValue =
+                      q.year && typeof q.year === 'number'
+                        ? q.year
+                        : q.year && typeof q.year === 'string'
+                          ? parseInt(q.year, 10)
+                          : null;
 
-                      const gradeStr =
-                        q.grade && typeof q.grade === 'string'
-                          ? q.grade
-                          : q.grade &&
-                              (typeof q.grade === 'number' ||
-                                typeof q.grade === 'bigint')
-                            ? String(q.grade)
-                            : null;
+                    const gradeStr =
+                      q.grade && typeof q.grade === 'string'
+                        ? q.grade
+                        : q.grade &&
+                          (typeof q.grade === 'number' ||
+                            typeof q.grade === 'bigint')
+                          ? String(q.grade)
+                          : null;
 
-                      return {
-                        qualificationId: qualificationIdStr,
-                        instituteId: instituteIdStr,
-                        cityId: cityIdStr,
-                        stateId: stateIdStr,
-                        year: yearValue,
-                        grade: gradeStr,
-                      };
-                    }),
-                }
+                    return {
+                      qualificationId: qualificationIdStr,
+                      instituteId: instituteIdStr,
+                      cityId: cityIdStr,
+                      stateId: stateIdStr,
+                      year: yearValue,
+                      grade: gradeStr,
+                    };
+                  }),
+              }
               : undefined,
         },
       });
@@ -1520,7 +1536,7 @@ export class EmployeeService {
           country: { select: { id: true, name: true } },
           state: { select: { id: true, name: true } },
           city: { select: { id: true, name: true } },
-          branch: { select: { id: true, name: true } },
+          location: { select: { id: true, name: true } },
           workingHoursPolicy: { select: { id: true, name: true } },
           leavesPolicy: { select: { id: true, name: true } },
           qualifications: {
@@ -1599,7 +1615,7 @@ export class EmployeeService {
           country: true,
           state: true,
           city: true,
-          branch: true,
+          location: true,
           workingHoursPolicy: true,
           leavesPolicy: true,
         },
@@ -1827,13 +1843,13 @@ export class EmployeeService {
         ) as string;
         updateData.workingHoursPolicy = { connect: { id: resolvedWorkingHoursPolicyId } };
       }
-      if ((body as { branchId?: string }).branchId !== undefined || (body as { branch?: unknown }).branch !== undefined) {
-        const resolvedBranchId = resolveField(
-          (body as { branchId?: unknown }).branchId,
-          (body as { branch?: unknown }).branch,
-          existing.branchId,
+      if ((body as { locationId?: string }).locationId !== undefined || (body as { location?: unknown }).location !== undefined) {
+        const resolvedLocationId = resolveField(
+          (body as { locationId?: unknown }).locationId,
+          (body as { location?: unknown }).location,
+          existing.locationId,
         ) as string;
-        updateData.branch = { connect: { id: resolvedBranchId } };
+        updateData.location = { connect: { id: resolvedLocationId } };
       }
       if (
         (body as { leavesPolicyId?: string }).leavesPolicyId !== undefined ||
@@ -2005,7 +2021,7 @@ export class EmployeeService {
           // Extract key changes for easy viewing
           keyChanges:
             entryWithJson.changedFields &&
-            Array.isArray(entryWithJson.changedFields)
+              Array.isArray(entryWithJson.changedFields)
               ? entryWithJson.changedFields
               : [],
           // Previous state snapshot
@@ -2391,31 +2407,30 @@ export class EmployeeService {
   }
 
   /**
-   * Helper function to find or create branch by name
+   * Helper function to find or create location by name
    */
-  private async findOrCreateBranch(
-    name: string,
-    ctx: { userId?: string },
+  private async findOrCreateLocation(
+    locationName: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ): Promise<string> {
-    if (!name || name.trim() === '') {
-      throw new Error('Branch name is required');
+    if (!locationName) {
+      throw new Error('Location name is required');
     }
-    const trimmedName = name.trim();
 
-    let branch = await this.prisma.branch.findUnique({
-      where: { name: trimmedName },
+    let location = await this.prisma.location.findUnique({
+      where: { name: locationName },
     });
 
-    if (!branch) {
-      branch = await this.prisma.branch.create({
+    if (!location) {
+      location = await this.prisma.location.create({
         data: {
-          name: trimmedName,
-          createdById: ctx.userId || null,
+          name: locationName,
+          createdById: ctx.userId,
         },
       });
     }
 
-    return branch.id;
+    return location.id;
   }
 
   /**
@@ -2473,8 +2488,35 @@ export class EmployeeService {
         },
       });
     }
-
     return policy.id;
+  }
+
+  /**
+   * Helper function to find or create allocation by name
+   */
+  private async findOrCreateAllocation(
+    name: string,
+    ctx: { userId?: string },
+  ): Promise<string> {
+    if (!name || name.trim() === '') {
+      throw new Error('Allocation name is required');
+    }
+    const trimmedName = name.trim();
+
+    let allocation = await this.prisma.allocation.findUnique({
+      where: { name: trimmedName },
+    });
+
+    if (!allocation) {
+      allocation = await this.prisma.allocation.create({
+        data: {
+          name: trimmedName,
+          createdById: ctx.userId || null,
+        },
+      });
+    }
+
+    return allocation.id;
   }
 
   /**
@@ -2523,7 +2565,7 @@ export class EmployeeService {
 
   /**
    * Bulk upload employees from CSV or Excel file
-   * Expected format: EmployeeID,EmployeeName,FatherHusbandName,Department,SubDepartment,EmployeeGrade,AttendanceID,Designation,MaritalStatus,EmploymentStatus,ProbationExpiryDate,CNICNumber,CNICExpiryDate,LifetimeCNIC,JoiningDate,DateOfBirth,Nationality,Gender,ContactNumber,EmergencyContactNumber,EmergencyContactPerson,PersonalEmail,OfficialEmail,Country,Province,City,Area,EmployeeSalary,EOBI,EOBINumber,ProvidentFund,OvertimeApplicable,DaysOff,ReportingManager,WorkingHoursPolicy,Branch,LeavesPolicy,AllowRemoteAttendance,CurrentAddress,PermanentAddress,BankName,AccountNumber,AccountTitle,AccountType,Password,Roles,SelectedEquipments,Status
+   * Expected format: EmployeeID,EmployeeName,FatherHusbandName,Department,SubDepartment,EmployeeGrade,AttendanceID,Designation,MaritalStatus,EmploymentStatus,ProbationExpiryDate,CNICNumber,CNICExpiryDate,LifetimeCNIC,JoiningDate,DateOfBirth,Nationality,Gender,ContactNumber,EmergencyContactNumber,EmergencyContactPerson,PersonalEmail,OfficialEmail,Country,Province,City,Area,EmployeeSalary,EOBI,EOBINumber,ProvidentFund,OvertimeApplicable,DaysOff,ReportingManager,WorkingHoursPolicy,Location,LeavesPolicy,AllowRemoteAttendance,CurrentAddress,PermanentAddress,BankName,AccountNumber,AccountTitle,AccountType,Password,Roles,SelectedEquipments,Status
    */
   async bulkUploadFromCSV(
     filePath: string,
@@ -2725,9 +2767,9 @@ export class EmployeeService {
           const equipmentList =
             selectedEquipments && selectedEquipments.trim()
               ? selectedEquipments
-                  .split(',')
-                  .map((e: string) => e.trim())
-                  .filter((e: string) => e.length > 0)
+                .split(',')
+                .map((e: string) => e.trim())
+                .filter((e: string) => e.length > 0)
               : [];
 
           // Validate required fields
@@ -2816,7 +2858,9 @@ export class EmployeeService {
           let countryId: string | null = null;
           let stateId: string | null = null;
           let cityId: string | null = null;
-          let branchId: string;
+          let locationId: string;
+          // ... (lines 2820-2986 omitted for brevity but they don't contain 'branch')
+          // ... (Wait, I should include the actual lines if I want to replace precisely)
           let workingHoursPolicyId: string;
           let leavesPolicyId: string;
 
@@ -2987,10 +3031,10 @@ export class EmployeeService {
             // Resolve branch
             const branchName = record.Branch || record.branch;
             if (!branchName) {
-              errors.push({ row: record, error: 'Branch is required' });
+              errors.push({ row: record, error: 'Location is required' });
               continue;
             }
-            branchId = await this.findOrCreateBranch(branchName, ctx);
+            locationId = await this.findOrCreateLocation(branchName, ctx);
 
             // Resolve working hours policy
             const workingHoursPolicyName =
@@ -3141,7 +3185,7 @@ export class EmployeeService {
                 null,
               reportingManager: reportingManager,
               workingHoursPolicy: workingHoursPolicyId,
-              branch: branchId,
+              location: locationId,
               leavesPolicy: leavesPolicyId,
               allowRemoteAttendance:
                 record.AllowRemoteAttendance === 'true' ||

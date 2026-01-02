@@ -9,7 +9,7 @@ import { DepartmentModule } from './department/department.module';
 import { DesignationModule } from './designation/designation.module';
 import { EmployeeGradeModule } from './employee-grade/employee-grade.module';
 import { EmployeeStatusModule } from './employee-status/employee-status.module';
-import { BranchModule } from './branch/branch.module';
+import { LocationModule } from './location/location.module';
 import { EquipmentModule } from './equipment/equipment.module';
 import { WorkingHoursPolicyModule } from './working-hours-policy/working-hours-policy.module';
 import { JobTypeModule } from './job-type/job-type.module';
@@ -46,6 +46,7 @@ import { BankModule } from './bank/bank.module';
 import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
 import { RebateModule } from './rebate/rebate.module';
 import { PayrollModule } from './payroll/payroll.module';
+import { AllocationModule } from './allocation/allocation.module';
 
 @Module({
   imports: [
@@ -72,7 +73,7 @@ import { PayrollModule } from './payroll/payroll.module';
     DesignationModule, // added swagger
     EmployeeGradeModule, // added swagger
     EmployeeStatusModule, // added swagger
-    BranchModule, // added swagger
+    LocationModule, // added swagger
     EquipmentModule, // added swagger
     WorkingHoursPolicyModule, // added swagger
     JobTypeModule, // added swagger
@@ -94,6 +95,7 @@ import { PayrollModule } from './payroll/payroll.module';
     RebateNatureModule, // added swagger
     RebateModule, // added swagger
     PayrollModule,
+    AllocationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
