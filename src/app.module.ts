@@ -46,6 +46,8 @@ import { BankModule } from './bank/bank.module';
 import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
 import { RebateModule } from './rebate/rebate.module';
 import { PayrollModule } from './payroll/payroll.module';
+import { UserPreferencesModule } from './user-preferences/user-preferences.module';
+import { SocialSecurityModule } from './social-security/social-security.module';
 import { AllocationModule } from './allocation/allocation.module';
 
 @Module({
@@ -95,6 +97,8 @@ import { AllocationModule } from './allocation/allocation.module';
     RebateNatureModule, // added swagger
     RebateModule, // added swagger
     PayrollModule,
+    UserPreferencesModule, // added swagger
+    SocialSecurityModule, // added swagger
     AllocationModule,
   ],
   controllers: [AppController],

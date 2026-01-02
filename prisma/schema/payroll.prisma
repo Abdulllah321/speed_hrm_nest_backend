@@ -239,5 +239,8 @@ model PayrollDetail {
   paymentStatus String    @default("pending") // pending, paid
   paymentDate   DateTime?
 
+  // Relations
+  socialSecurityContributions SocialSecurityContribution[]
+
   @@unique([payrollId, employeeId])
 }
