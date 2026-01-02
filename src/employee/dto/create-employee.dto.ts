@@ -92,10 +92,10 @@ export class CreateEmployeeDto {
   @IsBoolean()
   lifetimeCnic?: boolean;
 
-  @ApiProperty({ example: '2024-01-01' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: '2024-01-01' })
+  @IsOptional()
   @IsDateString()
-  joiningDate: string;
+  joiningDate?: string;
 
   @ApiProperty({ example: '1990-01-01' })
   @IsNotEmpty()
@@ -132,10 +132,10 @@ export class CreateEmployeeDto {
   @IsEmail()
   personalEmail?: string;
 
-  @ApiProperty({ example: 'john.doe@company.com' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'john.doe@company.com' })
+  @IsOptional()
   @IsEmail()
-  officialEmail: string;
+  officialEmail?: string;
 
   @ApiPropertyOptional({ example: 'country-uuid' })
   @IsOptional()
