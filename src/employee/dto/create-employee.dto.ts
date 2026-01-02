@@ -211,10 +211,10 @@ export class CreateEmployeeDto {
   @IsString()
   workingHoursPolicyId?: string;
 
-  @ApiPropertyOptional({ example: 'branch-uuid' })
+  @ApiPropertyOptional({ example: 'location-uuid' })
   @IsOptional()
   @IsString()
-  branchId?: string;
+  locationId?: string;
 
   @ApiPropertyOptional({ example: 'leaves-policy-uuid' })
   @IsOptional()
@@ -226,7 +226,7 @@ export class CreateEmployeeDto {
   workingHoursPolicy?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  branch?: string;
+  location?: string;
   @ApiPropertyOptional()
   @IsOptional()
   leavesPolicy?: string;
@@ -478,10 +478,10 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
   workingHoursPolicyId?: string;
-  @ApiPropertyOptional({ example: 'branch-uuid' })
+  @ApiPropertyOptional({ example: 'location-uuid' })
   @IsOptional()
   @IsString()
-  branchId?: string;
+  locationId?: string;
   @ApiPropertyOptional({ example: 'leaves-policy-uuid' })
   @IsOptional()
   @IsString()
@@ -523,10 +523,13 @@ export class UpdateEmployeeDto {
   workingHoursPolicy?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  branch?: string;
+  location?: string;
   @ApiPropertyOptional()
   @IsOptional()
   leavesPolicy?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  allocation?: string;
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()

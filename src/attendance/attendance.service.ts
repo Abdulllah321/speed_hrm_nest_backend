@@ -1217,7 +1217,12 @@ export class AttendanceService {
         })
 
         // Calculate date range statistics
-        const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+        // Normalize both to start of day for accurate day counting
+        const startMidnight = new Date(startDate)
+        startMidnight.setHours(0, 0, 0, 0)
+        const endMidnight = new Date(endDate)
+        endMidnight.setHours(0, 0, 0, 0)
+        const totalDays = Math.round((endMidnight.getTime() - startMidnight.getTime()) / (1000 * 60 * 60 * 24)) + 1
         let scheduleDays = 0
         let offDays = 0
         let present = 0
@@ -1260,12 +1265,22 @@ export class AttendanceService {
             // Check for approved leave application FIRST
             // This ensures we count the leave even if they are marked Present
             let isApprovedLeave = false
+            const isPresentOnLeave = attendance && (
+              attendance.status === 'present' ||
+              attendance.status === 'late' ||
+              attendance.status === 'half-day' ||
+              attendance.status === 'short-day'
+            )
+
             if (leaveApplication) {
               leaves++
               isApprovedLeave = true
-              // Adjust scheduled time for leave days
-              totalScheduleTime -= scheduledHours
-              scheduleDays-- // Don't count leave days as scheduled
+
+              // Only deduct from schedule if they actully took the leave (i.e., were not present)
+              if (!isPresentOnLeave) {
+                totalScheduleTime -= scheduledHours
+                scheduleDays-- // Don't count leave days as scheduled
+              }
             }
 
             if (attendance) {
@@ -1323,8 +1338,9 @@ export class AttendanceService {
                 continue
               }
 
-              // Sum working hours (only if checkIn and checkOut exist)
-              if (attendance.workingHours) {
+              // Sum working hours (only if checkIn and checkOut exist AND not absent)
+              // We explicitly ignore working hours for 'absent' status to prevent calculation errors
+              if (attendance.workingHours && status !== 'absent') {
                 totalActualWorkedTime += Number(attendance.workingHours)
               }
 

@@ -84,6 +84,7 @@ export class DepartmentService {
         data: {
           name: updateDepartmentDto.name,
           headId: updateDepartmentDto.headId || null,
+          allocationId: updateDepartmentDto.allocationId || null,
         },
       })
       await this.activityLogs.log({
@@ -136,6 +137,7 @@ export class DepartmentService {
           data: {
             name: dto.name,
             headId: dto.headId || null,
+            allocationId: dto.allocationId || null,
           }
         })
         updatedDepartments.push(department)

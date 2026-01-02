@@ -7,13 +7,14 @@ import { seedCountries } from './seeds/countries.js';
 import { seedCities } from './seeds/cities.js';
 import { seedInstitutes } from './seeds/institutes.js';
 import {
+  seedAllocations,
   seedDepartments,
   seedSubDepartments,
   seedDesignations,
   seedJobTypes,
   seedMaritalStatuses,
   seedHolidays,
-  seedBranches,
+  seedLocations,
   seedLeavesPolicies,
   seedWorkingHoursPolicies,
   seedEquipments,
@@ -406,30 +407,56 @@ async function main() {
       description: 'Delete cities',
     },
 
-    // Branches
+    // Locations (Branches)
     {
-      name: 'branches.view',
-      module: 'branches',
+      name: 'locations.view',
+      module: 'locations',
       action: 'view',
-      description: 'View branches',
+      description: 'View locations',
     },
     {
-      name: 'branches.create',
-      module: 'branches',
+      name: 'locations.create',
+      module: 'locations',
       action: 'create',
-      description: 'Create branches',
+      description: 'Create locations',
     },
     {
-      name: 'branches.update',
-      module: 'branches',
+      name: 'locations.update',
+      module: 'locations',
       action: 'update',
-      description: 'Update branches',
+      description: 'Update locations',
     },
     {
-      name: 'branches.delete',
-      module: 'branches',
+      name: 'locations.delete',
+      module: 'locations',
       action: 'delete',
-      description: 'Delete branches',
+      description: 'Delete locations',
+    },
+
+    // Allocations
+    {
+      name: 'allocations.view',
+      module: 'allocations',
+      action: 'view',
+      description: 'View allocations',
+    },
+    {
+      name: 'allocations.create',
+      module: 'allocations',
+      action: 'create',
+      description: 'Create allocations',
+    },
+    {
+      name: 'allocations.update',
+      module: 'allocations',
+      action: 'update',
+      description: 'Update allocations',
+    },
+    {
+      name: 'allocations.delete',
+      module: 'allocations',
+      action: 'delete',
+      description: 'Delete allocations',
     },
 
     // Leave Management
@@ -845,142 +872,149 @@ async function main() {
     },
   ];
 
-  console.log('📝 Creating permissions...');
-  const permissions: Permission[] = [];
-  for (const perm of permissionsList) {
-    const permission = await prisma.permission.upsert({
-      where: { name: perm.name },
-      update: {},
-      create: perm,
-    });
-    permissions.push(permission);
+  let permissions: any[] = [];
+  try {
+    console.log('📝 Creating permissions...');
+    for (const perm of permissionsList) {
+      const permission = await prisma.permission.upsert({
+        where: { name: perm.name },
+        update: {},
+        create: perm,
+      });
+      permissions.push(permission);
+    }
+    console.log(`✅ Created ${permissions.length} permissions`);
+  } catch (err: any) {
+    console.warn('⚠️  Could not seed permissions:', err.message);
   }
-  console.log(`✅ Created ${permissions.length} permissions`);
 
-  console.log('👑 Creating admin role...');
-  const adminRole = await prisma.role.upsert({
-    where: { name: 'admin' },
-    update: {},
-    create: {
-      name: 'admin',
-      description: 'Administrator with full access',
-      isSystem: true,
-    },
-  });
-
-  console.log('🔗 Assigning permissions to admin role...');
-  for (const permission of permissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: adminRole.id,
-          permissionId: permission.id,
-        },
+  let adminRole: any = { id: 'admin-id' };
+  try {
+    console.log('👑 Creating admin role...');
+    adminRole = await prisma.role.upsert({
+      where: { name: 'admin' },
+      update: {},
+      create: {
+        name: 'admin',
+        description: 'Administrator with full access',
+        isSystem: true,
       },
-      update: {},
-      create: { roleId: adminRole.id, permissionId: permission.id },
     });
+
+    if (permissions.length > 0) {
+      console.log('🔗 Assigning permissions to admin role...');
+      for (const permission of permissions) {
+        await prisma.rolePermission.upsert({
+          where: {
+            roleId_permissionId: {
+              roleId: adminRole.id,
+              permissionId: permission.id,
+            },
+          },
+          update: {},
+          create: { roleId: adminRole.id, permissionId: permission.id },
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn('⚠️  Could not seed admin role:', err.message);
   }
 
-  console.log('👤 Creating HR role...');
-  const hrRole = await prisma.role.upsert({
-    where: { name: 'hr' },
-    update: {},
-    create: { name: 'hr', description: 'HR Manager', isSystem: true },
-  });
+  try {
+    console.log('👤 Creating HR role...');
+    const hrRole = await prisma.role.upsert({
+      where: { name: 'hr' },
+      update: {},
+      create: { name: 'hr', description: 'HR Manager', isSystem: true },
+    });
 
-  // HR permissions: employees, departments, sub_departments, designations, job_types, employee_grades, employee_statuses,
-  // marital_statuses, institutes, qualifications, branches, leave_types, leaves_policies, leaves, working_hours_policies,
-  // holidays, attendance, equipment, activity_logs (view only)
-  const hrPermissionModules = [
-    'employees',
-    'departments',
-    'sub_departments',
-    'designations',
-    'job_types',
-    'employee_grades',
-    'employee_statuses',
-    'marital_statuses',
-    'institutes',
-    'qualifications',
-    'branches',
-    'leave_types',
-    'leaves_policies',
-    'leaves',
-    'working_hours_policies',
-    'holidays',
-    'attendance',
-    'equipment',
-  ];
-  const hrPermissions = permissions.filter(
-    (p) =>
-      hrPermissionModules.includes(p.module) ||
-      (p.module === 'activity_logs' && p.action === 'view'),
-  );
-  for (const permission of hrPermissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: { roleId: hrRole.id, permissionId: permission.id },
+    if (permissions.length > 0) {
+      const hrPermissionModules = [
+        'employees', 'departments', 'sub_departments', 'designations', 'job_types',
+        'employee_grades', 'employee_statuses', 'marital_statuses', 'institutes',
+        'qualifications', 'locations', 'allocations', 'leave_types', 'leaves_policies', 'leaves',
+        'working_hours_policies', 'holidays', 'attendance', 'equipment',
+      ];
+      const hrPermissions = permissions.filter(
+        (p) =>
+          hrPermissionModules.includes(p.module) ||
+          (p.module === 'activity_logs' && p.action === 'view'),
+      );
+      for (const permission of hrPermissions) {
+        await prisma.rolePermission.upsert({
+          where: {
+            roleId_permissionId: { roleId: hrRole.id, permissionId: permission.id },
+          },
+          update: {},
+          create: { roleId: hrRole.id, permissionId: permission.id },
+        });
+      }
+    }
+
+    console.log('👤 Creating employee role...');
+    const employeeRole = await prisma.role.upsert({
+      where: { name: 'employee' },
+      update: {},
+      create: {
+        name: 'employee',
+        description: 'Regular Employee',
+        isSystem: true,
       },
-      update: {},
-      create: { roleId: hrRole.id, permissionId: permission.id },
     });
+
+    if (permissions.length > 0) {
+      const employeePermissions = permissions.filter(
+        (p) =>
+          p.name === 'attendance.view' ||
+          p.name === 'leaves.view' ||
+          p.name === 'leaves.create' ||
+          p.name === 'leaves.update' ||
+          p.name === 'holidays.view',
+      );
+      for (const permission of employeePermissions) {
+        await prisma.rolePermission.upsert({
+          where: {
+            roleId_permissionId: {
+              roleId: employeeRole.id,
+              permissionId: permission.id,
+            },
+          },
+          update: {},
+          create: { roleId: employeeRole.id, permissionId: permission.id },
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn('⚠️  Could not seed other roles:', err.message);
   }
 
-  console.log('👤 Creating employee role...');
-  const employeeRole = await prisma.role.upsert({
-    where: { name: 'employee' },
-    update: {},
-    create: {
-      name: 'employee',
-      description: 'Regular Employee',
-      isSystem: true,
-    },
-  });
+  let adminUser: any = { id: 'admin-id' };
+  try {
+    console.log('👤 Creating admin user...');
+    const hashedPassword = await bcrypt.hash('admin123', 12);
 
-  // Employee permissions: view own attendance, view/create/update own leaves
-  const employeePermissions = permissions.filter(
-    (p) =>
-      p.name === 'attendance.view' ||
-      p.name === 'leaves.view' ||
-      p.name === 'leaves.create' ||
-      p.name === 'leaves.update' ||
-      p.name === 'holidays.view',
-  );
-  for (const permission of employeePermissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: {
-          roleId: employeeRole.id,
-          permissionId: permission.id,
-        },
+    adminUser = await prisma.user.upsert({
+      where: { email: 'admin@speedlimit.com' },
+      update: { password: hashedPassword, roleId: adminRole.id },
+      create: {
+        email: 'admin@speedlimit.com',
+        password: hashedPassword,
+        firstName: 'System',
+        lastName: 'Admin',
+        phone: '0300-0000000',
+        status: 'active',
+        roleId: adminRole.id,
       },
-      update: {},
-      create: { roleId: employeeRole.id, permissionId: permission.id },
     });
+  } catch (err: any) {
+    console.warn('⚠️  Could not seed admin user:', err.message);
   }
-
-  console.log('👤 Creating admin user...');
-  const hashedPassword = await bcrypt.hash('admin123', 12);
-
-  const adminUser = await prisma.user.upsert({
-    where: { email: 'admin@speedlimit.com' },
-    update: { password: hashedPassword, roleId: adminRole.id },
-    create: {
-      email: 'admin@speedlimit.com',
-      password: hashedPassword,
-      firstName: 'System',
-      lastName: 'Admin',
-      phone: '0300-0000000',
-      status: 'active',
-      roleId: adminRole.id,
-    },
-  });
 
   // Seed Master Data
   await seedCountries(prisma);
   await seedCities(prisma);
   await seedInstitutes(prisma);
+  await seedAllocations(prisma);
   await seedDepartments(prisma);
   await seedSubDepartments(prisma);
   await seedDesignations(prisma);
@@ -991,8 +1025,10 @@ async function main() {
   await seedEmployeeGrades(prisma, adminUser.id);
   await seedEmployeeStatuses(prisma, adminUser.id);
 
-  // Seed Branches (needs Cities)
-  await seedBranches(prisma, adminUser.id);
+
+
+  // Seed Locations (needs Cities)
+  await seedLocations(prisma, adminUser.id);
 
   // Seed Leave Types and Leaves Policies
   await seedLeavesPolicies(prisma, adminUser.id);
@@ -1050,30 +1086,34 @@ async function main() {
 }
 
 async function seedEmployeeGrades(prisma: PrismaClient, createdById: string) {
-  console.log('📊 Seeding employee grades...');
+  console.log('📊 Cleaning and seeding employee grades...');
+
+  try {
+    // Clear old grades first
+    await prisma.employeeGrade.deleteMany({});
+    console.log('🗑️  Old employee grades cleared');
+  } catch (error: any) {
+    console.warn('⚠️  Could not clear old grades:', error.message);
+  }
+
   const grades = [
-    'Grade 1',
-    'Grade 2',
-    'Grade 3',
-    'Grade 4',
-    'Grade 5',
-    'Grade 6',
-    'Grade 7',
-    'Grade 8',
-    'Grade 9',
-    'Grade 10',
-    'Grade 11',
-    'Grade 12',
-    'Grade 13',
-    'Grade 14',
-    'Grade 15',
-    'Grade 16',
-    'Grade 17',
-    'Grade 18',
-    'Grade 19',
-    'Grade 20',
-    'Grade 21',
-    'Grade 22',
+    'EM',
+    'M1',
+    'M2',
+    'M3',
+    'M4',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'NE1',
+    'NE2',
+    'NE3',
+    'NE4',
+    'R1',
+    'R2',
+    'R3',
+    'R4',
   ];
 
   let created = 0;

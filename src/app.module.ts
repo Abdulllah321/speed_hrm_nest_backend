@@ -9,7 +9,7 @@ import { DepartmentModule } from './department/department.module';
 import { DesignationModule } from './designation/designation.module';
 import { EmployeeGradeModule } from './employee-grade/employee-grade.module';
 import { EmployeeStatusModule } from './employee-status/employee-status.module';
-import { BranchModule } from './branch/branch.module';
+import { LocationModule } from './location/location.module';
 import { EquipmentModule } from './equipment/equipment.module';
 import { WorkingHoursPolicyModule } from './working-hours-policy/working-hours-policy.module';
 import { JobTypeModule } from './job-type/job-type.module';
@@ -48,6 +48,7 @@ import { RebateModule } from './rebate/rebate.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
 import { SocialSecurityModule } from './social-security/social-security.module';
+import { AllocationModule } from './allocation/allocation.module';
 
 @Module({
   imports: [
@@ -74,7 +75,7 @@ import { SocialSecurityModule } from './social-security/social-security.module';
     DesignationModule, // added swagger
     EmployeeGradeModule, // added swagger
     EmployeeStatusModule, // added swagger
-    BranchModule, // added swagger
+    LocationModule, // added swagger
     EquipmentModule, // added swagger
     WorkingHoursPolicyModule, // added swagger
     JobTypeModule, // added swagger
@@ -98,6 +99,7 @@ import { SocialSecurityModule } from './social-security/social-security.module';
     PayrollModule,
     UserPreferencesModule, // added swagger
     SocialSecurityModule, // added swagger
+    AllocationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

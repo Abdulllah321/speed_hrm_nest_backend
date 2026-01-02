@@ -99,28 +99,33 @@ export class PayrollService {
             // Parse details to get component-level taxability information
             const salaryBreakup = salaryBreakups.map(breakup => {
                 let amount = new Decimal(0);
-                let isTaxable = false;
-                
-                // Parse details JSON to check if this component is taxable
+                let isTaxable = true;
+
+                // Parse details JSON to check if this component is explicitly marked as non-taxable
                 try {
                     if (breakup.details) {
                         const details = typeof breakup.details === 'string' ? JSON.parse(breakup.details) : breakup.details;
                         if (Array.isArray(details) && details.length > 0) {
                             // If details is an array, find the entry matching this breakup's name
                             const matchingEntry = details.find((entry: any) => entry.typeName === breakup.name);
-                            if (matchingEntry && matchingEntry.isTaxable) {
-                                isTaxable = true;
+                            if (matchingEntry && matchingEntry.isTaxable === false) {
+                                isTaxable = false;
                             }
-                        } else if (typeof details === 'object' && details.isTaxable) {
+                        } else if (typeof details === 'object' && details.isTaxable === false) {
                             // If details is an object with isTaxable property
-                            isTaxable = details.isTaxable === true;
+                            isTaxable = false;
                         }
                     }
                 } catch (e) {
-                    // If parsing fails, default to not taxable
-                    isTaxable = false;
+                    // If parsing fails, default to taxable
+                    isTaxable = true;
                 }
-                
+
+                // Override: Ensure 'Take Home Salary' is always taxable as per user request
+                if (breakup.name.trim() === 'Take Home Salary') {
+                    isTaxable = true;
+                }
+
                 if (breakup.percentage !== null && breakup.percentage !== undefined) {
                     amount = packageAmount.mul(new Decimal(breakup.percentage)).div(100);
                 }
@@ -424,7 +429,7 @@ export class PayrollService {
                         country: true,
                         state: true,
                         city: true,
-                        branch: true,
+                        location: true,
                     }
                 },
                 payroll: true,
@@ -1022,14 +1027,14 @@ export class PayrollService {
                 const holidayDayFrom = holidayFrom.getDate();
                 const holidayMonthTo = holidayTo.getMonth() + 1;
                 const holidayDayTo = holidayTo.getDate();
-                
+
                 // Check if date falls within holiday range
                 if (holidayMonthFrom === holidayMonthTo) {
                     return month === holidayMonthFrom && day >= holidayDayFrom && day <= holidayDayTo;
                 } else {
                     // Holiday spans across months
-                    return (month === holidayMonthFrom && day >= holidayDayFrom) || 
-                           (month === holidayMonthTo && day <= holidayDayTo);
+                    return (month === holidayMonthFrom && day >= holidayDayFrom) ||
+                        (month === holidayMonthTo && day <= holidayDayTo);
                 }
             });
         };
@@ -1045,7 +1050,7 @@ export class PayrollService {
         const isWeeklyOff = (date: Date): boolean => {
             const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
             const dayName = dayNames[date.getDay()];
-            
+
             // If policy has dayOverrides, check if this day is marked as off
             if (policy && policy.dayOverrides && typeof policy.dayOverrides === 'object') {
                 const overrides = policy.dayOverrides as Record<string, any>;
@@ -1058,7 +1063,7 @@ export class PayrollService {
                     return false;
                 }
             }
-            
+
             // Default: Weekends (Saturday=6, Sunday=0) are off days if no policy override
             const dayOfWeek = date.getDay();
             return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
@@ -1087,8 +1092,8 @@ export class PayrollService {
             // Convert to Decimal if it's not already
             let otHours: Decimal | null = null;
             if (attendance.overtimeHours) {
-                otHours = attendance.overtimeHours instanceof Decimal 
-                    ? attendance.overtimeHours 
+                otHours = attendance.overtimeHours instanceof Decimal
+                    ? attendance.overtimeHours
                     : new Decimal(attendance.overtimeHours);
             }
 
@@ -1096,13 +1101,13 @@ export class PayrollService {
             if (isOnHolidayOrOff && attendance.checkIn && attendance.checkOut) {
                 if (!otHours || otHours.eq(0)) {
                     // If no overtimeHours calculated, use workingHours (all hours worked are overtime on holidays/off days)
-                    otHours = attendance.workingHours 
-                        ? (attendance.workingHours instanceof Decimal 
-                            ? attendance.workingHours 
+                    otHours = attendance.workingHours
+                        ? (attendance.workingHours instanceof Decimal
+                            ? attendance.workingHours
                             : new Decimal(attendance.workingHours))
                         : new Decimal(0);
                 }
-                
+
                 if (otHours && otHours.gt(0)) {
                     const overtimeAmt = hourlyRate.mul(holidayMultiplier).mul(otHours);
                     amount = amount.add(overtimeAmt);
@@ -1122,7 +1127,7 @@ export class PayrollService {
                 // Only add if not already covered by overtime request
                 if (!overtimeRequestDates.has(attDateString)) {
                     const overtimeAmt = hourlyRate.mul(rateMultiplier).mul(otHours);
-                    
+
                     if (overtimeAmt.gt(0)) {
                         amount = amount.add(overtimeAmt);
                         overtimeBreakup.push({
@@ -1148,7 +1153,7 @@ export class PayrollService {
         // Sum up amounts from components marked as taxable
         let monthlyTaxableAmount = new Decimal(0);
         const taxableComponents: Array<{ name: string; amount: number }> = [];
-        
+
         for (const component of salaryBreakup) {
             if (component.isTaxable && component.amount > 0) {
                 monthlyTaxableAmount = monthlyTaxableAmount.add(new Decimal(component.amount));

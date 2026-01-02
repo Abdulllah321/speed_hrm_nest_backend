@@ -37,7 +37,7 @@ model User {
   degreeTypesCreated              DegreeType[]                     @relation("DegreeTypeCreatedBy")
   statesCreated                   State[]                          @relation("StateCreatedBy")
   citiesCreated                   City[]                           @relation("CityCreatedBy")
-  branchesCreated                 Branch[]                         @relation("BranchCreatedBy")
+  locationsCreated                Location[]                       @relation("LocationCreatedBy")
   allowanceHeadsCreated           AllowanceHead[]                  @relation("AllowanceHeadCreatedBy")
   deductionHeadsCreated           DeductionHead[]                  @relation("DeductionHeadCreatedBy")
   loanTypesCreated                LoanType[]                       @relation("LoanTypeCreatedBy")
@@ -89,6 +89,7 @@ model User {
   banksCreated         Bank[]         @relation("BankCreatedBy")
   banksUpdated         Bank[]         @relation("BankUpdatedBy")
   rebateNaturesCreated RebateNature[] @relation("RebateNatureCreatedBy")
+  allocationsCreated   Allocation[]   @relation("AllocationCreatedBy")
   rebalesCreated       Rebate[]       @relation("RebateCreatedBy")
   payrollsGenerated    Payroll[]      @relation("PayrollGeneratedBy")
   preferences          UserPreference[]

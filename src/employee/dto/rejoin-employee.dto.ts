@@ -149,7 +149,7 @@ export class RejoinEmployeeDto {
 
   @IsOptional()
   @IsString()
-  branchId?: string;
+  locationId?: string;
 
   @IsOptional()
   @IsString()
@@ -210,7 +210,7 @@ export class RejoinEmployeeDto {
   @IsOptional()
   workingHoursPolicy?: string;
   @IsOptional()
-  branch?: string;
+  location?: string;
   @IsOptional()
   leavesPolicy?: string;
 

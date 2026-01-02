@@ -7,7 +7,7 @@ export class LeaveApplicationService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async getLeaveBalance(employeeId: string) {
     try {
@@ -48,17 +48,17 @@ export class LeaveApplicationService {
 
       // Calculate used leaves by leave type
       const usedLeavesMap = new Map<string, number>()
-      
+
       leaveApplications.forEach((app) => {
         const leaveTypeId = app.leaveTypeId
         const currentUsed = usedLeavesMap.get(leaveTypeId) || 0
-        
+
         // Calculate days between fromDate and toDate
         const fromDate = new Date(app.fromDate)
         const toDate = new Date(app.toDate)
         const diffTime = Math.abs(toDate.getTime() - fromDate.getTime())
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 // +1 to include both dates
-        
+
         // Adjust based on day type
         let daysToDeduct = diffDays
         if (app.dayType === 'halfDay') {
@@ -66,7 +66,7 @@ export class LeaveApplicationService {
         } else if (app.dayType === 'shortLeave') {
           daysToDeduct = diffDays * 0.25 // Assuming short leave is 0.25 day
         }
-        
+
         usedLeavesMap.set(leaveTypeId, currentUsed + daysToDeduct)
       })
 
@@ -168,6 +168,29 @@ export class LeaveApplicationService {
       const toDate = new Date(body.toDate)
       const diffTime = Math.abs(toDate.getTime() - fromDate.getTime())
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+
+      // Check if attendance already exists for any day in the requested range
+      const checkFromDate = new Date(fromDate)
+      checkFromDate.setHours(0, 0, 0, 0)
+      const checkToDate = new Date(toDate)
+      checkToDate.setHours(23, 59, 59, 999)
+
+      const existingAttendance = await this.prisma.attendance.findFirst({
+        where: {
+          employeeId: body.employeeId,
+          date: {
+            gte: checkFromDate,
+            lte: checkToDate,
+          },
+        },
+      })
+
+      if (existingAttendance) {
+        return {
+          status: false,
+          message: 'Attendance result already marked for one or more days in this range. Cannot apply for leave.',
+        }
+      }
 
       let daysToDeduct = diffDays
       if (body.dayType === 'halfDay') {

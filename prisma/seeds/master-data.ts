@@ -1,85 +1,215 @@
 import { PrismaClient } from '@prisma/client';
 
-export async function seedDepartments(prisma: PrismaClient) {
-  console.log('🏢 Seeding departments...');
-  const departments = [
-    'Human Resources',
-    'Information Technology',
-    'Finance',
-    'Operations',
-    'Sales',
-    'Marketing',
-    'Customer Service',
+export async function seedAllocations(prisma: PrismaClient) {
+  console.log('🏷️ Seeding allocations...');
+
+  // Clear existing employees and allocations because of foreign key constraints
+  // Deleting employees first as they depend on Allocations and Departments
+  await prisma.employee.deleteMany({});
+  await prisma.allocation.deleteMany({});
+
+  // Excel से unique allocations निकाल रहे हैं
+  const allocations = [
     'Administration',
-    'Research and Development',
-    'Quality Assurance',
-    'Legal',
-    'Procurement',
+    'Selling'
   ];
+
   let created = 0;
   let skipped = 0;
-  for (const name of departments) {
+
+  for (const name of allocations) {
     try {
-      const existing = await prisma.department.findFirst({ where: { name } });
+      const existing = await prisma.allocation.findFirst({
+        where: { name }
+      });
+
       if (existing) {
         skipped++;
         continue;
       }
-      await prisma.department.create({ data: { name } });
+
+      await prisma.allocation.create({
+        data: { name }
+      });
       created++;
     } catch (error: any) {
-      console.error(`Error seeding department "${name}":`, error.message);
+      console.error(`Error seeding allocation "${name}":`, error.message);
     }
   }
+
+  console.log(`✓ Allocations: ${created} created, ${skipped} skipped`);
+  return { created, skipped };
+}
+
+export async function seedDepartments(prisma: PrismaClient) {
+  console.log('🏢 Seeding departments...');
+
+  // Clear existing departments and sub-departments as requested
+  await prisma.subDepartment.deleteMany({});
+  await prisma.department.deleteMany({});
+
+  const allocations = await prisma.allocation.findMany();
+  const allocationMap = new Map(
+    allocations.map((a) => [a.name, a.id])
+  );
+
+  // Excel के डेटा के आधार पर departments with allocation relations
+  const departments = [
+    { allocation: 'Administration', name: 'Corporate Office' },
+    { allocation: 'Administration', name: 'C.O.-Sales Administration' },
+    { allocation: 'Administration', name: 'C.O.-Sports Brands' },
+    { allocation: 'Administration', name: 'C.O. C & K/Pedro' },
+    { allocation: 'Administration', name: 'C.O.-Speed Sports Online' },
+    { allocation: 'Administration', name: 'C.O.-PLM' },
+    { allocation: 'Administration', name: 'C.O.-Watches' },
+    { allocation: 'Selling', name: 'LA' },
+    { allocation: 'Selling', name: 'SS-DMC' },
+    { allocation: 'Selling', name: 'SS-TF' },
+    { allocation: 'Selling', name: 'SS-LM' },
+    { allocation: 'Selling', name: 'SS-FA' },
+    { allocation: 'Selling', name: 'SS-EM' },
+    { allocation: 'Selling', name: 'SS-DML' },
+    { allocation: 'Selling', name: 'NSGM' },
+    { allocation: 'Selling', name: 'SS WTC' },
+    { allocation: 'Selling', name: 'SS-MM' },
+    { allocation: 'Selling', name: 'SS-LG' },
+    { allocation: 'Selling', name: 'NDC' },
+    { allocation: 'Selling', name: 'NXM' },
+    { allocation: 'Selling', name: 'NPM' },
+    { allocation: 'Selling', name: 'NCM' },
+    { allocation: 'Selling', name: 'SS-SGM' },
+    { allocation: 'Selling', name: 'Adi-LOM' },
+    { allocation: 'Selling', name: 'C&K-DMC' },
+    { allocation: 'Selling', name: 'C&K-LM' },
+    { allocation: 'Selling', name: 'C&K-CM' },
+    { allocation: 'Selling', name: 'C&K-EM' },
+    { allocation: 'Selling', name: 'C&K-PM' },
+    { allocation: 'Selling', name: 'C&K-DML' },
+    { allocation: 'Selling', name: 'P-DMC' },
+    { allocation: 'Selling', name: 'P-PM' },
+    { allocation: 'Selling', name: 'P-DML' },
+    { allocation: 'Selling', name: 'DMC-BTQ' },
+    { allocation: 'Selling', name: 'IWC-LM' },
+    { allocation: 'Selling', name: 'IWC-DMTR' },
+    { allocation: 'Selling', name: 'IWC-DML' },
+    { allocation: 'Selling', name: 'IWC-RWP' },
+    { allocation: 'Selling', name: 'IWC-SIALKOT' },
+    { allocation: 'Selling', name: 'EM-BTQ' },
+    { allocation: 'Selling', name: 'PM-BTQ' },
+    { allocation: 'Selling', name: 'Kingson' },
+    { allocation: 'Selling', name: 'SGM-BTQ' },
+    { allocation: 'Selling', name: 'WTC-BTQ' },
+    { allocation: 'Selling', name: 'A.S.S.' }
+  ];
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const dept of departments) {
+    try {
+      const allocationId = allocationMap.get(dept.allocation);
+
+      if (!allocationId) {
+        console.warn(
+          `⚠️  Allocation "${dept.allocation}" not found, skipping department "${dept.name}"`
+        );
+        continue;
+      }
+
+      const existing = await prisma.department.findFirst({
+        where: {
+          name: dept.name,
+          allocationId
+        }
+      });
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await prisma.department.create({
+        data: {
+          name: dept.name,
+          allocationId
+        }
+      });
+      created++;
+    } catch (error: any) {
+      console.error(`Error seeding department "${dept.name}":`, error.message);
+    }
+  }
+
   console.log(`✓ Departments: ${created} created, ${skipped} skipped`);
   return { created, skipped };
 }
 
 export async function seedSubDepartments(prisma: PrismaClient) {
   console.log('📁 Seeding sub-departments...');
+
   const departments = await prisma.department.findMany();
   const departmentMap = new Map(
-    departments.map((d) => [d.name.toLowerCase(), d.id]),
+    departments.map((d) => [d.name.toLowerCase(), d.id])
   );
+
+  // Excel के डेटा के आधार पर sub-departments
   const subDepartments = [
-    { department: 'Human Resources', name: 'Recruitment' },
-    { department: 'Human Resources', name: 'Training & Development' },
-    { department: 'Human Resources', name: 'Payroll' },
-    { department: 'Human Resources', name: 'Employee Relations' },
-    { department: 'Information Technology', name: 'Software Development' },
-    { department: 'Information Technology', name: 'Network & Infrastructure' },
-    { department: 'Information Technology', name: 'IT Support' },
-    { department: 'Information Technology', name: 'Database Administration' },
-    { department: 'Information Technology', name: 'Cybersecurity' },
-    { department: 'Finance', name: 'Accounting' },
-    { department: 'Finance', name: 'Financial Planning' },
-    { department: 'Finance', name: 'Audit' },
-    { department: 'Finance', name: 'Tax' },
-    { department: 'Operations', name: 'Production' },
-    { department: 'Operations', name: 'Logistics' },
-    { department: 'Operations', name: 'Supply Chain' },
-    { department: 'Operations', name: 'Facilities Management' },
-    { department: 'Sales', name: 'Inside Sales' },
-    { department: 'Sales', name: 'Field Sales' },
-    { department: 'Sales', name: 'Account Management' },
-    { department: 'Sales', name: 'Business Development' },
-    { department: 'Marketing', name: 'Digital Marketing' },
-    { department: 'Marketing', name: 'Content Marketing' },
-    { department: 'Marketing', name: 'Brand Management' },
-    { department: 'Marketing', name: 'Market Research' },
-    { department: 'Customer Service', name: 'Customer Support' },
-    { department: 'Customer Service', name: 'Technical Support' },
-    { department: 'Customer Service', name: 'Customer Success' },
-    { department: 'Administration', name: 'Office Management' },
-    { department: 'Administration', name: 'Documentation' },
-    { department: 'Research and Development', name: 'Product Development' },
-    { department: 'Research and Development', name: 'Innovation Lab' },
-    { department: 'Quality Assurance', name: 'Testing' },
-    { department: 'Quality Assurance', name: 'Quality Control' },
-    { department: 'Legal', name: 'Compliance' },
-    { department: 'Legal', name: 'Contracts' },
-    { department: 'Procurement', name: 'Vendor Management' },
-    { department: 'Procurement', name: 'Purchasing' },
+    // Corporate Office Sub-departments
+    { department: 'Corporate Office', name: 'Executive' },
+    { department: 'Corporate Office', name: 'Finance' },
+    { department: 'Corporate Office', name: 'Administration' },
+
+    // Administration Allocation के departments
+    { department: 'C.O.-Sales Administration', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C.O.-Sports Brands', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C.O. C & K/Pedro', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C.O.-Speed Sports Online', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C.O.-PLM', name: 'Product Line' },
+    { department: 'C.O.-Watches', name: 'Sales-Watch Brands' },
+
+    // Selling Allocation के departments
+    { department: 'LA', name: 'Logistics' },
+
+    // Sports & Fashion Brands Sub-departments
+    { department: 'SS-DMC', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-TF', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-LM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-FA', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-EM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-DML', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'NSGM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS WTC', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-MM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-LG', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'NDC', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'NXM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'NPM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'NCM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'SS-SGM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'Adi-LOM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C&K-DMC', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C&K-LM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C&K-CM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C&K-EM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C&K-PM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'C&K-DML', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'P-DMC', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'P-PM', name: 'Sales-Sports & Fashion Brands' },
+    { department: 'P-DML', name: 'Sales-Sports & Fashion Brands' },
+
+    // Watch Brands Sub-departments
+    { department: 'DMC-BTQ', name: 'Sales-Watch Brands' },
+    { department: 'IWC-LM', name: 'Sales-Watch Brands' },
+    { department: 'IWC-DMTR', name: 'Sales-Watch Brands' },
+    { department: 'IWC-DML', name: 'Sales-Watch Brands' },
+    { department: 'IWC-RWP', name: 'Sales-Watch Brands' },
+    { department: 'IWC-SIALKOT', name: 'Sales-Watch Brands' },
+    { department: 'EM-BTQ', name: 'Sales-Watch Brands' },
+    { department: 'PM-BTQ', name: 'Sales-Watch Brands' },
+    { department: 'Kingson', name: 'Sales-Watch Brands' },
+    { department: 'SGM-BTQ', name: 'Sales-Watch Brands' },
+    { department: 'WTC-BTQ', name: 'Sales-Watch Brands' },
+    { department: 'A.S.S.', name: 'Sales-Watch Brands' }
   ];
   let created = 0;
   let skipped = 0;
@@ -115,66 +245,104 @@ export async function seedSubDepartments(prisma: PrismaClient) {
 }
 
 export async function seedDesignations(prisma: PrismaClient) {
-  console.log('👔 Seeding designations...');
+  console.log('👔 Cleaning and seeding designations...');
+
+  try {
+    // Clear old designations first
+    await prisma.designation.deleteMany({});
+    console.log('🗑️  Old designations cleared');
+  } catch (error: any) {
+    console.warn('⚠️  Could not clear old designations:', error.message);
+  }
+
   const designations = [
     'Chief Executive Officer',
-    'Chief Technology Officer',
-    'Chief Financial Officer',
-    'Chief Operating Officer',
-    'Vice President',
     'Director',
-    'Senior Manager',
-    'Manager',
-    'Assistant Manager',
-    'Team Lead',
-    'Senior Developer',
-    'Developer',
-    'Junior Developer',
-    'Senior Analyst',
-    'Analyst',
-    'Junior Analyst',
-    'Senior Engineer',
-    'Engineer',
-    'Junior Engineer',
-    'Senior Designer',
-    'Designer',
-    'Junior Designer',
-    'Senior Accountant',
-    'Accountant',
-    'Junior Accountant',
-    'HR Manager',
-    'HR Executive',
-    'HR Assistant',
-    'Sales Manager',
+    'Country Manager-Sales & Marketing',
+    'Country Manager-Sales & Marketing-Watches',
+    'General Manger Finance',
+    'Geneall Manager Admin/HR',
+    'General Manager Product Line',
+    'General Manager Logistics',
+    'Senior Manager Sales Operations-South & ISB',
+    'Senior Manager Sales Operations-Fashion Brands South',
+    'Senior Manager E Commerce Sales',
+    'Senior Brand Manager Watches',
+    'Senior Manager Retail Sales-Watches',
+    'Senior Manager Finance',
+    'Senior Manager Accounts',
+    'Senior Manager Import',
+    'Senior Manager MIS',
+    'Senior Manager Administration',
+    'Senior Manager Porduct Line',
+    'Senior Manager Logistics',
+    'Manager Sales Operations',
+    'Manager E Commerce Sales',
+    'Manager Retail Sales',
+    'Brand Manager-Tag Heuer',
+    'Manger Sales & Marketing-Timex',
+    'Manager Finance',
+    'Manager Accounts',
+    'Manager Import',
+    'Manager MIS',
+    'Manager Administration',
+    'Manager Product Line',
+    'Manager Logistics',
+    'Assistant Manager Sales Operations',
+    'Assistant Manager Accounts',
+    'Assistant Manager Alliances & E Comm',
+    'Assistant Manager-MIS',
+    'Assistant Manager-Import',
+    'Assistant Manager Admin.',
+    'Assistant Manager-Timex/Nautica',
+    'Assistant Manager Product Line',
+    'Assistant Manager Logistics',
+    'Senior Executive E Com.',
+    'Senior Accounts Executive',
+    'Senior Executive MIS',
+    'Senior Executive Product Line',
+    'Senior Import Executive',
+    'Senior Inventory Officer',
+    'Senior Supervisor',
+    'Executive E Com.',
     'Sales Executive',
-    'Sales Representative',
-    'Marketing Manager',
-    'Marketing Executive',
-    'Marketing Coordinator',
-    'Customer Service Representative',
-    'Customer Support Specialist',
-    'Administrative Assistant',
-    'Office Administrator',
+    'Brand Executive',
+    'Accounts Executive',
+    'Executive MIS',
+    'Import Executive',
+    'Merhandisor',
+    'Brand/Online Coordinator',
+    'Logistic Supervisor',
+    'Online Supervisor',
+    'Online Coordinator',
+    'Logistic Assistant',
+    'Import Assistant',
+    'Filing Assistant',
+    'Inventory Officer',
+    'Maintenance Supervisor',
     'Receptionist',
-    'Data Entry Operator',
-    'Quality Assurance Engineer',
-    'Quality Control Inspector',
-    'Project Manager',
-    'Project Coordinator',
-    'Business Analyst',
-    'Operations Manager',
-    'Operations Executive',
-    'Procurement Officer',
-    'Legal Advisor',
-    'Compliance Officer',
-    'Security Officer',
-    'Facilities Manager',
-    'Maintenance Technician',
+    'Logistic Operator',
+    'Outdoor Specialist',
+    'Outdoor Assistant',
+    'Office Boy',
+    'Tea Boy',
     'Driver',
-    'Cleaner',
-    'Intern',
-    'Trainee',
+    'Store Manager',
+    'Boutique Manager',
+    'Manager After Sales',
+    'Boutique Supervisor',
+    'Senior Technician',
+    'Shift Supervisor',
+    'Technician',
+    'Senior Advisor',
+    'Senior C S Associate',
+    'Senior Boutique Advisor',
+    'Advisor',
+    'C S Associate',
+    'Boutique Advisor',
+    'Trainee Technician',
   ];
+
   let created = 0;
   let skipped = 0;
   for (const name of designations) {
@@ -343,13 +511,21 @@ export async function seedHolidays(prisma: PrismaClient, createdById: string) {
   return { created, skipped };
 }
 
-export async function seedBranches(prisma: PrismaClient, createdById: string) {
-  console.log('🏢 Seeding branches...');
+export async function seedLocations(prisma: PrismaClient, createdById: string) {
+  console.log('🏢 Cleaning and seeding locations...');
 
-  // Get Pakistan and Lahore city for branches
+  try {
+    // Clear old locations first
+    await prisma.location.deleteMany({});
+    console.log('🗑️  Old locations cleared');
+  } catch (error: any) {
+    console.warn('⚠️  Could not clear old locations:', error.message);
+  }
+
+  // Get Pakistan and city references
   const pakistan = await prisma.country.findFirst({ where: { iso: 'PK' } });
   if (!pakistan) {
-    console.warn('⚠️  Pakistan not found, skipping branches');
+    console.warn('⚠️  Pakistan not found, skipping locations');
     return { created: 0, skipped: 0 };
   }
 
@@ -374,52 +550,86 @@ export async function seedBranches(prisma: PrismaClient, createdById: string) {
     },
   });
 
-  const branches = [
-    { name: 'Head Office', address: 'Main Street, Lahore', cityId: lahore?.id },
-    {
-      name: 'Karachi Branch',
-      address: 'Business District, Karachi',
-      cityId: karachi?.id,
-    },
-    {
-      name: 'Islamabad Branch',
-      address: 'Blue Area, Islamabad',
-      cityId: islamabad?.id,
-    },
-    {
-      name: 'Faisalabad Branch',
-      address: 'City Center, Faisalabad',
-      cityId: null,
-    },
-    { name: 'Multan Branch', address: 'Cantonment Area, Multan', cityId: null },
+  const locations = [
+    { name: 'Corporate Office', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Finance', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Administration', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Sales Administration', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Sports Brands', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Fashion Brands', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Speed Sports Online', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Pedro Online', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Product Line', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Watch Brands', address: '', cityId: lahore?.id },
+    { name: 'Corporate Office-Service Centre', address: '', cityId: lahore?.id },
+    { name: 'Logsitic Area', address: '', cityId: null },
+    { name: 'Speed Sports-Domen Clifton', address: '', cityId: karachi?.id },
+    { name: 'Speed Sports-The Fourm', address: '', cityId: karachi?.id },
+    { name: 'Speed Sports-Lucky One', address: '', cityId: karachi?.id },
+    { name: 'Speed Sports-Fountain Avenue', address: '', cityId: lahore?.id },
+    { name: 'Spee Sports-Emporium Mall', address: '', cityId: lahore?.id },
+    { name: 'Spee Sports-Dolmen Lahore', address: '', cityId: lahore?.id },
+    { name: 'Spee Sports-Safa Gold Mall', address: '', cityId: islamabad?.id },
+    { name: 'Spee Sports-Giga Mall', address: '', cityId: islamabad?.id },
+    { name: 'Spee Sports-Mall of Multan', address: '', cityId: null },
+    { name: 'Spee Sports-Lyallpur Galleria', address: '', cityId: null },
+    { name: 'Nike-Dolmen-Clifton', address: '', cityId: karachi?.id },
+    { name: 'Nike-Xhinua Mall', address: '', cityId: lahore?.id },
+    { name: 'Nike-Packages Mall', address: '', cityId: lahore?.id },
+    { name: 'Nike-Centaurus Mall', address: '', cityId: islamabad?.id },
+    { name: 'Nike-Safa Gold Mall', address: '', cityId: islamabad?.id },
+    { name: 'Adidas-Lucky One', address: '', cityId: karachi?.id },
+    { name: 'Adidas-Madison Square', address: '', cityId: lahore?.id },
+    { name: 'Adidas-Jinnah Icon', address: '', cityId: null },
+    { name: 'Puma-Dolmen Lahore', address: '', cityId: lahore?.id },
+    { name: 'Puma-United Mall', address: '', cityId: null },
+    { name: 'Charles & Keith-Dolmen Clifton', address: '', cityId: karachi?.id },
+    { name: 'Charles & Keith-Lucky One', address: '', cityId: karachi?.id },
+    { name: 'Charles & Keith-Emporium Mall', address: '', cityId: lahore?.id },
+    { name: 'Charles & Keith-Packages Mall', address: '', cityId: lahore?.id },
+    { name: 'Charles & Keith-Dolmen Lahore', address: '', cityId: lahore?.id },
+    { name: 'Charles & Keith-Centaurus Mall', address: '', cityId: islamabad?.id },
+    { name: 'Pedro-Dolmen Clifton', address: '', cityId: karachi?.id },
+    { name: 'Pedro-Packages Mall', address: '', cityId: lahore?.id },
+    { name: 'Pedro-Dolmen Lahore', address: '', cityId: lahore?.id },
+    { name: 'Tag Heuer-Dolmen Clifton', address: '', cityId: karachi?.id },
+    { name: 'Tag Heuer-Emporium Mall', address: '', cityId: lahore?.id },
+    { name: 'Tag Heuer-Packages Mall', address: '', cityId: lahore?.id },
+    { name: 'Tag Heuer-Safa Gold Mall', address: '', cityId: islamabad?.id },
+    { name: 'Tag Heuer-Giga Mall', address: '', cityId: islamabad?.id },
+    { name: 'SPL POS-IWC Kingson', address: '', cityId: lahore?.id },
+    { name: 'SPL POS-Dolmen Lahore', address: '', cityId: lahore?.id },
+    { name: 'SPL POS-IWC Lucky One', address: '', cityId: karachi?.id },
+    { name: 'SPL POS-IWC Dolmen Tariq Road', address: '', cityId: karachi?.id },
+    { name: 'POINT OF SALES - CORPORATE', address: '', cityId: karachi?.id }
   ];
 
   let created = 0;
   let skipped = 0;
-  for (const branch of branches) {
+  for (const location of locations) {
     try {
-      const existing = await prisma.branch.findFirst({
-        where: { name: branch.name },
+      const existing = await prisma.location.findFirst({
+        where: { name: location.name },
       });
       if (existing) {
         skipped++;
         continue;
       }
-      await prisma.branch.create({
+      await prisma.location.create({
         data: {
-          name: branch.name,
-          address: branch.address,
-          cityId: branch.cityId || undefined,
+          name: location.name,
+          address: location.address,
+          cityId: location.cityId || undefined,
           status: 'active',
           createdById,
         },
       });
       created++;
     } catch (error: any) {
-      console.error(`Error seeding branch "${branch.name}":`, error.message);
+      console.error(`Error seeding location "${location.name}":`, error.message);
     }
   }
-  console.log(`✓ Branches: ${created} created, ${skipped} skipped`);
+  console.log(`✓ Locations: ${created} created, ${skipped} skipped`);
   return { created, skipped };
 }
 
@@ -983,11 +1193,11 @@ export async function seedSalaryBreakups(
 ) {
   console.log('💵 Seeding salary breakups...');
   const salaryBreakups = [
-    { name: 'Basic Salary', details: 'Base salary component',percentage: 50 },
-    { name: 'Gross Salary', details: 'Total salary before deductions',percentage: 10 },
-    { name: 'Net Salary', details: 'Salary after all deductions',percentage: 10 },
-    { name: 'Cost to Company (CTC)', details: 'Total cost of employment',percentage: 10 },
-    { name: 'Take Home Salary', details: 'Net amount received by employee',percentage: 10 },
+    { name: 'Basic Salary', details: 'Base salary component', percentage: 50 },
+    { name: 'Gross Salary', details: 'Total salary before deductions', percentage: 10 },
+    { name: 'Net Salary', details: 'Salary after all deductions', percentage: 10 },
+    { name: 'Cost to Company (CTC)', details: 'Total cost of employment', percentage: 10 },
+    { name: 'Take Home Salary', details: 'Net amount received by employee', percentage: 10 },
   ];
 
   let created = 0;
@@ -1192,7 +1402,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   const employeeGrades = await prisma.employeeGrade.findMany();
   const employeeStatuses = await prisma.employeeStatus.findMany();
   const maritalStatuses = await prisma.maritalStatus.findMany();
-  const branches = await prisma.branch.findMany();
+  const locations = await prisma.location.findMany();
   const workingHoursPolicies = await prisma.workingHoursPolicy.findMany();
   const leavesPolicies = await prisma.leavesPolicy.findMany();
   const equipments = await prisma.equipment.findMany();
@@ -1207,28 +1417,28 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   // Get states and cities
   const punjab = pakistan
     ? await prisma.state.findFirst({
-        where: { name: 'Punjab', countryId: pakistan.id },
-      })
+      where: { name: 'Punjab', countryId: pakistan.id },
+    })
     : null;
   const sindh = pakistan
     ? await prisma.state.findFirst({
-        where: { name: 'Sindh', countryId: pakistan.id },
-      })
+      where: { name: 'Sindh', countryId: pakistan.id },
+    })
     : null;
   const lahoreCity = punjab
     ? await prisma.city.findFirst({
-        where: { name: 'Lahore', stateId: punjab.id },
-      })
+      where: { name: 'Lahore', stateId: punjab.id },
+    })
     : null;
   const karachiCity = sindh
     ? await prisma.city.findFirst({
-        where: { name: 'Karachi', stateId: sindh.id },
-      })
+      where: { name: 'Karachi', stateId: sindh.id },
+    })
     : null;
   const islamabadCity = punjab
     ? await prisma.city.findFirst({
-        where: { name: 'Islamabad', stateId: punjab.id },
-      })
+      where: { name: 'Islamabad', stateId: punjab.id },
+    })
     : null;
 
   // Get first city from state if specific city not found
@@ -1256,14 +1466,14 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   }
 
   if (
-    !branches.length ||
+    !locations.length ||
     !workingHoursPolicies.length ||
     !leavesPolicies.length
   ) {
     console.warn(
       '⚠️  Required master data not found, skipping employee seeding',
     );
-    if (!branches.length) console.warn('   Missing: Branches');
+    if (!locations.length) console.warn('   Missing: Locations');
     if (!workingHoursPolicies.length)
       console.warn('   Missing: Working Hours Policies');
     if (!leavesPolicies.length) console.warn('   Missing: Leaves Policies');
@@ -1290,7 +1500,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
     employeeStatuses.find((s) => s.status === 'Active') || employeeStatuses[0]
   ).id;
   const defaultMaritalStatusId = maritalStatuses[0].id;
-  const defaultBranchId = branches[0].id;
+  const defaultLocationId = locations[0].id;
   const defaultWorkingHoursId = (
     workingHoursPolicies.find((p) => p.isDefault) || workingHoursPolicies[0]
   ).id;
@@ -1326,7 +1536,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       employeeSalary: 50000,
       reportingManager: 'Admin',
       workingHoursPolicyId: defaultWorkingHoursId,
-      branchId: defaultBranchId,
+      locationId: defaultLocationId,
       leavesPolicyId: defaultLeavesPolicyId,
       currentAddress: '123 Main Street, Model Town, Lahore',
       permanentAddress: '123 Main Street, Model Town, Lahore',
@@ -1371,7 +1581,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       employeeSalary: 45000,
       reportingManager: 'Ahmed Ali',
       workingHoursPolicyId: defaultWorkingHoursId,
-      branchId: defaultBranchId,
+      locationId: defaultLocationId,
       leavesPolicyId: defaultLeavesPolicyId,
       currentAddress: '456 Commercial Area, Clifton, Karachi',
       permanentAddress: '789 Residential Block, Gulshan-e-Iqbal, Karachi',
@@ -1418,7 +1628,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       employeeSalary: 60000,
       reportingManager: 'Admin',
       workingHoursPolicyId: defaultWorkingHoursId,
-      branchId: branches[1]?.id || defaultBranchId,
+      locationId: locations[1]?.id || defaultLocationId,
       leavesPolicyId: defaultLeavesPolicyId,
       currentAddress: '321 Sector F-7, Islamabad',
       permanentAddress: '321 Sector F-7, Islamabad',
@@ -1469,7 +1679,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       employeeSalary: 48000,
       reportingManager: 'Admin',
       workingHoursPolicyId: defaultWorkingHoursId,
-      branchId: defaultBranchId,
+      locationId: defaultLocationId,
       leavesPolicyId: defaultLeavesPolicyId,
       currentAddress: '654 Garden Town, Lahore',
       permanentAddress: '654 Garden Town, Lahore',
@@ -1517,7 +1727,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
       employeeSalary: 42000,
       reportingManager: 'Admin',
       workingHoursPolicyId: defaultWorkingHoursId,
-      branchId: branches[1]?.id || defaultBranchId,
+      locationId: locations[1]?.id || defaultLocationId,
       leavesPolicyId: defaultLeavesPolicyId,
       currentAddress: '987 PECHS Block 6, Karachi',
       permanentAddress: '987 PECHS Block 6, Karachi',
@@ -1542,7 +1752,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
         !emp.stateId ||
         !emp.cityId ||
         !emp.workingHoursPolicyId ||
-        !emp.branchId ||
+        !emp.locationId ||
         !emp.leavesPolicyId
       ) {
         console.error(
@@ -1551,7 +1761,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
             stateId: emp.stateId,
             cityId: emp.cityId,
             workingHoursPolicyId: emp.workingHoursPolicyId,
-            branchId: emp.branchId,
+            locationId: emp.locationId,
             leavesPolicyId: emp.leavesPolicyId,
           },
         );
@@ -1599,7 +1809,7 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
           employeeSalary: emp.employeeSalary,
           reportingManager: emp.reportingManager,
           workingHoursPolicyId: emp.workingHoursPolicyId,
-          branchId: emp.branchId,
+          locationId: emp.locationId,
           leavesPolicyId: emp.leavesPolicyId,
           currentAddress: emp.currentAddress,
           permanentAddress: emp.permanentAddress,
@@ -1611,12 +1821,12 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
           equipmentAssignments:
             emp.equipmentIds && emp.equipmentIds.length > 0
               ? {
-                  create: emp.equipmentIds.map((equipmentId: string) => ({
-                    equipmentId,
-                    assignedById: adminUserId,
-                    status: 'assigned',
-                  })),
-                }
+                create: emp.equipmentIds.map((equipmentId: string) => ({
+                  equipmentId,
+                  assignedById: adminUserId,
+                  status: 'assigned',
+                })),
+              }
               : undefined,
         },
       });
@@ -1637,7 +1847,7 @@ export async function seedFixedRebateNatures(
   createdById: string,
 ) {
   console.log('💰 Seeding fixed rebate natures...');
-  
+
   // Fixed type rebate natures organized by category
   const fixedNatures = [
     // Education

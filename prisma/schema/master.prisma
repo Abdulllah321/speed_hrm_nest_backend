@@ -12,6 +12,18 @@ model Designation {
   increments  Increment[] @relation("IncrementDesignation")
 }
 
+model Allocation {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  status      String       @default("active")
+  createdById String?
+  createdBy   User?        @relation("AllocationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  employees   Employee[]
+  departments Department[]
+}
+
 model JobType {
   id          String   @id @default(uuid())
   name        String   @unique
@@ -95,7 +107,7 @@ model City {
   createdBy              User?                   @relation("CityCreatedBy", fields: [createdById], references: [id])
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
-  branches               Branch[]
+  locations              Location[]
   employeeQualifications EmployeeQualification[]
   employees              Employee[]
 
@@ -118,7 +130,7 @@ model State {
   employees              Employee[]
 }
 
-model Branch {
+model Location {
   id          String     @id @default(uuid())
   name        String     @unique
   address     String?
@@ -126,7 +138,7 @@ model Branch {
   city        City?      @relation(fields: [cityId], references: [id], onDelete: SetNull)
   status      String     @default("active") // active, inactive
   createdById String?
-  createdBy   User?      @relation("BranchCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?      @relation("LocationCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   employees   Employee[]
@@ -277,6 +289,8 @@ model ApprovalSetting {
 model Department {
   id                              String                           @id @default(uuid())
   name                            String                           @unique
+  allocationId                    String?
+  allocation                      Allocation?                      @relation(fields: [allocationId], references: [id], onDelete: SetNull)
   headId                          String?                          @unique
   head                            Employee?                        @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   createdById                     String?
@@ -425,7 +439,7 @@ model RebateNature {
   id                      String   @id @default(uuid())
   name                    String   @unique
   type                    String   @default("other") // "fixed" or "other"
-  category                String?  // For fixed type: Education, Consumer, Banking, Vehicle, Telephone, Property
+  category                String? // For fixed type: Education, Consumer, Banking, Vehicle, Telephone, Property
   status                  String   @default("active")
   maxInvestmentPercentage Decimal? @db.Decimal(5, 2)
   maxInvestmentAmount     Decimal? @db.Decimal(12, 2)
