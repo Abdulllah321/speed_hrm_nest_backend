@@ -491,9 +491,6 @@ export class EmployeeService {
       if (!(body as { city?: unknown }).city) {
         throw new Error('City is required');
       }
-      if (!(body as { location?: unknown }).location) {
-        throw new Error('Location is required');
-      }
       if (!(body as { workingHoursPolicy?: unknown }).workingHoursPolicy) {
         throw new Error('Working Hours Policy is required');
       }
@@ -579,12 +576,12 @@ export class EmployeeService {
         resolvedEmploymentStatus = employmentStatusValue;
       }
 
-      // Resolve location (handle both ID and name)
+      // Resolve location if provided (handle both ID and name)
       const locationValue = getBodyString('location');
-      let resolvedLocation: string;
-      if (!isUUID(locationValue)) {
+      let resolvedLocation: string | null = null;
+      if (locationValue && !isUUID(locationValue)) {
         resolvedLocation = await this.findOrCreateLocation(locationValue, ctx);
-      } else {
+      } else if (locationValue) {
         resolvedLocation = locationValue;
       }
 
@@ -829,7 +826,7 @@ export class EmployeeService {
             ? new Date(cnicExpiryDateValue)
             : null,
           lifetimeCnic: !!lifetimeCnicValue,
-          joiningDate: new Date(joiningDateValue),
+          joiningDate: joiningDateValue ? new Date(joiningDateValue) : null,
           dateOfBirth: new Date(dateOfBirthValue),
           nationality: nationalityValue,
           gender: genderValue,
@@ -837,7 +834,7 @@ export class EmployeeService {
           emergencyContactNumber: emergencyContactNumberValue || null,
           emergencyContactPerson: emergencyContactPersonNameValue || null,
           personalEmail: personalEmailValue || null,
-          officialEmail: officialEmailValue,
+          officialEmail: officialEmailValue || null,
           countryId: resolvedCountry,
           stateId: resolvedState,
           cityId: resolvedCity,
@@ -1208,8 +1205,8 @@ export class EmployeeService {
             ? new Date(cnicExpiryDateValue)
             : (existing?.cnicExpiryDate ?? null),
           lifetimeCnic: lifetimeCnicValue ?? existing?.lifetimeCnic,
-          joiningDate: joiningDateValue
-            ? new Date(joiningDateValue)
+          joiningDate: joiningDateValue !== undefined
+            ? (joiningDateValue ? new Date(joiningDateValue) : null)
             : existing?.joiningDate,
           dateOfBirth: dateOfBirthValue
             ? new Date(dateOfBirthValue)
@@ -1222,7 +1219,9 @@ export class EmployeeService {
           emergencyContactPerson:
             emergencyContactPersonNameValue ?? existing?.emergencyContactPerson,
           personalEmail: personalEmailValue ?? existing?.personalEmail,
-          officialEmail: officialEmailValue ?? existing?.officialEmail,
+          officialEmail: officialEmailValue !== undefined
+            ? (officialEmailValue || null)
+            : existing?.officialEmail,
           countryId: countryValue ?? existing?.countryId,
           stateId: stateValue ?? existing?.stateId,
           cityId: cityValue ?? existing?.cityId,
@@ -1244,7 +1243,9 @@ export class EmployeeService {
           reportingManager: reportingManagerValue ?? existing?.reportingManager,
           workingHoursPolicyId:
             workingHoursPolicyValue ?? existing?.workingHoursPolicyId,
-          locationId: locationValue ?? existing?.locationId,
+          locationId: locationValue !== undefined
+            ? (locationValue || null)
+            : existing?.locationId,
           leavesPolicyId: leavesPolicyValue ?? existing?.leavesPolicyId,
           allowRemoteAttendance:
             allowRemoteAttendanceValue ?? existing?.allowRemoteAttendance,
