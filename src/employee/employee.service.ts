@@ -476,12 +476,8 @@ export class EmployeeService {
       if (!(body as { designation?: unknown }).designation) {
         throw new Error('Designation is required');
       }
-      if (!(body as { maritalStatus?: unknown }).maritalStatus) {
-        throw new Error('Marital Status is required');
-      }
-      if (!(body as { employmentStatus?: unknown }).employmentStatus) {
-        throw new Error('Employment Status is required');
-      }
+      // Marital Status is now optional
+      // Employment Status is now optional
       if (!(body as { country?: unknown }).country) {
         throw new Error('Country is required');
       }
@@ -552,28 +548,32 @@ export class EmployeeService {
         resolvedEmployeeGrade = employeeGradeValue;
       }
 
-      // Resolve marital status (handle both ID and name)
+      // Resolve marital status (handle both ID and name) - optional
       const maritalStatusValue = getBodyString('maritalStatus');
-      let resolvedMaritalStatus: string;
-      if (!isUUID(maritalStatusValue)) {
-        resolvedMaritalStatus = await this.findOrCreateMaritalStatus(
-          maritalStatusValue,
-          ctx,
-        );
-      } else {
-        resolvedMaritalStatus = maritalStatusValue;
+      let resolvedMaritalStatus: string | null = null;
+      if (maritalStatusValue) {
+        if (!isUUID(maritalStatusValue)) {
+          resolvedMaritalStatus = await this.findOrCreateMaritalStatus(
+            maritalStatusValue,
+            ctx,
+          );
+        } else {
+          resolvedMaritalStatus = maritalStatusValue;
+        }
       }
 
       // Resolve employment status (handle both ID and name)
       const employmentStatusValue = getBodyString('employmentStatus');
-      let resolvedEmploymentStatus: string;
-      if (!isUUID(employmentStatusValue)) {
-        resolvedEmploymentStatus = await this.findOrCreateEmploymentStatus(
-          employmentStatusValue,
-          ctx,
-        );
-      } else {
-        resolvedEmploymentStatus = employmentStatusValue;
+      let resolvedEmploymentStatus: string | null = null;
+      if (employmentStatusValue) {
+        if (!isUUID(employmentStatusValue)) {
+          resolvedEmploymentStatus = await this.findOrCreateEmploymentStatus(
+            employmentStatusValue,
+            ctx,
+          );
+        } else {
+          resolvedEmploymentStatus = employmentStatusValue;
+        }
       }
 
       // Resolve location if provided (handle both ID and name)
@@ -609,16 +609,18 @@ export class EmployeeService {
         resolvedLeavesPolicy = leavesPolicyValue;
       }
 
-      // Resolve allocation (handle both ID and name)
+      // Resolve allocation (handle both ID and name) - optional
       const allocationValue = getBodyString('allocation');
-      let resolvedAllocation: string;
-      if (!isUUID(allocationValue)) {
-        resolvedAllocation = await this.findOrCreateAllocation(
-          allocationValue,
-          ctx,
-        );
-      } else {
-        resolvedAllocation = allocationValue;
+      let resolvedAllocation: string | null = null;
+      if (allocationValue) {
+        if (!isUUID(allocationValue)) {
+          resolvedAllocation = await this.findOrCreateAllocation(
+            allocationValue,
+            ctx,
+          );
+        } else {
+          resolvedAllocation = allocationValue;
+        }
       }
 
       // Resolve country, state, city - handle both IDs and names
@@ -827,7 +829,7 @@ export class EmployeeService {
             : null,
           lifetimeCnic: !!lifetimeCnicValue,
           joiningDate: joiningDateValue ? new Date(joiningDateValue) : null,
-          dateOfBirth: new Date(dateOfBirthValue),
+          dateOfBirth: dateOfBirthValue ? new Date(dateOfBirthValue) : null,
           nationality: nationalityValue,
           gender: genderValue,
           contactNumber: contactNumberValue,
@@ -851,7 +853,7 @@ export class EmployeeService {
           providentFund: !!providentFundValue,
           overtimeApplicable: !!overtimeApplicableValue,
           daysOff: daysOffValue || null,
-          reportingManager: reportingManagerValue,
+          reportingManager: reportingManagerValue || null,
           workingHoursPolicyId: resolvedWorkingHoursPolicy,
           locationId: resolvedLocation,
           leavesPolicyId: resolvedLeavesPolicy,
@@ -1208,8 +1210,8 @@ export class EmployeeService {
           joiningDate: joiningDateValue !== undefined
             ? (joiningDateValue ? new Date(joiningDateValue) : null)
             : existing?.joiningDate,
-          dateOfBirth: dateOfBirthValue
-            ? new Date(dateOfBirthValue)
+          dateOfBirth: dateOfBirthValue !== undefined
+            ? (dateOfBirthValue ? new Date(dateOfBirthValue) : null)
             : existing?.dateOfBirth,
           nationality: nationalityValue ?? existing?.nationality,
           gender: genderValue ?? existing?.gender,
@@ -2557,6 +2559,14 @@ export class EmployeeService {
         }
       }
 
+      // Handle DD-MMM-YY or DD-MMM-YYYY format (e.g. "2-Oct-00", "02-Oct-2000")
+      if (/^\d{1,2}-[A-Za-z]{3}-\d{2,4}$/.test(dateStr)) {
+        const parsed = new Date(dateStr);
+        if (!isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      }
+
       return null;
     } catch (error: any) {
       console.error('Error parsing date:', error);
@@ -2694,6 +2704,90 @@ export class EmployeeService {
         const record = records[index];
 
         try {
+          // Normalize keys to handle case sensitivity and typos
+          const normalizedRecord: any = {};
+          for (const key of Object.keys(record)) {
+            const lowerKey = key
+              .trim()
+              .toLowerCase()
+              .replace(/['"]/g, '') // Remove quotes
+              .replace(/\s+/g, ' '); // Normalize spaces
+
+            if (lowerKey === 'department') {
+              normalizedRecord.department = record[key];
+            } else if (lowerKey === 'designation') {
+              normalizedRecord.designation = record[key];
+            } else if (
+              lowerKey === 'employee grade' ||
+              lowerKey === 'employee-grade'
+            ) {
+              normalizedRecord.employeeGrade = record[key];
+            } else if (
+              lowerKey === 'marital status' ||
+              lowerKey === 'martial status' // Handle typo 'martial'
+            ) {
+              normalizedRecord.maritalStatus = record[key];
+            } else if (
+              lowerKey === 'employment status' ||
+              lowerKey === 'employment-status'
+            ) {
+              normalizedRecord.employmentStatus = record[key];
+            } else if (
+              lowerKey === 'official email' ||
+              lowerKey === 'officail email' // Handle typo 'officail'
+            ) {
+              normalizedRecord.officialEmail = record[key];
+            } else if (lowerKey === 'joining date') {
+              normalizedRecord.joiningDate = record[key];
+            } else if (
+              lowerKey === 'date of birth' ||
+              lowerKey === 'date od birth' // Handle typo 'od'
+            ) {
+              normalizedRecord.dateOfBirth = record[key];
+            } else if (
+              lowerKey === 'sub department' ||
+              lowerKey === 'sub-department'
+            ) {
+              normalizedRecord.subDepartment = record[key];
+            } else if (lowerKey === 'employee name') {
+              normalizedRecord.employeeName = record[key];
+            } else if (
+              lowerKey === 'father/husband name' ||
+              lowerKey === 'father / husband name' ||
+              lowerKey === 'fathers/husbands name' || // Handle user's format approximately
+              (lowerKey.includes('father') && lowerKey.includes('husband'))
+            ) {
+              normalizedRecord.fatherHusbandName = record[key];
+            } else if (
+              lowerKey === 'attendance id' ||
+              lowerKey === 'attendence id' // Handle typo 'attendence'
+            ) {
+              normalizedRecord.attendanceId = record[key];
+            } else if (
+              lowerKey === 'cnic number' ||
+              lowerKey === 'cnic-number'
+            ) {
+              normalizedRecord.cnicNumber = record[key];
+            } else if (lowerKey === 'gender') {
+              normalizedRecord.gender = record[key];
+            } else if (lowerKey === 'contact number') {
+              normalizedRecord.contactNumber = record[key];
+            } else if (lowerKey === 'leaves policy') {
+              normalizedRecord.leavesPolicy = record[key];
+            } else if (lowerKey === 'working hours policy') {
+              normalizedRecord.workingHoursPolicy = record[key];
+            } else if (lowerKey === 'branch' || lowerKey === 'location') {
+              normalizedRecord.branch = record[key];
+            } else if (lowerKey === 'allocation') {
+              normalizedRecord.allocation = record[key];
+            } else if (lowerKey === 'employee id' || lowerKey === 'employee-id') {
+              normalizedRecord.employeeId = record[key];
+            }
+          }
+
+          // Assign normalized fields to record if missing
+          Object.assign(record, normalizedRecord);
+
           // Normalize column names with various formats (matching Excel format exactly)
           const employeeId =
             record['Employee ID'] ||
@@ -2782,10 +2876,7 @@ export class EmployeeService {
             errors.push({ row: record, error: 'CNIC Number is required' });
             continue;
           }
-          if (!officialEmail) {
-            errors.push({ row: record, error: 'Official Email is required' });
-            continue;
-          }
+
 
           // Get reporting manager with fallback
           const reportingManager =
@@ -2833,15 +2924,16 @@ export class EmployeeService {
           const joiningDate = this.parseDate(joiningDateStr);
           const dateOfBirth = this.parseDate(dateOfBirthStr);
 
-          // Validate required date fields
-          if (!joiningDate) {
+          // Validate required date fields only if they are provided
+          if (joiningDateStr && !joiningDate) {
             errors.push({
               row: record,
               error: `Invalid Joining Date format: ${joiningDateStr}`,
             });
             continue;
           }
-          if (!dateOfBirth) {
+          // Do not enforce dateOfBirth requirement
+          if (dateOfBirthStr && !dateOfBirth) {
             errors.push({
               row: record,
               error: `Invalid Date of Birth format: ${dateOfBirthStr}`,
@@ -2854,12 +2946,12 @@ export class EmployeeService {
           let subDepartmentId: string | null = null;
           let designationId: string;
           let employeeGradeId: string;
-          let maritalStatusId: string;
-          let employmentStatusId: string;
+          let maritalStatusId: string | null = null;
+          let employmentStatusId: string | undefined;
           let countryId: string | null = null;
           let stateId: string | null = null;
           let cityId: string | null = null;
-          let locationId: string;
+          let locationId: string | null = null;
           // ... (lines 2820-2986 omitted for brevity but they don't contain 'branch')
           // ... (Wait, I should include the actual lines if I want to replace precisely)
           let workingHoursPolicyId: string;
@@ -2917,20 +3009,18 @@ export class EmployeeService {
               ctx,
             );
 
-            // Resolve marital status
+            // Resolve marital status (optional)
             const maritalStatusName =
               record['Marital Status'] ||
               record['Marital-Status'] ||
               record.MaritalStatus ||
               record.maritalStatus;
-            if (!maritalStatusName) {
-              errors.push({ row: record, error: 'Marital Status is required' });
-              continue;
+            if (maritalStatusName) {
+              maritalStatusId = await this.findOrCreateMaritalStatus(
+                maritalStatusName,
+                ctx,
+              );
             }
-            maritalStatusId = await this.findOrCreateMaritalStatus(
-              maritalStatusName,
-              ctx,
-            );
 
             // Resolve employment status
             const employmentStatusName =
@@ -2938,52 +3028,67 @@ export class EmployeeService {
               record['Employment-Status'] ||
               record.EmploymentStatus ||
               record.employmentStatus;
-            if (!employmentStatusName) {
-              errors.push({
-                row: record,
-                error: 'Employment Status is required',
-              });
-              continue;
+
+            if (employmentStatusName) {
+              employmentStatusId = await this.findOrCreateEmploymentStatus(
+                employmentStatusName,
+                ctx,
+              );
             }
-            employmentStatusId = await this.findOrCreateEmploymentStatus(
-              employmentStatusName,
-              ctx,
-            );
 
             // Resolve country, state, city
             const countryName = record.Country || record.country;
-            if (!countryName || countryName.trim() === '') {
-              errors.push({ row: record, error: 'Country is required' });
-              continue;
-            }
-
-            countryId = await this.findCountryByName(countryName);
-
-            if (!countryId) {
-              // Try to list some countries in the database for debugging
-              const sampleCountries = await this.prisma.country.findMany({
-                take: 5,
-                select: { name: true, nicename: true },
-              });
-
-              errors.push({
-                row: record,
-                error: `Country not found: "${countryName}". Please ensure the country exists in the database. Sample countries: ${sampleCountries.map((c) => c.nicename).join(', ')}`,
-              });
-              continue;
-            }
-
             const stateName =
               record.State ||
               record.Province ||
               record.province ||
               record.state;
+
+            // Try to resolve country
+            if (countryName && countryName.trim() !== '') {
+              countryId = await this.findCountryByName(countryName);
+              if (!countryId) {
+                // Sample countries omitted for brevity, adding logic to try state inference if country not found by name? 
+                // Actually if name is provided but invalid, we should error.
+                // But let's stick to the current logic which errors.
+                // Re-implementing the error reporting roughly as it was but simpler.
+                errors.push({
+                  row: record,
+                  error: `Country not found: "${countryName}"`,
+                });
+                continue;
+              }
+            } else if (stateName && stateName.trim() !== '') {
+              // Try to infer country from state
+              const state = await this.prisma.state.findFirst({
+                where: { name: stateName },
+              });
+
+              if (state) {
+                countryId = state.countryId;
+                stateId = state.id;
+              } else {
+                // If state is also not found, we can't do anything
+                errors.push({ row: record, error: 'Country is required and could not be inferred from State' });
+                continue;
+              }
+            } else {
+              errors.push({ row: record, error: 'Country is required' });
+              continue;
+            }
+
             if (!stateName || stateName.trim() === '') {
               errors.push({ row: record, error: 'State/Province is required' });
               continue;
             }
 
-            stateId = await this.findStateByName(stateName, countryId);
+            // If we inferred countryId, we can find state checking countryId, or we already found it.
+            // But findStateByName usually takes countryId.
+            // If we found `state` directly above, we already have `state.id`.
+
+            if (!stateId) {
+              stateId = await this.findStateByName(stateName, countryId!);
+            }
 
             if (!stateId) {
               const sampleStates = await this.prisma.state.findMany({
@@ -3029,13 +3134,11 @@ export class EmployeeService {
               continue;
             }
 
-            // Resolve branch
+            // Resolve branch/location (optional)
             const branchName = record.Branch || record.branch;
-            if (!branchName) {
-              errors.push({ row: record, error: 'Location is required' });
-              continue;
+            if (branchName) {
+              locationId = await this.findOrCreateLocation(branchName, ctx);
             }
-            locationId = await this.findOrCreateLocation(branchName, ctx);
 
             // Resolve working hours policy
             const workingHoursPolicyName =
@@ -3121,8 +3224,8 @@ export class EmployeeService {
                 record.LifetimeCNIC === 'true' ||
                 record.lifetimeCnic === 'true' ||
                 false,
-              joiningDate: joiningDate.toISOString(),
-              dateOfBirth: dateOfBirth.toISOString(),
+              joiningDate: joiningDate ? joiningDate.toISOString() : null,
+              dateOfBirth: dateOfBirth ? dateOfBirth.toISOString() : null,
               nationality: record.Nationality || record.nationality,
               gender: record.Gender || record.gender,
               contactNumber:
@@ -3153,12 +3256,14 @@ export class EmployeeService {
               state: stateId,
               city: cityId,
               area: record.Area || record.area || null,
-              employeeSalary:
+              employeeSalary: (
                 record['Employee-Salary(Compensation)'] ||
                 record['Employee-Salary'] ||
                 record['Employee Salary'] ||
                 record.EmployeeSalary ||
-                record.employeeSalary,
+                record.employeeSalary ||
+                '0'
+              ).toString().replace(/,/g, ''),
               eobi: record.EOBI === 'true' || record.eobi === 'true' || false,
               eobiNumber:
                 record['EOBI Number'] ||
@@ -3188,6 +3293,7 @@ export class EmployeeService {
               workingHoursPolicy: workingHoursPolicyId,
               location: locationId,
               leavesPolicy: leavesPolicyId,
+              allocation: record.Allocation || record.allocation,
               allowRemoteAttendance:
                 record.AllowRemoteAttendance === 'true' ||
                 record.allowRemoteAttendance === 'true' ||

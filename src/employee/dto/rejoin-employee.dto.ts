@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString, IsEmail, IsOptional, IsBoolean, IsDateString, IsNumber, IsDecimal } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 /**
  * DTO for rejoining an employee
@@ -45,6 +45,7 @@ export class RejoinEmployeeDto {
 
   @IsOptional()
   @IsString()
+  @Transform(({ value }) => (value === '' ? null : value))
   maritalStatusId?: string;
 
   @IsOptional()
@@ -89,10 +90,12 @@ export class RejoinEmployeeDto {
 
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => (value === '' ? null : value))
   personalEmail?: string;
 
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => (value === '' ? null : value))
   officialEmail?: string;
 
   @IsOptional()
@@ -154,6 +157,14 @@ export class RejoinEmployeeDto {
   @IsOptional()
   @IsString()
   leavesPolicyId?: string;
+
+  @IsOptional()
+  @IsString()
+  allocationId?: string;
+
+  @IsOptional()
+  @IsString()
+  allocation?: string;
 
   @IsOptional()
   @IsBoolean()

@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString, IsEmail, IsOptional, IsBoolean, IsDateString, IsNumber, IsDecimal } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateEmployeeDto {
@@ -98,9 +98,9 @@ export class CreateEmployeeDto {
   joiningDate?: string;
 
   @ApiProperty({ example: '1990-01-01' })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  dateOfBirth: string;
+  dateOfBirth?: string;
 
   @ApiProperty({ example: 'Pakistani' })
   @IsNotEmpty()
@@ -130,11 +130,13 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({ example: 'john.personal@example.com' })
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => (value === '' ? null : value))
   personalEmail?: string;
 
   @ApiPropertyOptional({ example: 'john.doe@company.com' })
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => (value === '' ? null : value))
   officialEmail?: string;
 
   @ApiPropertyOptional({ example: 'country-uuid' })
@@ -201,10 +203,10 @@ export class CreateEmployeeDto {
   @IsString()
   daysOff?: string;
 
-  @ApiProperty({ example: 'manager-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'manager-uuid' })
+  @IsOptional()
   @IsString()
-  reportingManager: string;
+  reportingManager?: string;
 
   @ApiPropertyOptional({ example: 'policy-uuid' })
   @IsOptional()
@@ -221,6 +223,11 @@ export class CreateEmployeeDto {
   @IsString()
   leavesPolicyId?: string;
 
+  @ApiPropertyOptional({ example: 'allocation-uuid' })
+  @IsOptional()
+  @IsString()
+  allocationId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   workingHoursPolicy?: string;
@@ -230,6 +237,9 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional()
   @IsOptional()
   leavesPolicy?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  allocation?: string;
 
   @ApiPropertyOptional({ example: false })
   @IsOptional()
