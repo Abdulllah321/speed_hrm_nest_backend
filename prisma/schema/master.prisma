@@ -224,6 +224,8 @@ model LeavesPolicyLeaveType {
 model Equipment {
   id          String              @id @default(uuid())
   name        String              @unique
+  equipmentType String            @default("other") // laptop, mobile, key, vehicle, visiting_card, other
+  description String?
   status      String              @default("active")
   createdById String?
   createdBy   User?               @relation("EquipmentCreatedBy", fields: [createdById], references: [id])
