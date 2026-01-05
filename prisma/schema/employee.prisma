@@ -153,10 +153,14 @@ model EmployeeEquipment {
   employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   equipmentId  String
   equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  productId    String    // Company's product/item tracking ID (e.g., "INLP-48", "MOB-123", "KEY-456", "VEH-789")
   assignedDate DateTime  @default(now())
   returnedDate DateTime?
-  status       String    @default("assigned") // assigned, returned
+  status       String    @default("assigned") // assigned, returned, damaged, lost
   notes        String?
+  metadata     Json?     // Flexible storage for any equipment-specific data (IMEI, MAC address, registration number, etc.)
+  
+  // Assignment tracking
   assignedById String?
   assignedBy   User?     @relation("EquipmentAssignedBy", fields: [assignedById], references: [id])
   returnedById String?
@@ -167,4 +171,5 @@ model EmployeeEquipment {
   @@index([employeeId])
   @@index([equipmentId])
   @@index([status])
+  @@index([productId])
 }
