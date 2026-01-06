@@ -649,6 +649,7 @@ export async function seedLeaveTypes(
     'Unpaid Leave',
     'Half Day Leave',
     'Short Leave',
+    'PRIVILEGE LEAVE',
   ];
 
   let created = 0;
@@ -700,10 +701,10 @@ export async function seedLeavesPolicies(
       shortLeaveDeductionRate: 0.25,
       isDefault: true,
       leaveTypes: [
-        { name: 'Annual Leave', numberOfLeaves: 14 },
-        { name: 'Sick Leave', numberOfLeaves: 10 },
-        { name: 'Casual Leave', numberOfLeaves: 5 },
-        { name: 'Emergency Leave', numberOfLeaves: 3 },
+         { name: 'Casual Leave', numberOfLeaves: 5 },
+         { name: 'Sick Leave', numberOfLeaves: 5 },
+         { name: 'PRIVILEGE LEAVE', numberOfLeaves: 15 },
+     
       ],
     },
     {
