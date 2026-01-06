@@ -183,6 +183,16 @@ export class CreateEmployeeDto {
   @IsBoolean()
   eobi?: boolean;
 
+  @ApiPropertyOptional({ example: '0800B656361' })
+  @IsOptional()
+  @IsString()
+  eobiId?: string;
+
+  @ApiPropertyOptional({ example: 'AA001' })
+  @IsOptional()
+  @IsString()
+  eobiCode?: string;
+
   @ApiPropertyOptional({ example: 'EOBI-123' })
   @IsOptional()
   @IsString()
@@ -464,6 +474,14 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsBoolean()
   eobi?: boolean;
+  @ApiPropertyOptional({ example: '0800B656361' })
+  @IsOptional()
+  @IsString()
+  eobiId?: string;
+  @ApiPropertyOptional({ example: 'AA001' })
+  @IsOptional()
+  @IsString()
+  eobiCode?: string;
   @ApiPropertyOptional({ example: 'EOBI-123' })
   @IsOptional()
   @IsString()

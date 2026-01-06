@@ -1193,11 +1193,9 @@ export async function seedSalaryBreakups(
 ) {
   console.log('💵 Seeding salary breakups...');
   const salaryBreakups = [
-    { name: 'Basic Salary', details: 'Base salary component', percentage: 50 },
-    { name: 'Gross Salary', details: 'Total salary before deductions', percentage: 10 },
-    { name: 'Net Salary', details: 'Salary after all deductions', percentage: 10 },
-    { name: 'Cost to Company (CTC)', details: 'Total cost of employment', percentage: 10 },
-    { name: 'Take Home Salary', details: 'Net amount received by employee', percentage: 10 },
+    { name: 'Basic Salary', details: 'Base salary component', percentage: 60 },
+    { name: 'House Rent ', details: 'Total salary before deductions', percentage: 34 },
+    { name: 'Utility  ', details: 'Salary after all deductions', percentage: 6 },
   ];
 
   let created = 0;
@@ -1745,100 +1743,102 @@ export async function seedEmployees(prisma: PrismaClient, adminUserId: string) {
   let created = 0;
   let skipped = 0;
 
-  for (const emp of employees) {
-    try {
-      // Validate required fields
-      if (
-        !emp.stateId ||
-        !emp.cityId ||
-        !emp.workingHoursPolicyId ||
-        !emp.locationId ||
-        !emp.leavesPolicyId
-      ) {
-        console.error(
-          `Error seeding employee "${emp.employeeName}": Missing required fields`,
-          {
-            stateId: emp.stateId,
-            cityId: emp.cityId,
-            workingHoursPolicyId: emp.workingHoursPolicyId,
-            locationId: emp.locationId,
-            leavesPolicyId: emp.leavesPolicyId,
-          },
-        );
-        continue;
-      }
+  // Commented out: Employee creation disabled
+  // for (const emp of employees) {
+  //   try {
+  //     // Validate required fields
+  //     if (
+  //       !emp.stateId ||
+  //       !emp.cityId ||
+  //       !emp.workingHoursPolicyId ||
+  //       !emp.locationId ||
+  //       !emp.leavesPolicyId
+  //     ) {
+  //       console.error(
+  //         `Error seeding employee "${emp.employeeName}": Missing required fields`,
+  //         {
+  //           stateId: emp.stateId,
+  //           cityId: emp.cityId,
+  //           workingHoursPolicyId: emp.workingHoursPolicyId,
+  //           locationId: emp.locationId,
+  //           leavesPolicyId: emp.leavesPolicyId,
+  //         },
+  //       );
+  //       continue;
+  //     }
 
-      const existing = await prisma.employee.findFirst({
-        where: {
-          OR: [
-            { employeeId: emp.employeeId },
-            { officialEmail: emp.officialEmail },
-            { cnicNumber: emp.cnicNumber },
-          ],
-        },
-      });
-      if (existing) {
-        skipped++;
-        continue;
-      }
+  //     const existing = await prisma.employee.findFirst({
+  //       where: {
+  //         OR: [
+  //           { employeeId: emp.employeeId },
+  //           { officialEmail: emp.officialEmail },
+  //           { cnicNumber: emp.cnicNumber },
+  //         ],
+  //       },
+  //     });
+  //     if (existing) {
+  //       skipped++;
+  //       continue;
+  //     }
 
-      await prisma.employee.create({
-        data: {
-          employeeId: emp.employeeId,
-          employeeName: emp.employeeName,
-          fatherHusbandName: emp.fatherHusbandName,
-          departmentId: emp.departmentId,
-          employeeGradeId: emp.employeeGradeId,
-          attendanceId: emp.attendanceId,
-          designationId: emp.designationId,
-          maritalStatusId: emp.maritalStatusId,
-          employmentStatusId: emp.employmentStatusId,
-          cnicNumber: emp.cnicNumber,
-          joiningDate: emp.joiningDate,
-          dateOfBirth: emp.dateOfBirth,
-          nationality: emp.nationality,
-          gender: emp.gender,
-          contactNumber: emp.contactNumber,
-          emergencyContactNumber: emp.emergencyContactNumber,
-          emergencyContactPerson: emp.emergencyContactPerson,
-          personalEmail: emp.personalEmail,
-          officialEmail: emp.officialEmail,
-          countryId: emp.countryId,
-          stateId: emp.stateId,
-          cityId: emp.cityId,
-          employeeSalary: emp.employeeSalary,
-          reportingManager: emp.reportingManager,
-          workingHoursPolicyId: emp.workingHoursPolicyId,
-          locationId: emp.locationId,
-          leavesPolicyId: emp.leavesPolicyId,
-          currentAddress: emp.currentAddress,
-          permanentAddress: emp.permanentAddress,
-          subDepartmentId: emp.subDepartmentId,
-          bankName: emp.bankName,
-          accountNumber: emp.accountNumber,
-          accountTitle: emp.accountTitle,
-          status: 'active',
-          equipmentAssignments:
-            emp.equipmentIds && emp.equipmentIds.length > 0
-              ? {
-                create: emp.equipmentIds.map((equipmentId: string) => ({
-                  equipmentId,
-                  assignedById: adminUserId,
-                  status: 'assigned',
-                })),
-              }
-              : undefined,
-        },
-      });
-      created++;
-    } catch (error: any) {
-      console.error(
-        `Error seeding employee "${emp.employeeName}":`,
-        error.message,
-      );
-    }
-  }
-  console.log(`✓ Employees: ${created} created, ${skipped} skipped`);
+  //     await prisma.employee.create({
+  //       data: {
+  //         employeeId: emp.employeeId,
+  //         employeeName: emp.employeeName,
+  //         fatherHusbandName: emp.fatherHusbandName,
+  //         departmentId: emp.departmentId,
+  //         employeeGradeId: emp.employeeGradeId,
+  //         attendanceId: emp.attendanceId,
+  //         designationId: emp.designationId,
+  //         maritalStatusId: emp.maritalStatusId,
+  //         employmentStatusId: emp.employmentStatusId,
+  //         cnicNumber: emp.cnicNumber,
+  //         joiningDate: emp.joiningDate,
+  //         dateOfBirth: emp.dateOfBirth,
+  //         nationality: emp.nationality,
+  //         gender: emp.gender,
+  //         contactNumber: emp.contactNumber,
+  //         emergencyContactNumber: emp.emergencyContactNumber,
+  //         emergencyContactPerson: emp.emergencyContactPerson,
+  //         personalEmail: emp.personalEmail,
+  //         officialEmail: emp.officialEmail,
+  //         countryId: emp.countryId,
+  //         stateId: emp.stateId,
+  //         cityId: emp.cityId,
+  //         employeeSalary: emp.employeeSalary,
+  //         reportingManager: emp.reportingManager,
+  //         workingHoursPolicyId: emp.workingHoursPolicyId,
+  //         locationId: emp.locationId,
+  //         leavesPolicyId: emp.leavesPolicyId,
+  //         currentAddress: emp.currentAddress,
+  //         permanentAddress: emp.permanentAddress,
+  //         subDepartmentId: emp.subDepartmentId,
+  //         bankName: emp.bankName,
+  //         accountNumber: emp.accountNumber,
+  //         accountTitle: emp.accountTitle,
+  //         status: 'active',
+  //         equipmentAssignments:
+  //           emp.equipmentIds && emp.equipmentIds.length > 0
+  //             ? {
+  //               create: emp.equipmentIds.map((equipmentId: string) => ({
+  //                 equipmentId,
+  //                 productId: `EQ-${equipmentId.substring(0, 8).toUpperCase()}`, // Generate productId from equipmentId
+  //                 assignedById: adminUserId,
+  //                 status: 'assigned',
+  //               })),
+  //             }
+  //             : undefined,
+  //       },
+  //     });
+  //     created++;
+  //   } catch (error: any) {
+  //     console.error(
+  //       `Error seeding employee "${emp.employeeName}":`,
+  //       error.message,
+  //     );
+  //   }
+  // }
+  console.log(`✓ Employees: ${created} created, ${skipped} skipped (Employee seeding disabled)`);
   return { created, skipped };
 }
 

@@ -322,15 +322,19 @@ model SubDepartment {
 }
 
 model EOBI {
-  id          String   @id @default(uuid())
-  name        String
-  amount      Decimal
-  yearMonth   String
-  status      String   @default("active")
-  createdById String?
-  createdBy   User?    @relation("EOBICreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  name                 String
+  eobiId               String?  // EOBI ID like "0800B656361"
+  eobiCode             String?  // EOBI Code like "AA001"
+  amount               Decimal? // Keep for backward compatibility
+  employerContribution Decimal  @db.Decimal(10, 2) // Employer contribution amount
+  employeeContribution Decimal  @db.Decimal(10, 2) // Employee contribution amount
+  yearMonth            String
+  status               String   @default("active")
+  createdById          String?
+  createdBy            User?    @relation("EOBICreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model EmployeeGrade {

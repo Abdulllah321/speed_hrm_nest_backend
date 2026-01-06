@@ -21,14 +21,27 @@ export class EobiService {
   }
 
   async create(
-    body: { name: string; amount: number; yearMonth: string; status?: string },
+    body: { 
+      name: string; 
+      eobiId?: string; 
+      eobiCode?: string; 
+      amount?: number; 
+      employerContribution: number; 
+      employeeContribution: number; 
+      yearMonth: string; 
+      status?: string 
+    },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const created = await this.prisma.eOBI.create({
         data: {
           name: body.name,
-          amount: body.amount as any,
+          eobiId: body.eobiId || null,
+          eobiCode: body.eobiCode || null,
+          amount: body.amount ? (body.amount as any) : null,
+          employerContribution: body.employerContribution as any,
+          employeeContribution: body.employeeContribution as any,
           yearMonth: body.yearMonth,
           status: body.status ?? 'active',
           createdById: ctx.userId,
@@ -65,7 +78,16 @@ export class EobiService {
   }
 
   async createBulk(
-    items: { name: string; amount: number; yearMonth: string; status?: string }[],
+    items: { 
+      name: string; 
+      eobiId?: string; 
+      eobiCode?: string; 
+      amount?: number; 
+      employerContribution: number; 
+      employeeContribution: number; 
+      yearMonth: string; 
+      status?: string 
+    }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' }
@@ -73,7 +95,11 @@ export class EobiService {
       const res = await this.prisma.eOBI.createMany({
         data: items.map((i) => ({
           name: i.name,
-          amount: i.amount as any,
+          eobiId: i.eobiId || null,
+          eobiCode: i.eobiCode || null,
+          amount: i.amount ? (i.amount as any) : null,
+          employerContribution: i.employerContribution as any,
+          employeeContribution: i.employeeContribution as any,
           yearMonth: i.yearMonth,
           status: i.status ?? 'active',
           createdById: ctx.userId,
@@ -111,7 +137,16 @@ export class EobiService {
 
   async update(
     id: string,
-    body: { name?: string; amount?: number; yearMonth?: string; status?: string },
+    body: { 
+      name?: string; 
+      eobiId?: string; 
+      eobiCode?: string; 
+      amount?: number; 
+      employerContribution?: number; 
+      employeeContribution?: number; 
+      yearMonth?: string; 
+      status?: string 
+    },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -121,7 +156,11 @@ export class EobiService {
         where: { id },
         data: {
           name: body.name ?? existing.name,
-          amount: (body.amount ?? (existing as any).amount) as any,
+          eobiId: body.eobiId !== undefined ? (body.eobiId || null) : existing.eobiId,
+          eobiCode: body.eobiCode !== undefined ? (body.eobiCode || null) : existing.eobiCode,
+          amount: body.amount !== undefined ? (body.amount as any) : existing.amount,
+          employerContribution: body.employerContribution !== undefined ? (body.employerContribution as any) : existing.employerContribution,
+          employeeContribution: body.employeeContribution !== undefined ? (body.employeeContribution as any) : existing.employeeContribution,
           yearMonth: body.yearMonth ?? existing.yearMonth,
           status: body.status ?? existing.status,
         },
@@ -226,7 +265,17 @@ export class EobiService {
   }
 
   async updateBulk(
-    items: { id: string; name: string; amount: number; yearMonth: string; status?: string }[],
+    items: { 
+      id: string; 
+      name: string; 
+      eobiId?: string; 
+      eobiCode?: string; 
+      amount?: number; 
+      employerContribution: number; 
+      employeeContribution: number; 
+      yearMonth: string; 
+      status?: string 
+    }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     if (!items?.length) return { status: false, message: 'No items to update' }
@@ -236,7 +285,11 @@ export class EobiService {
           where: { id: i.id },
           data: {
             name: i.name,
-            amount: i.amount as any,
+            eobiId: i.eobiId || null,
+            eobiCode: i.eobiCode || null,
+            amount: i.amount ? (i.amount as any) : null,
+            employerContribution: i.employerContribution as any,
+            employeeContribution: i.employeeContribution as any,
             yearMonth: i.yearMonth,
             status: i.status ?? 'active',
           },

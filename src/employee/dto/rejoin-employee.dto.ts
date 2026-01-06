@@ -125,6 +125,14 @@ export class RejoinEmployeeDto {
 
   @IsOptional()
   @IsString()
+  eobiId?: string;
+
+  @IsOptional()
+  @IsString()
+  eobiCode?: string;
+
+  @IsOptional()
+  @IsString()
   eobiNumber?: string;
 
   @IsOptional()

@@ -44,6 +44,8 @@ model Employee {
   area                   String?
   employeeSalary         Decimal
   eobi                   Boolean         @default(false)
+  eobiId                 String?         // EOBI ID like "0800B656361"
+  eobiCode               String?         // EOBI Code like "AA001"
   eobiNumber             String?
   eobiDocumentUrl        String?
   documentUrls           Json?

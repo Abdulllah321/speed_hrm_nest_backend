@@ -8,13 +8,35 @@ export class CreateEobiDto {
   @IsString()
   name: string;
 
-  @ApiProperty({ example: 500 })
+  @ApiPropertyOptional({ example: '0800B656361' })
+  @IsOptional()
+  @IsString()
+  eobiId?: string;
+
+  @ApiPropertyOptional({ example: 'AA001' })
+  @IsOptional()
+  @IsString()
+  eobiCode?: string;
+
+  @ApiPropertyOptional({ example: 500 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  amount?: number;
+
+  @ApiProperty({ example: 2000 })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
-  amount: number;
+  employerContribution: number;
 
-  @ApiProperty({ example: '2023-01' })
+  @ApiProperty({ example: 400 })
+  @IsNotEmpty()
+  @IsNumber()
+  @Type(() => Number)
+  employeeContribution: number;
+
+  @ApiProperty({ example: 'January 2024' })
   @IsNotEmpty()
   @IsString()
   yearMonth: string;
@@ -36,13 +58,35 @@ export class UpdateEobiDto {
   @IsString()
   name: string;
 
-  @ApiProperty({ example: 600 })
+  @ApiPropertyOptional({ example: '0800B656361' })
+  @IsOptional()
+  @IsString()
+  eobiId?: string;
+
+  @ApiPropertyOptional({ example: 'AA001' })
+  @IsOptional()
+  @IsString()
+  eobiCode?: string;
+
+  @ApiPropertyOptional({ example: 600 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  amount?: number;
+
+  @ApiProperty({ example: 2000 })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
-  amount: number;
+  employerContribution: number;
 
-  @ApiProperty({ example: '2023-02' })
+  @ApiProperty({ example: 400 })
+  @IsNotEmpty()
+  @IsNumber()
+  @Type(() => Number)
+  employeeContribution: number;
+
+  @ApiProperty({ example: 'February 2024' })
   @IsNotEmpty()
   @IsString()
   yearMonth: string;

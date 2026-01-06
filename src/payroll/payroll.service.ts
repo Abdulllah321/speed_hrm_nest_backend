@@ -195,7 +195,7 @@ export class PayrollService {
             const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, employee.rebates, packageAmount);
 
             // G. Calculate EOBI & PF
-            const { eobiDeduction, providentFundDeduction } = this.calculateEOBI_PF(employee);
+            const { eobiDeduction, providentFundDeduction } = await this.calculateEOBI_PF(employee, month, year);
 
             // H. Calculate Loans & Advances
             const { loanDeduction, advanceSalaryDeduction } = this.calculateLoansAndAdvances(employee, month, year);
@@ -617,16 +617,54 @@ export class PayrollService {
         return deductions.reduce((sum, ded) => sum.add(new Decimal(ded.amount)), new Decimal(0));
     }
 
-    private calculateEOBI_PF(employee: any) {
+    private async calculateEOBI_PF(employee: any, month: string, year: string) {
         let eobiDeduction = new Decimal(0);
         let providentFundDeduction = new Decimal(0);
 
-        // Placeholder: Assuming fixed amount or configured via separate check. 
-        // In a real scenario, this would fetch from a configuration table.
+        // Calculate EOBI deduction from master table
         if (employee.eobi) {
-            eobiDeduction = new Decimal(0); // TODO: Fetch from EOBI Master
+            try {
+                // Format yearMonth as "MMMM yyyy" (e.g., "January 2024") to match frontend format
+                const monthNames = [
+                    'January', 'February', 'March', 'April', 'May', 'June',
+                    'July', 'August', 'September', 'October', 'November', 'December'
+                ];
+                const monthIndex = parseInt(month, 10) - 1;
+                const monthName = monthNames[monthIndex];
+                const yearMonth = `${monthName} ${year}`;
+                
+                // Also try "YYYY-MM" format as fallback
+                const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
+                
+                // Fetch EOBI record for the payroll month/year
+                const eobiRecord = await this.prisma.eOBI.findFirst({
+                    where: {
+                        OR: [
+                            { yearMonth: yearMonth },
+                            { yearMonth: yearMonthAlt }
+                        ],
+                        status: 'active'
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                if (eobiRecord) {
+                    // Use employeeContribution for deduction (employer pays their part separately)
+                    eobiDeduction = new Decimal(eobiRecord.employeeContribution);
+                } else {
+                    this.logger.warn(
+                        `No active EOBI record found for employee ${employee.id} (${employee.employeeId}) for ${yearMonth} or ${yearMonthAlt}. EOBI deduction will be 0.`
+                    );
+                }
+            } catch (error) {
+                this.logger.error(
+                    `Error fetching EOBI for employee ${employee.id} (${employee.employeeId}): ${error instanceof Error ? error.message : 'Unknown error'}`
+                );
+                // Continue with 0 deduction if error occurs
+            }
         }
 
+        // Provident Fund calculation (keep existing TODO for now)
         if (employee.providentFund) {
             providentFundDeduction = new Decimal(0); // TODO: Fetch from PF Master
         }

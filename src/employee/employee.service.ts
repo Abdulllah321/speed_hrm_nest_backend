@@ -227,6 +227,12 @@ export class EmployeeService {
             name: true,
           },
         },
+        allocation: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         qualifications: {
           include: {
             qualification: {
@@ -303,6 +309,7 @@ export class EmployeeService {
       workingHoursPolicy?: { id: string; name: string } | null;
       location?: { id: string; name: string } | null;
       leavesPolicy?: { id: string; name: string } | null;
+      allocation?: { id: string; name: string } | null;
       rejoiningHistory?: Array<{
         id: string;
         rejoiningDate: Date;
@@ -330,6 +337,7 @@ export class EmployeeService {
         emp.workingHoursPolicy?.id || emp.workingHoursPolicyId,
       location: emp.location?.id || emp.locationId,
       leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
+      allocation: emp.allocation?.id || emp.allocationId || null,
       // Avatar from user table
       avatarUrl: emp.user?.avatar || null,
       // EOBI Document URL
@@ -352,6 +360,7 @@ export class EmployeeService {
       workingHoursPolicyRelation: emp.workingHoursPolicy,
       locationRelation: emp.location,
       leavesPolicyRelation: emp.leavesPolicy,
+      allocationRelation: emp.allocation,
       // Add rejoining context if requested
       ...(includeHistory &&
         emp.rejoiningHistory &&
@@ -769,6 +778,8 @@ export class EmployeeService {
       const employeeSalaryValue = (body as { employeeSalary?: unknown })
         .employeeSalary;
       const eobiValue = (body as { eobi?: unknown }).eobi;
+      const eobiIdValue = getBodyString('eobiId');
+      const eobiCodeValue = getBodyString('eobiCode');
       const eobiNumberValue = getBodyString('eobiNumber');
       const eobiDocumentUrlValue = getBodyString('eobiDocumentUrl');
       const documentUrlsValue = (body as { documentUrls?: unknown })
@@ -892,6 +903,7 @@ export class EmployeeService {
                   })
                   .map((equipmentId: string) => ({
                     equipmentId: equipmentId.trim(),
+                    productId: `EQ-${equipmentId.trim().substring(0, 8).toUpperCase()}`, // Generate productId from equipmentId
                     assignedById: ctx.userId,
                     status: 'assigned',
                   })),
@@ -1129,6 +1141,8 @@ export class EmployeeService {
       const eobiValue = (body as { eobi?: unknown }).eobi as
         | boolean
         | undefined;
+      const eobiIdValue = (body as { eobiId?: unknown }).eobiId as string | undefined;
+      const eobiCodeValue = (body as { eobiCode?: unknown }).eobiCode as string | undefined;
       const eobiNumberValue = (body as { eobiNumber?: unknown }).eobiNumber as string | undefined;
       const eobiDocumentUrlValue = (body as { eobiDocumentUrl?: unknown }).eobiDocumentUrl as string | undefined;
       const documentUrlsValue = (body as { documentUrls?: unknown })
@@ -1175,6 +1189,42 @@ export class EmployeeService {
         | string
         | undefined;
 
+      // Helper function to check if string is UUID
+      const isUUID = (str: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          str,
+        );
+
+      // Resolve marital status (handle both ID and name, and empty string to null)
+      let resolvedMaritalStatus: string | null | undefined = undefined;
+      if (maritalStatusValue !== undefined) {
+        if (maritalStatusValue === '' || maritalStatusValue === null) {
+          resolvedMaritalStatus = null;
+        } else if (!isUUID(maritalStatusValue)) {
+          resolvedMaritalStatus = await this.findOrCreateMaritalStatus(
+            maritalStatusValue,
+            ctx,
+          );
+        } else {
+          resolvedMaritalStatus = maritalStatusValue;
+        }
+      }
+
+      // Resolve employment status (handle both ID and name, and empty string to null)
+      let resolvedEmploymentStatus: string | null | undefined = undefined;
+      if (employmentStatusValue !== undefined) {
+        if (employmentStatusValue === '' || employmentStatusValue === null) {
+          resolvedEmploymentStatus = null;
+        } else if (!isUUID(employmentStatusValue)) {
+          resolvedEmploymentStatus = await this.findOrCreateEmploymentStatus(
+            employmentStatusValue,
+            ctx,
+          );
+        } else {
+          resolvedEmploymentStatus = employmentStatusValue;
+        }
+      }
+
       // Convert employeeSalary to number if provided
       const employeeSalaryNumber =
         employeeSalaryValue !== undefined
@@ -1196,9 +1246,9 @@ export class EmployeeService {
           employeeGradeId: employeeGradeValue ?? existing?.employeeGradeId,
           attendanceId: attendanceIdValue ?? existing?.attendanceId,
           designationId: designationValue ?? existing?.designationId,
-          maritalStatusId: maritalStatusValue ?? existing?.maritalStatusId,
+          maritalStatusId: resolvedMaritalStatus !== undefined ? resolvedMaritalStatus : existing?.maritalStatusId,
           employmentStatusId:
-            employmentStatusValue ?? existing?.employmentStatusId,
+            resolvedEmploymentStatus !== undefined ? resolvedEmploymentStatus : existing?.employmentStatusId,
           probationExpiryDate: probationExpiryDateValue
             ? new Date(probationExpiryDateValue)
             : (existing?.probationExpiryDate ?? null),
@@ -1230,6 +1280,12 @@ export class EmployeeService {
           area: areaValue ?? existing?.area,
           employeeSalary: employeeSalaryNumber,
           eobi: eobiValue ?? existing?.eobi,
+          eobiId: (body as { eobiId?: unknown }).eobiId !== undefined 
+            ? ((body as { eobiId?: unknown }).eobiId ? (body as { eobiId?: unknown }).eobiId as string : null)
+            : existing?.eobiId,
+          eobiCode: (body as { eobiCode?: unknown }).eobiCode !== undefined 
+            ? ((body as { eobiCode?: unknown }).eobiCode ? (body as { eobiCode?: unknown }).eobiCode as string : null)
+            : existing?.eobiCode,
           eobiNumber: eobiNumberValue ?? existing?.eobiNumber,
           eobiDocumentUrl:
             eobiDocumentUrlValue ?? existing?.eobiDocumentUrl ?? null,
@@ -1279,6 +1335,7 @@ export class EmployeeService {
                   })
                   .map((equipmentId: string) => ({
                     equipmentId: equipmentId.trim(),
+                    productId: `EQ-${equipmentId.trim().substring(0, 8).toUpperCase()}`, // Generate productId from equipmentId
                     assignedById: ctx.userId,
                     status: 'assigned',
                   })),
@@ -1822,6 +1879,10 @@ export class EmployeeService {
       if ((body as { employeeSalary?: unknown }).employeeSalary !== undefined)
         updateData.employeeSalary = (body as { employeeSalary?: unknown }).employeeSalary as number;
       if ((body as { eobi?: unknown }).eobi !== undefined) updateData.eobi = (body as { eobi?: unknown }).eobi as boolean;
+      if ((body as { eobiId?: unknown }).eobiId !== undefined)
+        updateData.eobiId = (body as { eobiId?: unknown }).eobiId ? (body as { eobiId?: unknown }).eobiId as string : null;
+      if ((body as { eobiCode?: unknown }).eobiCode !== undefined)
+        updateData.eobiCode = (body as { eobiCode?: unknown }).eobiCode ? (body as { eobiCode?: unknown }).eobiCode as string : null;
       if ((body as { eobiNumber?: unknown }).eobiNumber !== undefined)
         updateData.eobiNumber = (body as { eobiNumber?: unknown }).eobiNumber as string;
       if ((body as { eobiDocumentUrl?: unknown }).eobiDocumentUrl !== undefined)
