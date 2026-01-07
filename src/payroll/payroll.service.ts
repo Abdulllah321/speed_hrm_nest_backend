@@ -91,7 +91,7 @@ export class PayrollService {
                     orderBy: { promotionDate: 'asc' },
                 },
             },
-        });
+        } as any);
 
         if (employees.length === 0) {
             throw new BadRequestException("No active employees found to generate payroll for.");
@@ -104,6 +104,8 @@ export class PayrollService {
         const previewData: any[] = []; // Explicitly type as any[] or define an interface
 
         for (const employee of employees) {
+            // Type cast to any to handle Prisma relations that may not be in generated types yet
+            const emp = employee as any;
             const monthStartDate = new Date(`${normalizedYear}-${normalizedMonth}-01`);
             const monthEndDate = new Date(Number(normalizedYear), Number(normalizedMonth), 0);
             const totalDaysInMonth = monthEndDate.getDate();
@@ -179,10 +181,10 @@ export class PayrollService {
             const calculatedBasicSalary = basicComponent ? new Decimal(basicComponent.amount) : packageAmount; // Fallback to package if no basic defined
 
             // A. Calculate Allowances (Ad-hoc additional allowances)
-            const totalAdHocAllowances = this.calculateAllowances(employee.allowances);
+            const totalAdHocAllowances = this.calculateAllowances(emp.allowances || []);
 
             // Prepare allowance breakdown
-            const allowanceBreakup = employee.allowances.map((allow) => ({
+            const allowanceBreakup = (emp.allowances || []).map((allow: any) => ({
                 id: allow.id,
                 name: allow.allowanceHead?.name || 'Unknown',
                 amount: Number(allow.amount),
@@ -192,16 +194,16 @@ export class PayrollService {
 
             // B. Calculate Overtime (Using calculated Basic Salary for rate)
             // Include overtime from both overtimeRequests and attendance records (holidays/weekends)
-            const { overtimeAmount, overtimeBreakup } = await this.calculateOvertime(employee, month, year, employee.workingHoursPolicy, calculatedBasicSalary, monthStartDate, monthEndDate);
+            const { overtimeAmount, overtimeBreakup } = await this.calculateOvertime(employee, month, year, emp.workingHoursPolicy, calculatedBasicSalary, monthStartDate, monthEndDate);
 
             // C. Calculate Attendance Deductions (Lates/Absents) (using calculated Basic Salary for rate)
-            const { attendanceDeduction, attendanceBreakup } = await this.calculateAttendanceDeductions(employee, month, year, employee.workingHoursPolicy, calculatedBasicSalary);
+            const { attendanceDeduction, attendanceBreakup } = await this.calculateAttendanceDeductions(employee, month, year, emp.workingHoursPolicy, calculatedBasicSalary);
 
             // D. Calculate Bonuses
-            const bonusAmount = this.calculateBonuses(employee.bonuses);
+            const bonusAmount = this.calculateBonuses(emp.bonuses || []);
 
             // Prepare bonus breakdown (only bonuses with paymentMethod 'with_salary')
-            const bonusBreakup = employee.bonuses
+            const bonusBreakup = (emp.bonuses || [])
                 .filter(b => b.paymentMethod === 'with_salary')
                 .map((bonus) => ({
                     id: bonus.id,
@@ -212,10 +214,10 @@ export class PayrollService {
                 }));
 
             // D1. Calculate Leave Encashment
-            const leaveEncashmentAmount = this.calculateLeaveEncashment(employee.leaveEncashments || []);
+            const leaveEncashmentAmount = this.calculateLeaveEncashment(emp.leaveEncashments || []);
 
             // Prepare deduction breakdown (excluding tax, attendance, loan, advance, eobi, pf which are calculated separately)
-            const deductionBreakup = employee.deductions.map((ded) => ({
+            const deductionBreakup = (emp.deductions || []).map((ded: any) => ({
                 id: ded.id,
                 name: ded.deductionHead?.name || 'Unknown',
                 amount: Number(ded.amount),
@@ -231,7 +233,7 @@ export class PayrollService {
 
             // F. Calculate Tax (with Rebates)
             // Tax is calculated based on taxable salary breakup components, not gross salary
-            const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, employee.rebates, packageAmount);
+            const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, emp.rebates || [], packageAmount);
 
             // G. Calculate EOBI & PF
             const { eobiDeduction, providentFundDeduction } = await this.calculateEOBI_PF(employee, month, year, calculatedBasicSalary);
@@ -240,7 +242,7 @@ export class PayrollService {
             const { loanDeduction, advanceSalaryDeduction } = this.calculateLoansAndAdvances(employee, normalizedMonth, normalizedYear);
 
             // I. Other Ad-hoc Deductions
-            const totalAdHocDeductions = this.calculateAdHocDeductions(employee.deductions);
+            const totalAdHocDeductions = this.calculateAdHocDeductions(emp.deductions || []);
 
             // Total Deductions
             const totalDeductionsSum = attendanceDeduction
@@ -747,8 +749,9 @@ export class PayrollService {
         let advanceSalaryDeduction = new Decimal(0);
 
         // Loans
-        if (employee.loanRequests && employee.loanRequests.length > 0) {
-            for (const loan of employee.loanRequests) {
+        const emp = employee as any;
+        if (emp.loanRequests && emp.loanRequests.length > 0) {
+            for (const loan of emp.loanRequests) {
                 if (!loan.repaymentStartMonthYear || !loan.numberOfInstallments) {
                     continue;
                 }
@@ -767,12 +770,12 @@ export class PayrollService {
         }
 
         // Advances - Filter by deduction month/year
-        if (employee.advanceSalaries && employee.advanceSalaries.length > 0) {
+        if (emp.advanceSalaries && emp.advanceSalaries.length > 0) {
             const normalizedMonthForComparison = String(Number(month)).padStart(2, '0');
             const normalizedYearForComparison = String(year);
             const deductionMonthYearStr = `${normalizedYearForComparison}-${normalizedMonthForComparison}`;
             
-            for (const advance of employee.advanceSalaries) {
+            for (const advance of emp.advanceSalaries) {
                 const matchesMonth = advance.deductionMonth === normalizedMonthForComparison || 
                                      String(Number(advance.deductionMonth)).padStart(2, '0') === normalizedMonthForComparison;
                 const matchesYear = advance.deductionYear === normalizedYearForComparison || 
