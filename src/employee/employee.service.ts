@@ -2843,6 +2843,26 @@ export class EmployeeService {
               normalizedRecord.allocation = record[key];
             } else if (lowerKey === 'employee id' || lowerKey === 'employee-id') {
               normalizedRecord.employeeId = record[key];
+            } else if (
+              lowerKey === 'current address' ||
+              lowerKey === 'current-address' ||
+              lowerKey === 'currentaddress'
+            ) {
+              normalizedRecord.currentAddress = record[key];
+            } else if (
+              lowerKey === 'permanent address' ||
+              lowerKey === 'permanent-address' ||
+              lowerKey === 'permanentaddress'
+            ) {
+              normalizedRecord.permanentAddress = record[key];
+            } else if (lowerKey === 'address') {
+              // If there's a single "ADDRESS" column, map it to currentAddress
+              // If currentAddress already exists, map to permanentAddress
+              if (!normalizedRecord.currentAddress) {
+                normalizedRecord.currentAddress = record[key];
+              } else if (!normalizedRecord.permanentAddress) {
+                normalizedRecord.permanentAddress = record[key];
+              }
             }
           }
 
@@ -3362,14 +3382,16 @@ export class EmployeeService {
                 record['Allow-Remote-Attendance'] === 'true' ||
                 false,
               currentAddress:
-                record.CurrentAddress ||
                 record.currentAddress ||
+                record.CurrentAddress ||
                 record['Current Address'] ||
                 record['Current-Address'] ||
+                record['ADDRESS'] ||
+                record.Address ||
                 null,
               permanentAddress:
-                record.PermanentAddress ||
                 record.permanentAddress ||
+                record.PermanentAddress ||
                 record['Permanent Address'] ||
                 record['Permanent-Address'] ||
                 null,

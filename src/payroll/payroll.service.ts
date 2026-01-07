@@ -53,6 +53,14 @@ export class PayrollService {
                         status: 'active'
                     } 
                 },
+                leaveEncashments: {
+                    where: {
+                        approvalStatus: 'approved',
+                        status: 'active',
+                        paymentMonth: normalizedMonth,
+                        paymentYear: normalizedYear
+                    }
+                },
                 bonuses: {
                     where: { bonusMonth: normalizedMonth, bonusYear: normalizedYear, status: 'active' },
                     include: { bonusType: { select: { id: true, name: true } } }
@@ -203,6 +211,9 @@ export class PayrollService {
                     percentage: bonus.percentage ? Number(bonus.percentage) : null,
                 }));
 
+            // D1. Calculate Leave Encashment
+            const leaveEncashmentAmount = this.calculateLeaveEncashment(employee.leaveEncashments || []);
+
             // Prepare deduction breakdown (excluding tax, attendance, loan, advance, eobi, pf which are calculated separately)
             const deductionBreakup = employee.deductions.map((ded) => ({
                 id: ded.id,
@@ -213,10 +224,10 @@ export class PayrollService {
             }));
 
             // E. Calculate Gross Salary (Pre-tax)
-            // Gross = Sum of Salary Breakup Components + AdHoc Allowances + Overtime + Bonus
+            // Gross = Sum of Salary Breakup Components + AdHoc Allowances + Overtime + Bonus + Leave Encashment
             // Calculate total from salary breakup components
             const salaryBreakupTotal = salaryBreakup.reduce((sum, component) => sum + (component.amount || 0), 0);
-            const grossSalary = new Decimal(salaryBreakupTotal || packageAmount.toNumber()).add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount);
+            const grossSalary = new Decimal(salaryBreakupTotal || packageAmount.toNumber()).add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount).add(leaveEncashmentAmount);
 
             // F. Calculate Tax (with Rebates)
             // Tax is calculated based on taxable salary breakup components, not gross salary
@@ -256,6 +267,7 @@ export class PayrollService {
                 overtimeAmount: overtimeAmount.toNumber(),
                 bonusBreakup,
                 bonusAmount: bonusAmount.toNumber(),
+                leaveEncashmentAmount: leaveEncashmentAmount.toNumber(),
                 incrementBreakup,
                 deductionBreakup,
                 totalDeductions: totalAdHocDeductions.toNumber(),
@@ -348,6 +360,7 @@ export class PayrollService {
                     taxDeduction: new Decimal(d.taxDeduction),
                     overtimeAmount: new Decimal(d.overtimeAmount),
                     bonusAmount: new Decimal(d.bonusAmount),
+                    leaveEncashmentAmount: new Decimal(d.leaveEncashmentAmount || 0),
                     grossSalary: new Decimal(d.grossSalary),
                     netSalary: new Decimal(d.netSalary),
                     paymentStatus: 'pending',
@@ -639,6 +652,13 @@ export class PayrollService {
         return bonuses
             .filter(b => b.paymentMethod === 'with_salary')
             .reduce((sum, b) => sum.add(new Decimal(b.amount)), new Decimal(0));
+    }
+
+    private calculateLeaveEncashment(leaveEncashments: any[]): Decimal {
+        // Sum all approved and active leave encashments for the payment month
+        return leaveEncashments
+            .filter(le => le.approvalStatus === 'approved' && le.status === 'active')
+            .reduce((sum, le) => sum.add(new Decimal(le.encashmentAmount)), new Decimal(0));
     }
 
     private calculateAdHocDeductions(deductions: any[]): Decimal {
