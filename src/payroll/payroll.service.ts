@@ -16,6 +16,10 @@ export class PayrollService {
     async previewPayroll(month: string, year: string, employeeIds?: string[]) {
         this.logger.log(`Previewing payroll for ${month}/${year}`);
 
+        // Normalize month to "01"-"12" format for consistent querying
+        const normalizedMonth = String(Number(month)).padStart(2, '0');
+        const normalizedYear = String(year);
+
         // 1. Fetch active employees
         const whereClause: Prisma.EmployeeWhereInput = { status: 'active' };
         if (employeeIds && employeeIds.length > 0) {
@@ -28,20 +32,32 @@ export class PayrollService {
                 workingHoursPolicy: true,
                 leavesPolicy: true,
                 allowances: {
-                    where: { status: 'active', month, year },
+                    where: { status: 'active', month: normalizedMonth, year: normalizedYear },
                     include: { allowanceHead: { select: { id: true, name: true } } }
                 },
                 deductions: {
-                    where: { status: 'active', month, year },
+                    where: { status: 'active', month: normalizedMonth, year: normalizedYear },
                     include: { deductionHead: { select: { id: true, name: true } } }
                 },
-                loanRequests: { where: { status: 'approved' } },
-                advanceSalaries: { where: { deductionMonth: month, deductionYear: year, status: 'approved' } },
+                loanRequests: { 
+                    where: { 
+                        OR: [
+                            { approvalStatus: 'approved' },
+                            { status: 'approved' }
+                        ]
+                    } 
+                },
+                advanceSalaries: { 
+                    where: { 
+                        approvalStatus: 'approved',
+                        status: 'active'
+                    } 
+                },
                 bonuses: {
-                    where: { bonusMonth: month, bonusYear: year, status: 'active' },
+                    where: { bonusMonth: normalizedMonth, bonusYear: normalizedYear, status: 'active' },
                     include: { bonusType: { select: { id: true, name: true } } }
                 },
-                rebates: { where: { monthYear: `${year}-${month}`, status: 'approved' }, include: { rebateNature: true } },
+                rebates: { where: { monthYear: `${normalizedYear}-${normalizedMonth}`, status: 'approved' }, include: { rebateNature: true } },
                 leaveApplications: {
                     where: {
                         status: 'approved',
@@ -80,8 +96,8 @@ export class PayrollService {
         const previewData: any[] = []; // Explicitly type as any[] or define an interface
 
         for (const employee of employees) {
-            const monthStartDate = new Date(`${year}-${month}-01`);
-            const monthEndDate = new Date(Number(year), Number(month), 0);
+            const monthStartDate = new Date(`${normalizedYear}-${normalizedMonth}-01`);
+            const monthEndDate = new Date(Number(normalizedYear), Number(normalizedMonth), 0);
             const totalDaysInMonth = monthEndDate.getDate();
 
             // Calculate effective salary considering increments/decrements during the month
@@ -133,10 +149,22 @@ export class PayrollService {
                     id: breakup.id,
                     name: breakup.name,
                     percentage: breakup.percentage ? new Decimal(breakup.percentage).toNumber() : null,
-                    amount: amount.toNumber(),
+                    amount: Math.round(amount.toNumber()), // Round to whole number (no decimals)
                     isTaxable: isTaxable
                 };
             });
+
+            // Adjust the last component to ensure total equals packageAmount exactly (no rounding errors)
+            if (salaryBreakup.length > 0) {
+                const calculatedTotal = salaryBreakup.reduce((sum, component) => sum + component.amount, 0);
+                const packageAmountRounded = Math.round(packageAmount.toNumber());
+                const difference = packageAmountRounded - calculatedTotal;
+                
+                if (difference !== 0 && salaryBreakup.length > 0) {
+                    // Add the difference to the last component to ensure exact total
+                    salaryBreakup[salaryBreakup.length - 1].amount += difference;
+                }
+            }
 
             // Find "Basic Salary" component for rate calculations
             const basicComponent = salaryBreakup.find(b => b.name === 'Basic Salary');
@@ -195,10 +223,10 @@ export class PayrollService {
             const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, employee.rebates, packageAmount);
 
             // G. Calculate EOBI & PF
-            const { eobiDeduction, providentFundDeduction } = await this.calculateEOBI_PF(employee, month, year);
+            const { eobiDeduction, providentFundDeduction } = await this.calculateEOBI_PF(employee, month, year, calculatedBasicSalary);
 
             // H. Calculate Loans & Advances
-            const { loanDeduction, advanceSalaryDeduction } = this.calculateLoansAndAdvances(employee, month, year);
+            const { loanDeduction, advanceSalaryDeduction } = this.calculateLoansAndAdvances(employee, normalizedMonth, normalizedYear);
 
             // I. Other Ad-hoc Deductions
             const totalAdHocDeductions = this.calculateAdHocDeductions(employee.deductions);
@@ -617,7 +645,7 @@ export class PayrollService {
         return deductions.reduce((sum, ded) => sum.add(new Decimal(ded.amount)), new Decimal(0));
     }
 
-    private async calculateEOBI_PF(employee: any, month: string, year: string) {
+    private async calculateEOBI_PF(employee: any, month: string, year: string, basicSalary: Decimal) {
         let eobiDeduction = new Decimal(0);
         let providentFundDeduction = new Decimal(0);
 
@@ -664,9 +692,31 @@ export class PayrollService {
             }
         }
 
-        // Provident Fund calculation (keep existing TODO for now)
+        // Provident Fund calculation from master table
         if (employee.providentFund) {
-            providentFundDeduction = new Decimal(0); // TODO: Fetch from PF Master
+            try {
+                // Fetch active ProvidentFund record from master table
+                const pfRecord = await this.prisma.providentFund.findFirst({
+                    where: {
+                        status: 'active'
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                if (pfRecord) {
+                    // Calculate PF deduction as percentage of basic salary
+                    providentFundDeduction = basicSalary.mul(new Decimal(pfRecord.percentage)).div(100);
+                } else {
+                    this.logger.warn(
+                        `No active ProvidentFund record found for employee ${employee.id} (${employee.employeeId}). PF deduction will be 0.`
+                    );
+                }
+            } catch (error) {
+                this.logger.error(
+                    `Error fetching ProvidentFund for employee ${employee.id} (${employee.employeeId}): ${error instanceof Error ? error.message : 'Unknown error'}`
+                );
+                // Continue with 0 deduction if error occurs
+            }
         }
 
         return { eobiDeduction, providentFundDeduction };
@@ -677,26 +727,42 @@ export class PayrollService {
         let advanceSalaryDeduction = new Decimal(0);
 
         // Loans
-        if (employee.loanRequests) {
+        if (employee.loanRequests && employee.loanRequests.length > 0) {
             for (const loan of employee.loanRequests) {
-                if (loan.repaymentStartMonthYear && loan.numberOfInstallments) {
-                    const [startYear, startMonth] = loan.repaymentStartMonthYear.split('-').map(Number);
-                    const currentY = Number(year);
-                    const currentM = Number(month);
+                if (!loan.repaymentStartMonthYear || !loan.numberOfInstallments) {
+                    continue;
+                }
+                
+                const [startYear, startMonth] = loan.repaymentStartMonthYear.split('-').map(Number);
+                const currentY = Number(year);
+                const currentM = Number(month);
 
-                    const diffMonths = (currentY - startYear) * 12 + (currentM - startMonth);
-                    if (diffMonths >= 0 && diffMonths < loan.numberOfInstallments) {
-                        const installment = new Decimal(loan.amount).div(loan.numberOfInstallments);
-                        loanDeduction = loanDeduction.add(installment);
-                    }
+                const diffMonths = (currentY - startYear) * 12 + (currentM - startMonth);
+                
+                if (diffMonths >= 0 && diffMonths < loan.numberOfInstallments) {
+                    const installment = new Decimal(loan.amount).div(loan.numberOfInstallments);
+                    loanDeduction = loanDeduction.add(installment);
                 }
             }
         }
 
-        // Advances
-        if (employee.advanceSalaries) {
+        // Advances - Filter by deduction month/year
+        if (employee.advanceSalaries && employee.advanceSalaries.length > 0) {
+            const normalizedMonthForComparison = String(Number(month)).padStart(2, '0');
+            const normalizedYearForComparison = String(year);
+            const deductionMonthYearStr = `${normalizedYearForComparison}-${normalizedMonthForComparison}`;
+            
             for (const advance of employee.advanceSalaries) {
-                advanceSalaryDeduction = advanceSalaryDeduction.add(new Decimal(advance.amount));
+                const matchesMonth = advance.deductionMonth === normalizedMonthForComparison || 
+                                     String(Number(advance.deductionMonth)).padStart(2, '0') === normalizedMonthForComparison;
+                const matchesYear = advance.deductionYear === normalizedYearForComparison || 
+                                    String(advance.deductionYear) === normalizedYearForComparison;
+                const matchesMonthYear = advance.deductionMonthYear === deductionMonthYearStr;
+                
+                if (matchesMonthYear || (matchesMonth && matchesYear)) {
+                    const amount = new Decimal(advance.amount);
+                    advanceSalaryDeduction = advanceSalaryDeduction.add(amount);
+                }
             }
         }
 
@@ -760,6 +826,28 @@ export class PayrollService {
 
             for (const increment of incrementsInMonth) {
                 const incrementDate = normalizeDate(new Date(increment.promotionDate));
+                // If increment is on or before month start, use new salary for entire month
+                if (incrementDate <= monthStart) {
+                    // Record increment/decrement info
+                    incrementBreakup.push({
+                        id: increment.id,
+                        type: increment.incrementType,
+                        date: increment.promotionDate,
+                        oldSalary: currentSalary.toNumber(),
+                        newSalary: Number(increment.salary),
+                        amount: increment.incrementAmount ? Number(increment.incrementAmount) : null,
+                        percentage: increment.incrementPercentage ? Number(increment.incrementPercentage) : null,
+                        method: increment.incrementMethod,
+                        daysBefore: 0,
+                    });
+                    // Use new salary for entire month
+                    currentSalary = new Decimal(increment.salary);
+                    effectivePackage = currentSalary;
+                    lastDate = new Date(monthEnd);
+                    lastDate.setDate(lastDate.getDate() + 1);
+                    continue;
+                }
+
                 // Calculate days from lastDate (inclusive) to incrementDate (exclusive)
                 const daysBeforeIncrement = Math.max(0, Math.floor((incrementDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -1188,12 +1276,15 @@ export class PayrollService {
 
     private async calculateTax(salaryBreakup: Array<{ id: string; name: string; percentage: number | null; amount: number; isTaxable?: boolean }>, rebates: any[], packageAmount: Decimal): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
         // Calculate taxable income from salary breakup components only (not gross salary)
-        // Sum up amounts from components marked as taxable
+        // Include ALL salary components (Basic Salary, House Rent, Utility, etc.) in taxable income
+        // Sum up amounts from components marked as taxable (default is taxable unless explicitly marked as non-taxable)
         let monthlyTaxableAmount = new Decimal(0);
         const taxableComponents: Array<{ name: string; amount: number }> = [];
 
         for (const component of salaryBreakup) {
-            if (component.isTaxable && component.amount > 0) {
+            // Include component if it's marked as taxable (default is true) and has amount > 0
+            // This ensures Basic Salary, House Rent, Utility, and all other salary components are included
+            if (component.isTaxable !== false && component.amount > 0) {
                 monthlyTaxableAmount = monthlyTaxableAmount.add(new Decimal(component.amount));
                 taxableComponents.push({
                     name: component.name,
@@ -1230,6 +1321,8 @@ export class PayrollService {
 
         let taxDeduction = new Decimal(0);
         let taxSlabUsed: { minAmount: number; maxAmount: number; rate: number } | null = null;
+        let fixedAmountTax = new Decimal(0);
+        let percentageTaxAmount = new Decimal(0);
 
         // Apply tax slab to taxable income
         if (taxableIncome.gt(0)) {
@@ -1249,9 +1342,15 @@ export class PayrollService {
                     rate: Number(slab.rate),
                 };
 
+                // Calculate tax: Fixed amount from previous slabs + percentage on excess
+                // Note: fixedAmount might not exist in Prisma type yet, using type assertion
+                const slabFixedAmount = (slab as any).fixedAmount;
+                fixedAmountTax = slabFixedAmount ? new Decimal(slabFixedAmount) : new Decimal(0);
                 const excess = taxableIncome.minus(new Decimal(slab.minAmount));
-                // Assuming rate is percentage
-                const annualTax = excess.mul(new Decimal(slab.rate).div(100));
+                // Calculate percentage tax on excess amount
+                percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
+                // Total annual tax = fixed amount + percentage tax
+                const annualTax = fixedAmountTax.add(percentageTaxAmount);
                 taxDeduction = annualTax.div(12);
             }
         }
@@ -1266,6 +1365,8 @@ export class PayrollService {
             totalRebate: totalRebateAmount.toNumber(),
             taxableIncome: taxableIncome.toNumber(), // Taxable income after rebates
             taxSlab: taxSlabUsed,
+            fixedAmountTax: fixedAmountTax.toNumber(), // Fixed amount tax from previous slabs
+            percentageTax: percentageTaxAmount.toNumber(), // Percentage tax on excess amount
             monthlyTax: taxDeduction.toNumber(),
             rebateBreakup,
         };

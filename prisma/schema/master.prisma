@@ -252,6 +252,7 @@ model TaxSlab {
   minAmount   Decimal
   maxAmount   Decimal
   rate        Decimal
+  fixedAmount Decimal? @default(0) // Fixed tax amount from previous slabs (for progressive tax)
   status      String   @default("active")
   createdById String?
   createdBy   User?    @relation("TaxSlabCreatedBy", fields: [createdById], references: [id])

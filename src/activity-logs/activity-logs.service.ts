@@ -24,9 +24,26 @@ export class ActivityLogsService {
     userAgent?: string;
     status: 'success' | 'failure';
   }) {
+    // Validate userId exists in User table if provided
+    let validUserId: string | null = null;
+    if (data.userId) {
+      try {
+        const user = await this.prisma.user.findUnique({
+          where: { id: data.userId },
+          select: { id: true },
+        });
+        if (user) {
+          validUserId = data.userId;
+        }
+      } catch (error) {
+        // If userId is invalid, set to null
+        validUserId = null;
+      }
+    }
+
     const created = await this.prisma.activityLog.create({
       data: {
-        userId: data.userId,
+        userId: validUserId,
         action: data.action,
         module: data.module,
         entity: data.entity,

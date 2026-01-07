@@ -1317,42 +1317,49 @@ export async function seedLoanTypes(prisma: PrismaClient, createdById: string) {
 export async function seedTaxSlabs(prisma: PrismaClient, createdById: string) {
   console.log('📊 Seeding tax slabs...');
   // Pakistan Income Tax Slabs for FY 2024-2025
+  // Progressive tax system: Fixed amount from previous slabs + percentage on excess
   const taxSlabs = [
     {
       name: 'Where taxable income does not exceed Rs. 600,000/-',
       minAmount: 0,
       maxAmount: 600000,
       rate: 0,
+      fixedAmount: 0, // No fixed amount for first slab
     },
     {
       name: 'Where taxable income exceeds Rs. 600,000/- but does not exceed Rs. 1,200,000/-',
       minAmount: 600000,
       maxAmount: 1200000,
       rate: 1, // 1% of the amount exceeding Rs. 600,000/-
+      fixedAmount: 0, // No fixed amount, only percentage
     },
     {
       name: 'Where taxable income exceeds Rs. 1,200,000/- but does not exceed Rs. 2,200,000/-',
       minAmount: 1200000,
       maxAmount: 2200000,
-      rate: 11, // Rs. 6,000/- + 11% of the amount exceeding Rs. 1,200,000/-
+      rate: 11, // 11% of the amount exceeding Rs. 1,200,000/-
+      fixedAmount: 6000, // Rs. 6,000/- from previous slab (600,000 × 1%)
     },
     {
       name: 'Where taxable income exceeds Rs. 2,200,000/- but does not exceed Rs. 3,200,000/-',
       minAmount: 2200000,
       maxAmount: 3200000,
-      rate: 23, // Rs. 116,000/- + 23% of the amount exceeding Rs. 2,200,000/-
+      rate: 23, // 23% of the amount exceeding Rs. 2,200,000/-
+      fixedAmount: 116000, // Rs. 116,000/- (6,000 + 1,000,000 × 11%)
     },
     {
       name: 'Where taxable income exceeds Rs. 3,200,000/- but does not exceed Rs. 4,100,000/-',
       minAmount: 3200000,
       maxAmount: 4100000,
-      rate: 30, // Rs. 346,000/- + 30% of the amount exceeding Rs. 3,200,000/-
+      rate: 30, // 30% of the amount exceeding Rs. 3,200,000/-
+      fixedAmount: 346000, // Rs. 346,000/- (116,000 + 1,000,000 × 23%)
     },
     {
       name: 'Where taxable income exceeds Rs. 4,100,000/-',
       minAmount: 4100000,
       maxAmount: 999999999, // Very large number for the last slab
-      rate: 35, // Rs. 616,000/- + 35% of the amount exceeding Rs. 4,100,000/-
+      rate: 35, // 35% of the amount exceeding Rs. 4,100,000/-
+      fixedAmount: 616000, // Rs. 616,000/- (346,000 + 900,000 × 30%)
     },
   ];
 
@@ -1377,6 +1384,7 @@ export async function seedTaxSlabs(prisma: PrismaClient, createdById: string) {
           minAmount: slab.minAmount,
           maxAmount: slab.maxAmount,
           rate: slab.rate,
+          fixedAmount: slab.fixedAmount || 0,
           status: 'active',
           createdById,
         },
