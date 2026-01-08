@@ -45,6 +45,14 @@ export class CreateAllowanceItemDto {
     message: 'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
+
+  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'], description: 'Payment method for allowance' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['with_salary', 'separately'], {
+    message: 'paymentMethod must be either "with_salary" or "separately"',
+  })
+  paymentMethod?: string; // "with_salary" | "separately"
 }
 
 export class CreateAllowanceDto {
@@ -114,6 +122,14 @@ export class UpdateAllowanceDto {
     message: 'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
+
+  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['with_salary', 'separately'], {
+    message: 'paymentMethod must be either "with_salary" or "separately"',
+  })
+  paymentMethod?: string; // "with_salary" | "separately"
 }
 
 export class BulkCreateAllowanceDto {

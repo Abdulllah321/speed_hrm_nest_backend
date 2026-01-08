@@ -20,10 +20,17 @@ export class AllowanceHeadService {
     return { status: true, data: item }
   }
 
-  async create(name: string, status: string | undefined, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(body: { name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const created = await this.prisma.allowanceHead.create({
-        data: { name, status: status || 'active', createdById: ctx.userId }
+        data: {
+          name: body.name,
+          calculationType: body.calculationType ?? 'Amount',
+          amount: body.amount ? Number(body.amount) : null,
+          percentage: body.percentage ? Number(body.percentage) : null,
+          status: body.status || 'active',
+          createdById: ctx.userId
+        }
       })
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -31,8 +38,8 @@ export class AllowanceHeadService {
         module: 'allowance-heads',
         entity: 'AllowanceHead',
         entityId: created.id,
-        description: `Created allowance head ${name}`,
-        newValues: JSON.stringify({ name, status: status || 'active' }),
+        description: `Created allowance head ${body.name}`,
+        newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
@@ -46,7 +53,7 @@ export class AllowanceHeadService {
         entity: 'AllowanceHead',
         description: 'Failed to create allowance head',
         errorMessage: error?.message,
-        newValues: JSON.stringify({ name, status: status || 'active' }),
+        newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
@@ -55,12 +62,15 @@ export class AllowanceHeadService {
     }
   }
 
-  async createBulk(items: { name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async createBulk(items: { name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     if (!items?.length) return { status: false, message: 'No items to create' }
     try {
       const result = await this.prisma.allowanceHead.createMany({
         data: items.map((item) => ({
           name: item.name,
+          calculationType: item.calculationType ?? 'Amount',
+          amount: item.amount ? Number(item.amount) : null,
+          percentage: item.percentage ? Number(item.percentage) : null,
           status: item.status || 'active',
           createdById: ctx.userId
         })),
@@ -95,11 +105,14 @@ export class AllowanceHeadService {
     }
   }
 
-  async update(id: string, name: string, status: string | undefined, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(id: string, body: { name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.allowanceHead.findUnique({ where: { id } })
-      const updateData: { name: string; status?: string } = { name }
-      if (status !== undefined) updateData.status = status
+      const updateData: { name: string; calculationType?: string; amount?: number | null; percentage?: number | null; status?: string } = { name: body.name }
+      if (body.calculationType !== undefined) updateData.calculationType = body.calculationType
+      if (body.amount !== undefined) updateData.amount = body.amount ? Number(body.amount) : null
+      if (body.percentage !== undefined) updateData.percentage = body.percentage ? Number(body.percentage) : null
+      if (body.status !== undefined) updateData.status = body.status
       const updated = await this.prisma.allowanceHead.update({ where: { id }, data: updateData })
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -107,7 +120,7 @@ export class AllowanceHeadService {
         module: 'allowance-heads',
         entity: 'AllowanceHead',
         entityId: id,
-        description: `Updated allowance head ${name}`,
+        description: `Updated allowance head ${body.name}`,
         oldValues: JSON.stringify(existing),
         newValues: JSON.stringify(updateData),
         ipAddress: ctx.ipAddress,
@@ -124,7 +137,7 @@ export class AllowanceHeadService {
         entityId: id,
         description: 'Failed to update allowance head',
         errorMessage: error?.message,
-        newValues: JSON.stringify({ name, status }),
+        newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
@@ -133,11 +146,14 @@ export class AllowanceHeadService {
     }
   }
 
-  async updateBulk(items: { id: string; name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateBulk(items: { id: string; name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     if (!items?.length) return { status: false, message: 'No items to update' }
     try {
       for (const item of items) {
-        const updateData: { name: string; status?: string } = { name: item.name }
+        const updateData: { name: string; calculationType?: string; amount?: number | null; percentage?: number | null; status?: string } = { name: item.name }
+        if (item.calculationType !== undefined) updateData.calculationType = item.calculationType
+        if (item.amount !== undefined) updateData.amount = item.amount ? Number(item.amount) : null
+        if (item.percentage !== undefined) updateData.percentage = item.percentage ? Number(item.percentage) : null
         if (item.status !== undefined) updateData.status = item.status
         await this.prisma.allowanceHead.update({ where: { id: item.id }, data: updateData })
       }

@@ -204,8 +204,12 @@ export class EmployeeController {
     });
 
     try {
+      // Extract userId from JWT token (could be 'sub', 'id', or 'userId')
+      const user = request.user as any;
+      const userId = user?.userId || user?.sub || user?.id || null;
+      
       const result = await this.service.bulkUploadFromCSV(fullPath, {
-        userId: (request.user as { userId?: string })?.userId,
+        userId: userId,
         ipAddress: request.ip,
         userAgent: request.headers['user-agent'],
       });

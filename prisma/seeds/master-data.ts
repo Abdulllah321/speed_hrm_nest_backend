@@ -550,6 +550,20 @@ export async function seedLocations(prisma: PrismaClient, createdById: string) {
     },
   });
 
+  const rawalpindi = await prisma.city.findFirst({
+    where: {
+      name: 'Rawalpindi',
+      countryId: pakistan.id,
+    },
+  });
+
+  const sialkot = await prisma.city.findFirst({
+    where: {
+      name: 'Sialkot',
+      countryId: pakistan.id,
+    },
+  });
+
   const locations = [
     { name: 'Corporate Office', address: '', cityId: lahore?.id },
     { name: 'Corporate Office-Finance', address: '', cityId: lahore?.id },
@@ -601,6 +615,8 @@ export async function seedLocations(prisma: PrismaClient, createdById: string) {
     { name: 'SPL POS-Dolmen Lahore', address: '', cityId: lahore?.id },
     { name: 'SPL POS-IWC Lucky One', address: '', cityId: karachi?.id },
     { name: 'SPL POS-IWC Dolmen Tariq Road', address: '', cityId: karachi?.id },
+    { name: 'SPL POS-IWC Rawalpindi', address: '', cityId: rawalpindi?.id },
+    { name: 'SPL POS-IWC Sialkot', address: '', cityId: sialkot?.id },
     { name: 'POINT OF SALES - CORPORATE', address: '', cityId: karachi?.id }
   ];
 
@@ -969,35 +985,28 @@ export async function seedAllowanceHeads(
   createdById: string,
 ) {
   console.log('💰 Seeding allowance heads...');
-  const allowanceHeads = [
-    'Basic Salary',
-    'House Rent Allowance',
-    'Transport Allowance',
-    'Medical Allowance',
-    'Food Allowance',
-    'Fuel Allowance',
-    'Communication Allowance',
-    'Entertainment Allowance',
-    'Special Allowance',
-    'Overtime Allowance',
-    'Performance Bonus',
-    'Annual Bonus',
-    'Project Allowance',
-    'Travel Allowance',
-    'Uniform Allowance',
-    'Education Allowance',
-    'Child Care Allowance',
-    'Utility Allowance',
-    'Conveyance Allowance',
-    'City Compensatory Allowance',
+  const allowanceHeads: Array<{
+    name: string;
+    calculationType: 'Amount' | 'Percentage';
+    amount?: number | null;
+    percentage?: number | null;
+  }> = [
+    { name: 'Outstation Allowance', calculationType: 'Amount', amount: 1000 },
+    { name: 'Medical Allowance', calculationType: 'Amount', amount: 5000 },
+    { name: 'Vehicle Allowance', calculationType: 'Amount', amount: 1000 },
+    { name: 'Fuel Allowance', calculationType: 'Amount', amount: 1000 },
+    { name: 'Performance Allowance', calculationType: 'Amount', amount: 5000 },
+    { name: 'Incentive', calculationType: 'Percentage', percentage: null }, // Variable - no default, user enters each time
+    { name: 'Arrears', calculationType: 'Amount', amount: 5000 },
+    { name: 'Others', calculationType: 'Amount', amount: 500 },
   ];
 
   let created = 0;
   let skipped = 0;
-  for (const name of allowanceHeads) {
+  for (const allowanceHead of allowanceHeads) {
     try {
       const existing = await prisma.allowanceHead.findFirst({
-        where: { name },
+        where: { name: allowanceHead.name },
       });
       if (existing) {
         skipped++;
@@ -1005,14 +1014,17 @@ export async function seedAllowanceHeads(
       }
       await prisma.allowanceHead.create({
         data: {
-          name,
+          name: allowanceHead.name,
+          calculationType: allowanceHead.calculationType || 'Amount',
+          amount: allowanceHead.amount ?? null,
+          percentage: allowanceHead.percentage ?? null,
           status: 'active',
           createdById,
-        },
+        } as any, // Type assertion needed until Prisma client is regenerated after migration
       });
       created++;
     } catch (error: any) {
-      console.error(`Error seeding allowance head "${name}":`, error.message);
+      console.error(`Error seeding allowance head "${allowanceHead.name}":`, error.message);
     }
   }
   console.log(`✓ Allowance Heads: ${created} created, ${skipped} skipped`);
@@ -1317,42 +1329,49 @@ export async function seedLoanTypes(prisma: PrismaClient, createdById: string) {
 export async function seedTaxSlabs(prisma: PrismaClient, createdById: string) {
   console.log('📊 Seeding tax slabs...');
   // Pakistan Income Tax Slabs for FY 2024-2025
+  // Progressive tax system: Fixed amount from previous slabs + percentage on excess
   const taxSlabs = [
     {
       name: 'Where taxable income does not exceed Rs. 600,000/-',
       minAmount: 0,
       maxAmount: 600000,
       rate: 0,
+      fixedAmount: 0, // No fixed amount for first slab
     },
     {
       name: 'Where taxable income exceeds Rs. 600,000/- but does not exceed Rs. 1,200,000/-',
       minAmount: 600000,
       maxAmount: 1200000,
       rate: 1, // 1% of the amount exceeding Rs. 600,000/-
+      fixedAmount: 0, // No fixed amount, only percentage
     },
     {
       name: 'Where taxable income exceeds Rs. 1,200,000/- but does not exceed Rs. 2,200,000/-',
       minAmount: 1200000,
       maxAmount: 2200000,
-      rate: 11, // Rs. 6,000/- + 11% of the amount exceeding Rs. 1,200,000/-
+      rate: 11, // 11% of the amount exceeding Rs. 1,200,000/-
+      fixedAmount: 6000, // Rs. 6,000/- from previous slab (600,000 × 1%)
     },
     {
       name: 'Where taxable income exceeds Rs. 2,200,000/- but does not exceed Rs. 3,200,000/-',
       minAmount: 2200000,
       maxAmount: 3200000,
-      rate: 23, // Rs. 116,000/- + 23% of the amount exceeding Rs. 2,200,000/-
+      rate: 23, // 23% of the amount exceeding Rs. 2,200,000/-
+      fixedAmount: 116000, // Rs. 116,000/- (6,000 + 1,000,000 × 11%)
     },
     {
       name: 'Where taxable income exceeds Rs. 3,200,000/- but does not exceed Rs. 4,100,000/-',
       minAmount: 3200000,
       maxAmount: 4100000,
-      rate: 30, // Rs. 346,000/- + 30% of the amount exceeding Rs. 3,200,000/-
+      rate: 30, // 30% of the amount exceeding Rs. 3,200,000/-
+      fixedAmount: 346000, // Rs. 346,000/- (116,000 + 1,000,000 × 23%)
     },
     {
       name: 'Where taxable income exceeds Rs. 4,100,000/-',
       minAmount: 4100000,
       maxAmount: 999999999, // Very large number for the last slab
-      rate: 35, // Rs. 616,000/- + 35% of the amount exceeding Rs. 4,100,000/-
+      rate: 35, // 35% of the amount exceeding Rs. 4,100,000/-
+      fixedAmount: 616000, // Rs. 616,000/- (346,000 + 900,000 × 30%)
     },
   ];
 
@@ -1377,6 +1396,7 @@ export async function seedTaxSlabs(prisma: PrismaClient, createdById: string) {
           minAmount: slab.minAmount,
           maxAmount: slab.maxAmount,
           rate: slab.rate,
+          fixedAmount: slab.fixedAmount || 0,
           status: 'active',
           createdById,
         },

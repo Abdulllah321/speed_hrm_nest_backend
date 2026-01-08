@@ -92,6 +92,7 @@ model Employee {
   loanRequests                    LoanRequest[]
   overtimeRequests                OvertimeRequest[]                @relation("OvertimeRequestEmployee")
   increments                      Increment[]                      @relation("IncrementEmployee")
+  leaveEncashments               LeaveEncashment[]
 
   bonuses                     Bonus[]                              @relation("BonusEmployee")
   rebates                     Rebate[]

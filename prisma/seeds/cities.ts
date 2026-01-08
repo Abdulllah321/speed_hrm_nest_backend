@@ -10,11 +10,12 @@ const PAKISTAN_STATES = [
   { name: 'Khyber Pakhtunkhwa' },
   { name: 'Punjab' },
   { name: 'Sindh' },
+  { name: 'Islamabad Capital Territory' },
 ];
 
 function getStateByCoordinates(lat: number | undefined, lng: number | undefined, cityName: string): string {
   const knownCities: Record<string, string> = {
-    'Islamabad': 'Fana',
+    'Islamabad': 'Islamabad Capital Territory',
     'Karachi': 'Sindh',
     'Lahore': 'Punjab',
     'Faisalabad': 'Punjab',

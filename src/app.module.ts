@@ -36,6 +36,7 @@ import { RequestForwardingModule } from './request-forwarding/request-forwarding
 import { AllowanceModule } from './allowance/allowance.module';
 import { DeductionModule } from './deduction/deduction.module';
 import { AdvanceSalaryModule } from './advance-salary/advance-salary.module';
+import { LeaveEncashmentModule } from './leave-encashment/leave-encashment.module';
 import { LoanRequestModule } from './loan-request/loan-request.module';
 import { AllowanceHeadModule } from './allowance-head/allowance-head.module';
 import { DeductionHeadModule } from './deduction-head/deduction-head.module';
@@ -64,6 +65,7 @@ import { AllocationModule } from './allocation/allocation.module';
     AllowanceModule, // added swagger
     DeductionModule, // added swagger
     AdvanceSalaryModule, // added swagger
+    LeaveEncashmentModule, // added swagger
     LoanRequestModule, // added swagger
     AllowanceHeadModule, // added swagger
     DeductionHeadModule, // added swagger
