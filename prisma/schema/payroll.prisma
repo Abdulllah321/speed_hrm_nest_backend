@@ -11,6 +11,7 @@ model Allowance {
   year             String // Format: "YYYY"
   date             DateTime // Full date for reference
   type             String        @default("specific") // "recurring" | "specific"
+  paymentMethod    String        @default("with_salary") // "with_salary" | "separately"
   adjustmentMethod String? // "distributed-remaining-months" | "deduct-current-month"
   isTaxable        Boolean       @default(false)
   taxPercentage    Decimal?      @db.Decimal(5, 2) // Percentage (0-100)
@@ -29,6 +30,7 @@ model Allowance {
   @@index([month, year])
   @@index([status])
   @@index([type])
+  @@index([paymentMethod])
 }
 
 model Deduction {

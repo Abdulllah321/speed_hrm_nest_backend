@@ -145,14 +145,17 @@ model Location {
 }
 
 model AllowanceHead {
-  id          String      @id @default(uuid())
-  name        String      @unique
-  status      String      @default("active")
-  createdById String?
-  createdBy   User?       @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  allowances  Allowance[]
+  id              String      @id @default(uuid())
+  name            String      @unique
+  calculationType String      @default("Amount") // "Amount" | "Percentage"
+  amount          Decimal?    @db.Decimal(10, 2) // Fixed amount (when calculationType is "Amount")
+  percentage      Decimal?    @db.Decimal(5, 2) // Percentage (0-100, when calculationType is "Percentage")
+  status          String      @default("active")
+  createdById     String?
+  createdBy       User?       @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  allowances      Allowance[]
 }
 
 model DeductionHead {

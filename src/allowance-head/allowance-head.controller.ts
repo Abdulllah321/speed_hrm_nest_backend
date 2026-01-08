@@ -30,7 +30,7 @@ export class AllowanceHeadController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allowance head' })
   async create(@Body() body: CreateAllowanceHeadDto, @Req() req) {
-    return this.service.create(body.name, body.status, {
+    return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
@@ -55,7 +55,7 @@ export class AllowanceHeadController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allowance head' })
   async update(@Param('id') id: string, @Body() body: UpdateAllowanceHeadDto, @Req() req) {
-    return this.service.update(id, body.name, body.status, {
+    return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

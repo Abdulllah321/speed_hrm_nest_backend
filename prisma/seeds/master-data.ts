@@ -550,6 +550,20 @@ export async function seedLocations(prisma: PrismaClient, createdById: string) {
     },
   });
 
+  const rawalpindi = await prisma.city.findFirst({
+    where: {
+      name: 'Rawalpindi',
+      countryId: pakistan.id,
+    },
+  });
+
+  const sialkot = await prisma.city.findFirst({
+    where: {
+      name: 'Sialkot',
+      countryId: pakistan.id,
+    },
+  });
+
   const locations = [
     { name: 'Corporate Office', address: '', cityId: lahore?.id },
     { name: 'Corporate Office-Finance', address: '', cityId: lahore?.id },
@@ -601,6 +615,8 @@ export async function seedLocations(prisma: PrismaClient, createdById: string) {
     { name: 'SPL POS-Dolmen Lahore', address: '', cityId: lahore?.id },
     { name: 'SPL POS-IWC Lucky One', address: '', cityId: karachi?.id },
     { name: 'SPL POS-IWC Dolmen Tariq Road', address: '', cityId: karachi?.id },
+    { name: 'SPL POS-IWC Rawalpindi', address: '', cityId: rawalpindi?.id },
+    { name: 'SPL POS-IWC Sialkot', address: '', cityId: sialkot?.id },
     { name: 'POINT OF SALES - CORPORATE', address: '', cityId: karachi?.id }
   ];
 
@@ -969,35 +985,28 @@ export async function seedAllowanceHeads(
   createdById: string,
 ) {
   console.log('💰 Seeding allowance heads...');
-  const allowanceHeads = [
-    'Basic Salary',
-    'House Rent Allowance',
-    'Transport Allowance',
-    'Medical Allowance',
-    'Food Allowance',
-    'Fuel Allowance',
-    'Communication Allowance',
-    'Entertainment Allowance',
-    'Special Allowance',
-    'Overtime Allowance',
-    'Performance Bonus',
-    'Annual Bonus',
-    'Project Allowance',
-    'Travel Allowance',
-    'Uniform Allowance',
-    'Education Allowance',
-    'Child Care Allowance',
-    'Utility Allowance',
-    'Conveyance Allowance',
-    'City Compensatory Allowance',
+  const allowanceHeads: Array<{
+    name: string;
+    calculationType: 'Amount' | 'Percentage';
+    amount?: number | null;
+    percentage?: number | null;
+  }> = [
+    { name: 'Outstation Allowance', calculationType: 'Amount', amount: 1000 },
+    { name: 'Medical Allowance', calculationType: 'Amount', amount: 5000 },
+    { name: 'Vehicle Allowance', calculationType: 'Amount', amount: 1000 },
+    { name: 'Fuel Allowance', calculationType: 'Amount', amount: 1000 },
+    { name: 'Performance Allowance', calculationType: 'Amount', amount: 5000 },
+    { name: 'Incentive', calculationType: 'Percentage', percentage: null }, // Variable - no default, user enters each time
+    { name: 'Arrears', calculationType: 'Amount', amount: 5000 },
+    { name: 'Others', calculationType: 'Amount', amount: 500 },
   ];
 
   let created = 0;
   let skipped = 0;
-  for (const name of allowanceHeads) {
+  for (const allowanceHead of allowanceHeads) {
     try {
       const existing = await prisma.allowanceHead.findFirst({
-        where: { name },
+        where: { name: allowanceHead.name },
       });
       if (existing) {
         skipped++;
@@ -1005,14 +1014,17 @@ export async function seedAllowanceHeads(
       }
       await prisma.allowanceHead.create({
         data: {
-          name,
+          name: allowanceHead.name,
+          calculationType: allowanceHead.calculationType || 'Amount',
+          amount: allowanceHead.amount ?? null,
+          percentage: allowanceHead.percentage ?? null,
           status: 'active',
           createdById,
-        },
+        } as any, // Type assertion needed until Prisma client is regenerated after migration
       });
       created++;
     } catch (error: any) {
-      console.error(`Error seeding allowance head "${name}":`, error.message);
+      console.error(`Error seeding allowance head "${allowanceHead.name}":`, error.message);
     }
   }
   console.log(`✓ Allowance Heads: ${created} created, ${skipped} skipped`);

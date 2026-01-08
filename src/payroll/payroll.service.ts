@@ -180,24 +180,30 @@ export class PayrollService {
             const basicComponent = salaryBreakup.find(b => b.name === 'Basic Salary');
             const calculatedBasicSalary = basicComponent ? new Decimal(basicComponent.amount) : packageAmount; // Fallback to package if no basic defined
 
+            // Calculate total package amount (sum of all salary breakup components)
+            const salaryBreakupTotal = salaryBreakup.reduce((sum, component) => sum + (component.amount || 0), 0);
+            const totalPackageAmount = salaryBreakupTotal > 0 ? new Decimal(salaryBreakupTotal) : packageAmount;
+
             // A. Calculate Allowances (Ad-hoc additional allowances)
             const totalAdHocAllowances = this.calculateAllowances(emp.allowances || []);
 
-            // Prepare allowance breakdown
-            const allowanceBreakup = (emp.allowances || []).map((allow: any) => ({
-                id: allow.id,
-                name: allow.allowanceHead?.name || 'Unknown',
-                amount: Number(allow.amount),
-                isTaxable: allow.isTaxable,
-                taxPercentage: allow.taxPercentage ? Number(allow.taxPercentage) : null,
-            }));
+            // Prepare allowance breakdown (only allowances with paymentMethod 'with_salary')
+            const allowanceBreakup = (emp.allowances || [])
+                .filter((allow: any) => allow.paymentMethod === 'with_salary')
+                .map((allow: any) => ({
+                    id: allow.id,
+                    name: allow.allowanceHead?.name || 'Unknown',
+                    amount: Number(allow.amount),
+                    isTaxable: allow.isTaxable,
+                    taxPercentage: allow.taxPercentage ? Number(allow.taxPercentage) : null,
+                }));
 
             // B. Calculate Overtime (Using calculated Basic Salary for rate)
             // Include overtime from both overtimeRequests and attendance records (holidays/weekends)
             const { overtimeAmount, overtimeBreakup } = await this.calculateOvertime(employee, month, year, emp.workingHoursPolicy, calculatedBasicSalary, monthStartDate, monthEndDate);
 
-            // C. Calculate Attendance Deductions (Lates/Absents) (using calculated Basic Salary for rate)
-            const { attendanceDeduction, attendanceBreakup } = await this.calculateAttendanceDeductions(employee, month, year, emp.workingHoursPolicy, calculatedBasicSalary);
+            // C. Calculate Attendance Deductions (Lates/Absents) (using total package amount, not just basic salary)
+            const { attendanceDeduction, attendanceBreakup } = await this.calculateAttendanceDeductions(employee, month, year, emp.workingHoursPolicy, totalPackageAmount);
 
             // D. Calculate Bonuses
             const bonusAmount = this.calculateBonuses(emp.bonuses || []);
@@ -227,9 +233,8 @@ export class PayrollService {
 
             // E. Calculate Gross Salary (Pre-tax)
             // Gross = Sum of Salary Breakup Components + AdHoc Allowances + Overtime + Bonus + Leave Encashment
-            // Calculate total from salary breakup components
-            const salaryBreakupTotal = salaryBreakup.reduce((sum, component) => sum + (component.amount || 0), 0);
-            const grossSalary = new Decimal(salaryBreakupTotal || packageAmount.toNumber()).add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount).add(leaveEncashmentAmount);
+            // Use already calculated totalPackageAmount (which is salaryBreakupTotal as Decimal)
+            const grossSalary = totalPackageAmount.add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount).add(leaveEncashmentAmount);
 
             // F. Calculate Tax (with Rebates)
             // Tax is calculated based on taxable salary breakup components, not gross salary
@@ -645,8 +650,10 @@ export class PayrollService {
     // --- Helper Methods ---
 
     private calculateAllowances(allowances: any[]): Decimal {
-        // Sum up allowance amounts
-        return allowances.reduce((sum, allow) => sum.add(new Decimal(allow.amount)), new Decimal(0));
+        // Filter for paymentMethod 'with_salary' (same as bonuses)
+        return allowances
+            .filter(allow => allow.paymentMethod === 'with_salary')
+            .reduce((sum, allow) => sum.add(new Decimal(allow.amount)), new Decimal(0));
     }
 
     private calculateBonuses(bonuses: any[]): Decimal {
@@ -913,7 +920,7 @@ export class PayrollService {
         return { effectivePackage, incrementBreakup };
     }
 
-    private async calculateAttendanceDeductions(employee: any, month: string, year: string, policy: any, basicSalary: Decimal): Promise<{ attendanceDeduction: Decimal; attendanceBreakup: any }> {
+    private async calculateAttendanceDeductions(employee: any, month: string, year: string, policy: any, totalSalary: Decimal): Promise<{ attendanceDeduction: Decimal; attendanceBreakup: any }> {
         const startDate = new Date(`${year}-${month}-01`);
         const endDate = new Date(Number(year), Number(month), 0);
 
@@ -933,8 +940,8 @@ export class PayrollService {
         let halfDayCount = 0;
         let shortDayCount = 0;
 
-        // Calculate per day salary (assuming 30 days)
-        const perDaySalary = basicSalary.div(30);
+        // Calculate per day salary (assuming 30 days) - using total salary (package amount), not just basic salary
+        const perDaySalary = totalSalary.div(30);
 
         // Helper function to check if date has approved leave
         const hasApprovedLeave = (date: Date): boolean => {
