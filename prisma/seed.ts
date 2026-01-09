@@ -888,127 +888,113 @@ async function main() {
     console.warn('⚠️  Could not seed permissions:', err.message);
   }
 
-  let adminRole: any = { id: 'admin-id' };
-  try {
-    console.log('👑 Creating admin role...');
-    adminRole = await prisma.role.upsert({
-      where: { name: 'admin' },
-      update: {},
-      create: {
-        name: 'admin',
-        description: 'Administrator with full access',
-        isSystem: true,
-      },
-    });
+  console.log('👑 Creating admin role...');
+  const adminRole = await prisma.role.upsert({
+    where: { name: 'admin' },
+    update: {},
+    create: {
+      name: 'admin',
+      description: 'Administrator with full access',
+      isSystem: true,
+    },
+  });
 
-    if (permissions.length > 0) {
-      console.log('🔗 Assigning permissions to admin role...');
-      for (const permission of permissions) {
-        await prisma.rolePermission.upsert({
-          where: {
-            roleId_permissionId: {
-              roleId: adminRole.id,
-              permissionId: permission.id,
-            },
+  if (permissions.length > 0) {
+    console.log('🔗 Assigning permissions to admin role...');
+    for (const permission of permissions) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: adminRole.id,
+            permissionId: permission.id,
           },
-          update: {},
-          create: { roleId: adminRole.id, permissionId: permission.id },
-        });
-      }
+        },
+        update: {},
+        create: { roleId: adminRole.id, permissionId: permission.id },
+      });
     }
-  } catch (err: any) {
-    console.warn('⚠️  Could not seed admin role:', err.message);
   }
 
-  try {
-    console.log('👤 Creating HR role...');
-    const hrRole = await prisma.role.upsert({
-      where: { name: 'hr' },
-      update: {},
-      create: { name: 'hr', description: 'HR Manager', isSystem: true },
-    });
+  console.log('👤 Creating HR role...');
+  const hrRole = await prisma.role.upsert({
+    where: { name: 'hr' },
+    update: {},
+    create: { name: 'hr', description: 'HR Manager', isSystem: true },
+  });
 
-    if (permissions.length > 0) {
-      const hrPermissionModules = [
-        'employees', 'departments', 'sub_departments', 'designations', 'job_types',
-        'employee_grades', 'employee_statuses', 'marital_statuses', 'institutes',
-        'qualifications', 'locations', 'allocations', 'leave_types', 'leaves_policies', 'leaves',
-        'working_hours_policies', 'holidays', 'attendance', 'equipment',
-      ];
-      const hrPermissions = permissions.filter(
-        (p) =>
-          hrPermissionModules.includes(p.module) ||
-          (p.module === 'activity_logs' && p.action === 'view'),
-      );
-      for (const permission of hrPermissions) {
-        await prisma.rolePermission.upsert({
-          where: {
-            roleId_permissionId: { roleId: hrRole.id, permissionId: permission.id },
-          },
-          update: {},
-          create: { roleId: hrRole.id, permissionId: permission.id },
-        });
-      }
+  if (permissions.length > 0) {
+    const hrPermissionModules = [
+      'employees', 'departments', 'sub_departments', 'designations', 'job_types',
+      'employee_grades', 'employee_statuses', 'marital_statuses', 'institutes',
+      'qualifications', 'locations', 'allocations', 'leave_types', 'leaves_policies', 'leaves',
+      'working_hours_policies', 'holidays', 'attendance', 'equipment',
+    ];
+    const hrPermissions = permissions.filter(
+      (p) =>
+        hrPermissionModules.includes(p.module) ||
+        (p.module === 'activity_logs' && p.action === 'view'),
+    );
+    for (const permission of hrPermissions) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: { roleId: hrRole.id, permissionId: permission.id },
+        },
+        update: {},
+        create: { roleId: hrRole.id, permissionId: permission.id },
+      });
     }
-
-    console.log('👤 Creating employee role...');
-    const employeeRole = await prisma.role.upsert({
-      where: { name: 'employee' },
-      update: {},
-      create: {
-        name: 'employee',
-        description: 'Regular Employee',
-        isSystem: true,
-      },
-    });
-
-    if (permissions.length > 0) {
-      const employeePermissions = permissions.filter(
-        (p) =>
-          p.name === 'attendance.view' ||
-          p.name === 'leaves.view' ||
-          p.name === 'leaves.create' ||
-          p.name === 'leaves.update' ||
-          p.name === 'holidays.view',
-      );
-      for (const permission of employeePermissions) {
-        await prisma.rolePermission.upsert({
-          where: {
-            roleId_permissionId: {
-              roleId: employeeRole.id,
-              permissionId: permission.id,
-            },
-          },
-          update: {},
-          create: { roleId: employeeRole.id, permissionId: permission.id },
-        });
-      }
-    }
-  } catch (err: any) {
-    console.warn('⚠️  Could not seed other roles:', err.message);
   }
 
-  let adminUser: any = { id: 'admin-id' };
-  try {
-    console.log('👤 Creating admin user...');
-    const hashedPassword = await bcrypt.hash('admin123', 12);
+  console.log('👤 Creating employee role...');
+  const employeeRole = await prisma.role.upsert({
+    where: { name: 'employee' },
+    update: {},
+    create: {
+      name: 'employee',
+      description: 'Regular Employee',
+      isSystem: true,
+    },
+  });
 
-    adminUser = await prisma.user.upsert({
-      where: { email: 'admin@speedlimit.com' },
-      update: { password: hashedPassword, roleId: adminRole.id },
-      create: {
-        email: 'admin@speedlimit.com',
-        password: hashedPassword,
-        firstName: 'System',
-        lastName: 'Admin',
-        phone: '0300-0000000',
-        status: 'active',
-        roleId: adminRole.id,
-      },
-    });
-  } catch (err: any) {
-    console.warn('⚠️  Could not seed admin user:', err.message);
+  if (permissions.length > 0) {
+    const employeePermissions = permissions.filter(
+      (p) =>
+        p.name === 'attendance.view' ||
+        p.name === 'leaves.view' ||
+        p.name === 'leaves.create' ||
+        p.name === 'leaves.update' ||
+        p.name === 'holidays.view',
+    );
+    for (const permission of employeePermissions) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: employeeRole.id,
+            permissionId: permission.id,
+          },
+        },
+        update: {},
+        create: { roleId: employeeRole.id, permissionId: permission.id },
+      });
+    }
   }
+
+  console.log('👤 Creating admin user...');
+  const hashedPassword = await bcrypt.hash('admin123', 12);
+
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin@speedlimit.com' },
+    update: { password: hashedPassword, roleId: adminRole.id },
+    create: {
+      email: 'admin@speedlimit.com',
+      password: hashedPassword,
+      firstName: 'System',
+      lastName: 'Admin',
+      phone: '0300-0000000',
+      status: 'active',
+      roleId: adminRole.id,
+    },
+  });
 
   // Seed Master Data
   await seedCountries(prisma);

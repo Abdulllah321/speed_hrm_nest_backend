@@ -44,8 +44,8 @@ model Employee {
   area                   String?
   employeeSalary         Decimal
   eobi                   Boolean         @default(false)
-  eobiId                 String?         // EOBI ID like "0800B656361"
-  eobiCode               String?         // EOBI Code like "AA001"
+  eobiId                 String? // EOBI ID like "0800B656361"
+  eobiCode               String? // EOBI Code like "AA001"
   eobiNumber             String?
   eobiDocumentUrl        String?
   documentUrls           Json?
@@ -92,13 +92,14 @@ model Employee {
   loanRequests                    LoanRequest[]
   overtimeRequests                OvertimeRequest[]                @relation("OvertimeRequestEmployee")
   increments                      Increment[]                      @relation("IncrementEmployee")
-  leaveEncashments               LeaveEncashment[]
+  leaveEncashments                LeaveEncashment[]
 
   bonuses                     Bonus[]                              @relation("BonusEmployee")
   rebates                     Rebate[]
   payrollDetails              PayrollDetail[]
   socialSecurityRegistrations SocialSecurityEmployeeRegistration[]
   socialSecurityContributions SocialSecurityContribution[]
+  pfWithdrawals               PFWithdrawal[]
 }
 
 model EmployeeRejoiningHistory {
@@ -156,20 +157,20 @@ model EmployeeEquipment {
   employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   equipmentId  String
   equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
-  productId    String    // Company's product/item tracking ID (e.g., "INLP-48", "MOB-123", "KEY-456", "VEH-789")
+  productId    String // Company's product/item tracking ID (e.g., "INLP-48", "MOB-123", "KEY-456", "VEH-789")
   assignedDate DateTime  @default(now())
   returnedDate DateTime?
   status       String    @default("assigned") // assigned, returned, damaged, lost
   notes        String?
-  metadata     Json?     // Flexible storage for any equipment-specific data (IMEI, MAC address, registration number, etc.)
-  
+  metadata     Json? // Flexible storage for any equipment-specific data (IMEI, MAC address, registration number, etc.)
+
   // Assignment tracking
   assignedById String?
-  assignedBy   User?     @relation("EquipmentAssignedBy", fields: [assignedById], references: [id])
+  assignedBy   User?    @relation("EquipmentAssignedBy", fields: [assignedById], references: [id])
   returnedById String?
-  returnedBy   User?     @relation("EquipmentReturnedBy", fields: [returnedById], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  returnedBy   User?    @relation("EquipmentReturnedBy", fields: [returnedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([employeeId])
   @@index([equipmentId])

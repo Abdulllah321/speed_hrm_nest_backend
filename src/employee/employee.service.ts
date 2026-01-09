@@ -119,6 +119,7 @@ export class EmployeeService {
         employeeName: true,
         departmentId: true,
         subDepartmentId: true,
+        providentFund: true,
         department: {
           select: { name: true },
         },
@@ -135,6 +136,7 @@ export class EmployeeService {
         departmentId: emp.departmentId,
         subDepartmentId: emp.subDepartmentId,
         departmentName: emp.department?.name || null,
+        providentFund: emp.providentFund,
       })),
     };
   }
@@ -1280,10 +1282,10 @@ export class EmployeeService {
           area: areaValue ?? existing?.area,
           employeeSalary: employeeSalaryNumber,
           eobi: eobiValue ?? existing?.eobi,
-          eobiId: (body as { eobiId?: unknown }).eobiId !== undefined 
+          eobiId: (body as { eobiId?: unknown }).eobiId !== undefined
             ? ((body as { eobiId?: unknown }).eobiId ? (body as { eobiId?: unknown }).eobiId as string : null)
             : existing?.eobiId,
-          eobiCode: (body as { eobiCode?: unknown }).eobiCode !== undefined 
+          eobiCode: (body as { eobiCode?: unknown }).eobiCode !== undefined
             ? ((body as { eobiCode?: unknown }).eobiCode ? (body as { eobiCode?: unknown }).eobiCode as string : null)
             : existing?.eobiCode,
           eobiNumber: eobiNumberValue ?? existing?.eobiNumber,

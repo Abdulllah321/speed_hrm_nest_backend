@@ -717,10 +717,10 @@ export async function seedLeavesPolicies(
       shortLeaveDeductionRate: 0.25,
       isDefault: true,
       leaveTypes: [
-         { name: 'Casual Leave', numberOfLeaves: 5 },
-         { name: 'Sick Leave', numberOfLeaves: 5 },
-         { name: 'PRIVILEGE LEAVE', numberOfLeaves: 15 },
-     
+        { name: 'Casual Leave', numberOfLeaves: 5 },
+        { name: 'Sick Leave', numberOfLeaves: 5 },
+        { name: 'PRIVILEGE LEAVE', numberOfLeaves: 15 },
+
       ],
     },
     {
@@ -991,15 +991,15 @@ export async function seedAllowanceHeads(
     amount?: number | null;
     percentage?: number | null;
   }> = [
-    { name: 'Outstation Allowance', calculationType: 'Amount', amount: 1000 },
-    { name: 'Medical Allowance', calculationType: 'Amount', amount: 5000 },
-    { name: 'Vehicle Allowance', calculationType: 'Amount', amount: 1000 },
-    { name: 'Fuel Allowance', calculationType: 'Amount', amount: 1000 },
-    { name: 'Performance Allowance', calculationType: 'Amount', amount: 5000 },
-    { name: 'Incentive', calculationType: 'Percentage', percentage: null }, // Variable - no default, user enters each time
-    { name: 'Arrears', calculationType: 'Amount', amount: 5000 },
-    { name: 'Others', calculationType: 'Amount', amount: 500 },
-  ];
+      { name: 'Outstation Allowance', calculationType: 'Amount', amount: 1000 },
+      { name: 'Medical Allowance', calculationType: 'Amount', amount: 5000 },
+      { name: 'Vehicle Allowance', calculationType: 'Amount', amount: 1000 },
+      { name: 'Fuel Allowance', calculationType: 'Amount', amount: 1000 },
+      { name: 'Performance Allowance', calculationType: 'Amount', amount: 5000 },
+      { name: 'Incentive', calculationType: 'Percentage', percentage: null }, // Variable - no default, user enters each time
+      { name: 'Arrears', calculationType: 'Amount', amount: 5000 },
+      { name: 'Others', calculationType: 'Amount', amount: 500 },
+    ];
 
   let created = 0;
   let skipped = 0;
@@ -1249,10 +1249,9 @@ export async function seedProvidentFunds(
 ) {
   console.log('🏦 Seeding provident funds...');
   const providentFunds = [
-    { name: 'Employee Provident Fund (EPF)', percentage: 8 },
-    { name: 'Employer Provident Fund', percentage: 8 },
-    { name: 'Voluntary Provident Fund (VPF)', percentage: 10 },
-    { name: 'Company Provident Fund', percentage: 5 },
+    { name: 'Employee Provident Fund (EPF)', percentage: 8.33 },
+    { name: 'Employer Provident Fund', percentage: 8.33 },
+
   ];
 
   let created = 0;

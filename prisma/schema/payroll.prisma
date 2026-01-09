@@ -184,30 +184,30 @@ model Bonus {
 }
 
 model LeaveEncashment {
-  id                 String    @id @default(uuid())
-  employeeId         String
-  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  encashmentDate     DateTime // Date when leave is encashed
-  encashmentDays     Decimal   @db.Decimal(5, 2) // Number of leave days encashed
-  encashmentAmount   Decimal   @db.Decimal(10, 2) // Total amount to be paid
-  paymentMonth       String // Format: "01" to "12" - Month when payment should be made
-  paymentYear        String // Format: "YYYY" - Year when payment should be made
-  paymentMonthYear   String // Format: "YYYY-MM" for easy querying
-  grossSalary        Decimal?  @db.Decimal(10, 2) // Employee's gross salary at time of encashment
-  annualSalary       Decimal?  @db.Decimal(10, 2) // Annual salary for per day calculation
-  perDayAmount       Decimal?  @db.Decimal(10, 2) // Per day amount calculated
-  approvalStatus     String    @default("pending") // pending, approved, rejected
-  approvedById       String?
-  approvedBy         User?     @relation("LeaveEncashmentApprovedBy", fields: [approvedById], references: [id])
-  approvedAt         DateTime?
-  rejectionReason    String?   @db.Text // Reason if rejected
-  status             String    @default("pending") // pending, active, completed, cancelled, rejected
-  createdById        String?
-  createdBy          User?     @relation("LeaveEncashmentCreatedBy", fields: [createdById], references: [id])
-  updatedById        String?
-  updatedBy          User?     @relation("LeaveEncashmentUpdatedBy", fields: [updatedById], references: [id])
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  encashmentDate   DateTime // Date when leave is encashed
+  encashmentDays   Decimal   @db.Decimal(5, 2) // Number of leave days encashed
+  encashmentAmount Decimal   @db.Decimal(10, 2) // Total amount to be paid
+  paymentMonth     String // Format: "01" to "12" - Month when payment should be made
+  paymentYear      String // Format: "YYYY" - Year when payment should be made
+  paymentMonthYear String // Format: "YYYY-MM" for easy querying
+  grossSalary      Decimal?  @db.Decimal(10, 2) // Employee's gross salary at time of encashment
+  annualSalary     Decimal?  @db.Decimal(10, 2) // Annual salary for per day calculation
+  perDayAmount     Decimal?  @db.Decimal(10, 2) // Per day amount calculated
+  approvalStatus   String    @default("pending") // pending, approved, rejected
+  approvedById     String?
+  approvedBy       User?     @relation("LeaveEncashmentApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  rejectionReason  String?   @db.Text // Reason if rejected
+  status           String    @default("pending") // pending, active, completed, cancelled, rejected
+  createdById      String?
+  createdBy        User?     @relation("LeaveEncashmentCreatedBy", fields: [createdById], references: [id])
+  updatedById      String?
+  updatedBy        User?     @relation("LeaveEncashmentUpdatedBy", fields: [updatedById], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([employeeId])
   @@index([paymentMonth, paymentYear])
@@ -251,8 +251,8 @@ model PayrollDetail {
   taxDeduction           Decimal @default(0) @db.Decimal(10, 2) // Final calculated tax
 
   // Additions
-  overtimeAmount      Decimal @default(0) @db.Decimal(10, 2)
-  bonusAmount         Decimal @default(0) @db.Decimal(10, 2)
+  overtimeAmount        Decimal @default(0) @db.Decimal(10, 2)
+  bonusAmount           Decimal @default(0) @db.Decimal(10, 2)
   leaveEncashmentAmount Decimal @default(0) @db.Decimal(10, 2)
 
   grossSalary Decimal @db.Decimal(10, 2)
@@ -280,4 +280,35 @@ model PayrollDetail {
   socialSecurityContributions SocialSecurityContribution[]
 
   @@unique([payrollId, employeeId])
+}
+
+model PFWithdrawal {
+  id               String    @id @default(uuid())
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  withdrawalAmount Decimal   @db.Decimal(10, 2)
+  withdrawalDate   DateTime  @default(now())
+  month            String // Format: "01" to "12"
+  year             String // Format: "YYYY"
+  monthYear        String // Format: "YYYY-MM" for easy querying
+  reason           String?   @db.Text
+  approvalStatus   String    @default("pending") // pending, approved, rejected
+  approvedById     String?
+  approvedBy       User?     @relation("PFWithdrawalApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  rejectionReason  String?   @db.Text
+  status           String    @default("pending") // pending, processed, cancelled
+  createdById      String?
+  createdBy        User?     @relation("PFWithdrawalCreatedBy", fields: [createdById], references: [id])
+  updatedById      String?
+  updatedBy        User?     @relation("PFWithdrawalUpdatedBy", fields: [updatedById], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([month, year])
+  @@index([monthYear])
+  @@index([approvalStatus])
+  @@index([status])
+  @@index([withdrawalDate])
 }

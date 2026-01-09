@@ -84,26 +84,29 @@ model User {
   incrementsCreated               Increment[]                      @relation("IncrementCreatedBy")
   incrementsUpdated               Increment[]                      @relation("IncrementUpdatedBy")
 
-  bonuses              Bonus[]        @relation("BonusCreatedBy")
-  bonusesUpdated       Bonus[]        @relation("BonusUpdatedBy")
-  leaveEncashmentsApproved LeaveEncashment[] @relation("LeaveEncashmentApprovedBy")
-  leaveEncashmentsCreated LeaveEncashment[] @relation("LeaveEncashmentCreatedBy")
-  leaveEncashmentsUpdated LeaveEncashment[] @relation("LeaveEncashmentUpdatedBy")
-  banksCreated         Bank[]         @relation("BankCreatedBy")
-  banksUpdated         Bank[]         @relation("BankUpdatedBy")
-  rebateNaturesCreated RebateNature[] @relation("RebateNatureCreatedBy")
-  allocationsCreated   Allocation[]   @relation("AllocationCreatedBy")
-  rebalesCreated       Rebate[]       @relation("RebateCreatedBy")
-  payrollsGenerated    Payroll[]      @relation("PayrollGeneratedBy")
-  preferences          UserPreference[]
-  socialSecurityInstitutionsCreated SocialSecurityInstitution[] @relation("SocialSecurityInstitutionCreatedBy")
-  socialSecurityInstitutionsUpdated SocialSecurityInstitution[] @relation("SocialSecurityInstitutionUpdatedBy")
+  bonuses                                    Bonus[]                              @relation("BonusCreatedBy")
+  bonusesUpdated                             Bonus[]                              @relation("BonusUpdatedBy")
+  leaveEncashmentsApproved                   LeaveEncashment[]                    @relation("LeaveEncashmentApprovedBy")
+  leaveEncashmentsCreated                    LeaveEncashment[]                    @relation("LeaveEncashmentCreatedBy")
+  leaveEncashmentsUpdated                    LeaveEncashment[]                    @relation("LeaveEncashmentUpdatedBy")
+  banksCreated                               Bank[]                               @relation("BankCreatedBy")
+  banksUpdated                               Bank[]                               @relation("BankUpdatedBy")
+  rebateNaturesCreated                       RebateNature[]                       @relation("RebateNatureCreatedBy")
+  allocationsCreated                         Allocation[]                         @relation("AllocationCreatedBy")
+  rebalesCreated                             Rebate[]                             @relation("RebateCreatedBy")
+  payrollsGenerated                          Payroll[]                            @relation("PayrollGeneratedBy")
+  preferences                                UserPreference[]
+  socialSecurityInstitutionsCreated          SocialSecurityInstitution[]          @relation("SocialSecurityInstitutionCreatedBy")
+  socialSecurityInstitutionsUpdated          SocialSecurityInstitution[]          @relation("SocialSecurityInstitutionUpdatedBy")
   socialSecurityEmployerRegistrationsCreated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationCreatedBy")
   socialSecurityEmployerRegistrationsUpdated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationUpdatedBy")
   socialSecurityEmployeeRegistrationsCreated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationCreatedBy")
   socialSecurityEmployeeRegistrationsUpdated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationUpdatedBy")
-  socialSecurityContributionsCreated SocialSecurityContribution[] @relation("SocialSecurityContributionCreatedBy")
-  socialSecurityContributionsUpdated SocialSecurityContribution[] @relation("SocialSecurityContributionUpdatedBy")
+  socialSecurityContributionsCreated         SocialSecurityContribution[]         @relation("SocialSecurityContributionCreatedBy")
+  socialSecurityContributionsUpdated         SocialSecurityContribution[]         @relation("SocialSecurityContributionUpdatedBy")
+  pfWithdrawalsApproved                      PFWithdrawal[]                       @relation("PFWithdrawalApprovedBy")
+  pfWithdrawalsCreated                       PFWithdrawal[]                       @relation("PFWithdrawalCreatedBy")
+  pfWithdrawalsUpdated                       PFWithdrawal[]                       @relation("PFWithdrawalUpdatedBy")
 }
 
 model Role {
@@ -223,8 +226,8 @@ model UserPreference {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  key       String   // e.g., "table-column-visibility-employees-table"
-  value     String   // JSON string of the preference value
+  key       String // e.g., "table-column-visibility-employees-table"
+  value     String // JSON string of the preference value
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
