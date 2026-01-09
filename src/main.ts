@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import fastifyMultipart from '@fastify/multipart';
+import fastifyCookie from '@fastify/cookie';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import 'dotenv/config'
@@ -9,6 +10,11 @@ import 'dotenv/config'
 async function bootstrap() {
   // Create Fastify adapter first
   const adapter = new FastifyAdapter();
+
+  // Register cookie plugin for cookie support
+  await adapter.register(fastifyCookie as any, {
+    secret: process.env.COOKIE_SECRET || 'your-secret-key-change-in-production',
+  });
 
   // Register multipart plugin on the adapter BEFORE creating the app
   await adapter.register(fastifyMultipart as any, {
