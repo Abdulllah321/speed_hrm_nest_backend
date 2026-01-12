@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import type { Cache } from 'cache-manager'
 import { PrismaService } from '../prisma/prisma.service'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 
@@ -7,33 +9,59 @@ export class CityService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) { }
 
   async getAllCountries() {
+    const cacheKey = 'countries_all'
+    const cached = await this.cacheManager.get(cacheKey);
+    if(cached) return { status: true, data: cached };
+
     const countries = await this.prisma.country.findMany({ include: { cities: true }, orderBy: { name: 'asc' } })
+    await this.cacheManager.set(cacheKey, countries, 86400000); // 24h TTL
     return { status: true, data: countries }
   }
 
   async getStates() {
+    const cacheKey = 'states_all'
+    const cached = await this.cacheManager.get(cacheKey);
+    if(cached) return { status: true, data: cached };
+
     const states = await this.prisma.state.findMany({ orderBy: { name: 'asc' } })
+    await this.cacheManager.set(cacheKey, states, 86400000); // 24h TTL
     return { status: true, data: states }
   }
 
   async getStatesByCountry(countryId: string) {
+    const cacheKey = `states_country_${countryId}`
+    const cached = await this.cacheManager.get(cacheKey);
+    if(cached) return { status: true, data: cached };
+
     const states = await this.prisma.state.findMany({ where: { countryId }, orderBy: { name: 'asc' } })
+    await this.cacheManager.set(cacheKey, states, 86400000);
     return { status: true, data: states }
   }
 
   async getCitiesByState(stateId: string) {
+    const cacheKey = `cities_state_${stateId}`
+    const cached = await this.cacheManager.get(cacheKey);
+    if(cached) return { status: true, data: cached };
+
     const cities = await this.prisma.city.findMany({ where: { stateId }, orderBy: { name: 'asc' } })
+    await this.cacheManager.set(cacheKey, cities, 3600000); // 1h
     return { status: true, data: cities }
   }
 
   async getCities() {
+    const cacheKey = 'cities_all'
+    const cached = await this.cacheManager.get(cacheKey);
+    if(cached) return { status: true, data: cached };
+
     const cities = await this.prisma.city.findMany({
       include: { country: true, state: true },
       orderBy: { name: 'asc' },
     })
+    await this.cacheManager.set(cacheKey, cities, 3600000);
     return { status: true, data: cities }
   }
 
@@ -60,6 +88,8 @@ export class CityService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('cities_all');
+      await this.cacheManager.del(`cities_state_${body.stateId}`);
       return { status: true, data: created }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -112,6 +142,9 @@ export class CityService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('cities_all');
+      if (existing.stateId) await this.cacheManager.del(`cities_state_${existing.stateId}`);
+      if (body.stateId && body.stateId !== existing.stateId) await this.cacheManager.del(`cities_state_${body.stateId}`);
       return { status: true, data: updated }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -156,6 +189,8 @@ export class CityService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('cities_all');
+      if (existing.stateId) await this.cacheManager.del(`cities_state_${existing.stateId}`);
       return { status: true, data: removed }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -190,6 +225,12 @@ export class CityService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('cities_all');
+      // Invalidate related states from the existing records
+      const stateIds = new Set(existing.map(c => c.stateId));
+      for(const sid of stateIds) {
+        if(sid) await this.cacheManager.del(`cities_state_${sid}`);
+      }
       return { status: true, message: 'Cities deleted', data: result }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -226,6 +267,11 @@ export class CityService {
         userAgent: ctx.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('cities_all');
+      const stateIds = new Set(items.map(i => i.stateId));
+      for(const sid of stateIds) {
+          if(sid) await this.cacheManager.del(`cities_state_${sid}`);
+      }
       return { status: true, message: 'Cities created', data: result }
     } catch (error: any) {
       await this.activityLogs.log({

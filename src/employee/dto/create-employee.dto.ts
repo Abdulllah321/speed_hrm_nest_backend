@@ -348,7 +348,13 @@ export class CreateEmployeeDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @ApiPropertyOptional()
+  @IsOptional()
   qualifications?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  socialSecurityRegistrations?: any;
 }
 
 export class UpdateEmployeeDto {
@@ -641,6 +647,12 @@ export class UpdateEmployeeDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @ApiPropertyOptional()
+  @IsOptional()
   qualifications?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  socialSecurityRegistrations?: any;
 }
 

@@ -244,4 +244,7 @@ export class RejoinEmployeeDto {
 
   @IsOptional()
   qualifications?: any;
+
+  @IsOptional()
+  socialSecurityRegistrations?: any;
 }
