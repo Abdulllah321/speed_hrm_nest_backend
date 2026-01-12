@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common'
 import { AuthService } from './auth.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { LoginDto, RefreshTokenDto, ChangePasswordDto } from './dto/login.dto'
+import { LoginDto, RefreshTokenDto, ChangePasswordDto,UpdateUserDto } from './dto/login.dto'
 
 @ApiTags('Auth')
 @Controller('api/auth')
@@ -42,6 +42,14 @@ export class AuthController {
     const authHeader = req.headers['authorization'] as string
     const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined
     return this.service.checkSession(req.user.userId, accessToken)
+  }
+
+  @Post('update-profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update current user profile' })
+  async updateProfile(@Req() req: any, @Body() body: UpdateUserDto) {
+    return this.service.updateMe(req.user.userId, body)
   }
 
   @Post('logout')

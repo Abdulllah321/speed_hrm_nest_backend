@@ -237,7 +237,7 @@ export class RejoinEmployeeDto {
   emergencyContactPersonName?: string;
 
   @IsOptional()
-  selectedEquipments?: any;
+  equipmentAssignments?: any;
 
   @IsOptional()
   avatarUrl?: string;

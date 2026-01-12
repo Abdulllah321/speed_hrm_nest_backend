@@ -631,7 +631,7 @@ export class UpdateEmployeeDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  selectedEquipments?: any;
+  equipmentAssignments?: any;
 
   @ApiPropertyOptional()
   @IsOptional()

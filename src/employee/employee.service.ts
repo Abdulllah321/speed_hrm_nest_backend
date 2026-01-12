@@ -962,33 +962,17 @@ export class EmployeeService {
             create: socialSecurityCreateData
           } : undefined,
           equipmentAssignments:
-            selectedEquipmentsValue &&
-              Array.isArray(selectedEquipmentsValue) &&
-              selectedEquipmentsValue.length > 0
+            (body as any).equipmentAssignments &&
+              Array.isArray((body as any).equipmentAssignments) &&
+              (body as any).equipmentAssignments.length > 0
               ? {
-                create: (selectedEquipmentsValue as unknown[])
-                  .filter((equipmentId): equipmentId is string => {
-                    // Only include valid UUIDs or non-empty strings
-                    if (
-                      !equipmentId ||
-                      typeof equipmentId !== 'string' ||
-                      equipmentId.trim().length === 0
-                    ) {
-                      return false;
-                    }
-                    // Check if it's a valid UUID format
-                    const isValidUUID =
-                      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                        equipmentId.trim(),
-                      );
-                    if (!isValidUUID) {
-                      return false;
-                    }
-                    return true;
-                  })
-                  .map((equipmentId: string) => ({
-                    equipmentId: equipmentId.trim(),
-                    productId: `EQ-${equipmentId.trim().substring(0, 8).toUpperCase()}`, // Generate productId from equipmentId
+                create: ((body as any).equipmentAssignments as any[])
+                  .filter((ea) => ea.equipmentId)
+                  .map((ea: any) => ({
+                    equipmentId: ea.equipmentId,
+                    productId: ea.productId || `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                    assignedDate: ea.assignedDate ? new Date(ea.assignedDate) : new Date(),
+                    notes: ea.notes || null,
                     assignedById: ctx.userId,
                     status: 'assigned',
                   })),
@@ -1176,12 +1160,8 @@ export class EmployeeService {
       }
 
       // Handle equipment assignments update
-      const selectedEquipmentsValue = (
-        body as {
-          selectedEquipments?: unknown;
-        }
-      ).selectedEquipments;
-      if (selectedEquipmentsValue !== undefined) {
+      const equipmentAssignmentsValue = (body as any).equipmentAssignments;
+      if (equipmentAssignmentsValue !== undefined) {
         // Mark existing assigned equipment as returned
         await this.prisma.employeeEquipment.updateMany({
           where: {
@@ -1440,28 +1420,17 @@ export class EmployeeService {
           accountTitle: accountTitleValue ?? existing?.accountTitle,
           status: statusValue ?? existing?.status,
           equipmentAssignments:
-            selectedEquipmentsValue !== undefined &&
-              Array.isArray(selectedEquipmentsValue) &&
-              selectedEquipmentsValue.length > 0
+            equipmentAssignmentsValue !== undefined &&
+              Array.isArray(equipmentAssignmentsValue) &&
+              equipmentAssignmentsValue.length > 0
               ? {
-                create: (selectedEquipmentsValue as unknown[])
-                  .filter((equipmentId): equipmentId is string => {
-                    if (
-                      !equipmentId ||
-                      typeof equipmentId !== 'string' ||
-                      equipmentId.trim().length === 0
-                    ) {
-                      return false;
-                    }
-                    const isValidUUID =
-                      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                        equipmentId.trim(),
-                      );
-                    return isValidUUID;
-                  })
-                  .map((equipmentId: string) => ({
-                    equipmentId: equipmentId.trim(),
-                    productId: `EQ-${equipmentId.trim().substring(0, 8).toUpperCase()}`, // Generate productId from equipmentId
+                create: (equipmentAssignmentsValue as any[])
+                  .filter((ea) => ea.equipmentId)
+                  .map((ea: any) => ({
+                    equipmentId: ea.equipmentId,
+                    productId: ea.productId || `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                    assignedDate: ea.assignedDate ? new Date(ea.assignedDate) : new Date(),
+                    notes: ea.notes || null,
                     assignedById: ctx.userId,
                     status: 'assigned',
                   })),
@@ -1739,6 +1708,11 @@ export class EmployeeService {
             orderBy: { createdAt: 'desc' },
           },
           socialSecurityRegistrations: true,
+          equipmentAssignments: {
+            include: {
+              equipment: true,
+            }
+          },
         },
       });
 
@@ -2106,6 +2080,38 @@ export class EmployeeService {
                }
             }
          }
+      }
+
+      // Handle equipment assignments update
+      const equipmentAssignmentsValue = (body as any).equipmentAssignments;
+      if (equipmentAssignmentsValue !== undefined) {
+        // Mark existing assigned equipment as returned
+        await this.prisma.employeeEquipment.updateMany({
+          where: {
+            employeeId: existing.id,
+            status: 'assigned',
+          },
+          data: {
+            status: 'returned',
+            returnedDate: new Date(),
+            returnedById: ctx.userId,
+          },
+        });
+
+        if (Array.isArray(equipmentAssignmentsValue) && equipmentAssignmentsValue.length > 0) {
+          updateData.equipmentAssignments = {
+            create: (equipmentAssignmentsValue as any[])
+              .filter((ea) => ea.equipmentId)
+              .map((ea: any) => ({
+                equipmentId: ea.equipmentId,
+                productId: ea.productId || `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                assignedDate: ea.assignedDate ? new Date(ea.assignedDate) : new Date(),
+                notes: ea.notes || null,
+                assignedById: ctx.userId,
+                status: 'assigned',
+              })),
+          };
+        }
       }
 
       // Track changed fields
