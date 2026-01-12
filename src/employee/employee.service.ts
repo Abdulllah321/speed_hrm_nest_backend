@@ -123,6 +123,12 @@ export class EmployeeService {
         department: {
           select: { name: true },
         },
+        subDepartment: {
+          select: { name: true },
+        },
+        designation: {
+          select: { name: true },
+        },
       },
       orderBy: { employeeName: 'asc' },
     });
@@ -136,6 +142,8 @@ export class EmployeeService {
         departmentId: emp.departmentId,
         subDepartmentId: emp.subDepartmentId,
         departmentName: emp.department?.name || null,
+        subDepartmentName: emp.subDepartment?.name || null,
+        designationName: emp.designation?.name || null,
         providentFund: emp.providentFund,
       })),
     };
@@ -349,6 +357,19 @@ export class EmployeeService {
       // Explicitly preserve address fields
       currentAddress: emp.currentAddress ?? null,
       permanentAddress: emp.permanentAddress ?? null,
+      // Add name fields for frontend display
+      departmentName: emp.department?.name || null,
+      subDepartmentName: emp.subDepartment?.name || null,
+      designationName: emp.designation?.name || null,
+      employeeGradeName: emp.employeeGrade?.grade || null,
+      maritalStatusName: emp.maritalStatus?.name || null,
+      employmentStatusName: emp.employmentStatus?.status || null,
+      countryName: emp.country?.name || null,
+      provinceName: emp.state?.name || null,
+      cityName: emp.city?.name || null,
+      workingHoursPolicyName: emp.workingHoursPolicy?.name || null,
+      locationName: emp.location?.name || null,
+      leavesPolicyName: emp.leavesPolicy?.name || null,
       // Keep relation objects for display purposes
       departmentRelation: emp.department,
       subDepartmentRelation: emp.subDepartment,

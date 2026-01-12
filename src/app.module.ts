@@ -50,6 +50,7 @@ import { PayrollModule } from './payroll/payroll.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
 import { SocialSecurityModule } from './social-security/social-security.module';
 import { AllocationModule } from './allocation/allocation.module';
+import { PFModule } from './pf/pf.module';
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { AllocationModule } from './allocation/allocation.module';
     UserPreferencesModule, // added swagger
     SocialSecurityModule, // added swagger
     AllocationModule,
+    PFModule,
   ],
   controllers: [AppController],
   providers: [AppService],

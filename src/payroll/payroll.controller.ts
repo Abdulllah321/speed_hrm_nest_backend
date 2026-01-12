@@ -86,50 +86,5 @@ export class PayrollController {
         return this.payrollService.getPayslipDetail(detailId);
     }
 
-    @Get('payroll/pf-employees')
-    @ApiOperation({ summary: 'Get PF balances for all employees' })
-    @ApiResponse({ status: 200, description: 'Returns PF balance data for employees' })
-    async getPFEmployees() {
-        return this.payrollService.getPFEmployees();
-    }
 
-    @Post('payroll/pf-withdrawals')
-    @ApiOperation({ summary: 'Create PF withdrawal' })
-    @ApiResponse({ status: 201, description: 'PF withdrawal created successfully' })
-    async createPFWithdrawal(
-        @Body('employeeId') employeeId: string,
-        @Body('withdrawalAmount') withdrawalAmount: number,
-        @Body('month') month: string,
-        @Body('year') year: string,
-        @Body('reason') reason?: string,
-        @Body('createdById') createdById?: string,
-    ) {
-        return this.payrollService.createPFWithdrawal({
-            employeeId,
-            withdrawalAmount,
-            month,
-            year,
-            reason,
-            createdById,
-        });
-    }
-
-    @Get('payroll/pf-withdrawals')
-    @ApiOperation({ summary: 'Get all PF withdrawals' })
-    @ApiResponse({ status: 200, description: 'Returns list of PF withdrawals' })
-    async getPFWithdrawals(
-        @Query('employeeId') employeeId?: string,
-        @Query('departmentId') departmentId?: string,
-        @Query('month') month?: string,
-        @Query('year') year?: string,
-        @Query('status') status?: string,
-    ) {
-        return this.payrollService.getPFWithdrawals({
-            employeeId,
-            departmentId,
-            month,
-            year,
-            status,
-        });
-    }
 }
