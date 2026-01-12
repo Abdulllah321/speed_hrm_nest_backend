@@ -1,41 +1,33 @@
-// Social Security Institutions (SESSI, PESSE, IESSI) related models
-// SESSI - Sindh Employees' Social Security Institution
-// PESSE - Punjab Employees' Social Security Institution
-// IESSI - Industrial Employees' Social Security Institution (or other provincial schemes)
-
 model SocialSecurityInstitution {
-  id          String   @id @default(uuid())
-  code        String   @unique // "SESSI", "PESSE", "IESSI", etc.
-  name        String   @unique // Full name of the institution
-  province    String?  // Province/region it covers
-  description String?
-  status      String   @default("active") // active, inactive
-  website     String?
-  contactNumber String?
-  address     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  employerRegistrations SocialSecurityEmployerRegistration[]
-  employeeRegistrations SocialSecurityEmployeeRegistration[]
-  contributions         SocialSecurityContribution[]
+  id                    String                               @id @default(uuid())
+  code                  String                               @unique
+  name                  String                               @unique
+  province              String?
+  description           String?
+  status                String                               @default("active")
+  website               String?
+  contactNumber         String?
+  address               String?
+  createdAt             DateTime                             @default(now())
+  updatedAt             DateTime                             @updatedAt
   createdById           String?
-  createdBy             User?    @relation("SocialSecurityInstitutionCreatedBy", fields: [createdById], references: [id])
   updatedById           String?
-  updatedBy             User?    @relation("SocialSecurityInstitutionUpdatedBy", fields: [updatedById], references: [id])
+  contributions         SocialSecurityContribution[]
+  employeeRegistrations SocialSecurityEmployeeRegistration[]
+  employerRegistrations SocialSecurityEmployerRegistration[]
+  createdBy             User?                                @relation("SocialSecurityInstitutionCreatedBy", fields: [createdById], references: [id])
+  updatedBy             User?                                @relation("SocialSecurityInstitutionUpdatedBy", fields: [updatedById], references: [id])
 
   @@index([code])
   @@index([status])
 }
 
 model SocialSecurityEmployerRegistration {
-  id                    String                  @id @default(uuid())
+  id                    String                               @id @default(uuid())
   institutionId         String
-  institution           SocialSecurityInstitution @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  registrationNumber    String                  @unique // Institution-issued registration number
+  registrationNumber    String                               @unique
   employerName          String
-  employerType          String                  // "company", "factory", "establishment", etc.
+  employerType          String
   businessAddress       String
   businessCity          String?
   businessState         String?
@@ -45,21 +37,20 @@ model SocialSecurityEmployerRegistration {
   email                 String?
   registrationDate      DateTime
   expiryDate            DateTime?
-  status                String                  @default("active") // active, expired, suspended, cancelled
-  totalEmployees        Int                     @default(0) // Total registered employees
-  monthlyContribution   Decimal?                @db.Decimal(10, 2) // Total monthly contribution amount
+  status                String                               @default("active")
+  totalEmployees        Int                                  @default(0)
+  monthlyContribution   Decimal?                             @db.Decimal(10, 2)
   notes                 String?
-  documentUrls          Json?                   // Registration documents, certificates, etc.
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-
-  // Relations
-  employeeRegistrations SocialSecurityEmployeeRegistration[]
-  contributions         SocialSecurityContribution[]
+  documentUrls          Json?
+  createdAt             DateTime                             @default(now())
+  updatedAt             DateTime                             @updatedAt
   createdById           String?
-  createdBy             User?                   @relation("SocialSecurityEmployerRegistrationCreatedBy", fields: [createdById], references: [id])
   updatedById           String?
-  updatedBy             User?                   @relation("SocialSecurityEmployerRegistrationUpdatedBy", fields: [updatedById], references: [id])
+  contributions         SocialSecurityContribution[]
+  employeeRegistrations SocialSecurityEmployeeRegistration[]
+  createdBy             User?                                @relation("SocialSecurityEmployerRegistrationCreatedBy", fields: [createdById], references: [id])
+  institution           SocialSecurityInstitution            @relation(fields: [institutionId], references: [id])
+  updatedBy             User?                                @relation("SocialSecurityEmployerRegistrationUpdatedBy", fields: [updatedById], references: [id])
 
   @@index([institutionId])
   @@index([registrationNumber])
@@ -68,40 +59,38 @@ model SocialSecurityEmployerRegistration {
 }
 
 model SocialSecurityEmployeeRegistration {
-  id                    String                        @id @default(uuid())
-  institutionId         String
-  institution           SocialSecurityInstitution      @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  id                     String                             @id @default(uuid())
+  institutionId          String
   employerRegistrationId String
-  employerRegistration  SocialSecurityEmployerRegistration @relation(fields: [employerRegistrationId], references: [id], onDelete: Restrict)
-  employeeId            String
-  employee              Employee                      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  registrationNumber    String                        @unique // Employee's social security card number
-  cardNumber            String?                        @unique // Physical card number if different
-  registrationDate      DateTime
-  expiryDate            DateTime?
-  status                String                        @default("active") // active, expired, suspended, cancelled, transferred
-  contributionRate      Decimal                       @db.Decimal(5, 2) // Contribution percentage (0-100)
-  baseSalary            Decimal                       @db.Decimal(10, 2) // Base salary for contribution calculation
-  monthlyContribution   Decimal                       @db.Decimal(10, 2) // Calculated monthly contribution
-  isEmployerContribution Boolean                      @default(true) // Whether employer pays the contribution
-  employeeContribution  Decimal?                      @db.Decimal(10, 2) // Employee's share if applicable
-  employerContribution  Decimal?                      @db.Decimal(10, 2) // Employer's share
-  cardIssueDate         DateTime?
-  cardExpiryDate        DateTime?
-  cardStatus            String?                       // "issued", "pending", "renewed", "expired"
-  documentUrls          Json?                         // Registration documents, card copies, etc.
-  notes                 String?
-  createdAt             DateTime                       @default(now())
-  updatedAt             DateTime                       @updatedAt
+  employeeId             String
+  registrationNumber     String                             @unique
+  cardNumber             String?                            @unique
+  registrationDate       DateTime
+  expiryDate             DateTime?
+  status                 String                             @default("active")
+  contributionRate       Decimal                            @db.Decimal(5, 2)
+  baseSalary             Decimal                            @db.Decimal(10, 2)
+  monthlyContribution    Decimal                            @db.Decimal(10, 2)
+  isEmployerContribution Boolean                            @default(true)
+  employeeContribution   Decimal?                           @db.Decimal(10, 2)
+  employerContribution   Decimal?                           @db.Decimal(10, 2)
+  cardIssueDate          DateTime?
+  cardExpiryDate         DateTime?
+  cardStatus             String?
+  documentUrls           Json?
+  notes                  String?
+  createdAt              DateTime                           @default(now())
+  updatedAt              DateTime                           @updatedAt
+  createdById            String?
+  updatedById            String?
+  contributions          SocialSecurityContribution[]
+  createdBy              User?                              @relation("SocialSecurityEmployeeRegistrationCreatedBy", fields: [createdById], references: [id])
+  employee               Employee                           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employerRegistration   SocialSecurityEmployerRegistration @relation(fields: [employerRegistrationId], references: [id])
+  institution            SocialSecurityInstitution          @relation(fields: [institutionId], references: [id])
+  updatedBy              User?                              @relation("SocialSecurityEmployeeRegistrationUpdatedBy", fields: [updatedById], references: [id])
 
-  // Relations
-  contributions         SocialSecurityContribution[]
-  createdById           String?
-  createdBy             User?                         @relation("SocialSecurityEmployeeRegistrationCreatedBy", fields: [createdById], references: [id])
-  updatedById           String?
-  updatedBy             User?                         @relation("SocialSecurityEmployeeRegistrationUpdatedBy", fields: [updatedById], references: [id])
-
-  @@unique([institutionId, employeeId]) // One registration per institution per employee
+  @@unique([institutionId, employeeId])
   @@index([institutionId])
   @@index([employerRegistrationId])
   @@index([employeeId])
@@ -112,42 +101,40 @@ model SocialSecurityEmployeeRegistration {
 }
 
 model SocialSecurityContribution {
-  id                    String                        @id @default(uuid())
-  institutionId         String
-  institution           SocialSecurityInstitution      @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  id                     String                             @id @default(uuid())
+  institutionId          String
   employerRegistrationId String
-  employerRegistration  SocialSecurityEmployerRegistration @relation(fields: [employerRegistrationId], references: [id], onDelete: Restrict)
   employeeRegistrationId String
-  employeeRegistration  SocialSecurityEmployeeRegistration @relation(fields: [employeeRegistrationId], references: [id], onDelete: Restrict)
-  employeeId            String
-  employee              Employee                      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  month                 String                        // Format: "01" to "12"
-  year                  String                        // Format: "YYYY"
-  date                  DateTime                      // Full date for reference
-  baseSalary            Decimal                       @db.Decimal(10, 2) // Salary used for calculation
-  contributionRate      Decimal                       @db.Decimal(5, 2) // Contribution percentage
-  contributionAmount    Decimal                       @db.Decimal(10, 2) // Total contribution amount
-  employeeContribution  Decimal?                      @db.Decimal(10, 2) // Employee's share
-  employerContribution  Decimal?                      @db.Decimal(10, 2) // Employer's share
-  paymentStatus         String                        @default("pending") // pending, paid, overdue, waived
-  paymentDate           DateTime?
-  paymentReference      String?                      // Payment reference number/receipt
-  dueDate               DateTime?                     // Due date for payment
-  lateFee               Decimal?                      @db.Decimal(10, 2) // Late payment fee if applicable
-  notes                 String?
-  status                String                        @default("active") // active, cancelled, refunded
-  createdAt             DateTime                      @default(now())
-  updatedAt             DateTime                      @updatedAt
+  employeeId             String
+  month                  String
+  year                   String
+  date                   DateTime
+  baseSalary             Decimal                            @db.Decimal(10, 2)
+  contributionRate       Decimal                            @db.Decimal(5, 2)
+  contributionAmount     Decimal                            @db.Decimal(10, 2)
+  employeeContribution   Decimal?                           @db.Decimal(10, 2)
+  employerContribution   Decimal?                           @db.Decimal(10, 2)
+  paymentStatus          String                             @default("pending")
+  paymentDate            DateTime?
+  paymentReference       String?
+  dueDate                DateTime?
+  lateFee                Decimal?                           @db.Decimal(10, 2)
+  notes                  String?
+  status                 String                             @default("active")
+  createdAt              DateTime                           @default(now())
+  updatedAt              DateTime                           @updatedAt
+  payrollDetailId        String?
+  createdById            String?
+  updatedById            String?
+  createdBy              User?                              @relation("SocialSecurityContributionCreatedBy", fields: [createdById], references: [id])
+  employee               Employee                           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeRegistration   SocialSecurityEmployeeRegistration @relation(fields: [employeeRegistrationId], references: [id])
+  employerRegistration   SocialSecurityEmployerRegistration @relation(fields: [employerRegistrationId], references: [id])
+  institution            SocialSecurityInstitution          @relation(fields: [institutionId], references: [id])
+  payrollDetail          PayrollDetail?                     @relation(fields: [payrollDetailId], references: [id])
+  updatedBy              User?                              @relation("SocialSecurityContributionUpdatedBy", fields: [updatedById], references: [id])
 
-  // Relations
-  payrollDetailId      String?                       // Link to payroll if deducted from salary
-  payrollDetail         PayrollDetail?               @relation(fields: [payrollDetailId], references: [id], onDelete: SetNull)
-  createdById           String?
-  createdBy             User?                         @relation("SocialSecurityContributionCreatedBy", fields: [createdById], references: [id])
-  updatedById           String?
-  updatedBy             User?                         @relation("SocialSecurityContributionUpdatedBy", fields: [updatedById], references: [id])
-
-  @@unique([institutionId, employeeRegistrationId, month, year]) // One contribution per employee per month-year per institution
+  @@unique([institutionId, employeeRegistrationId, month, year])
   @@index([institutionId])
   @@index([employerRegistrationId])
   @@index([employeeRegistrationId])
@@ -157,4 +144,3 @@ model SocialSecurityContribution {
   @@index([status])
   @@index([payrollDetailId])
 }
-

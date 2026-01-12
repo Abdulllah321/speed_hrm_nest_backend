@@ -1,143 +1,134 @@
-// Authentication & Security models
-
 model User {
-  id                  String    @id @default(uuid())
-  email               String    @unique
-  password            String
-  firstName           String
-  lastName            String
-  phone               String?
-  avatar              String?
-  employeeId          String?   @unique
-  status              String    @default("active")
-  failedLoginAttempts Int       @default(0)
-  lockedUntil         DateTime?
-  lastLoginAt         DateTime?
-  lastLoginIp         String?
-  passwordChangedAt   DateTime?
-  mustChangePassword  Boolean   @default(false)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  // Relations
-  roleId        String?
-  role          Role?          @relation(fields: [roleId], references: [id])
-  sessions      Session[]
-  refreshTokens RefreshToken[]
-  activityLogs  ActivityLog[]
-  loginHistory  LoginHistory[]
-  employee      Employee?
-
-  // CreatedBy relations for master data
-  designationsCreated             Designation[]                    @relation("DesignationCreatedBy")
-  jobTypesCreated                 JobType[]                        @relation("JobTypeCreatedBy")
-  institutesCreated               Institute[]                      @relation("InstituteCreatedBy")
-  qualificationsCreated           Qualification[]                  @relation("QualificationCreatedBy")
-  maritalStatusesCreated          MaritalStatus[]                  @relation("MaritalStatusCreatedBy")
-  degreeTypesCreated              DegreeType[]                     @relation("DegreeTypeCreatedBy")
-  statesCreated                   State[]                          @relation("StateCreatedBy")
-  citiesCreated                   City[]                           @relation("CityCreatedBy")
-  locationsCreated                Location[]                       @relation("LocationCreatedBy")
-  allowanceHeadsCreated           AllowanceHead[]                  @relation("AllowanceHeadCreatedBy")
-  deductionHeadsCreated           DeductionHead[]                  @relation("DeductionHeadCreatedBy")
-  loanTypesCreated                LoanType[]                       @relation("LoanTypeCreatedBy")
-  leaveTypesCreated               LeaveType[]                      @relation("LeaveTypeCreatedBy")
-  leavesPoliciesCreated           LeavesPolicy[]                   @relation("LeavesPolicyCreatedBy")
-  equipmentsCreated               Equipment[]                      @relation("EquipmentCreatedBy")
-  eobisCreated                    EOBI[]                           @relation("EOBICreatedBy")
-  salaryBreakupsCreated           SalaryBreakup[]                  @relation("SalaryBreakupCreatedBy")
-  taxSlabsCreated                 TaxSlab[]                        @relation("TaxSlabCreatedBy")
-  bonusTypesCreated               BonusType[]                      @relation("BonusTypeCreatedBy")
-  approvalSettingsCreated         ApprovalSetting[]                @relation("ApprovalSettingCreatedBy")
-  departmentsCreated              Department[]                     @relation("DepartmentCreatedBy")
-  subDepartmentsCreated           SubDepartment[]                  @relation("SubDepartmentCreatedBy")
-  employeeGradesCreated           EmployeeGrade[]                  @relation("EmployeeGradeCreatedBy")
-  employeeStatusesCreated         EmployeeStatus[]                 @relation("EmployeeStatusCreatedBy")
-  providentFundsCreated           ProvidentFund[]                  @relation("ProvidentFundCreatedBy")
-  workingHoursPoliciesCreated     WorkingHoursPolicy[]             @relation("WorkingHoursPolicyCreatedBy")
-  fileUploadsCreated              FileUpload[]                     @relation("FileUploadCreatedBy")
-  holidaysCreated                 Holiday[]                        @relation("HolidayCreatedBy")
-  attendancesCreated              Attendance[]                     @relation("AttendanceCreatedBy")
-  attendancesUpdated              Attendance[]                     @relation("AttendanceUpdatedBy")
-  equipmentAssigned               EmployeeEquipment[]              @relation("EquipmentAssignedBy")
-  equipmentReturned               EmployeeEquipment[]              @relation("EquipmentReturnedBy")
-  leaveApplicationsCreated        LeaveApplication[]               @relation("LeaveApplicationCreatedBy")
-  leaveApplicationsUpdated        LeaveApplication[]               @relation("LeaveApplicationUpdatedBy")
-  attendanceExemptionsCreated     AttendanceExemption[]            @relation("AttendanceExemptionCreatedBy")
-  attendanceExemptionsUpdated     AttendanceExemption[]            @relation("AttendanceExemptionUpdatedBy")
-  policyAssignmentsCreated        WorkingHoursPolicyAssignment[]   @relation("PolicyAssignmentCreatedBy")
-  rejoiningHistoryCreated         EmployeeRejoiningHistory[]
-  requestForwardingConfigsCreated RequestForwardingConfiguration[] @relation("RequestForwardingConfigCreatedBy")
-  requestForwardingConfigsUpdated RequestForwardingConfiguration[] @relation("RequestForwardingConfigUpdatedBy")
-  allowancesCreated               Allowance[]                      @relation("AllowanceCreatedBy")
-  allowancesUpdated               Allowance[]                      @relation("AllowanceUpdatedBy")
-  deductionsCreated               Deduction[]                      @relation("DeductionCreatedBy")
-  deductionsUpdated               Deduction[]                      @relation("DeductionUpdatedBy")
-  advanceSalariesApproved         AdvanceSalary[]                  @relation("AdvanceSalaryApprovedBy")
-  advanceSalariesCreated          AdvanceSalary[]                  @relation("AdvanceSalaryCreatedBy")
-  advanceSalariesUpdated          AdvanceSalary[]                  @relation("AdvanceSalaryUpdatedBy")
-  loanRequestsApproved            LoanRequest[]                    @relation("LoanRequestApprovedBy")
-  loanRequestsCreated             LoanRequest[]                    @relation("LoanRequestCreatedBy")
-  loanRequestsUpdated             LoanRequest[]                    @relation("LoanRequestUpdatedBy")
-  overtimeRequestsCreated         OvertimeRequest[]                @relation("OvertimeRequestCreatedBy")
-  overtimeRequestsUpdated         OvertimeRequest[]                @relation("OvertimeRequestUpdatedBy")
-  incrementsCreated               Increment[]                      @relation("IncrementCreatedBy")
-  incrementsUpdated               Increment[]                      @relation("IncrementUpdatedBy")
-
+  id                                         String                               @id @default(uuid())
+  email                                      String                               @unique
+  password                                   String
+  firstName                                  String
+  lastName                                   String
+  phone                                      String?
+  avatar                                     String?
+  employeeId                                 String?                              @unique
+  status                                     String                               @default("active")
+  failedLoginAttempts                        Int                                  @default(0)
+  lockedUntil                                DateTime?
+  lastLoginAt                                DateTime?
+  lastLoginIp                                String?
+  passwordChangedAt                          DateTime?
+  mustChangePassword                         Boolean                              @default(false)
+  createdAt                                  DateTime                             @default(now())
+  updatedAt                                  DateTime                             @updatedAt
+  roleId                                     String?
+  activityLogs                               ActivityLog[]
+  advanceSalariesApproved                    AdvanceSalary[]                      @relation("AdvanceSalaryApprovedBy")
+  advanceSalariesCreated                     AdvanceSalary[]                      @relation("AdvanceSalaryCreatedBy")
+  advanceSalariesUpdated                     AdvanceSalary[]                      @relation("AdvanceSalaryUpdatedBy")
+  allocationsCreated                         Allocation[]                         @relation("AllocationCreatedBy")
+  allowancesCreated                          Allowance[]                          @relation("AllowanceCreatedBy")
+  allowancesUpdated                          Allowance[]                          @relation("AllowanceUpdatedBy")
+  allowanceHeadsCreated                      AllowanceHead[]                      @relation("AllowanceHeadCreatedBy")
+  approvalSettingsCreated                    ApprovalSetting[]                    @relation("ApprovalSettingCreatedBy")
+  attendancesCreated                         Attendance[]                         @relation("AttendanceCreatedBy")
+  attendancesUpdated                         Attendance[]                         @relation("AttendanceUpdatedBy")
+  attendanceExemptionsCreated                AttendanceExemption[]                @relation("AttendanceExemptionCreatedBy")
+  attendanceExemptionsUpdated                AttendanceExemption[]                @relation("AttendanceExemptionUpdatedBy")
+  banksCreated                               Bank[]                               @relation("BankCreatedBy")
+  banksUpdated                               Bank[]                               @relation("BankUpdatedBy")
   bonuses                                    Bonus[]                              @relation("BonusCreatedBy")
   bonusesUpdated                             Bonus[]                              @relation("BonusUpdatedBy")
+  bonusTypesCreated                          BonusType[]                          @relation("BonusTypeCreatedBy")
+  citiesCreated                              City[]                               @relation("CityCreatedBy")
+  deductionsCreated                          Deduction[]                          @relation("DeductionCreatedBy")
+  deductionsUpdated                          Deduction[]                          @relation("DeductionUpdatedBy")
+  deductionHeadsCreated                      DeductionHead[]                      @relation("DeductionHeadCreatedBy")
+  degreeTypesCreated                         DegreeType[]                         @relation("DegreeTypeCreatedBy")
+  departmentsCreated                         Department[]                         @relation("DepartmentCreatedBy")
+  designationsCreated                        Designation[]                        @relation("DesignationCreatedBy")
+  eobisCreated                               EOBI[]                               @relation("EOBICreatedBy")
+  employee                                   Employee?
+  equipmentAssigned                          EmployeeEquipment[]                  @relation("EquipmentAssignedBy")
+  equipmentReturned                          EmployeeEquipment[]                  @relation("EquipmentReturnedBy")
+  employeeGradesCreated                      EmployeeGrade[]                      @relation("EmployeeGradeCreatedBy")
+  rejoiningHistoryCreated                    EmployeeRejoiningHistory[]
+  employeeStatusesCreated                    EmployeeStatus[]                     @relation("EmployeeStatusCreatedBy")
+  equipmentsCreated                          Equipment[]                          @relation("EquipmentCreatedBy")
+  fileUploadsCreated                         FileUpload[]                         @relation("FileUploadCreatedBy")
+  holidaysCreated                            Holiday[]                            @relation("HolidayCreatedBy")
+  incrementsCreated                          Increment[]                          @relation("IncrementCreatedBy")
+  incrementsUpdated                          Increment[]                          @relation("IncrementUpdatedBy")
+  institutesCreated                          Institute[]                          @relation("InstituteCreatedBy")
+  jobTypesCreated                            JobType[]                            @relation("JobTypeCreatedBy")
+  leaveApplicationsCreated                   LeaveApplication[]                   @relation("LeaveApplicationCreatedBy")
+  leaveApplicationsUpdated                   LeaveApplication[]                   @relation("LeaveApplicationUpdatedBy")
   leaveEncashmentsApproved                   LeaveEncashment[]                    @relation("LeaveEncashmentApprovedBy")
   leaveEncashmentsCreated                    LeaveEncashment[]                    @relation("LeaveEncashmentCreatedBy")
   leaveEncashmentsUpdated                    LeaveEncashment[]                    @relation("LeaveEncashmentUpdatedBy")
-  banksCreated                               Bank[]                               @relation("BankCreatedBy")
-  banksUpdated                               Bank[]                               @relation("BankUpdatedBy")
-  rebateNaturesCreated                       RebateNature[]                       @relation("RebateNatureCreatedBy")
-  allocationsCreated                         Allocation[]                         @relation("AllocationCreatedBy")
-  rebalesCreated                             Rebate[]                             @relation("RebateCreatedBy")
-  payrollsGenerated                          Payroll[]                            @relation("PayrollGeneratedBy")
-  preferences                                UserPreference[]
-  socialSecurityInstitutionsCreated          SocialSecurityInstitution[]          @relation("SocialSecurityInstitutionCreatedBy")
-  socialSecurityInstitutionsUpdated          SocialSecurityInstitution[]          @relation("SocialSecurityInstitutionUpdatedBy")
-  socialSecurityEmployerRegistrationsCreated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationCreatedBy")
-  socialSecurityEmployerRegistrationsUpdated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationUpdatedBy")
-  socialSecurityEmployeeRegistrationsCreated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationCreatedBy")
-  socialSecurityEmployeeRegistrationsUpdated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationUpdatedBy")
-  socialSecurityContributionsCreated         SocialSecurityContribution[]         @relation("SocialSecurityContributionCreatedBy")
-  socialSecurityContributionsUpdated         SocialSecurityContribution[]         @relation("SocialSecurityContributionUpdatedBy")
+  leaveTypesCreated                          LeaveType[]                          @relation("LeaveTypeCreatedBy")
+  leavesPoliciesCreated                      LeavesPolicy[]                       @relation("LeavesPolicyCreatedBy")
+  loanRequestsApproved                       LoanRequest[]                        @relation("LoanRequestApprovedBy")
+  loanRequestsCreated                        LoanRequest[]                        @relation("LoanRequestCreatedBy")
+  loanRequestsUpdated                        LoanRequest[]                        @relation("LoanRequestUpdatedBy")
+  loanTypesCreated                           LoanType[]                           @relation("LoanTypeCreatedBy")
+  locationsCreated                           Location[]                           @relation("LocationCreatedBy")
+  loginHistory                               LoginHistory[]
+  maritalStatusesCreated                     MaritalStatus[]                      @relation("MaritalStatusCreatedBy")
+  overtimeRequestsCreated                    OvertimeRequest[]                    @relation("OvertimeRequestCreatedBy")
+  overtimeRequestsUpdated                    OvertimeRequest[]                    @relation("OvertimeRequestUpdatedBy")
   pfWithdrawalsApproved                      PFWithdrawal[]                       @relation("PFWithdrawalApprovedBy")
   pfWithdrawalsCreated                       PFWithdrawal[]                       @relation("PFWithdrawalCreatedBy")
   pfWithdrawalsUpdated                       PFWithdrawal[]                       @relation("PFWithdrawalUpdatedBy")
+  payrollsGenerated                          Payroll[]                            @relation("PayrollGeneratedBy")
+  providentFundsCreated                      ProvidentFund[]                      @relation("ProvidentFundCreatedBy")
+  qualificationsCreated                      Qualification[]                      @relation("QualificationCreatedBy")
+  rebalesCreated                             Rebate[]                             @relation("RebateCreatedBy")
+  rebateNaturesCreated                       RebateNature[]                       @relation("RebateNatureCreatedBy")
+  refreshTokens                              RefreshToken[]
+  requestForwardingConfigsCreated            RequestForwardingConfiguration[]     @relation("RequestForwardingConfigCreatedBy")
+  requestForwardingConfigsUpdated            RequestForwardingConfiguration[]     @relation("RequestForwardingConfigUpdatedBy")
+  salaryBreakupsCreated                      SalaryBreakup[]                      @relation("SalaryBreakupCreatedBy")
+  sessions                                   Session[]
+  socialSecurityContributionsCreated         SocialSecurityContribution[]         @relation("SocialSecurityContributionCreatedBy")
+  socialSecurityContributionsUpdated         SocialSecurityContribution[]         @relation("SocialSecurityContributionUpdatedBy")
+  socialSecurityEmployeeRegistrationsCreated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationCreatedBy")
+  socialSecurityEmployeeRegistrationsUpdated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationUpdatedBy")
+  socialSecurityEmployerRegistrationsCreated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationCreatedBy")
+  socialSecurityEmployerRegistrationsUpdated SocialSecurityEmployerRegistration[] @relation("SocialSecurityEmployerRegistrationUpdatedBy")
+  socialSecurityInstitutionsCreated          SocialSecurityInstitution[]          @relation("SocialSecurityInstitutionCreatedBy")
+  socialSecurityInstitutionsUpdated          SocialSecurityInstitution[]          @relation("SocialSecurityInstitutionUpdatedBy")
+  statesCreated                              State[]                              @relation("StateCreatedBy")
+  subDepartmentsCreated                      SubDepartment[]                      @relation("SubDepartmentCreatedBy")
+  taxSlabsCreated                            TaxSlab[]                            @relation("TaxSlabCreatedBy")
+  role                                       Role?                                @relation(fields: [roleId], references: [id])
+  preferences                                UserPreference[]
+  workingHoursPoliciesCreated                WorkingHoursPolicy[]                 @relation("WorkingHoursPolicyCreatedBy")
+  policyAssignmentsCreated                   WorkingHoursPolicyAssignment[]       @relation("PolicyAssignmentCreatedBy")
 }
 
 model Role {
-  id          String   @id @default(uuid())
-  name        String   @unique
+  id          String           @id @default(uuid())
+  name        String           @unique
   description String?
-  isSystem    Boolean  @default(false) // System roles can't be deleted
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  users       User[]
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   permissions RolePermission[]
+  users       User[]
 }
 
 model Permission {
-  id          String   @id @default(uuid())
-  name        String   @unique // e.g., "employees.create", "employees.view"
-  module      String // e.g., "employees", "departments", "payroll"
-  action      String // e.g., "create", "read", "update", "delete"
+  id          String           @id @default(uuid())
+  name        String           @unique
+  module      String
+  action      String
   description String?
-  createdAt   DateTime @default(now())
-
-  roles RolePermission[]
+  createdAt   DateTime         @default(now())
+  roles       RolePermission[]
 }
 
 model RolePermission {
   id           String     @id @default(uuid())
   roleId       String
   permissionId String
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
 }
@@ -145,7 +136,6 @@ model RolePermission {
 model Session {
   id             String   @id @default(uuid())
   userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token          String   @unique
   ipAddress      String?
   userAgent      String?
@@ -154,6 +144,7 @@ model Session {
   expiresAt      DateTime
   createdAt      DateTime @default(now())
   lastActivityAt DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([token])
@@ -162,12 +153,12 @@ model Session {
 model RefreshToken {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
   family    String
   isRevoked Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([token])
@@ -176,20 +167,20 @@ model RefreshToken {
 model ActivityLog {
   id           String   @id @default(uuid())
   userId       String?
-  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action       String // login, logout, create, update, delete, etc.
-  module       String? // employees, departments, payroll, etc.
-  entity       String? // Entity type affected
-  entityId     String? // Entity ID affected
-  description  String? // Human readable description
-  oldValues    String? // JSON string of old values
-  newValues    String? // JSON string of new values
+  action       String
+  module       String?
+  entity       String?
+  entityId     String?
+  description  String?
+  oldValues    String?
+  newValues    String?
   ipAddress    String?
   userAgent    String?
-  status       String   @default("success") // success, failure
+  status       String   @default("success")
   errorMessage String?
-  metadata     String? // Additional JSON metadata
+  metadata     String?
   createdAt    DateTime @default(now())
+  user         User?    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([action])
@@ -200,13 +191,13 @@ model ActivityLog {
 model LoginHistory {
   id         String   @id @default(uuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   ipAddress  String
   userAgent  String?
   deviceInfo String?
-  status     String // success, failed, blocked
+  status     String
   failReason String?
   createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([createdAt])
@@ -225,11 +216,11 @@ model BlacklistedToken {
 model UserPreference {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  key       String // e.g., "table-column-visibility-employees-table"
-  value     String // JSON string of the preference value
+  key       String
+  value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
   @@index([userId])

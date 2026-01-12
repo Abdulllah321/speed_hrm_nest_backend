@@ -1,9 +1,6 @@
-// Exit Clearance related models
-
 model ExitClearance {
   id                      String    @id @default(uuid())
   employeeId              String
-  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employeeName            String
   designation             String?
   department              String?
@@ -14,7 +11,6 @@ model ExitClearance {
   lastWorkingDate         DateTime
   reportingManager        String?
   date                    DateTime  @default(now())
-  // IT Department
   itAccessControl         Boolean   @default(false)
   itPasswordInactivated   Boolean   @default(false)
   itLaptopReturned        Boolean   @default(false)
@@ -23,17 +19,14 @@ model ExitClearance {
   itMobileDevice          Boolean   @default(false)
   itSimCard               Boolean   @default(false)
   itBillsSettlement       Boolean   @default(false)
-  // Finance Department
   financeAdvance          Boolean   @default(false)
   financeLoan             Boolean   @default(false)
   financeOtherLiabilities Boolean   @default(false)
-  // Admin Department
   adminVehicle            Boolean   @default(false)
   adminKeys               Boolean   @default(false)
   adminOfficeAccessories  Boolean   @default(false)
   adminMobilePhone        Boolean   @default(false)
   adminVisitingCards      Boolean   @default(false)
-  // HR Department
   hrEobi                  Boolean   @default(false)
   hrProvidentFund         Boolean   @default(false)
   hrIdCard                Boolean   @default(false)
@@ -45,6 +38,7 @@ model ExitClearance {
   approvalStatus          String    @default("pending")
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
 }
