@@ -877,6 +877,8 @@ export class EmployeeService {
           area: areaValue || null,
           employeeSalary: employeeSalaryNumber,
           eobi: !!eobiValue,
+          eobiId: eobiIdValue || null,
+          eobiCode: eobiCodeValue || null,
           eobiNumber: eobiNumberValue || null,
           eobiDocumentUrl: eobiDocumentUrlValue || null,
           ...(documentUrlsValue
@@ -3368,7 +3370,19 @@ export class EmployeeService {
                 record.employeeSalary ||
                 '0'
               ).toString().replace(/,/g, ''),
-              eobi: record.EOBI === 'true' || record.eobi === 'true' || false,
+              eobi: record.EOBI === 'YES' || record.EOBI === 'true' || record.eobi === 'true' || false,
+              eobiId:
+                record['EOBI ID'] ||
+                record['EOBI-ID'] ||
+                record.EOBIID ||
+                record.eobiId ||
+                null,
+              eobiCode:
+                record['EOBI Code'] ||
+                record['EOBI-Code'] ||
+                record.EOBICode ||
+                record.eobiCode ||
+                null,
               eobiNumber:
                 record['EOBI Number'] ||
                 record['EOBI-Number'] ||
