@@ -1,21 +1,16 @@
-// Request Forwarding Configuration models
-
 model RequestForwardingConfiguration {
-  id           String   @id @default(uuid())
-  requestType  String // "exemption" | "attendance" | "advance-salary" | "loan" | "overtime" | "leave-encashment"
-  approvalFlow String // "auto-approved" | "multi-level"
-  status       String   @default("active") // active, inactive
-  createdById  String?
-  createdBy    User?    @relation("RequestForwardingConfigCreatedBy", fields: [createdById], references: [id])
-  updatedById  String?
-  updatedBy    User?    @relation("RequestForwardingConfigUpdatedBy", fields: [updatedById], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
+  id             String                           @id @default(uuid())
+  requestType    String                           @unique
+  approvalFlow   String
+  status         String                           @default("active")
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime                         @default(now())
+  updatedAt      DateTime                         @updatedAt
   approvalLevels RequestForwardingApprovalLevel[]
+  createdBy      User?                            @relation("RequestForwardingConfigCreatedBy", fields: [createdById], references: [id])
+  updatedBy      User?                            @relation("RequestForwardingConfigUpdatedBy", fields: [updatedById], references: [id])
 
-  @@unique([requestType])
   @@index([requestType])
   @@index([status])
 }
@@ -23,23 +18,18 @@ model RequestForwardingConfiguration {
 model RequestForwardingApprovalLevel {
   id                 String                         @id @default(uuid())
   configurationId    String
+  level              Int
+  approverType       String
+  departmentHeadMode String?
+  specificEmployeeId String?
+  departmentId       String?
+  subDepartmentId    String?
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
   configuration      RequestForwardingConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
-  level              Int // Sequential level number (1, 2, 3, ...)
-  approverType       String // "specific-employee" | "department-head" | "sub-department-head" | "reporting-manager"
-  departmentHeadMode String? // "auto" | "specific" (only for department-head and sub-department-head)
-
-  // Optional approver references
-  specificEmployeeId String? // For "specific-employee" approver type
-  specificEmployee   Employee? @relation("RequestForwardingSpecificEmployee", fields: [specificEmployeeId], references: [id], onDelete: SetNull)
-
-  departmentId String? // For "department-head" or "sub-department-head" when mode is "specific"
-  department   Department? @relation("RequestForwardingDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
-
-  subDepartmentId String? // For "sub-department-head" when mode is "specific"
-  subDepartment   SubDepartment? @relation("RequestForwardingSubDepartment", fields: [subDepartmentId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  department         Department?                    @relation("RequestForwardingDepartment", fields: [departmentId], references: [id])
+  specificEmployee   Employee?                      @relation("RequestForwardingSpecificEmployee", fields: [specificEmployeeId], references: [id])
+  subDepartment      SubDepartment?                 @relation("RequestForwardingSubDepartment", fields: [subDepartmentId], references: [id])
 
   @@index([configurationId])
   @@index([level])

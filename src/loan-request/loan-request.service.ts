@@ -15,7 +15,7 @@ export class LoanRequestService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(params?: {
     employeeId?: string;
@@ -110,7 +110,34 @@ export class LoanRequestService {
         },
       });
 
-      return { status: true, data: loanRequests };
+      // Calculate paid amount for each loan request
+      const data = await Promise.all(
+        loanRequests.map(async (loan) => {
+          // Fetch total loan deductions for this employee from confirmed payrolls
+          const payrollDetails = await this.prisma.payrollDetail.aggregate({
+            where: {
+              employeeId: loan.employeeId,
+              payroll: {
+                status: 'confirmed',
+              },
+            },
+            _sum: {
+              loanDeduction: true,
+            },
+          });
+
+          const paidAmount = payrollDetails._sum.loanDeduction
+            ? Number(payrollDetails._sum.loanDeduction.toString())
+            : 0;
+
+          return {
+            ...loan,
+            paidAmount,
+          };
+        }),
+      );
+
+      return { status: true, data };
     } catch (error) {
       console.error('Error listing loan requests:', error);
       return {

@@ -84,7 +84,7 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-New-Access-Token', 'X-New-Refresh-Token']
   });
   await app.listen({
-    port: parseInt(process.env.PORT ?? '3000'),
+    port: parseInt(process.env.PORT ?? '5000'),
     host: process.env.HOSTNAME || '0.0.0.0'
   });
 }

@@ -1,29 +1,27 @@
-// Loan Request models
-
 model LoanRequest {
   id                      String    @id @default(uuid())
   employeeId              String
-  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   loanTypeId              String
-  loanType                LoanType  @relation(fields: [loanTypeId], references: [id], onDelete: Restrict)
   amount                  Decimal   @db.Decimal(10, 2)
-  requestedDate           DateTime // When the loan is being requested
-  repaymentStartMonthYear String? // Format: "YYYY-MM" for easy querying (optional)
-  numberOfInstallments    Int? // Number of months for repayment (1-120, optional)
-  reason                  String    @db.Text // Detailed reason for loan request
-  additionalDetails       String?   @db.Text // Additional information or notes
-  approvalStatus          String    @default("pending") // pending, approved, rejected
+  requestedDate           DateTime
+  repaymentStartMonthYear String?
+  numberOfInstallments    Int?
+  reason                  String
+  additionalDetails       String?
+  approvalStatus          String    @default("pending")
   approvedById            String?
-  approvedBy              User?     @relation("LoanRequestApprovedBy", fields: [approvedById], references: [id])
   approvedAt              DateTime?
-  rejectionReason         String?   @db.Text // Reason if rejected
-  status                  String    @default("pending") // pending, approved, rejected, disbursed, completed, cancelled
+  rejectionReason         String?
+  status                  String    @default("pending")
   createdById             String?
-  createdBy               User?     @relation("LoanRequestCreatedBy", fields: [createdById], references: [id])
   updatedById             String?
-  updatedBy               User?     @relation("LoanRequestUpdatedBy", fields: [updatedById], references: [id])
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+  approvedBy              User?     @relation("LoanRequestApprovedBy", fields: [approvedById], references: [id])
+  createdBy               User?     @relation("LoanRequestCreatedBy", fields: [createdById], references: [id])
+  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  loanType                LoanType  @relation(fields: [loanTypeId], references: [id])
+  updatedBy               User?     @relation("LoanRequestUpdatedBy", fields: [updatedById], references: [id])
 
   @@index([employeeId])
   @@index([loanTypeId])
