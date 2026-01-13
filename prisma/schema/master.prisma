@@ -141,13 +141,13 @@ model Location {
 model AllowanceHead {
   id              String      @id @default(uuid())
   name            String      @unique
+  calculationType String      @default("Amount")
+  amount          Decimal?    @db.Decimal(10, 2)
+  percentage      Decimal?    @db.Decimal(5, 2)
   status          String      @default("active")
   createdById     String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
-  amount          Decimal?    @db.Decimal(10, 2)
-  calculationType String      @default("Amount")
-  percentage      Decimal?    @db.Decimal(5, 2)
   allowances      Allowance[]
   createdBy       User?       @relation("AllowanceHeadCreatedBy", fields: [createdById], references: [id])
 }

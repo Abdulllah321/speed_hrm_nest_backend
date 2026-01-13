@@ -75,6 +75,7 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({ example: '2024-06-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   probationExpiryDate?: string;
 
   @ApiProperty({ example: '42101-1234567-1' })
@@ -85,6 +86,7 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({ example: '2030-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   cnicExpiryDate?: string;
 
   @ApiPropertyOptional({ example: false })
@@ -95,11 +97,13 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({ example: '2024-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   joiningDate?: string;
 
   @ApiProperty({ example: '1990-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   dateOfBirth?: string;
 
   @ApiProperty({ example: 'Pakistani' })
@@ -266,20 +270,20 @@ export class CreateEmployeeDto {
   @IsString()
   permanentAddress?: string;
 
-  @ApiProperty({ example: 'HBL' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'HBL' })
+  @IsOptional()
   @IsString()
-  bankName: string;
+  bankName?: string;
 
-  @ApiProperty({ example: '1234567890' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: '1234567890' })
+  @IsOptional()
   @IsString()
-  accountNumber: string;
+  accountNumber?: string;
 
-  @ApiProperty({ example: 'John Doe' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'John Doe' })
+  @IsOptional()
   @IsString()
-  accountTitle: string;
+  accountTitle?: string;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
@@ -406,6 +410,7 @@ export class UpdateEmployeeDto {
   @ApiPropertyOptional({ example: '2024-06-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   probationExpiryDate?: string;
   @ApiPropertyOptional({ example: '42101-1234567-1' })
   @IsOptional()
@@ -414,6 +419,7 @@ export class UpdateEmployeeDto {
   @ApiPropertyOptional({ example: '2030-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   cnicExpiryDate?: string;
   @ApiPropertyOptional({ example: false })
   @IsOptional()
@@ -422,10 +428,12 @@ export class UpdateEmployeeDto {
   @ApiPropertyOptional({ example: '2024-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   joiningDate?: string;
   @ApiPropertyOptional({ example: '1990-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => (value === '' ? null : value))
   dateOfBirth?: string;
   @ApiPropertyOptional({ example: 'Pakistani' })
   @IsOptional()
@@ -450,10 +458,12 @@ export class UpdateEmployeeDto {
   @ApiPropertyOptional({ example: 'john.personal@example.com' })
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => (value === '' ? null : value))
   personalEmail?: string;
   @ApiPropertyOptional({ example: 'john.official@company.com' })
   @IsOptional()
   @IsEmail()
+  @Transform(({ value }) => (value === '' ? null : value))
   officialEmail?: string;
   @ApiPropertyOptional({ example: 'country-uuid' })
   @IsOptional()

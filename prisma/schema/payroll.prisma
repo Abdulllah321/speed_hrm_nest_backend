@@ -8,6 +8,7 @@ model Allowance {
   date             DateTime
   type             String        @default("specific")
   adjustmentMethod String?
+  paymentMethod    String        @default("with_salary")
   isTaxable        Boolean       @default(false)
   taxPercentage    Decimal?      @db.Decimal(5, 2)
   notes            String?
@@ -16,7 +17,6 @@ model Allowance {
   updatedById      String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
-  paymentMethod    String        @default("with_salary")
   allowanceHead    AllowanceHead @relation(fields: [allowanceHeadId], references: [id])
   createdBy        User?         @relation("AllowanceCreatedBy", fields: [createdById], references: [id])
   employee         Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -28,7 +28,6 @@ model Allowance {
   @@index([month, year])
   @@index([status])
   @@index([type])
-  @@index([paymentMethod])
 }
 
 model Deduction {
@@ -244,6 +243,7 @@ model PayrollDetail {
   taxDeduction                Decimal                      @default(0) @db.Decimal(10, 2)
   overtimeAmount              Decimal                      @default(0) @db.Decimal(10, 2)
   bonusAmount                 Decimal                      @default(0) @db.Decimal(10, 2)
+  leaveEncashmentAmount       Decimal                      @default(0) @db.Decimal(10, 2)
   grossSalary                 Decimal                      @db.Decimal(10, 2)
   netSalary                   Decimal                      @db.Decimal(10, 2)
   salaryBreakup               Json?                        @default("[]")
@@ -259,7 +259,6 @@ model PayrollDetail {
   paymentMode                 String?                      @default("Bank Transfer")
   paymentStatus               String                       @default("pending")
   paymentDate                 DateTime?
-  leaveEncashmentAmount       Decimal                      @default(0) @db.Decimal(10, 2)
   employee                    Employee                     @relation(fields: [employeeId], references: [id])
   payroll                     Payroll                      @relation(fields: [payrollId], references: [id], onDelete: Cascade)
   socialSecurityContributions SocialSecurityContribution[]

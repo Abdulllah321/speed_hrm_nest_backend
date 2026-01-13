@@ -46,9 +46,9 @@ model Employee {
   allowRemoteAttendance           Boolean                              @default(false)
   currentAddress                  String?
   permanentAddress                String?
-  bankName                        String
-  accountNumber                   String
-  accountTitle                    String
+  bankName                        String?
+  accountNumber                   String?
+  accountTitle                    String?
   status                          String                               @default("active")
   isRejoined                      Boolean                              @default(false)
   originalJoiningDate             DateTime?

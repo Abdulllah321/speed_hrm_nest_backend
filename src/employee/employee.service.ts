@@ -119,10 +119,10 @@ export class EmployeeService {
     // User requested "integrate cache in ... EmployeeService".
     // I will cache the UNFILTERED version.
     if (!filters || (!filters.departmentId && !filters.subDepartmentId)) {
-       // but wait, this method body fetches based on where.
-       // It seems lightweight. I'll skip caching filtered queries for simplicity unless requested.
+      // but wait, this method body fetches based on where.
+      // It seems lightweight. I'll skip caching filtered queries for simplicity unless requested.
     }
-    
+
     return { status: true, data: employees };
   }
 
@@ -154,19 +154,19 @@ export class EmployeeService {
     });
 
 
-    
+
     const result = employees.map((emp) => ({
-        id: emp.id,
-        employeeId: emp.employeeId,
-        employeeName: emp.employeeName,
-        departmentId: emp.departmentId,
-        subDepartmentId: emp.subDepartmentId,
-        departmentName: emp.department?.name || null,
-        subDepartmentName: emp.subDepartment?.name || null,
-        designationName: emp.designation?.name || null,
-        providentFund: emp.providentFund,
-      }));
-    
+      id: emp.id,
+      employeeId: emp.employeeId,
+      employeeName: emp.employeeName,
+      departmentId: emp.departmentId,
+      subDepartmentId: emp.subDepartmentId,
+      departmentName: emp.department?.name || null,
+      subDepartmentName: emp.subDepartment?.name || null,
+      designationName: emp.designation?.name || null,
+      providentFund: emp.providentFund,
+    }));
+
     await this.cacheManager.set(cacheKey, result, 3600000);
     return { status: true, data: result };
   }
@@ -864,39 +864,39 @@ export class EmployeeService {
         .qualifications;
 
       // Prepare Social Security Data
-    const socialSecurityRegistrations = (body as any).socialSecurityRegistrations;
-    const socialSecurityCreateData: any[] = [];
-    
-    if (socialSecurityRegistrations && Array.isArray(socialSecurityRegistrations)) {
-      for (const reg of socialSecurityRegistrations) {
-        if (reg.institutionId && reg.registrationNumber) {
-           // Find employer registration (assuming one active per institution)
-           const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
-             where: { institutionId: reg.institutionId, status: 'active' }
-           });
-           
-           if (employerReg) {
-             socialSecurityCreateData.push({
-               institutionId: reg.institutionId,
-               employerRegistrationId: employerReg.id,
-               registrationNumber: reg.registrationNumber,
-               cardNumber: reg.cardNumber || null,
-               registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
-               expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
-               contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
-               baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
-               monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
-               employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
-               employerContribution: reg.employerContribution ? Number(reg.employerContribution) : 0,
-               status: reg.status || 'active',
-               isEmployerContribution: true
-             });
-           }
+      const socialSecurityRegistrations = (body as any).socialSecurityRegistrations;
+      const socialSecurityCreateData: any[] = [];
+
+      if (socialSecurityRegistrations && Array.isArray(socialSecurityRegistrations)) {
+        for (const reg of socialSecurityRegistrations) {
+          if (reg.institutionId && reg.registrationNumber) {
+            // Find employer registration (assuming one active per institution)
+            const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+              where: { institutionId: reg.institutionId, status: 'active' }
+            });
+
+            if (employerReg) {
+              socialSecurityCreateData.push({
+                institutionId: reg.institutionId,
+                employerRegistrationId: employerReg.id,
+                registrationNumber: reg.registrationNumber,
+                cardNumber: reg.cardNumber || null,
+                registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
+                expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
+                contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
+                baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
+                monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
+                employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
+                employerContribution: reg.employerContribution ? Number(reg.employerContribution) : 0,
+                status: reg.status || 'active',
+                isEmployerContribution: true
+              });
+            }
+          }
         }
       }
-    }
 
-    const created = await this.prisma.employee.create({
+      const created = await this.prisma.employee.create({
 
 
         data: {
@@ -954,9 +954,9 @@ export class EmployeeService {
           allowRemoteAttendance: !!allowRemoteAttendanceValue,
           currentAddress: currentAddressValue || null,
           permanentAddress: permanentAddressValue || null,
-          bankName: bankNameValue,
-          accountNumber: accountNumberValue,
-          accountTitle: accountTitleValue,
+          bankName: bankNameValue || null,
+          accountNumber: accountNumberValue || null,
+          accountTitle: accountTitleValue || null,
           status: 'active',
           socialSecurityRegistrations: socialSecurityCreateData.length > 0 ? {
             create: socialSecurityCreateData
@@ -1123,40 +1123,40 @@ export class EmployeeService {
       // Handle Social Security update
       const socialSecurityRegistrationsValue = (body as any).socialSecurityRegistrations;
       if (socialSecurityRegistrationsValue !== undefined) {
-         // Delete existing
-         await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
-           where: { employeeId: id }
-         });
-         
-         if (Array.isArray(socialSecurityRegistrationsValue)) {
-            for (const reg of socialSecurityRegistrationsValue) {
-               if (reg.institutionId && reg.registrationNumber) {
-                 const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
-                    where: { institutionId: reg.institutionId, status: 'active' }
-                 });
-                 if (employerReg) {
-                    await this.prisma.socialSecurityEmployeeRegistration.create({
-                       data: {
-                          institutionId: reg.institutionId,
-                          employerRegistrationId: employerReg.id,
-                          employeeId: id,
-                          registrationNumber: reg.registrationNumber,
-                          cardNumber: reg.cardNumber || null,
-                          registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
-                          expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
-                          contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
-                          baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
-                          monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
-                          employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
-                          employerContribution: reg.employerContribution ? Number(reg.employerContribution) : 0,
-                          status: reg.status || 'active',
-                          isEmployerContribution: true
-                       }
-                    });
-                 }
-               }
+        // Delete existing
+        await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
+          where: { employeeId: id }
+        });
+
+        if (Array.isArray(socialSecurityRegistrationsValue)) {
+          for (const reg of socialSecurityRegistrationsValue) {
+            if (reg.institutionId && reg.registrationNumber) {
+              const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+                where: { institutionId: reg.institutionId, status: 'active' }
+              });
+              if (employerReg) {
+                await this.prisma.socialSecurityEmployeeRegistration.create({
+                  data: {
+                    institutionId: reg.institutionId,
+                    employerRegistrationId: employerReg.id,
+                    employeeId: id,
+                    registrationNumber: reg.registrationNumber,
+                    cardNumber: reg.cardNumber || null,
+                    registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
+                    expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
+                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
+                    baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
+                    monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
+                    employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
+                    employerContribution: reg.employerContribution ? Number(reg.employerContribution) : 0,
+                    status: reg.status || 'active',
+                    isEmployerContribution: true
+                  }
+                });
+              }
             }
-         }
+          }
+        }
       }
 
       // Handle equipment assignments update
@@ -1415,9 +1415,9 @@ export class EmployeeService {
             allowRemoteAttendanceValue ?? existing?.allowRemoteAttendance,
           currentAddress: currentAddressValue ?? existing?.currentAddress,
           permanentAddress: permanentAddressValue ?? existing?.permanentAddress,
-          bankName: bankNameValue ?? existing?.bankName,
-          accountNumber: accountNumberValue ?? existing?.accountNumber,
-          accountTitle: accountTitleValue ?? existing?.accountTitle,
+          bankName: bankNameValue !== undefined ? (bankNameValue || null) : existing?.bankName,
+          accountNumber: accountNumberValue !== undefined ? (accountNumberValue || null) : existing?.accountNumber,
+          accountTitle: accountTitleValue !== undefined ? (accountTitleValue || null) : existing?.accountTitle,
           status: statusValue ?? existing?.status,
           equipmentAssignments:
             equipmentAssignmentsValue !== undefined &&
@@ -2046,40 +2046,40 @@ export class EmployeeService {
       // Handle Social Security update
       const socialSecurityRegistrationsValue = (body as any).socialSecurityRegistrations;
       if (socialSecurityRegistrationsValue !== undefined) {
-         // Delete existing
-         await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
-           where: { employeeId: existing.id }
-         });
-         
-         if (Array.isArray(socialSecurityRegistrationsValue)) {
-            for (const reg of socialSecurityRegistrationsValue) {
-               if (reg.institutionId && reg.registrationNumber) {
-                 const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
-                    where: { institutionId: reg.institutionId, status: 'active' }
-                 });
-                 if (employerReg) {
-                    await this.prisma.socialSecurityEmployeeRegistration.create({
-                       data: {
-                          institutionId: reg.institutionId,
-                          employerRegistrationId: employerReg.id,
-                          employeeId: existing.id,
-                          registrationNumber: reg.registrationNumber,
-                          cardNumber: reg.cardNumber || null,
-                          registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
-                          expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
-                          contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
-                          baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
-                          monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
-                          employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
-                          employerContribution: reg.employerContribution ? Number(reg.employerContribution) : 0,
-                          status: reg.status || 'active',
-                          isEmployerContribution: true
-                       }
-                    });
-                 }
-               }
+        // Delete existing
+        await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
+          where: { employeeId: existing.id }
+        });
+
+        if (Array.isArray(socialSecurityRegistrationsValue)) {
+          for (const reg of socialSecurityRegistrationsValue) {
+            if (reg.institutionId && reg.registrationNumber) {
+              const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+                where: { institutionId: reg.institutionId, status: 'active' }
+              });
+              if (employerReg) {
+                await this.prisma.socialSecurityEmployeeRegistration.create({
+                  data: {
+                    institutionId: reg.institutionId,
+                    employerRegistrationId: employerReg.id,
+                    employeeId: existing.id,
+                    registrationNumber: reg.registrationNumber,
+                    cardNumber: reg.cardNumber || null,
+                    registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
+                    expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
+                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
+                    baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
+                    monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
+                    employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
+                    employerContribution: reg.employerContribution ? Number(reg.employerContribution) : 0,
+                    status: reg.status || 'active',
+                    isEmployerContribution: true
+                  }
+                });
+              }
             }
-         }
+          }
+        }
       }
 
       // Handle equipment assignments update
