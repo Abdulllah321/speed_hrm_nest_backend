@@ -855,11 +855,11 @@ export class EmployeeService {
       const bankNameValue = getBodyString('bankName');
       const accountNumberValue = getBodyString('accountNumber');
       const accountTitleValue = getBodyString('accountTitle');
-      const selectedEquipmentsValue = (
+      const equipmentAssignmentsValue = (
         body as {
-          selectedEquipments?: unknown;
+          equipmentAssignments?: unknown;
         }
-      ).selectedEquipments;
+      ).equipmentAssignments;
       const qualificationsValue = (body as { qualifications?: unknown })
         .qualifications;
 
@@ -962,11 +962,11 @@ export class EmployeeService {
             create: socialSecurityCreateData
           } : undefined,
           equipmentAssignments:
-            (body as any).equipmentAssignments &&
-              Array.isArray((body as any).equipmentAssignments) &&
-              (body as any).equipmentAssignments.length > 0
+            equipmentAssignmentsValue &&
+              Array.isArray(equipmentAssignmentsValue) &&
+              equipmentAssignmentsValue.length > 0
               ? {
-                create: ((body as any).equipmentAssignments as any[])
+                create: (equipmentAssignmentsValue as any[])
                   .filter((ea) => ea.equipmentId)
                   .map((ea: any) => ({
                     equipmentId: ea.equipmentId,
