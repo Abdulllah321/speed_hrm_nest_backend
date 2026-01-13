@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import type { Cache } from 'cache-manager'
 import { PrismaService } from '../prisma/prisma.service'
 import { ActivityLogsService } from '../activity-logs/activity-logs.service'
 import { CreateSubDepartmentDto, UpdateDepartmentDto, UpdateSubDepartmentDto, BulkUpdateDepartmentItemDto } from './dto/department-dto'
@@ -8,9 +10,16 @@ export class DepartmentService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) { }
 
   async getAllDepartments() {
+    const cacheKey = 'departments_all'
+    const cachedData = await this.cacheManager.get(cacheKey)
+    if (cachedData) {
+      return { status: true, data: cachedData }
+    }
+
     const departments = await this.prisma.department.findMany({
       include: {
         subDepartments: true,
@@ -26,6 +35,8 @@ export class DepartmentService {
       headName: dept.head ? `${dept.head.employeeName} (${dept.head.employeeId})` : null,
       allocationName: dept.allocation ? dept.allocation.name : null,
     }))
+    
+    await this.cacheManager.set(cacheKey, data, 3600000) // 1 hour TTL
     return { status: true, data }
   }
 
@@ -74,6 +85,7 @@ export class DepartmentService {
         newValues: JSON.stringify(items),
         status: 'success',
       })
+      await this.cacheManager.del('departments_all')
       return { status: true, data: departments, message: 'Departments created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -114,6 +126,7 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('departments_all')
       return { status: true, data: department, message: 'Department updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -167,6 +180,7 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('departments_all')
       return { status: true, data: updatedDepartments, message: 'Departments updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -199,6 +213,7 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('departments_all')
       return { status: true, data: departments, message: 'Departments deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -233,6 +248,7 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('departments_all')
       return { status: true, data: department, message: 'Department deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -252,6 +268,12 @@ export class DepartmentService {
   }
 
   async getAllSubDepartments() {
+    const cacheKey = 'subdepartments_all'
+    const cachedData = await this.cacheManager.get(cacheKey)
+    if (cachedData) {
+      return { status: true, data: cachedData, message: 'Sub-departments fetched successfully' }
+    }
+
     const subDepartments = await this.prisma.subDepartment.findMany({
       include: {
         department: true,
@@ -266,6 +288,8 @@ export class DepartmentService {
       createdBy: sd.createdBy ? `${sd.createdBy.firstName} ${(sd.createdBy.lastName || '')}`.trim() : null,
       headName: sd.head ? `${sd.head.employeeName} (${sd.head.employeeId})` : null,
     }))
+
+    await this.cacheManager.set(cacheKey, data, 3600000)
     return { status: true, data, message: 'Sub-departments fetched successfully' }
   }
 
@@ -310,6 +334,9 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('subdepartments_all')
+      // Also invalidate departments as they contain subDepartments relation
+      await this.cacheManager.del('departments_all') 
       return { status: true, data: subDepartments, message: 'Sub-departments created successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -361,6 +388,8 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('subdepartments_all')
+      await this.cacheManager.del('departments_all')
       return { status: true, data: updatedSubDepartments, message: 'Sub-departments updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -402,6 +431,8 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('subdepartments_all')
+      await this.cacheManager.del('departments_all')
       return { status: true, data: subDepartment, message: 'Sub-department updated successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -435,6 +466,8 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('subdepartments_all')
+      await this.cacheManager.del('departments_all')
       return { status: true, data: subDepartments, message: 'Sub-departments deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({
@@ -469,6 +502,8 @@ export class DepartmentService {
         userAgent: ctx?.userAgent,
         status: 'success',
       })
+      await this.cacheManager.del('subdepartments_all')
+      await this.cacheManager.del('departments_all')
       return { status: true, data: subDepartment, message: 'Sub-department deleted successfully' }
     } catch (error: any) {
       await this.activityLogs.log({

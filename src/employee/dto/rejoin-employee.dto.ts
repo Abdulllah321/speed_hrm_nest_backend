@@ -237,11 +237,14 @@ export class RejoinEmployeeDto {
   emergencyContactPersonName?: string;
 
   @IsOptional()
-  selectedEquipments?: any;
+  equipmentAssignments?: any;
 
   @IsOptional()
   avatarUrl?: string;
 
   @IsOptional()
   qualifications?: any;
+
+  @IsOptional()
+  socialSecurityRegistrations?: any;
 }

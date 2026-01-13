@@ -23,7 +23,9 @@ export class AuthService {
     if (!user) return { status: false, message: 'Invalid credentials' }
     if (user.status !== 'active') return { status: false, message: 'Account is not active' }
     const ok = await bcrypt.compare(password, user.password)
+    // If password match fails, check if it's the first password (default might be needed logic, but here assume bcrypt matches)
     if (!ok) return { status: false, message: 'Invalid credentials' }
+
     
     // Create new session and refresh token (does NOT invalidate existing sessions - allows multiple devices)
     const accessOpts: jwt.SignOptions = { expiresIn: authConfig.jwt.accessExpiresIn as any, issuer: authConfig.jwt.issuer }
@@ -126,10 +128,20 @@ export class AuthService {
         roleId: true,
         createdAt: true,
         updatedAt: true,
+        
+        isFirstPassword: true,
         role: { 
           include: { 
             permissions: { include: { permission: true } } 
           } 
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeId: true,
+            designation: { select: { name: true } },
+            department: { select: { name: true } }
+          }
         },
         preferences: {
           select: {
@@ -202,8 +214,42 @@ export class AuthService {
     if (!ok) return { status: false, message: 'Invalid current password' }
     if ((newPassword || '').length < authConfig.password.minLength) return { status: false, message: `Password must be at least ${authConfig.password.minLength} characters` }
     const hashed = await bcrypt.hash(newPassword, authConfig.password.saltRounds)
-    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } })
+    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed, isFirstPassword: false } })
     return { status: true, message: 'Password changed' }
+  }
+
+  async updateMe(userId: string, data: any) {
+    const allowedFields = ['firstName', 'lastName', 'phone', 'avatar'];
+    const updateData: any = {};
+    
+    // Filter out restricted fields
+    for (const key of Object.keys(data)) {
+      if (allowedFields.includes(key)) {
+        updateData[key] = data[key];
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return { status: false, message: 'No valid fields to update' };
+    }
+
+    const user = await this.prisma.user.update({ 
+      where: { id: userId }, 
+      data: updateData,
+      include: {
+        employee: {
+            select: {
+                id: true,
+                employeeId: true,
+                designation: { select: { name: true } },
+                department: { select: { name: true } }
+            }
+        },
+        role: { include: { permissions: { include: { permission: true } } } }
+      }
+    })
+    
+    return { status: true, data: user, message: 'Profile updated' }
   }
 
   async getActiveSessions(userId: string) {
