@@ -1,13 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards, Req } from '@nestjs/common'
 import { DepartmentService } from './department.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import {  UpdateDepartmentDto, UpdateSubDepartmentDto, BulkUpdateDepartmentDto, BulkUpdateDepartmentItemDto } from './dto/department-dto'
+import { UpdateDepartmentDto, UpdateSubDepartmentDto, BulkUpdateDepartmentDto, BulkUpdateDepartmentItemDto } from './dto/department-dto'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
 
 @ApiTags('Department')
 @Controller('api')
 export class DepartmentController {
-  constructor(private service: DepartmentService) {}
+  constructor(private service: DepartmentService) { }
 
   @Get('departments')
   @UseGuards(JwtAuthGuard)
@@ -29,9 +29,9 @@ export class DepartmentController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create departments in bulk' })
-  @ApiBody({ schema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' }, example: ['IT', 'HR'] } } } })
-  async createBulk(@Body() body: { names: string[] }, @Req() req) {
-    return this.service.createDepartments(body.names, req.user.userId)
+  @ApiBody({ schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, allocationId: { type: 'string' }, headId: { type: 'string' } } } } } } })
+  async createBulk(@Body() body: { items: { name: string; allocationId?: string; headId?: string }[] }, @Req() req) {
+    return this.service.createDepartments(body.items || [], req.user.userId)
   }
 
   @Put('departments/:id')
@@ -84,7 +84,7 @@ export class DepartmentController {
     })
   }
 
- 
+
 
   @Get('sub-departments')
   @UseGuards(JwtAuthGuard)
@@ -159,7 +159,7 @@ export class DepartmentController {
       userAgent: req.headers['user-agent'],
     })
   }
-  
+
   @Delete('sub-departments/bulk')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

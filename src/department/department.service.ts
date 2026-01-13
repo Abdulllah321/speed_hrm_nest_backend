@@ -15,7 +15,8 @@ export class DepartmentService {
       include: {
         subDepartments: true,
         createdBy: { select: { firstName: true, lastName: true } },
-        head: { select: { id: true, employeeId: true, employeeName: true } }
+        head: { select: { id: true, employeeId: true, employeeName: true } },
+        allocation: { select: { id: true, name: true } }
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -23,6 +24,7 @@ export class DepartmentService {
       ...dept,
       createdBy: dept.createdBy ? `${dept.createdBy.firstName} ${(dept.createdBy.lastName || '')}`.trim() : null,
       headName: dept.head ? `${dept.head.employeeName} (${dept.head.employeeId})` : null,
+      allocationName: dept.allocation ? dept.allocation.name : null,
     }))
     return { status: true, data }
   }
@@ -33,7 +35,8 @@ export class DepartmentService {
       include: {
         subDepartments: true,
         createdBy: { select: { firstName: true, lastName: true } },
-        head: { select: { id: true, employeeId: true, employeeName: true } }
+        head: { select: { id: true, employeeId: true, employeeName: true } },
+        allocation: { select: { id: true, name: true } }
       },
     })
     if (!department) return { status: false, message: 'Department not found' }
@@ -41,23 +44,34 @@ export class DepartmentService {
       ...department,
       createdBy: department.createdBy ? `${department.createdBy.firstName} ${(department.createdBy.lastName || '')}`.trim() : null,
       headName: department.head ? `${department.head.employeeName} (${department.head.employeeId})` : null,
+      allocationName: department.allocation ? department.allocation.name : null,
     }
     return { status: true, data }
   }
 
-  async createDepartments(names: string[], createdById: string) {
+  async createDepartments(items: { name: string; allocationId?: string; headId?: string }[], createdById: string) {
     try {
+      // We use a transaction or just loop since createMany doesn't support all relations/validations properly if we want to return full objects or potential errors per item easily
+      // But for bulk insert efficiency createMany is better. However, createMany cannot set relations if they are not foreign keys directly. 
+      // Fortunately allocationId and headId are FKs on Department.
+
       const departments = await this.prisma.department.createMany({
-        data: names.map(name => ({ name, createdById })),
+        data: items.map(item => ({
+          name: item.name,
+          allocationId: item.allocationId || null,
+          headId: item.headId || null,
+          createdById
+        })),
         skipDuplicates: true,
       })
+
       await this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'departments',
         entity: 'Department',
         description: `Created departments (${departments.count})`,
-        newValues: JSON.stringify(names),
+        newValues: JSON.stringify(items),
         status: 'success',
       })
       return { status: true, data: departments, message: 'Departments created successfully' }
@@ -69,7 +83,7 @@ export class DepartmentService {
         entity: 'Department',
         description: 'Failed to create departments',
         errorMessage: error?.message,
-        newValues: JSON.stringify(names),
+        newValues: JSON.stringify(items),
         status: 'failure',
       })
       return { status: false, message: 'Failed to create departments', data: null }
