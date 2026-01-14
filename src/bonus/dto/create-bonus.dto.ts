@@ -6,8 +6,9 @@
   IsArray,
   ValidateNested,
   IsIn,
+  IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateBonusItemDto {
@@ -25,6 +26,16 @@ export class CreateBonusItemDto {
   @IsOptional()
   @IsNumber()
   percentage?: number;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  isTaxable?: boolean;
+
+  @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
+  @IsNumber()
+  taxPercentage?: number;
 }
 
 export class CreateBonusDto {
@@ -66,6 +77,22 @@ export class CreateBonusDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value === 'true' || value === '1';
+    }
+    return Boolean(value);
+  })
+  isTaxable?: boolean;
+
+  @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
+  @IsNumber()
+  taxPercentage?: number;
 }
 
 export class UpdateBonusDto {
@@ -110,6 +137,16 @@ export class UpdateBonusDto {
       'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  isTaxable?: boolean;
+
+  @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
+  @IsNumber()
+  taxPercentage?: number;
 }
 
 export class BulkCreateBonusDto {
@@ -146,6 +183,22 @@ export class BulkCreateBonusDto {
       'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return value === 'true' || value === '1';
+    }
+    return Boolean(value);
+  })
+  isTaxable?: boolean;
+
+  @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
+  @IsNumber()
+  taxPercentage?: number;
 
   @ApiPropertyOptional({ example: 'Bulk Bonus' })
   @IsOptional()

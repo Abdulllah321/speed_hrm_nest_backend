@@ -8,7 +8,7 @@ export class AllowanceService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(params?: {
     employeeId?: string;
@@ -194,56 +194,30 @@ export class AllowanceService {
         const createdAllowances: any[] = [];
 
         for (const allowanceItem of body.allowances) {
-          // Check for duplicate
-          const existing = await tx.allowance.findUnique({
-            where: {
-              employeeId_allowanceHeadId_month_year: {
-                employeeId: allowanceItem.employeeId,
-                allowanceHeadId: allowanceItem.allowanceHeadId,
-                month: body.month,
-                year: body.year,
-              },
+          // Note: We removed the unique constraint check because the schema no longer has
+          // @@unique([employeeId, allowanceHeadId, month, year])
+          // This allows multiple allowances of the same type for the same employee in the same month
+
+          // Create new allowance
+          const created = await tx.allowance.create({
+            data: {
+              employeeId: allowanceItem.employeeId,
+              allowanceHeadId: allowanceItem.allowanceHeadId,
+              amount: allowanceItem.amount,
+              month: body.month,
+              year: body.year,
+              date: date,
+              type: allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
+              paymentMethod: allowanceItem.paymentMethod || 'with_salary',
+              adjustmentMethod: allowanceItem.adjustmentMethod || null,
+              isTaxable: allowanceItem.isTaxable ?? false,
+              taxPercentage: allowanceItem.taxPercentage ? allowanceItem.taxPercentage : null,
+              notes: allowanceItem.notes ?? null,
+              status: 'active',
+              createdById: ctx.userId,
             },
           });
-
-          if (existing) {
-            // Update existing instead of creating duplicate
-            const updated = await tx.allowance.update({
-              where: { id: existing.id },
-              data: {
-                amount: allowanceItem.amount,
-                type: allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
-                paymentMethod: allowanceItem.paymentMethod || 'with_salary',
-                adjustmentMethod: allowanceItem.adjustmentMethod || null,
-                isTaxable: allowanceItem.isTaxable ?? false,
-                taxPercentage: allowanceItem.taxPercentage ? allowanceItem.taxPercentage : null,
-                notes: allowanceItem.notes ?? null,
-                updatedById: ctx.userId,
-              },
-            });
-            createdAllowances.push(updated);
-          } else {
-            // Create new
-            const created = await tx.allowance.create({
-              data: {
-                employeeId: allowanceItem.employeeId,
-                allowanceHeadId: allowanceItem.allowanceHeadId,
-                amount: allowanceItem.amount,
-                month: body.month,
-                year: body.year,
-                date: date,
-                type: allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
-                paymentMethod: allowanceItem.paymentMethod || 'with_salary',
-                adjustmentMethod: allowanceItem.adjustmentMethod || null,
-                isTaxable: allowanceItem.isTaxable ?? false,
-                taxPercentage: allowanceItem.taxPercentage ? allowanceItem.taxPercentage : null,
-                notes: allowanceItem.notes ?? null,
-                status: 'active',
-                createdById: ctx.userId,
-              },
-            });
-            createdAllowances.push(created);
-          }
+          createdAllowances.push(created);
         }
 
         return createdAllowances;

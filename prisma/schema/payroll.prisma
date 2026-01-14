@@ -22,7 +22,6 @@ model Allowance {
   employee         Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   updatedBy        User?         @relation("AllowanceUpdatedBy", fields: [updatedById], references: [id])
 
-  @@unique([employeeId, allowanceHeadId, month, year])
   @@index([employeeId])
   @@index([allowanceHeadId])
   @@index([month, year])
@@ -161,6 +160,8 @@ model Bonus {
   paymentMethod    String    @default("with_salary")
   adjustmentMethod String    @default("distributed-remaining-months")
   notes            String?
+  isTaxable        Boolean   @default(false)
+  taxPercentage    Decimal?  @db.Decimal(5, 2)
   status           String    @default("active")
   createdById      String?
   updatedById      String?
@@ -229,40 +230,40 @@ model Payroll {
 }
 
 model PayrollDetail {
-  id                          String                       @id @default(uuid())
-  payrollId                   String
-  employeeId                  String
-  basicSalary                 Decimal                      @db.Decimal(10, 2)
-  totalAllowances             Decimal                      @default(0) @db.Decimal(10, 2)
-  totalDeductions             Decimal                      @default(0) @db.Decimal(10, 2)
-  attendanceDeduction         Decimal                      @default(0) @db.Decimal(10, 2)
-  loanDeduction               Decimal                      @default(0) @db.Decimal(10, 2)
-  advanceSalaryDeduction      Decimal                      @default(0) @db.Decimal(10, 2)
-  eobiDeduction               Decimal                      @default(0) @db.Decimal(10, 2)
-  providentFundDeduction      Decimal                      @default(0) @db.Decimal(10, 2)
-  taxDeduction                Decimal                      @default(0) @db.Decimal(10, 2)
-  overtimeAmount              Decimal                      @default(0) @db.Decimal(10, 2)
-  bonusAmount                 Decimal                      @default(0) @db.Decimal(10, 2)
-  leaveEncashmentAmount       Decimal                      @default(0) @db.Decimal(10, 2)
-  socialSecurityContributionAmount Decimal                 @default(0) @db.Decimal(10, 2)
-  grossSalary                 Decimal                      @db.Decimal(10, 2)
-  netSalary                   Decimal                      @db.Decimal(10, 2)
-  salaryBreakup               Json?                        @default("[]")
-  allowanceBreakup            Json?                        @default("[]")
-  deductionBreakup            Json?                        @default("[]")
-  taxBreakup                  Json?                        @default("{}")
-  attendanceBreakup           Json?                        @default("{}")
-  overtimeBreakup             Json?                        @default("[]")
-  bonusBreakup                Json?                        @default("[]")
-  incrementBreakup            Json?                        @default("[]")
-  accountNumber               String?
-  bankName                    String?
-  paymentMode                 String?                      @default("Bank Transfer")
-  paymentStatus               String                       @default("pending")
-  paymentDate                 DateTime?
-  employee                    Employee                     @relation(fields: [employeeId], references: [id])
-  payroll                     Payroll                      @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  socialSecurityContributions SocialSecurityContribution[]
+  id                               String                       @id @default(uuid())
+  payrollId                        String
+  employeeId                       String
+  basicSalary                      Decimal                      @db.Decimal(10, 2)
+  totalAllowances                  Decimal                      @default(0) @db.Decimal(10, 2)
+  totalDeductions                  Decimal                      @default(0) @db.Decimal(10, 2)
+  attendanceDeduction              Decimal                      @default(0) @db.Decimal(10, 2)
+  loanDeduction                    Decimal                      @default(0) @db.Decimal(10, 2)
+  advanceSalaryDeduction           Decimal                      @default(0) @db.Decimal(10, 2)
+  eobiDeduction                    Decimal                      @default(0) @db.Decimal(10, 2)
+  providentFundDeduction           Decimal                      @default(0) @db.Decimal(10, 2)
+  taxDeduction                     Decimal                      @default(0) @db.Decimal(10, 2)
+  overtimeAmount                   Decimal                      @default(0) @db.Decimal(10, 2)
+  bonusAmount                      Decimal                      @default(0) @db.Decimal(10, 2)
+  leaveEncashmentAmount            Decimal                      @default(0) @db.Decimal(10, 2)
+  socialSecurityContributionAmount Decimal                      @default(0) @db.Decimal(10, 2)
+  grossSalary                      Decimal                      @db.Decimal(10, 2)
+  netSalary                        Decimal                      @db.Decimal(10, 2)
+  salaryBreakup                    Json?                        @default("[]")
+  allowanceBreakup                 Json?                        @default("[]")
+  deductionBreakup                 Json?                        @default("[]")
+  taxBreakup                       Json?                        @default("{}")
+  attendanceBreakup                Json?                        @default("{}")
+  overtimeBreakup                  Json?                        @default("[]")
+  bonusBreakup                     Json?                        @default("[]")
+  incrementBreakup                 Json?                        @default("[]")
+  accountNumber                    String?
+  bankName                         String?
+  paymentMode                      String?                      @default("Bank Transfer")
+  paymentStatus                    String                       @default("pending")
+  paymentDate                      DateTime?
+  employee                         Employee                     @relation(fields: [employeeId], references: [id])
+  payroll                          Payroll                      @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  socialSecurityContributions      SocialSecurityContribution[]
 
   @@unique([payrollId, employeeId])
 }
