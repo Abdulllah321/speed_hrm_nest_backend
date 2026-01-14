@@ -186,6 +186,25 @@ export class EmployeeService {
             avatar: true,
           },
         },
+        socialSecurityInstitution: {
+          select: {
+            id: true,
+            name: true,
+            contributionRate: true,
+          },
+        },
+        socialSecurityRegistrations: {
+          include: {
+            institution: {
+              select: {
+                id: true,
+                name: true,
+                contributionRate: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         department: {
           select: {
             id: true,
@@ -871,9 +890,26 @@ export class EmployeeService {
         for (const reg of socialSecurityRegistrations) {
           if (reg.institutionId && reg.registrationNumber) {
             // Find employer registration (assuming one active per institution)
-            const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+            let employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
               where: { institutionId: reg.institutionId, status: 'active' }
             });
+
+            // If not found, auto-create a minimal employer registration for this institution
+            if (!employerReg) {
+              employerReg = await this.prisma.socialSecurityEmployerRegistration.create({
+                data: {
+                  institutionId: reg.institutionId,
+                  registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
+                  employerName: 'Auto Employer',
+                  employerType: 'company',
+                  businessAddress: 'N/A',
+                  registrationDate: new Date(),
+                  status: 'active',
+                  totalEmployees: 0,
+                  monthlyContribution: 0,
+                }
+              });
+            }
 
             if (employerReg) {
               socialSecurityCreateData.push({
@@ -1132,9 +1168,25 @@ export class EmployeeService {
         if (Array.isArray(socialSecurityRegistrationsValue)) {
           for (const reg of socialSecurityRegistrationsValue) {
             if (reg.institutionId && reg.registrationNumber) {
-              const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+              let employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
                 where: { institutionId: reg.institutionId, status: 'active' }
               });
+              // Auto-create minimal employer registration if none exists for institution
+              if (!employerReg) {
+                employerReg = await this.prisma.socialSecurityEmployerRegistration.create({
+                  data: {
+                    institutionId: reg.institutionId,
+                    registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
+                    employerName: 'Auto Employer',
+                    employerType: 'company',
+                    businessAddress: 'N/A',
+                    registrationDate: new Date(),
+                    status: 'active',
+                    totalEmployees: 0,
+                    monthlyContribution: 0,
+                  }
+                });
+              }
               if (employerReg) {
                 await this.prisma.socialSecurityEmployeeRegistration.create({
                   data: {
