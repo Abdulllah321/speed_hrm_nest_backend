@@ -957,6 +957,7 @@ export class EmployeeService {
           bankName: bankNameValue || null,
           accountNumber: accountNumberValue || null,
           accountTitle: accountTitleValue || null,
+          socialSecurityInstitutionId: getBodyString('socialSecurityInstitutionId') || null,
           status: 'active',
           socialSecurityRegistrations: socialSecurityCreateData.length > 0 ? {
             create: socialSecurityCreateData
@@ -1144,7 +1145,7 @@ export class EmployeeService {
                     cardNumber: reg.cardNumber || null,
                     registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
                     expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
-                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
+                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : (await this.prisma.socialSecurityInstitution.findUnique({ where: { id: reg.institutionId } }))?.contributionRate || 0,
                     baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
                     monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
                     employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
@@ -1418,6 +1419,9 @@ export class EmployeeService {
           bankName: bankNameValue !== undefined ? (bankNameValue || null) : existing?.bankName,
           accountNumber: accountNumberValue !== undefined ? (accountNumberValue || null) : existing?.accountNumber,
           accountTitle: accountTitleValue !== undefined ? (accountTitleValue || null) : existing?.accountTitle,
+          socialSecurityInstitutionId: (body as { socialSecurityInstitutionId?: unknown }).socialSecurityInstitutionId !== undefined
+            ? ((body as { socialSecurityInstitutionId?: unknown }).socialSecurityInstitutionId ? (body as { socialSecurityInstitutionId?: unknown }).socialSecurityInstitutionId as string : null)
+            : existing?.socialSecurityInstitutionId,
           status: statusValue ?? existing?.status,
           equipmentAssignments:
             equipmentAssignmentsValue !== undefined &&
@@ -2042,6 +2046,9 @@ export class EmployeeService {
         updateData.accountNumber = (body as { accountNumber?: unknown }).accountNumber as string;
       if ((body as { accountTitle?: unknown }).accountTitle !== undefined)
         updateData.accountTitle = (body as { accountTitle?: unknown }).accountTitle as string;
+      if ((body as { socialSecurityInstitutionId?: string }).socialSecurityInstitutionId !== undefined) {
+        updateData.socialSecurityInstitution = { connect: { id: (body as { socialSecurityInstitutionId?: string }).socialSecurityInstitutionId } };
+      }
 
       // Handle Social Security update
       const socialSecurityRegistrationsValue = (body as any).socialSecurityRegistrations;

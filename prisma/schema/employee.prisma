@@ -91,6 +91,8 @@ model Employee {
   payrollDetails                  PayrollDetail[]
   rebates                         Rebate[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[]     @relation("RequestForwardingSpecificEmployee")
+  socialSecurityInstitutionId     String?
+  socialSecurityInstitution       SocialSecurityInstitution?           @relation(fields: [socialSecurityInstitutionId], references: [id])
   socialSecurityContributions     SocialSecurityContribution[]
   socialSecurityRegistrations     SocialSecurityEmployeeRegistration[]
   subDepartmentAsHead             SubDepartment?                       @relation("SubDepartmentHead")

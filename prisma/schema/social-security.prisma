@@ -8,6 +8,7 @@ model SocialSecurityInstitution {
   website               String?
   contactNumber         String?
   address               String?
+  contributionRate      Decimal                              @default(0) @db.Decimal(5, 2)
   createdAt             DateTime                             @default(now())
   updatedAt             DateTime                             @updatedAt
   createdById           String?
@@ -15,6 +16,7 @@ model SocialSecurityInstitution {
   contributions         SocialSecurityContribution[]
   employeeRegistrations SocialSecurityEmployeeRegistration[]
   employerRegistrations SocialSecurityEmployerRegistration[]
+  employees             Employee[]
   createdBy             User?                                @relation("SocialSecurityInstitutionCreatedBy", fields: [createdById], references: [id])
   updatedBy             User?                                @relation("SocialSecurityInstitutionUpdatedBy", fields: [updatedById], references: [id])
 
