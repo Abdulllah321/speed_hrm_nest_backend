@@ -32,13 +32,13 @@ export class PayrollService {
                 workingHoursPolicy: true,
                 leavesPolicy: true,
                 socialSecurityInstitution: {
-                    select: { id: true, name: true, contributionRate: true }
+                    select: { id: true, name: true, contributionRate: true } as any
                 },
                 socialSecurityRegistrations: {
                     where: { status: 'active' },
                     include: {
                         institution: {
-                            select: { id: true, name: true, contributionRate: true },
+                            select: { id: true, name: true, contributionRate: true } as any,
                         },
                     },
                     orderBy: { registrationDate: 'desc' },
@@ -252,12 +252,12 @@ export class PayrollService {
             // Prefer explicit employee social security institution; fallback to latest registration's institution
             let socialSecurityContributionAmount = new Decimal(0);
             let socialSecurityRate: Decimal | null = null;
-            if (emp.socialSecurityInstitution && emp.socialSecurityInstitution.contributionRate) {
-                socialSecurityRate = new Decimal(emp.socialSecurityInstitution.contributionRate);
+            if (emp.socialSecurityInstitution && (emp.socialSecurityInstitution as any).contributionRate) {
+                socialSecurityRate = new Decimal((emp.socialSecurityInstitution as any).contributionRate);
             } else if (emp.socialSecurityRegistrations && emp.socialSecurityRegistrations.length > 0) {
                 const latestReg = emp.socialSecurityRegistrations[0];
-                if (latestReg.institution && latestReg.institution.contributionRate) {
-                    socialSecurityRate = new Decimal(latestReg.institution.contributionRate);
+                if (latestReg.institution && (latestReg.institution as any).contributionRate) {
+                    socialSecurityRate = new Decimal((latestReg.institution as any).contributionRate);
                 }
             }
             if (socialSecurityRate && socialSecurityRate.gt(0)) {

@@ -14,10 +14,10 @@ export class LoginDto {
 }
 
 export class RefreshTokenDto {
-  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5c...' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'eyJhbGciOiJIUzI1NiIsInR5c...', description: 'Optional if sent via cookie' })
+  @IsOptional()
   @IsString()
-  refreshToken: string;
+  refreshToken?: string;
 }
 
 export class ChangePasswordDto {

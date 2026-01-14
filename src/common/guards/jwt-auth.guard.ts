@@ -7,8 +7,15 @@ export class JwtAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest()
     const authHeader = req.headers['authorization'] as string
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return false
-    const token = authHeader.split(' ')[1]
+    let token: string | undefined
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1]
+    } else if (req.cookies && req.cookies['accessToken']) {
+      token = req.cookies['accessToken']
+    }
+
+    if (!token) return false
     try {
       const decoded = jwt.verify(token, authConfig.jwt.accessSecret, { issuer: authConfig.jwt.issuer }) as any
 
