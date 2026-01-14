@@ -31,6 +31,18 @@ export class PayrollService {
             include: {
                 workingHoursPolicy: true,
                 leavesPolicy: true,
+                socialSecurityInstitution: {
+                    select: { id: true, name: true, contributionRate: true }
+                },
+                socialSecurityRegistrations: {
+                    where: { status: 'active' },
+                    include: {
+                        institution: {
+                            select: { id: true, name: true, contributionRate: true },
+                        },
+                    },
+                    orderBy: { registrationDate: 'desc' },
+                },
                 allowances: {
                     where: { status: 'active', month: normalizedMonth, year: normalizedYear },
                     include: { allowanceHead: { select: { id: true, name: true } } }
@@ -236,6 +248,22 @@ export class PayrollService {
             // Use already calculated totalPackageAmount (which is salaryBreakupTotal as Decimal)
             const grossSalary = totalPackageAmount.add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount).add(leaveEncashmentAmount);
 
+            // E1. Calculate Social Security Contribution Amount
+            // Prefer explicit employee social security institution; fallback to latest registration's institution
+            let socialSecurityContributionAmount = new Decimal(0);
+            let socialSecurityRate: Decimal | null = null;
+            if (emp.socialSecurityInstitution && emp.socialSecurityInstitution.contributionRate) {
+                socialSecurityRate = new Decimal(emp.socialSecurityInstitution.contributionRate);
+            } else if (emp.socialSecurityRegistrations && emp.socialSecurityRegistrations.length > 0) {
+                const latestReg = emp.socialSecurityRegistrations[0];
+                if (latestReg.institution && latestReg.institution.contributionRate) {
+                    socialSecurityRate = new Decimal(latestReg.institution.contributionRate);
+                }
+            }
+            if (socialSecurityRate && socialSecurityRate.gt(0)) {
+                socialSecurityContributionAmount = grossSalary.mul(socialSecurityRate).div(100);
+            }
+
             // F. Calculate Tax (with Rebates)
             // Tax is calculated based on taxable salary breakup components, not gross salary
             const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, emp.rebates || [], packageAmount);
@@ -275,6 +303,7 @@ export class PayrollService {
                 bonusBreakup,
                 bonusAmount: bonusAmount.toNumber(),
                 leaveEncashmentAmount: leaveEncashmentAmount.toNumber(),
+                socialSecurityContributionAmount: socialSecurityContributionAmount.toNumber(),
                 incrementBreakup,
                 deductionBreakup,
                 totalDeductions: totalAdHocDeductions.toNumber(),
@@ -368,6 +397,7 @@ export class PayrollService {
                     overtimeAmount: new Decimal(d.overtimeAmount),
                     bonusAmount: new Decimal(d.bonusAmount),
                     leaveEncashmentAmount: new Decimal(d.leaveEncashmentAmount || 0),
+                    socialSecurityContributionAmount: new Decimal(d.socialSecurityContributionAmount || 0),
                     grossSalary: new Decimal(d.grossSalary),
                     netSalary: new Decimal(d.netSalary),
                     paymentStatus: 'pending',

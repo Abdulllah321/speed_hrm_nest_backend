@@ -43,6 +43,12 @@ export class CreateSocialSecurityInstitutionDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional({ example: 6.0 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  contributionRate?: number;
 }
 
 export class UpdateSocialSecurityInstitutionDto {
@@ -90,6 +96,12 @@ export class UpdateSocialSecurityInstitutionDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional({ example: 6.0 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  contributionRate?: number;
 }
 
 // ========== Employer Registration DTOs ==========
@@ -323,11 +335,11 @@ export class CreateSocialSecurityEmployeeRegistrationDto {
   @IsString()
   status?: string;
 
-  @ApiProperty({ example: 6.0 })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 6.0 })
+  @IsOptional()
   @IsNumber()
   @Type(() => Number)
-  contributionRate: number;
+  contributionRate?: number;
 
   @ApiProperty({ example: 50000.00 })
   @IsNotEmpty()

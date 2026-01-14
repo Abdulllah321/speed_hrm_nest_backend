@@ -244,6 +244,7 @@ model PayrollDetail {
   overtimeAmount              Decimal                      @default(0) @db.Decimal(10, 2)
   bonusAmount                 Decimal                      @default(0) @db.Decimal(10, 2)
   leaveEncashmentAmount       Decimal                      @default(0) @db.Decimal(10, 2)
+  socialSecurityContributionAmount Decimal                 @default(0) @db.Decimal(10, 2)
   grossSalary                 Decimal                      @db.Decimal(10, 2)
   netSalary                   Decimal                      @db.Decimal(10, 2)
   salaryBreakup               Json?                        @default("[]")

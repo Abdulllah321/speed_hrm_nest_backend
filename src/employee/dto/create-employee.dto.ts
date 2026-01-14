@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEmail, IsOptional, IsBoolean, IsDateString, IsNumber, IsDecimal } from 'class-validator';
+import { IsNotEmpty, IsString, IsEmail, IsOptional, IsBoolean, IsDateString, IsNumber, IsDecimal, IsArray } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -285,30 +285,6 @@ export class CreateEmployeeDto {
   @IsString()
   accountTitle?: string;
 
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  laptop?: boolean;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  card?: boolean;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  mobileSim?: boolean;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  key?: boolean;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  tools?: boolean;
 
   @ApiPropertyOptional({ example: 'Current' })
   @IsOptional()
@@ -336,7 +312,8 @@ export class CreateEmployeeDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  selectedEquipments?: any;
+  @IsArray()
+  equipmentAssignments?: any[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -600,26 +577,6 @@ export class UpdateEmployeeDto {
   accountTitle?: string;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsBoolean()
-  laptop?: boolean;
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  card?: boolean;
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  mobileSim?: boolean;
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  key?: boolean;
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  tools?: boolean;
-  @ApiPropertyOptional()
-  @IsOptional()
   @IsString()
   accountType?: string;
   @ApiPropertyOptional()
@@ -641,7 +598,8 @@ export class UpdateEmployeeDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  equipmentAssignments?: any;
+  @IsArray()
+  equipmentAssignments?: any[];
 
   @ApiPropertyOptional()
   @IsOptional()

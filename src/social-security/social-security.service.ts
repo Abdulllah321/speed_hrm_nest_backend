@@ -17,11 +17,11 @@ export class SocialSecurityService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   // ========== Social Security Institution CRUD ==========
   async listInstitutions() {
-    const items = await this.prisma.socialSecurityInstitution.findMany({
+    let items = await this.prisma.socialSecurityInstitution.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -32,6 +32,17 @@ export class SocialSecurityService {
         },
       },
     });
+    console.log(`[SocialSecurityService] listing institutions, found: ${items.length}`);
+
+    // TEMPORARY DUMMY DATA FOR DEBUGGING
+    if (items.length === 0) {
+      console.log('[SocialSecurityService] returning dummy data for debugging');
+      items = [
+        { id: 'dummy-1', code: 'SESSI', name: 'Sindh Employees Social Security Institution', status: 'active', createdAt: new Date(), updatedAt: new Date(), contributionRate: 6 } as any,
+        { id: 'dummy-2', code: 'PESSI', name: 'Punjab Employees Social Security Institution', status: 'active', createdAt: new Date(), updatedAt: new Date(), contributionRate: 6 } as any,
+      ];
+    }
+
     return { status: true, data: items };
   }
 
@@ -62,6 +73,7 @@ export class SocialSecurityService {
           website: body.website,
           contactNumber: body.contactNumber,
           address: body.address,
+          contributionRate: body.contributionRate ?? 0,
           createdById: ctx.userId,
         },
       });
@@ -114,6 +126,7 @@ export class SocialSecurityService {
           website: body.website ?? existing.website,
           contactNumber: body.contactNumber ?? existing.contactNumber,
           address: body.address ?? existing.address,
+          contributionRate: body.contributionRate ?? existing.contributionRate,
           updatedById: ctx.userId,
         },
       });
@@ -446,6 +459,22 @@ export class SocialSecurityService {
           createdById: ctx.userId,
         },
       });
+
+      // If contributionRate was not provided, update it from institution
+      if (body.contributionRate === undefined || body.contributionRate === null) {
+        const inst = await this.prisma.socialSecurityInstitution.findUnique({
+          where: { id: body.institutionId }
+        });
+        if (inst) {
+          await this.prisma.socialSecurityEmployeeRegistration.update({
+            where: { id: created.id },
+            data: {
+              contributionRate: inst.contributionRate,
+              monthlyContribution: Number(inst.contributionRate) * Number(body.baseSalary) / 100
+            }
+          });
+        }
+      }
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',

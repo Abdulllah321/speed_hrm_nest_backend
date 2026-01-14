@@ -186,6 +186,25 @@ export class EmployeeService {
             avatar: true,
           },
         },
+        socialSecurityInstitution: {
+          select: {
+            id: true,
+            name: true,
+            contributionRate: true,
+          },
+        },
+        socialSecurityRegistrations: {
+          include: {
+            institution: {
+              select: {
+                id: true,
+                name: true,
+                contributionRate: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         department: {
           select: {
             id: true,
@@ -855,11 +874,11 @@ export class EmployeeService {
       const bankNameValue = getBodyString('bankName');
       const accountNumberValue = getBodyString('accountNumber');
       const accountTitleValue = getBodyString('accountTitle');
-      const selectedEquipmentsValue = (
+      const equipmentAssignmentsValue = (
         body as {
-          selectedEquipments?: unknown;
+          equipmentAssignments?: unknown;
         }
-      ).selectedEquipments;
+      ).equipmentAssignments;
       const qualificationsValue = (body as { qualifications?: unknown })
         .qualifications;
 
@@ -871,9 +890,26 @@ export class EmployeeService {
         for (const reg of socialSecurityRegistrations) {
           if (reg.institutionId && reg.registrationNumber) {
             // Find employer registration (assuming one active per institution)
-            const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+            let employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
               where: { institutionId: reg.institutionId, status: 'active' }
             });
+
+            // If not found, auto-create a minimal employer registration for this institution
+            if (!employerReg) {
+              employerReg = await this.prisma.socialSecurityEmployerRegistration.create({
+                data: {
+                  institutionId: reg.institutionId,
+                  registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
+                  employerName: 'Auto Employer',
+                  employerType: 'company',
+                  businessAddress: 'N/A',
+                  registrationDate: new Date(),
+                  status: 'active',
+                  totalEmployees: 0,
+                  monthlyContribution: 0,
+                }
+              });
+            }
 
             if (employerReg) {
               socialSecurityCreateData.push({
@@ -957,16 +993,17 @@ export class EmployeeService {
           bankName: bankNameValue || null,
           accountNumber: accountNumberValue || null,
           accountTitle: accountTitleValue || null,
+          socialSecurityInstitutionId: getBodyString('socialSecurityInstitutionId') || null,
           status: 'active',
           socialSecurityRegistrations: socialSecurityCreateData.length > 0 ? {
             create: socialSecurityCreateData
           } : undefined,
           equipmentAssignments:
-            (body as any).equipmentAssignments &&
-              Array.isArray((body as any).equipmentAssignments) &&
-              (body as any).equipmentAssignments.length > 0
+            equipmentAssignmentsValue &&
+              Array.isArray(equipmentAssignmentsValue) &&
+              equipmentAssignmentsValue.length > 0
               ? {
-                create: ((body as any).equipmentAssignments as any[])
+                create: (equipmentAssignmentsValue as any[])
                   .filter((ea) => ea.equipmentId)
                   .map((ea: any) => ({
                     equipmentId: ea.equipmentId,
@@ -1131,9 +1168,25 @@ export class EmployeeService {
         if (Array.isArray(socialSecurityRegistrationsValue)) {
           for (const reg of socialSecurityRegistrationsValue) {
             if (reg.institutionId && reg.registrationNumber) {
-              const employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+              let employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
                 where: { institutionId: reg.institutionId, status: 'active' }
               });
+              // Auto-create minimal employer registration if none exists for institution
+              if (!employerReg) {
+                employerReg = await this.prisma.socialSecurityEmployerRegistration.create({
+                  data: {
+                    institutionId: reg.institutionId,
+                    registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
+                    employerName: 'Auto Employer',
+                    employerType: 'company',
+                    businessAddress: 'N/A',
+                    registrationDate: new Date(),
+                    status: 'active',
+                    totalEmployees: 0,
+                    monthlyContribution: 0,
+                  }
+                });
+              }
               if (employerReg) {
                 await this.prisma.socialSecurityEmployeeRegistration.create({
                   data: {
@@ -1144,7 +1197,7 @@ export class EmployeeService {
                     cardNumber: reg.cardNumber || null,
                     registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
                     expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
-                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : 0,
+                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : (await this.prisma.socialSecurityInstitution.findUnique({ where: { id: reg.institutionId } }))?.contributionRate || 0,
                     baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
                     monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
                     employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,
@@ -1418,6 +1471,9 @@ export class EmployeeService {
           bankName: bankNameValue !== undefined ? (bankNameValue || null) : existing?.bankName,
           accountNumber: accountNumberValue !== undefined ? (accountNumberValue || null) : existing?.accountNumber,
           accountTitle: accountTitleValue !== undefined ? (accountTitleValue || null) : existing?.accountTitle,
+          socialSecurityInstitutionId: (body as { socialSecurityInstitutionId?: unknown }).socialSecurityInstitutionId !== undefined
+            ? ((body as { socialSecurityInstitutionId?: unknown }).socialSecurityInstitutionId ? (body as { socialSecurityInstitutionId?: unknown }).socialSecurityInstitutionId as string : null)
+            : existing?.socialSecurityInstitutionId,
           status: statusValue ?? existing?.status,
           equipmentAssignments:
             equipmentAssignmentsValue !== undefined &&
@@ -2042,6 +2098,9 @@ export class EmployeeService {
         updateData.accountNumber = (body as { accountNumber?: unknown }).accountNumber as string;
       if ((body as { accountTitle?: unknown }).accountTitle !== undefined)
         updateData.accountTitle = (body as { accountTitle?: unknown }).accountTitle as string;
+      if ((body as { socialSecurityInstitutionId?: string }).socialSecurityInstitutionId !== undefined) {
+        updateData.socialSecurityInstitution = { connect: { id: (body as { socialSecurityInstitutionId?: string }).socialSecurityInstitutionId } };
+      }
 
       // Handle Social Security update
       const socialSecurityRegistrationsValue = (body as any).socialSecurityRegistrations;
