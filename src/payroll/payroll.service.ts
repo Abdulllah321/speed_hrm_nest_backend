@@ -172,7 +172,8 @@ export class PayrollService {
                     name: breakup.name,
                     percentage: breakup.percentage ? new Decimal(breakup.percentage).toNumber() : null,
                     amount: Math.round(amount.toNumber()), // Round to whole number (no decimals)
-                    isTaxable: isTaxable
+                    isTaxable: isTaxable,
+                    isRecurring: true // Salary components are always recurring
                 };
             });
 
@@ -208,6 +209,7 @@ export class PayrollService {
                     amount: Number(allow.amount),
                     isTaxable: allow.isTaxable,
                     taxPercentage: allow.taxPercentage ? Number(allow.taxPercentage) : null,
+                    isRecurring: allow.type === 'recurring', // Honor the allowance type
                 }));
 
             // B. Calculate Overtime (Using calculated Basic Salary for rate)
@@ -229,6 +231,9 @@ export class PayrollService {
                     amount: Number(bonus.amount),
                     calculationType: bonus.calculationType,
                     percentage: bonus.percentage ? Number(bonus.percentage) : null,
+                    isTaxable: bonus.isTaxable,
+                    taxPercentage: bonus.taxPercentage ? Number(bonus.taxPercentage) : null,
+                    isRecurring: false, // Bonuses are always one-time
                 }));
 
             // D1. Calculate Leave Encashment
@@ -265,11 +270,19 @@ export class PayrollService {
             }
 
             // F. Calculate Tax (with Rebates)
-            // Tax is calculated based on taxable salary breakup components, not gross salary
-            const { taxDeduction, taxBreakup } = await this.calculateTax(salaryBreakup, emp.rebates || [], packageAmount);
+            // Tax is calculated based on taxable components from salary, allowances, and bonuses
+            // Combine all taxable components
+            const allTaxableComponents = [
+                ...salaryBreakup,
+                ...allowanceBreakup,
+                ...bonusBreakup,
+            ];
+            const { taxDeduction, taxBreakup } = await this.calculateTax(allTaxableComponents, emp.rebates || [], packageAmount);
 
             // G. Calculate EOBI & PF
-            const { eobiDeduction, providentFundDeduction } = await this.calculateEOBI_PF(employee, month, year, grossSalary);
+            // PF should only be calculated from salary components (Basic Salary, House Rent, Utility, etc.)
+            // NOT from allowances, bonuses, or leave encashment
+            const { eobiDeduction, providentFundDeduction } = await this.calculateEOBI_PF(employee, month, year, totalPackageAmount);
 
             // H. Calculate Loans & Advances
             const { loanDeduction, advanceSalaryDeduction } = this.calculateLoansAndAdvances(employee, normalizedMonth, normalizedYear);
@@ -1336,27 +1349,45 @@ export class PayrollService {
         return { overtimeAmount: amount, overtimeBreakup };
     }
 
-    private async calculateTax(salaryBreakup: Array<{ id: string; name: string; percentage: number | null; amount: number; isTaxable?: boolean }>, rebates: any[], packageAmount: Decimal): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
+    private async calculateTax(salaryBreakup: Array<{ id: string; name: string; percentage: number | null; amount: number; isTaxable?: boolean; isRecurring?: boolean }>, rebates: any[], packageAmount: Decimal): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
         // Calculate taxable income from salary breakup components only (not gross salary)
         // Include ALL salary components (Basic Salary, House Rent, Utility, etc.) in taxable income
         // Sum up amounts from components marked as taxable (default is taxable unless explicitly marked as non-taxable)
-        let monthlyTaxableAmount = new Decimal(0);
-        const taxableComponents: Array<{ name: string; amount: number }> = [];
+        let annualTaxableIncome = new Decimal(0);
+        const taxableComponents: Array<{ name: string; amount: number; isRecurring: boolean; annualAmount: number }> = [];
 
         for (const component of salaryBreakup) {
             // Include component if it's marked as taxable (default is true) and has amount > 0
             // This ensures Basic Salary, House Rent, Utility, and all other salary components are included
             if (component.isTaxable !== false && component.amount > 0) {
-                monthlyTaxableAmount = monthlyTaxableAmount.add(new Decimal(component.amount));
+                // Determine if component is recurring (defaults to true if undefined, for backward compatibility)
+                // BUT for our specific logic, we want explicit control.
+                // Assuming salary components are recurring, but allowances/bonuses might not be.
+                const isRecurring = component.isRecurring !== false;
+
+                let annualAmount = new Decimal(0);
+
+                if (isRecurring) {
+                    // Recurring components are annualized (x12)
+                    annualAmount = new Decimal(component.amount).mul(12);
+                } else {
+                    // Specific/One-time components are added as-is (x1)
+                    annualAmount = new Decimal(component.amount);
+                }
+
+                annualTaxableIncome = annualTaxableIncome.add(annualAmount);
+
                 taxableComponents.push({
                     name: component.name,
                     amount: component.amount,
+                    isRecurring: isRecurring,
+                    annualAmount: annualAmount.toNumber()
                 });
             }
         }
 
-        // Convert to annual taxable income
-        const annualTaxableIncome = monthlyTaxableAmount.mul(12);
+        // Convert to annual taxable income - ALREADY DONE IN LOOP
+        // const annualTaxableIncome = monthlyTaxableAmount.mul(12); -> REMOVED
 
         let taxableIncome = annualTaxableIncome;
         let totalRebateAmount = new Decimal(0);
