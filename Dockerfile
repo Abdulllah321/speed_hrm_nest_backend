@@ -3,6 +3,9 @@ FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
+# Set dummy DATABASE_URL for build time (required by Prisma)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+
 # Copy package files
 COPY package.json bun.lock* ./
 
@@ -42,6 +45,7 @@ COPY prisma.config.ts ./
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy necessary files
 COPY docker-entrypoint.sh /docker-entrypoint.sh
