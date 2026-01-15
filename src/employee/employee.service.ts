@@ -191,7 +191,7 @@ export class EmployeeService {
             id: true,
             name: true,
             contributionRate: true,
-          },
+          } as any,
         },
         socialSecurityRegistrations: {
           include: {
@@ -200,7 +200,7 @@ export class EmployeeService {
                 id: true,
                 name: true,
                 contributionRate: true,
-              },
+              } as any,
             },
           },
           orderBy: { createdAt: 'desc' },
@@ -1197,7 +1197,7 @@ export class EmployeeService {
                     cardNumber: reg.cardNumber || null,
                     registrationDate: reg.registrationDate ? new Date(reg.registrationDate) : new Date(),
                     expiryDate: reg.expiryDate ? new Date(reg.expiryDate) : null,
-                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : (await this.prisma.socialSecurityInstitution.findUnique({ where: { id: reg.institutionId } }))?.contributionRate || 0,
+                    contributionRate: reg.contributionRate ? Number(reg.contributionRate) : (await this.prisma.socialSecurityInstitution.findUnique({ where: { id: reg.institutionId } }) as any)?.contributionRate || 0,
                     baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
                     monthlyContribution: reg.monthlyContribution ? Number(reg.monthlyContribution) : 0,
                     employeeContribution: reg.employeeContribution ? Number(reg.employeeContribution) : 0,

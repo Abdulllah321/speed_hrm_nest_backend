@@ -126,7 +126,7 @@ export class SocialSecurityService {
           website: body.website ?? existing.website,
           contactNumber: body.contactNumber ?? existing.contactNumber,
           address: body.address ?? existing.address,
-          contributionRate: body.contributionRate ?? existing.contributionRate,
+          contributionRate: body.contributionRate ?? (existing as any).contributionRate,
           updatedById: ctx.userId,
         },
       });
@@ -469,8 +469,8 @@ export class SocialSecurityService {
           await this.prisma.socialSecurityEmployeeRegistration.update({
             where: { id: created.id },
             data: {
-              contributionRate: inst.contributionRate,
-              monthlyContribution: Number(inst.contributionRate) * Number(body.baseSalary) / 100
+              contributionRate: (inst as any).contributionRate,
+              monthlyContribution: Number((inst as any).contributionRate) * Number(body.baseSalary) / 100
             }
           });
         }
@@ -521,7 +521,7 @@ export class SocialSecurityService {
           registrationDate: body.registrationDate ? new Date(body.registrationDate) : existing.registrationDate,
           expiryDate: body.expiryDate ? new Date(body.expiryDate) : existing.expiryDate,
           status: body.status ?? existing.status,
-          contributionRate: body.contributionRate ? body.contributionRate as any : existing.contributionRate,
+          contributionRate: body.contributionRate ? body.contributionRate as any : (existing as any).contributionRate,
           baseSalary: body.baseSalary ? body.baseSalary as any : existing.baseSalary,
           monthlyContribution: body.monthlyContribution ? body.monthlyContribution as any : existing.monthlyContribution,
           isEmployerContribution: body.isEmployerContribution ?? existing.isEmployerContribution,
@@ -715,7 +715,7 @@ export class SocialSecurityService {
         where: { id },
         data: {
           baseSalary: body.baseSalary ? body.baseSalary as any : existing.baseSalary,
-          contributionRate: body.contributionRate ? body.contributionRate as any : existing.contributionRate,
+          contributionRate: body.contributionRate ? body.contributionRate as any : (existing as any).contributionRate,
           contributionAmount: body.contributionAmount ? body.contributionAmount as any : existing.contributionAmount,
           employeeContribution: body.employeeContribution ? body.employeeContribution as any : existing.employeeContribution,
           employerContribution: body.employerContribution ? body.employerContribution as any : existing.employerContribution,

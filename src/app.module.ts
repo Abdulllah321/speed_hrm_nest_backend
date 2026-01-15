@@ -53,6 +53,7 @@ import { UserPreferencesModule } from './user-preferences/user-preferences.modul
 import { SocialSecurityModule } from './social-security/social-security.module';
 import { AllocationModule } from './allocation/allocation.module';
 import { PFModule } from './pf/pf.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { PFModule } from './pf/pf.module';
     SocialSecurityModule, // added swagger
     AllocationModule,
     PFModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

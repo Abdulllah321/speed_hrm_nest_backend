@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common'
 import { AuthService } from './auth.service'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
@@ -9,21 +9,146 @@ import { LoginDto, RefreshTokenDto, ChangePasswordDto,UpdateUserDto } from './dt
 export class AuthController {
   constructor(private service: AuthService) {}
 
+  private getCookieOptions(req: any) {
+    const isProd = process.env.NODE_ENV === 'production'
+
+    // Allow overriding secure cookies for local HTTP dev (e.g. *.localtest.me over http)
+    const cookieSecure =
+      process.env.COOKIE_SECURE !== undefined
+        ? process.env.COOKIE_SECURE === 'true'
+        : isProd
+
+    // Check Origin header first - this tells us where the request actually came from
+    // (e.g., http://auth.localtest.me:3000)
+    const origin = req?.headers?.origin || req?.headers?.referer || ''
+    const originUrl = origin ? new URL(origin) : null
+    const originHost = originUrl?.hostname || ''
+
+    // Extract parent domain from Origin (e.g., auth.localtest.me -> .localtest.me)
+    let domain: string | undefined = undefined
+    
+    // If COOKIE_DOMAIN is explicitly set, use it
+    const domainFromEnv = process.env.COOKIE_DOMAIN?.trim()
+    if (domainFromEnv) {
+      domain = domainFromEnv
+    } else if (originHost) {
+      // Extract parent domain from Origin (e.g., auth.localtest.me -> .localtest.me)
+      // or subdomain.localtest.me -> .localtest.me
+      if (originHost.includes('.localtest.me')) {
+        domain = '.localtest.me'
+      } else if (originHost.includes('localhost')) {
+        // If Origin is localhost, don't set domain (cookie will be for localhost only)
+        domain = undefined
+      }
+    } else {
+      // Fallback: check req.hostname if Origin is not available
+      const host = String(req?.hostname || '')
+      const isLocalhost = host.includes('localhost') || host.startsWith('127.') || host.startsWith('0.0.0.0')
+      
+      if (!isLocalhost && host.includes('.localtest.me')) {
+        domain = '.localtest.me'
+      }
+    }
+
+    return {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: 'lax' as const,
+      domain,
+      path: '/',
+    }
+  }
+
   @Post('login')
   @ApiOperation({ summary: 'Login user' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async login(@Body() body: LoginDto, @Req() req: any) {
+  async login(@Body() body: LoginDto, @Req() req: any, @Res() res: any) {
     const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress
     const userAgent = req.headers['user-agent']
-    return this.service.login(body.email, body.password, ipAddress, userAgent)
+    const result = await this.service.login(body.email, body.password, ipAddress, userAgent)
+    
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req)
+      
+      // Set access token (7 days to match JWT expiry)
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 // 7 days in seconds
+      })
+      
+      // Set refresh token (30 days)
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60 // 30 days in seconds
+      })
+      
+      // Set user role for middleware
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60
+      })
+      
+      // Set user data (for client-side access)
+      res.setCookie('user', JSON.stringify(result.data.user), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60
+      })
+      
+      return res.send({
+        status: true,
+        message: 'Login successful',
+        data: { user: result.data.user }
+      })
+    }
+    
+    return res.status(401).send({
+      status: false,
+      message: result.message || 'Login failed'
+    })
   }
 
   @Post('refresh-token')
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed' })
-  async refresh(@Body() body: RefreshTokenDto) {
-    return this.service.refresh(body.refreshToken)
+  async refresh(@Body() body: RefreshTokenDto, @Req() req: any, @Res() res: any) {
+    // Get refresh token from body or cookie
+    const refreshToken = body.refreshToken || req.cookies?.['refreshToken']
+    
+    if (!refreshToken) {
+      return res.status(400).send({
+        status: false,
+        message: 'Refresh token is required'
+      })
+    }
+    
+    const result = await this.service.refresh(refreshToken)
+    
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req)
+      
+      // Update access token
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60
+      })
+      
+      // Update refresh token
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60
+      })
+      
+      return res.send({
+        status: true,
+        message: 'Token refreshed successfully'
+      })
+    }
+    
+    return res.status(401).send({
+      status: false,
+      message: result.message || 'Token refresh failed'
+    })
   }
 
   @Get('me')
@@ -56,11 +181,23 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout user' })
-  async logout(@Req() req: any) {
+  async logout(@Req() req: any, @Res() res: any) {
     // Extract token from Authorization header to invalidate only this session
     const authHeader = req.headers['authorization'] as string
     const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined
-    return this.service.logout(req.user.userId, accessToken)
+    await this.service.logout(req.user.userId, accessToken)
+    
+    const clearCookieOptions = this.getCookieOptions(req)
+    
+    res.clearCookie('accessToken', clearCookieOptions)
+    res.clearCookie('refreshToken', clearCookieOptions)
+    res.clearCookie('userRole', clearCookieOptions)
+    res.clearCookie('user', clearCookieOptions)
+    
+    return res.send({
+      status: true,
+      message: 'Logged out successfully'
+    })
   }
 
   @Post('change-password')

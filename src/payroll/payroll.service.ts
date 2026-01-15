@@ -32,13 +32,13 @@ export class PayrollService {
                 workingHoursPolicy: true,
                 leavesPolicy: true,
                 socialSecurityInstitution: {
-                    select: { id: true, name: true, contributionRate: true }
+                    select: { id: true, name: true, contributionRate: true } as any
                 },
                 socialSecurityRegistrations: {
                     where: { status: 'active' },
                     include: {
                         institution: {
-                            select: { id: true, name: true, contributionRate: true },
+                            select: { id: true, name: true, contributionRate: true } as any,
                         },
                     },
                     orderBy: { registrationDate: 'desc' },
