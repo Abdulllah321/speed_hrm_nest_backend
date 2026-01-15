@@ -14,7 +14,7 @@ import { RebateNatureService } from './rebate-nature.service';
 import { CreateRebateNatureDto } from './dto/create-rebate-nature.dto';
 import { UpdateRebateNatureDto } from './dto/update-rebate-nature.dto';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @ApiTags('Rebate Nature')
 @Controller('api/rebate-nature')
