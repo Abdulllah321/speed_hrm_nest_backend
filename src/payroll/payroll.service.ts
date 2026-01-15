@@ -198,10 +198,10 @@ export class PayrollService {
             const totalPackageAmount = salaryBreakupTotal > 0 ? new Decimal(salaryBreakupTotal) : packageAmount;
 
             // A. Calculate Allowances (Ad-hoc additional allowances)
-            const totalAdHocAllowances = this.calculateAllowances(emp.allowances || []);
+            let totalAdHocAllowances = this.calculateAllowances(emp.allowances || []);
 
             // Prepare allowance breakdown (only allowances with paymentMethod 'with_salary')
-            const allowanceBreakup = (emp.allowances || [])
+            let allowanceBreakup = (emp.allowances || [])
                 .filter((allow: any) => allow.paymentMethod === 'with_salary')
                 .map((allow: any) => ({
                     id: allow.id,
@@ -211,6 +211,42 @@ export class PayrollService {
                     taxPercentage: allow.taxPercentage ? Number(allow.taxPercentage) : null,
                     isRecurring: allow.type === 'recurring', // Honor the allowance type
                 }));
+
+            // Calculate Social Security Contribution as an addition/allowance
+            // Prefer explicit employee social security institution; fallback to latest registration's institution
+            let socialSecurityContributionAmount = new Decimal(0);
+            let socialSecurityRate: Decimal | null = null;
+            if (emp.socialSecurityInstitution && emp.socialSecurityInstitution.contributionRate) {
+                socialSecurityRate = new Decimal(emp.socialSecurityInstitution.contributionRate);
+            } else if (emp.socialSecurityRegistrations && emp.socialSecurityRegistrations.length > 0) {
+                const latestReg = emp.socialSecurityRegistrations[0];
+                if (latestReg.institution && latestReg.institution.contributionRate) {
+                    socialSecurityRate = new Decimal(latestReg.institution.contributionRate);
+                }
+            }
+
+            if (socialSecurityRate && socialSecurityRate.gt(0)) {
+                // SSI base calculation: Basic Salary + House Rent + Utility
+                const ssiComponentNames = ['Basic Salary', 'House Rent', 'Utility'];
+                const ssiBase = salaryBreakup
+                    .filter(comp => ssiComponentNames.some(name => comp.name.trim().toLowerCase() === name.toLowerCase()))
+                    .reduce((sum, comp) => sum.add(new Decimal(comp.amount)), new Decimal(0));
+
+                socialSecurityContributionAmount = ssiBase.mul(socialSecurityRate).div(100);
+
+                if (socialSecurityContributionAmount.gt(0)) {
+                    // Add to allowance breakup so it flows into Gross and Net salary
+                    allowanceBreakup.push({
+                        id: 'social-security-contribution',
+                        name: 'Social Security',
+                        amount: Math.round(socialSecurityContributionAmount.toNumber()),
+                        isTaxable: false, // Social security is typically not taxed
+                        taxPercentage: null,
+                        isRecurring: true,
+                    });
+                    totalAdHocAllowances = totalAdHocAllowances.add(Math.round(socialSecurityContributionAmount.toNumber()));
+                }
+            }
 
             // B. Calculate Overtime (Using calculated Basic Salary for rate)
             // Include overtime from both overtimeRequests and attendance records (holidays/weekends)
@@ -252,22 +288,6 @@ export class PayrollService {
             // Gross = Sum of Salary Breakup Components + AdHoc Allowances + Overtime + Bonus + Leave Encashment
             // Use already calculated totalPackageAmount (which is salaryBreakupTotal as Decimal)
             const grossSalary = totalPackageAmount.add(totalAdHocAllowances).add(overtimeAmount).add(bonusAmount).add(leaveEncashmentAmount);
-
-            // E1. Calculate Social Security Contribution Amount
-            // Prefer explicit employee social security institution; fallback to latest registration's institution
-            let socialSecurityContributionAmount = new Decimal(0);
-            let socialSecurityRate: Decimal | null = null;
-            if (emp.socialSecurityInstitution && emp.socialSecurityInstitution.contributionRate) {
-                socialSecurityRate = new Decimal(emp.socialSecurityInstitution.contributionRate);
-            } else if (emp.socialSecurityRegistrations && emp.socialSecurityRegistrations.length > 0) {
-                const latestReg = emp.socialSecurityRegistrations[0];
-                if (latestReg.institution && latestReg.institution.contributionRate) {
-                    socialSecurityRate = new Decimal(latestReg.institution.contributionRate);
-                }
-            }
-            if (socialSecurityRate && socialSecurityRate.gt(0)) {
-                socialSecurityContributionAmount = grossSalary.mul(socialSecurityRate).div(100);
-            }
 
             // F. Calculate Tax (with Rebates)
             // Tax is calculated based on taxable components from salary, allowances, and bonuses
