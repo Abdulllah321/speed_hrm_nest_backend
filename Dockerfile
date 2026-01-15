@@ -11,8 +11,9 @@ RUN bun install --frozen-lockfile
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
 
-# GENERATE PRISMA CLIENT HERE (No DATABASE_URL needed for generation usually)
-RUN bunx prisma generate
+# GENERATE PRISMA CLIENT HERE
+# Using 'bun run' ensures we use the local prisma version and context
+RUN bun run prisma:generate
 
 # Copy source code and build
 COPY . .
