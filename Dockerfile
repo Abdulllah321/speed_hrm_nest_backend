@@ -1,44 +1,62 @@
-# Stage 1: Build environment
+# Production Dockerfile for NestJS Backend
 FROM oven/bun:1 AS builder
+
 WORKDIR /app
 
-# Copy dependency files
+# Copy package files
 COPY package.json bun.lock* ./
+
+# Install dependencies
 RUN bun install --frozen-lockfile
 
-# Copy source and prisma
+# Copy prisma schema and config
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+
+# Generate Prisma client
+RUN bun run prisma:generate
+
+# Copy source code
 COPY . .
-# Generate Prisma Client
-ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
-RUN bunx prisma generate
+
+# Build the application
 RUN bun run build
 
-# Stage 2: Production runner
-FROM node:20-slim AS runner
+# Production stage
+FROM oven/bun:1-alpine
+
+# Install OpenSSL for Prisma and wget for health checks
+RUN apk add --no-cache openssl wget
+
 WORKDIR /app
 
-# Copy bun binary from official image
-COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
+# Copy package files
+COPY package.json bun.lock* ./
 
-ENV NODE_ENV=production
+# Install production dependencies only
+RUN bun install --production --frozen-lockfile
 
-# Copy necessary files from builder
-COPY --from=builder /app/node_modules ./node_modules
+# Copy prisma schema and config
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+
+# Copy built application from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/docker-entrypoint.sh ./
-COPY --from=builder /app/check-seed.ts ./
 
-RUN chmod +x docker-entrypoint.sh
+# Copy necessary files
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY check-seed.ts ./
+COPY countries.json ./
+COPY city.json ./
 
-# Use existing 'node' user from the node:slim image or create one
-# In node image, 'node' user usually exists. Let's make sure it has permissions.
-RUN chown -R node:node /app
+# Make entrypoint executable
+RUN chmod +x /docker-entrypoint.sh
 
-USER node
+# Expose port
 EXPOSE 3000
 
-# Use bun to run the app for speed
-ENTRYPOINT ["./docker-entrypoint.sh"]
+# Use entrypoint script
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Start production server
 CMD ["bun", "run", "start:prod"]
