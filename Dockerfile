@@ -7,8 +7,9 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
 
-# Copy prisma files
+# Copy prisma files and config
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
 # GENERATE PRISMA CLIENT HERE (No DATABASE_URL needed for generation usually)
 RUN bunx prisma generate
@@ -29,6 +30,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/docker-entrypoint.sh ./
 
 # Other files
