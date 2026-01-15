@@ -32,7 +32,7 @@ export class SocialSecurityService {
         },
       },
     });
-    console.log(`[SocialSecurityService] listing institutions, found: ${items.length}`);
+
 
     // TEMPORARY DUMMY DATA FOR DEBUGGING
     if (items.length === 0) {
