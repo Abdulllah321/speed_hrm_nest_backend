@@ -30,6 +30,11 @@ COPY --from=builder /app/check-seed.ts ./
 
 RUN chmod +x docker-entrypoint.sh
 
+# Use existing 'node' user from the node:slim image or create one
+# In node image, 'node' user usually exists. Let's make sure it has permissions.
+RUN chown -R node:node /app
+
+USER node
 EXPOSE 3000
 
 # Use bun to run the app for speed
