@@ -1,28 +1,26 @@
-# Stage 1: Dependencies
-FROM oven/bun:1 AS deps
-WORKDIR /app
-COPY package.json bun.lock* ./
-# Install dependencies including devDependencies (needed for nest build)
-RUN bun install --frozen-lockfile
-
-# Stage 2: Build
+# Stage 1: Build environment
 FROM oven/bun:1 AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+# Copy dependency files
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
+
+# Copy source and prisma
 COPY . .
-
-# Generate Prisma Client
 RUN bunx prisma generate
-
-# Build the application
 RUN bun run build
 
-# Stage 3: Production Runner
-FROM oven/bun:1 AS runner
+# Stage 2: Production runner
+FROM node:20-slim AS runner
 WORKDIR /app
+
+# Copy bun binary from official image
+COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
+
 ENV NODE_ENV=production
 
-# Copy necessary files
+# Copy necessary files from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
@@ -30,12 +28,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/docker-entrypoint.sh ./
 COPY --from=builder /app/check-seed.ts ./
 
-# Set permissions
 RUN chmod +x docker-entrypoint.sh
 
-# Expose port
 EXPOSE 3000
 
-# Entrypoint to handle migrations if needed, or straight up start
+# Use bun to run the app for speed
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["bun", "run", "start:prod"]
