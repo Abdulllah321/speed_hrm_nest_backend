@@ -1,8 +1,29 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
-import { LoanTypeService } from './loan-type.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { CreateLoanTypeDto, UpdateLoanTypeDto, BulkUpdateLoanTypeDto, BulkUpdateLoanTypeItemDto } from './dto/loan-type.dto'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { LoanTypeService } from './loan-type.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from '@nestjs/swagger';
+import {
+  CreateLoanTypeDto,
+  UpdateLoanTypeDto,
+  BulkUpdateLoanTypeDto,
+  BulkUpdateLoanTypeItemDto,
+} from './dto/loan-type.dto';
 
 @ApiTags('Loan Type')
 @Controller('api')
@@ -14,7 +35,7 @@ export class LoanTypeController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all loan types' })
   async list() {
-    return this.service.list()
+    return this.service.list();
   }
 
   @Get('loan-types/:id')
@@ -22,7 +43,7 @@ export class LoanTypeController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get loan type by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('loan-types')
@@ -34,19 +55,23 @@ export class LoanTypeController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('loan-types/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update loan type' })
-  async update(@Param('id') id: string, @Body() body: UpdateLoanTypeDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateLoanTypeDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('loan-types/:id')
@@ -58,7 +83,7 @@ export class LoanTypeController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Post('loan-types/bulk')
@@ -71,7 +96,7 @@ export class LoanTypeController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('loan-types/bulk')
@@ -84,19 +109,30 @@ export class LoanTypeController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('loan-types/bulk')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete loan types in bulk' })
-  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['uuid1', 'uuid2'],
+        },
+      },
+    },
+  })
   async removeBulk(@Body() body: { ids: string[] }, @Req() req) {
     return this.service.removeBulk(body.ids || [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 }

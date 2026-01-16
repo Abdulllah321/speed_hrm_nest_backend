@@ -1,36 +1,49 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class SalaryBreakupService {
-  constructor(private prisma: PrismaService, private activityLogs: ActivityLogsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
-    const items = await this.prisma.salaryBreakup.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.salaryBreakup.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.salaryBreakup.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Salary breakup not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.salaryBreakup.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Salary breakup not found' };
+    return { status: true, data: item };
   }
 
   async create(
-    body: { name: string; percentage: number; isTaxable?: boolean; status?: string },
-    ctx: { userId?: string; ipAddress?: string; userAgent?: string }
+    body: {
+      name: string;
+      percentage: number;
+      isTaxable?: boolean;
+      status?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const created = await this.prisma.salaryBreakup.create({
         data: {
           name: body.name,
           percentage: body.percentage,
-          details: body.isTaxable !== undefined ? JSON.stringify({ isTaxable: body.isTaxable }) : null,
+          details:
+            body.isTaxable !== undefined
+              ? JSON.stringify({ isTaxable: body.isTaxable })
+              : null,
           status: body.status ?? 'active',
           createdById: ctx.userId,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -43,8 +56,8 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: created }
+      });
+      return { status: true, data: created };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -57,23 +70,28 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create salary breakup' }
+      });
+      return { status: false, message: 'Failed to create salary breakup' };
     }
   }
 
   async update(
     id: string,
-    body: { name: string; percentage: number; isTaxable?: boolean; status?: string },
-    ctx: { userId?: string; ipAddress?: string; userAgent?: string }
+    body: {
+      name: string;
+      percentage: number;
+      isTaxable?: boolean;
+      status?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const existing = await this.prisma.salaryBreakup.findUnique({
         where: { id },
-      })
+      });
 
       if (!existing) {
-        return { status: false, message: 'Salary breakup not found' }
+        return { status: false, message: 'Salary breakup not found' };
       }
 
       const updated = await this.prisma.salaryBreakup.update({
@@ -81,12 +99,13 @@ export class SalaryBreakupService {
         data: {
           name: body.name,
           percentage: body.percentage,
-          details: body.isTaxable !== undefined 
-            ? JSON.stringify({ isTaxable: body.isTaxable })
-            : existing.details,
+          details:
+            body.isTaxable !== undefined
+              ? JSON.stringify({ isTaxable: body.isTaxable })
+              : existing.details,
           status: body.status ?? existing.status,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -100,9 +119,13 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: updated, message: 'Salary breakup updated successfully' }
+      return {
+        status: true,
+        data: updated,
+        message: 'Salary breakup updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -116,23 +139,29 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
-      return { status: false, message: error?.message || 'Failed to update salary breakup' }
+      return {
+        status: false,
+        message: error?.message || 'Failed to update salary breakup',
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.salaryBreakup.findUnique({
         where: { id },
-      })
+      });
 
       if (!existing) {
-        return { status: false, message: 'Salary breakup not found' }
+        return { status: false, message: 'Salary breakup not found' };
       }
 
-      await this.prisma.salaryBreakup.delete({ where: { id } })
+      await this.prisma.salaryBreakup.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -145,9 +174,9 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, message: 'Salary breakup deleted successfully' }
+      return { status: true, message: 'Salary breakup deleted successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -160,9 +189,12 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
-      return { status: false, message: error?.message || 'Failed to delete salary breakup' }
+      return {
+        status: false,
+        message: error?.message || 'Failed to delete salary breakup',
+      };
     }
   }
 }

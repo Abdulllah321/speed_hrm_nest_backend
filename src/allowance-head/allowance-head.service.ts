@@ -1,26 +1,37 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class AllowanceHeadService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prisma.allowanceHead.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.allowanceHead.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.allowanceHead.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Allowance head not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.allowanceHead.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Allowance head not found' };
+    return { status: true, data: item };
   }
 
-  async create(body: { name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: {
+      name: string;
+      calculationType?: string;
+      amount?: number;
+      percentage?: number;
+      status?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const created = await this.prisma.allowanceHead.create({
         data: {
@@ -29,9 +40,9 @@ export class AllowanceHeadService {
           amount: body.amount ? Number(body.amount) : null,
           percentage: body.percentage ? Number(body.percentage) : null,
           status: body.status || 'active',
-          createdById: ctx.userId
-        }
-      })
+          createdById: ctx.userId,
+        },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -43,8 +54,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: created }
+      });
+      return { status: true, data: created };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -57,13 +68,22 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create allowance head' }
+      });
+      return { status: false, message: 'Failed to create allowance head' };
     }
   }
 
-  async createBulk(items: { name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No items to create' }
+  async createBulk(
+    items: {
+      name: string;
+      calculationType?: string;
+      amount?: number;
+      percentage?: number;
+      status?: string;
+    }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length) return { status: false, message: 'No items to create' };
     try {
       const result = await this.prisma.allowanceHead.createMany({
         data: items.map((item) => ({
@@ -72,10 +92,10 @@ export class AllowanceHeadService {
           amount: item.amount ? Number(item.amount) : null,
           percentage: item.percentage ? Number(item.percentage) : null,
           status: item.status || 'active',
-          createdById: ctx.userId
+          createdById: ctx.userId,
         })),
         skipDuplicates: true,
-      })
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -86,8 +106,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, message: 'Allowance heads created' }
+      });
+      return { status: true, message: 'Allowance heads created' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -100,20 +120,46 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create allowance heads' }
+      });
+      return { status: false, message: 'Failed to create allowance heads' };
     }
   }
 
-  async update(id: string, body: { name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    body: {
+      name: string;
+      calculationType?: string;
+      amount?: number;
+      percentage?: number;
+      status?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.allowanceHead.findUnique({ where: { id } })
-      const updateData: { name: string; calculationType?: string; amount?: number | null; percentage?: number | null; status?: string } = { name: body.name }
-      if (body.calculationType !== undefined) updateData.calculationType = body.calculationType
-      if (body.amount !== undefined) updateData.amount = body.amount ? Number(body.amount) : null
-      if (body.percentage !== undefined) updateData.percentage = body.percentage ? Number(body.percentage) : null
-      if (body.status !== undefined) updateData.status = body.status
-      const updated = await this.prisma.allowanceHead.update({ where: { id }, data: updateData })
+      const existing = await this.prisma.allowanceHead.findUnique({
+        where: { id },
+      });
+      const updateData: {
+        name: string;
+        calculationType?: string;
+        amount?: number | null;
+        percentage?: number | null;
+        status?: string;
+      } = { name: body.name };
+      if (body.calculationType !== undefined)
+        updateData.calculationType = body.calculationType;
+      if (body.amount !== undefined)
+        updateData.amount = body.amount ? Number(body.amount) : null;
+      if (body.percentage !== undefined)
+        updateData.percentage = body.percentage
+          ? Number(body.percentage)
+          : null;
+      if (body.status !== undefined) updateData.status = body.status;
+      const updated = await this.prisma.allowanceHead.update({
+        where: { id },
+        data: updateData,
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -126,8 +172,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: updated }
+      });
+      return { status: true, data: updated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -141,21 +187,45 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update allowance head' }
+      });
+      return { status: false, message: 'Failed to update allowance head' };
     }
   }
 
-  async updateBulk(items: { id: string; name: string; calculationType?: string; amount?: number; percentage?: number; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No items to update' }
+  async updateBulk(
+    items: {
+      id: string;
+      name: string;
+      calculationType?: string;
+      amount?: number;
+      percentage?: number;
+      status?: string;
+    }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        const updateData: { name: string; calculationType?: string; amount?: number | null; percentage?: number | null; status?: string } = { name: item.name }
-        if (item.calculationType !== undefined) updateData.calculationType = item.calculationType
-        if (item.amount !== undefined) updateData.amount = item.amount ? Number(item.amount) : null
-        if (item.percentage !== undefined) updateData.percentage = item.percentage ? Number(item.percentage) : null
-        if (item.status !== undefined) updateData.status = item.status
-        await this.prisma.allowanceHead.update({ where: { id: item.id }, data: updateData })
+        const updateData: {
+          name: string;
+          calculationType?: string;
+          amount?: number | null;
+          percentage?: number | null;
+          status?: string;
+        } = { name: item.name };
+        if (item.calculationType !== undefined)
+          updateData.calculationType = item.calculationType;
+        if (item.amount !== undefined)
+          updateData.amount = item.amount ? Number(item.amount) : null;
+        if (item.percentage !== undefined)
+          updateData.percentage = item.percentage
+            ? Number(item.percentage)
+            : null;
+        if (item.status !== undefined) updateData.status = item.status;
+        await this.prisma.allowanceHead.update({
+          where: { id: item.id },
+          data: updateData,
+        });
       }
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -167,8 +237,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, message: 'Allowance heads updated' }
+      });
+      return { status: true, message: 'Allowance heads updated' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -181,15 +251,20 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update allowance heads' }
+      });
+      return { status: false, message: 'Failed to update allowance heads' };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.allowanceHead.findUnique({ where: { id } })
-      const removed = await this.prisma.allowanceHead.delete({ where: { id } })
+      const existing = await this.prisma.allowanceHead.findUnique({
+        where: { id },
+      });
+      const removed = await this.prisma.allowanceHead.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -201,8 +276,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: removed }
+      });
+      return { status: true, data: removed };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -215,15 +290,20 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete allowance head' }
+      });
+      return { status: false, message: 'Failed to delete allowance head' };
     }
   }
 
-  async removeBulk(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!ids?.length) return { status: false, message: 'No items to delete' }
+  async removeBulk(
+    ids: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prisma.allowanceHead.deleteMany({ where: { id: { in: ids } } })
+      const removed = await this.prisma.allowanceHead.deleteMany({
+        where: { id: { in: ids } },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -234,8 +314,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, message: 'Allowance heads deleted' }
+      });
+      return { status: true, message: 'Allowance heads deleted' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -248,9 +328,8 @@ export class AllowanceHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete allowance heads' }
+      });
+      return { status: false, message: 'Failed to delete allowance heads' };
     }
   }
 }
-

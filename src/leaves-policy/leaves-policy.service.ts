@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class LeavesPolicyService {
@@ -12,62 +12,62 @@ export class LeavesPolicyService {
   async list() {
     const items = await this.prisma.leavesPolicy.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { 
+      include: {
         leaveTypes: {
           include: {
-            leaveType: true
-          }
-        }
+            leaveType: true,
+          },
+        },
       },
-    })
+    });
     // Transform the data to include leaveTypeName
-    const transformedItems = items.map(item => ({
+    const transformedItems = items.map((item) => ({
       ...item,
-      leaveTypes: item.leaveTypes.map(lt => ({
+      leaveTypes: item.leaveTypes.map((lt) => ({
         leaveTypeId: lt.leaveTypeId,
         leaveTypeName: lt.leaveType.name,
         numberOfLeaves: lt.numberOfLeaves,
-      }))
-    }))
-    return { status: true, data: transformedItems }
+      })),
+    }));
+    return { status: true, data: transformedItems };
   }
 
   async get(id: string) {
     const item = await this.prisma.leavesPolicy.findUnique({
       where: { id },
-      include: { 
+      include: {
         leaveTypes: {
           include: {
-            leaveType: true
-          }
-        }
+            leaveType: true,
+          },
+        },
       },
-    })
-    if (!item) return { status: false, message: 'Leaves policy not found' }
+    });
+    if (!item) return { status: false, message: 'Leaves policy not found' };
     // Transform the data to include leaveTypeName
     const transformedItem = {
       ...item,
-      leaveTypes: item.leaveTypes.map(lt => ({
+      leaveTypes: item.leaveTypes.map((lt) => ({
         leaveTypeId: lt.leaveTypeId,
         leaveTypeName: lt.leaveType.name,
         numberOfLeaves: lt.numberOfLeaves,
-      }))
-    }
-    return { status: true, data: transformedItem }
+      })),
+    };
+    return { status: true, data: transformedItem };
   }
 
   async create(
     body: {
-      name: string
-      details?: string
-      policyDateFrom?: string
-      policyDateTill?: string
-      fullDayDeductionRate?: number
-      halfDayDeductionRate?: number
-      shortLeaveDeductionRate?: number
-      status?: string
-      isDefault?: boolean
-      leaveTypes?: { leaveTypeId: string; numberOfLeaves: number }[]
+      name: string;
+      details?: string;
+      policyDateFrom?: string;
+      policyDateTill?: string;
+      fullDayDeductionRate?: number;
+      halfDayDeductionRate?: number;
+      shortLeaveDeductionRate?: number;
+      status?: string;
+      isDefault?: boolean;
+      leaveTypes?: { leaveTypeId: string; numberOfLeaves: number }[];
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -77,15 +77,19 @@ export class LeavesPolicyService {
         await this.prisma.leavesPolicy.updateMany({
           where: { isDefault: true },
           data: { isDefault: false },
-        })
+        });
       }
 
       const created = await this.prisma.leavesPolicy.create({
         data: {
           name: body.name,
           details: body.details ?? null,
-          policyDateFrom: body.policyDateFrom ? (new Date(body.policyDateFrom) as any) : null,
-          policyDateTill: body.policyDateTill ? (new Date(body.policyDateTill) as any) : null,
+          policyDateFrom: body.policyDateFrom
+            ? (new Date(body.policyDateFrom) as any)
+            : null,
+          policyDateTill: body.policyDateTill
+            ? (new Date(body.policyDateTill) as any)
+            : null,
           fullDayDeductionRate: body.fullDayDeductionRate as any,
           halfDayDeductionRate: body.halfDayDeductionRate as any,
           shortLeaveDeductionRate: body.shortLeaveDeductionRate as any,
@@ -93,7 +97,7 @@ export class LeavesPolicyService {
           isDefault: body.isDefault ?? false,
           createdById: ctx.userId,
         },
-      })
+      });
       if (body.leaveTypes?.length) {
         await this.prisma.leavesPolicyLeaveType.createMany({
           data: body.leaveTypes.map((lt) => ({
@@ -102,20 +106,20 @@ export class LeavesPolicyService {
             numberOfLeaves: lt.numberOfLeaves,
           })),
           skipDuplicates: true,
-        })
+        });
       }
       // Fetch the created record with leaveTypes included
       const createdWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
         where: { id: created.id },
-        include: { 
+        include: {
           leaveTypes: {
             include: {
-              leaveType: true
-            }
-          }
+              leaveType: true,
+            },
+          },
         },
-      })
-      
+      });
+
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -127,19 +131,25 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      
+      });
+
       // Transform the data to include leaveTypeName
-      const transformedItem = createdWithLeaveTypes ? {
-        ...createdWithLeaveTypes,
-        leaveTypes: createdWithLeaveTypes.leaveTypes.map(lt => ({
-          leaveTypeId: lt.leaveTypeId,
-          leaveTypeName: lt.leaveType.name,
-          numberOfLeaves: lt.numberOfLeaves,
-        }))
-      } : created
-      
-      return { status: true, data: transformedItem ,message: 'Leaves policy created successfully'}
+      const transformedItem = createdWithLeaveTypes
+        ? {
+            ...createdWithLeaveTypes,
+            leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
+              leaveTypeId: lt.leaveTypeId,
+              leaveTypeName: lt.leaveType.name,
+              numberOfLeaves: lt.numberOfLeaves,
+            })),
+          }
+        : created;
+
+      return {
+        status: true,
+        data: transformedItem,
+        message: 'Leaves policy created successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -152,8 +162,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create leaves policy', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to create leaves policy',
+        data: null,
+      };
     }
   }
 
@@ -161,7 +175,7 @@ export class LeavesPolicyService {
     items: { name: string; details?: string; status?: string }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
-    if (!items?.length) return { status: false, message: 'No items to create' }
+    if (!items?.length) return { status: false, message: 'No items to create' };
     try {
       const res = await this.prisma.leavesPolicy.createMany({
         data: items.map((i) => ({
@@ -171,7 +185,7 @@ export class LeavesPolicyService {
           createdById: ctx.userId,
         })),
         skipDuplicates: true,
-      })
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -182,8 +196,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: res, message: 'Leaves policies created successfully' }
+      });
+      return {
+        status: true,
+        data: res,
+        message: 'Leaves policies created successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -196,37 +214,45 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create leaves policies', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to create leaves policies',
+        data: null,
+      };
     }
   }
 
   async update(
     id: string,
     body: {
-      name?: string
-      details?: string
-      policyDateFrom?: string
-      policyDateTill?: string
-      fullDayDeductionRate?: number
-      halfDayDeductionRate?: number
-      shortLeaveDeductionRate?: number
-      status?: string
-      isDefault?: boolean
-      leaveTypes?: { leaveTypeId: string; numberOfLeaves: number }[]
+      name?: string;
+      details?: string;
+      policyDateFrom?: string;
+      policyDateTill?: string;
+      fullDayDeductionRate?: number;
+      halfDayDeductionRate?: number;
+      shortLeaveDeductionRate?: number;
+      status?: string;
+      isDefault?: boolean;
+      leaveTypes?: { leaveTypeId: string; numberOfLeaves: number }[];
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({ where: { id }, include: { leaveTypes: true } })
-      if (!existing) return { status: false, message: 'Leaves policy not found' }
+      const existing = await this.prisma.leavesPolicy.findUnique({
+        where: { id },
+        include: { leaveTypes: true },
+      });
+      if (!existing)
+        return { status: false, message: 'Leaves policy not found' };
 
       // If setting as default, unset all other policies first
       if (body.isDefault === true && !existing.isDefault) {
         await this.prisma.leavesPolicy.updateMany({
           where: { isDefault: true },
           data: { isDefault: false },
-        })
+        });
       }
 
       const updated = await this.prisma.leavesPolicy.update({
@@ -234,17 +260,27 @@ export class LeavesPolicyService {
         data: {
           name: body.name ?? existing.name,
           details: body.details ?? existing.details,
-          policyDateFrom: body.policyDateFrom ? (new Date(body.policyDateFrom) as any) : existing.policyDateFrom,
-          policyDateTill: body.policyDateTill ? (new Date(body.policyDateTill) as any) : existing.policyDateTill,
-          fullDayDeductionRate: (body.fullDayDeductionRate ?? (existing as any).fullDayDeductionRate) as any,
-          halfDayDeductionRate: (body.halfDayDeductionRate ?? (existing as any).halfDayDeductionRate) as any,
-          shortLeaveDeductionRate: (body.shortLeaveDeductionRate ?? (existing as any).shortLeaveDeductionRate) as any,
+          policyDateFrom: body.policyDateFrom
+            ? (new Date(body.policyDateFrom) as any)
+            : existing.policyDateFrom,
+          policyDateTill: body.policyDateTill
+            ? (new Date(body.policyDateTill) as any)
+            : existing.policyDateTill,
+          fullDayDeductionRate: (body.fullDayDeductionRate ??
+            (existing as any).fullDayDeductionRate) as any,
+          halfDayDeductionRate: (body.halfDayDeductionRate ??
+            (existing as any).halfDayDeductionRate) as any,
+          shortLeaveDeductionRate: (body.shortLeaveDeductionRate ??
+            (existing as any).shortLeaveDeductionRate) as any,
           status: body.status ?? existing.status,
-          isDefault: body.isDefault !== undefined ? body.isDefault : existing.isDefault,
+          isDefault:
+            body.isDefault !== undefined ? body.isDefault : existing.isDefault,
         },
-      })
+      });
       if (body.leaveTypes) {
-        await this.prisma.leavesPolicyLeaveType.deleteMany({ where: { leavesPolicyId: id } })
+        await this.prisma.leavesPolicyLeaveType.deleteMany({
+          where: { leavesPolicyId: id },
+        });
         if (body.leaveTypes.length) {
           await this.prisma.leavesPolicyLeaveType.createMany({
             data: body.leaveTypes.map((lt) => ({
@@ -253,21 +289,21 @@ export class LeavesPolicyService {
               numberOfLeaves: lt.numberOfLeaves,
             })),
             skipDuplicates: true,
-          })
+          });
         }
       }
       // Fetch the updated record with leaveTypes included
       const updatedWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
         where: { id },
-        include: { 
+        include: {
           leaveTypes: {
             include: {
-              leaveType: true
-            }
-          }
+              leaveType: true,
+            },
+          },
         },
-      })
-      
+      });
+
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -280,19 +316,25 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      
+      });
+
       // Transform the data to include leaveTypeName
-      const transformedItem = updatedWithLeaveTypes ? {
-        ...updatedWithLeaveTypes,
-        leaveTypes: updatedWithLeaveTypes.leaveTypes.map(lt => ({
-          leaveTypeId: lt.leaveTypeId,
-          leaveTypeName: lt.leaveType.name,
-          numberOfLeaves: lt.numberOfLeaves,
-        }))
-      } : updated
-      
-      return { status: true, data: transformedItem ,message: 'Leaves policy updated successfully'}
+      const transformedItem = updatedWithLeaveTypes
+        ? {
+            ...updatedWithLeaveTypes,
+            leaveTypes: updatedWithLeaveTypes.leaveTypes.map((lt) => ({
+              leaveTypeId: lt.leaveTypeId,
+              leaveTypeName: lt.leaveType.name,
+              numberOfLeaves: lt.numberOfLeaves,
+            })),
+          }
+        : updated;
+
+      return {
+        status: true,
+        data: transformedItem,
+        message: 'Leaves policy updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -306,16 +348,26 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update leaves policy', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to update leaves policy',
+        data: null,
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({ where: { id } })
-      if (!existing) return { status: false, message: 'Leaves policy not found' }
-      await this.prisma.leavesPolicy.delete({ where: { id } })
+      const existing = await this.prisma.leavesPolicy.findUnique({
+        where: { id },
+      });
+      if (!existing)
+        return { status: false, message: 'Leaves policy not found' };
+      await this.prisma.leavesPolicy.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -327,8 +379,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: existing, message: 'Leaves policy deleted successfully' }
+      });
+      return {
+        status: true,
+        data: existing,
+        message: 'Leaves policy deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -341,15 +397,22 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete leaves policy', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to delete leaves policy',
+        data: null,
+      };
     }
   }
 
-  async removeBulk(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!ids?.length) return { status: false, message: 'No items to delete' }
+  async removeBulk(
+    ids: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.leavesPolicy.deleteMany({ where: { id: { in: ids } } })
+      await this.prisma.leavesPolicy.deleteMany({ where: { id: { in: ids } } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -360,8 +423,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: ids, message: 'Leaves policies deleted successfully' }
+      });
+      return {
+        status: true,
+        data: ids,
+        message: 'Leaves policies deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -373,8 +440,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete leaves policies', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to delete leaves policies',
+        data: null,
+      };
     }
   }
 
@@ -382,7 +453,7 @@ export class LeavesPolicyService {
     items: { id: string; name: string; details?: string; status?: string }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
-    if (!items?.length) return { status: false, message: 'No items to update' }
+    if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const i of items) {
         await this.prisma.leavesPolicy.update({
@@ -392,7 +463,7 @@ export class LeavesPolicyService {
             details: i.details ?? null,
             status: i.status ?? 'active',
           },
-        })
+        });
       }
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -404,8 +475,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: items, message: 'Leaves policies updated successfully' }
+      });
+      return {
+        status: true,
+        data: items,
+        message: 'Leaves policies updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -418,29 +493,38 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update leaves policies', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to update leaves policies',
+        data: null,
+      };
     }
   }
 
-  async setAsDefault(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async setAsDefault(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({ where: { id } })
+      const existing = await this.prisma.leavesPolicy.findUnique({
+        where: { id },
+      });
       if (!existing) {
-        return { status: false, message: 'Leaves policy not found' }
+        return { status: false, message: 'Leaves policy not found' };
       }
 
       // Unset all other policies as default
       await this.prisma.leavesPolicy.updateMany({
         where: { isDefault: true },
         data: { isDefault: false },
-      })
+      });
 
       // Set this policy as default
       const updated = await this.prisma.leavesPolicy.update({
         where: { id },
         data: { isDefault: true },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -454,9 +538,13 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: updated ,message: 'Leaves policy set as default successfully'}
+      return {
+        status: true,
+        data: updated,
+        message: 'Leaves policy set as default successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -469,8 +557,12 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: error?.message || 'Failed to set leaves policy as default', data: null }
+      });
+      return {
+        status: false,
+        message: error?.message || 'Failed to set leaves policy as default',
+        data: null,
+      };
     }
   }
 }

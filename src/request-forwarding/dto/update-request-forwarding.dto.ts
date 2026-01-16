@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsArray, IsNumber, ValidateNested, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsNumber,
+  ValidateNested,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -7,9 +14,22 @@ export class UpdateApprovalLevelDto {
   @IsNumber()
   level: number;
 
-  @ApiProperty({ example: 'department-head', enum: ['specific-employee', 'department-head', 'sub-department-head', 'reporting-manager'] })
+  @ApiProperty({
+    example: 'department-head',
+    enum: [
+      'specific-employee',
+      'department-head',
+      'sub-department-head',
+      'reporting-manager',
+    ],
+  })
   @IsString()
-  @IsIn(['specific-employee', 'department-head', 'sub-department-head', 'reporting-manager'])
+  @IsIn([
+    'specific-employee',
+    'department-head',
+    'sub-department-head',
+    'reporting-manager',
+  ])
   approverType: string;
 
   @ApiPropertyOptional({ example: 'auto', enum: ['auto', 'specific'] })
@@ -35,7 +55,10 @@ export class UpdateApprovalLevelDto {
 }
 
 export class UpdateRequestForwardingDto {
-  @ApiPropertyOptional({ example: 'multi-level', enum: ['auto-approved', 'multi-level'] })
+  @ApiPropertyOptional({
+    example: 'multi-level',
+    enum: ['auto-approved', 'multi-level'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['auto-approved', 'multi-level'])

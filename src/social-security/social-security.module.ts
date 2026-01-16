@@ -10,4 +10,3 @@ import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
   providers: [SocialSecurityService],
 })
 export class SocialSecurityModule {}
-

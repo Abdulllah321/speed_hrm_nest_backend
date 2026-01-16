@@ -5,9 +5,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 @Module({
-    imports: [PrismaModule, ActivityLogsModule],
-    controllers: [AllocationController],
-    providers: [AllocationService],
-    exports: [AllocationService],
+  imports: [PrismaModule, ActivityLogsModule],
+  controllers: [AllocationController],
+  providers: [AllocationService],
+  exports: [AllocationService],
 })
-export class AllocationModule { }
+export class AllocationModule {}

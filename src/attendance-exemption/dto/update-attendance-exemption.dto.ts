@@ -2,7 +2,10 @@ import { IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateAttendanceExemptionDto {
-  @ApiPropertyOptional({ example: 'approved', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'approved',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   approvalStatus?: string;
@@ -17,4 +20,3 @@ export class UpdateAttendanceExemptionDto {
   @IsString()
   rejectionReason?: string;
 }
-

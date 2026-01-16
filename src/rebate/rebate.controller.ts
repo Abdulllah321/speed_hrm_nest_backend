@@ -12,10 +12,7 @@ import {
 } from '@nestjs/common';
 import { RebateService } from './rebate.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import {
-  CreateRebateDto,
-  UpdateRebateDto,
-} from './dto/create-rebate.dto';
+import { CreateRebateDto, UpdateRebateDto } from './dto/create-rebate.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -36,8 +33,16 @@ export class RebateController {
   @ApiOperation({ summary: 'List rebates' })
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'rebateNatureId', required: false })
-  @ApiQuery({ name: 'monthYear', required: false, description: 'Format: YYYY-MM' })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected'] })
+  @ApiQuery({
+    name: 'monthYear',
+    required: false,
+    description: 'Format: YYYY-MM',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @ApiResponse({ status: 200, description: 'Returns list of rebates' })
   async list(
     @Query('employeeId') employeeId?: string,
@@ -111,4 +116,3 @@ export class RebateController {
     });
   }
 }
-

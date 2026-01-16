@@ -4,9 +4,9 @@ import { PFService } from './pf.service';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [PFController],
-    providers: [PFService],
-    exports: [PFService],
+  imports: [PrismaModule],
+  controllers: [PFController],
+  providers: [PFService],
+  exports: [PFService],
 })
-export class PFModule { }
+export class PFModule {}

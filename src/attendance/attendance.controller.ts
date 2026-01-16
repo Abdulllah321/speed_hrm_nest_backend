@@ -1,16 +1,37 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common'
-import { AttendanceService } from './attendance.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import type { FastifyRequest } from 'fastify'
-import * as fs from 'fs'
-import * as path from 'path'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger'
-import { CreateAttendanceDto, UpdateAttendanceDto } from './dto/create-attendance.dto'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { AttendanceService } from './attendance.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import type { FastifyRequest } from 'fastify';
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
+import {
+  CreateAttendanceDto,
+  UpdateAttendanceDto,
+} from './dto/create-attendance.dto';
 
 @ApiTags('Attendance')
 @Controller('api')
 export class AttendanceController {
-  constructor(private service: AttendanceService) { }
+  constructor(private service: AttendanceService) {}
 
   @Get('attendances')
   @UseGuards(JwtAuthGuard)
@@ -31,7 +52,7 @@ export class AttendanceController {
       dateFrom: dateFrom ? new Date(dateFrom) : undefined,
       dateTo: dateTo ? new Date(dateTo) : undefined,
       status,
-    })
+    });
   }
 
   @Get('attendances/summary')
@@ -56,7 +77,7 @@ export class AttendanceController {
       subDepartmentId,
       dateFrom: dateFrom ? new Date(dateFrom) : undefined,
       dateTo: dateTo ? new Date(dateTo) : undefined,
-    })
+    });
   }
 
   @Get('attendances/:id')
@@ -64,7 +85,7 @@ export class AttendanceController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get attendance by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('attendances')
@@ -76,7 +97,7 @@ export class AttendanceController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Post('attendances/date-range')
@@ -88,19 +109,23 @@ export class AttendanceController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('attendances/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update attendance' })
-  async update(@Param('id') id: string, @Body() body: UpdateAttendanceDto, @Req() req: any) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateAttendanceDto,
+    @Req() req: any,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('attendances/:id')
@@ -112,7 +137,7 @@ export class AttendanceController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Post('attendances/bulk-upload')
@@ -120,53 +145,55 @@ export class AttendanceController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Bulk upload attendance from CSV' })
   async bulkUpload(@Req() request: FastifyRequest) {
-    const data = await request.file()
+    const data = await request.file();
     if (!data) {
-      return { status: false, message: 'No file provided' }
+      return { status: false, message: 'No file provided' };
     }
 
     // Save file temporarily
-    const uploadRoot = path.join(process.cwd(), 'public', 'csv')
+    const uploadRoot = path.join(process.cwd(), 'public', 'csv');
     if (!fs.existsSync(uploadRoot)) {
-      fs.mkdirSync(uploadRoot, { recursive: true })
+      fs.mkdirSync(uploadRoot, { recursive: true });
     }
 
-    const ts = Date.now()
-    const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_')
-    const filename = `${ts}_${safeFilename}`
-    const fullPath = path.join(uploadRoot, filename)
+    const ts = Date.now();
+    const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const filename = `${ts}_${safeFilename}`;
+    const fullPath = path.join(uploadRoot, filename);
 
     await new Promise<void>((resolve, reject) => {
-      const writeStream = fs.createWriteStream(fullPath)
-      data.file.pipe(writeStream)
-      writeStream.on('finish', () => resolve())
-      writeStream.on('error', reject)
-    })
+      const writeStream = fs.createWriteStream(fullPath);
+      data.file.pipe(writeStream);
+      writeStream.on('finish', () => resolve());
+      writeStream.on('error', reject);
+    });
 
     try {
       const result = await this.service.bulkUploadFromCSV(fullPath, {
         userId: request.user?.userId,
         ipAddress: request.ip,
         userAgent: request.headers['user-agent'],
-      })
+      });
 
       // Clean up file after processing
       try {
-        fs.unlinkSync(fullPath)
+        fs.unlinkSync(fullPath);
       } catch (e) {
-        console.warn('Failed to delete temp file:', e)
+        console.warn('Failed to delete temp file:', e);
       }
 
-      return result
+      return result;
     } catch (error: any) {
       // Clean up file on error
       try {
-        fs.unlinkSync(fullPath)
+        fs.unlinkSync(fullPath);
       } catch (e) {
-        console.warn('Failed to delete temp file:', e)
+        console.warn('Failed to delete temp file:', e);
       }
-      return { status: false, message: error?.message || 'Failed to process file' }
+      return {
+        status: false,
+        message: error?.message || 'Failed to process file',
+      };
     }
   }
 }
-

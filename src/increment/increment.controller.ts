@@ -1,8 +1,29 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { IncrementService } from './increment.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { BulkCreateIncrementDto, UpdateIncrementDto } from './dto/create-increment.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  BulkCreateIncrementDto,
+  UpdateIncrementDto,
+} from './dto/create-increment.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 @ApiTags('Increment')
 @Controller('api')
@@ -52,7 +73,11 @@ export class IncrementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update increment' })
-  async update(@Param('id') id: string, @Body() body: UpdateIncrementDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateIncrementDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -72,4 +97,3 @@ export class IncrementController {
     });
   }
 }
-

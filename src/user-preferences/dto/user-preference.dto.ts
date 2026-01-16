@@ -12,4 +12,3 @@ export class UpsertUserPreferenceDto {
   @IsString()
   value: string;
 }
-

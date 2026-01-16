@@ -1,8 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
-import { AttendanceRequestQueryService } from './attendance-request-query.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import { CreateAttendanceRequestQueryDto } from './dto/create-attendance-request-query.dto'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { AttendanceRequestQueryService } from './attendance-request-query.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CreateAttendanceRequestQueryDto } from './dto/create-attendance-request-query.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from '@nestjs/swagger';
 
 @ApiTags('Attendance Request Query')
 @Controller('api')
@@ -14,7 +30,7 @@ export class AttendanceRequestQueryController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List attendance request queries' })
   async list() {
-    return this.service.list()
+    return this.service.list();
   }
 
   @Get('attendance-request-queries/:id')
@@ -22,7 +38,7 @@ export class AttendanceRequestQueryController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get attendance request query by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('attendance-request-queries')
@@ -34,7 +50,7 @@ export class AttendanceRequestQueryController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('attendance-request-queries/:id')
@@ -46,7 +62,7 @@ export class AttendanceRequestQueryController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('attendance-request-queries/:id')
@@ -58,7 +74,6 @@ export class AttendanceRequestQueryController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 }
-

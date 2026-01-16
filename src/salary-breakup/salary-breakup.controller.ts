@@ -1,8 +1,26 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
-import { SalaryBreakupService } from './salary-breakup.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
-import { CreateSalaryBreakupDto, UpdateSalaryBreakupDto } from './dto/salary-breakup.dto'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { SalaryBreakupService } from './salary-breakup.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import {
+  CreateSalaryBreakupDto,
+  UpdateSalaryBreakupDto,
+} from './dto/salary-breakup.dto';
 
 @ApiTags('Salary Breakup')
 @Controller('api')
@@ -14,7 +32,7 @@ export class SalaryBreakupController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all salary breakups' })
   async list() {
-    return this.service.list()
+    return this.service.list();
   }
 
   @Get('salary-breakups/:id')
@@ -22,22 +40,19 @@ export class SalaryBreakupController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get salary breakup by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('salary-breakups')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create salary breakup' })
-  async create(
-    @Body() body: CreateSalaryBreakupDto,
-    @Req() req: any
-  ) {
+  async create(@Body() body: CreateSalaryBreakupDto, @Req() req: any) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('salary-breakups/:id')
@@ -47,13 +62,13 @@ export class SalaryBreakupController {
   async update(
     @Param('id') id: string,
     @Body() body: UpdateSalaryBreakupDto,
-    @Req() req: any
+    @Req() req: any,
   ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('salary-breakups/:id')
@@ -65,6 +80,6 @@ export class SalaryBreakupController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 }

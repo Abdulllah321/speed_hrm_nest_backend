@@ -1,69 +1,91 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class ExitClearanceService {
-  constructor(private prisma: PrismaService, private activityLogs: ActivityLogsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
-    const clearances = await this.prisma.exitClearance.findMany({ orderBy: { createdAt: 'desc' } })
-    
+    const clearances = await this.prisma.exitClearance.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
     // Fetch all departments and designations for mapping
-    const departments = await this.prisma.department.findMany({ include: { subDepartments: true } })
-    const designations = await this.prisma.designation.findMany()
-    
+    const departments = await this.prisma.department.findMany({
+      include: { subDepartments: true },
+    });
+    const designations = await this.prisma.designation.findMany();
+
     // Map IDs to names
-    const mappedClearances = clearances.map(clearance => {
-      const dept = departments.find(d => d.id === clearance.department)
-      const subDept = dept?.subDepartments.find(sd => sd.id === clearance.subDepartment)
-      const designation = designations.find(d => d.id === clearance.designation)
-      
+    const mappedClearances = clearances.map((clearance) => {
+      const dept = departments.find((d) => d.id === clearance.department);
+      const subDept = dept?.subDepartments.find(
+        (sd) => sd.id === clearance.subDepartment,
+      );
+      const designation = designations.find(
+        (d) => d.id === clearance.designation,
+      );
+
       return {
         ...clearance,
         department: dept?.name || clearance.department,
         subDepartment: subDept?.name || clearance.subDepartment,
         designation: designation?.name || clearance.designation,
-      }
-    })
-    
-    return { status: true, data: mappedClearances }
+      };
+    });
+
+    return { status: true, data: mappedClearances };
   }
 
   async get(id: string) {
-    const clearance = await this.prisma.exitClearance.findUnique({ where: { id } })
-    if (!clearance) return { status: false, message: 'Exit clearance not found' }
-    
+    const clearance = await this.prisma.exitClearance.findUnique({
+      where: { id },
+    });
+    if (!clearance)
+      return { status: false, message: 'Exit clearance not found' };
+
     // Fetch department and designation for mapping
-    const department = clearance.department 
-      ? await this.prisma.department.findUnique({ 
-          where: { id: clearance.department }, 
-          include: { subDepartments: true } 
+    const department = clearance.department
+      ? await this.prisma.department.findUnique({
+          where: { id: clearance.department },
+          include: { subDepartments: true },
         })
-      : null
-    
-    const subDepartment = department && clearance.subDepartment
-      ? department.subDepartments.find(sd => sd.id === clearance.subDepartment)
-      : null
-    
+      : null;
+
+    const subDepartment =
+      department && clearance.subDepartment
+        ? department.subDepartments.find(
+            (sd) => sd.id === clearance.subDepartment,
+          )
+        : null;
+
     const designation = clearance.designation
-      ? await this.prisma.designation.findUnique({ where: { id: clearance.designation } })
-      : null
-    
+      ? await this.prisma.designation.findUnique({
+          where: { id: clearance.designation },
+        })
+      : null;
+
     const mappedClearance = {
       ...clearance,
       department: department?.name || clearance.department,
       subDepartment: subDepartment?.name || clearance.subDepartment,
       designation: designation?.name || clearance.designation,
-    }
-    
-    return { status: true, data: mappedClearance }
+    };
+
+    return { status: true, data: mappedClearance };
   }
 
-  async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: any,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!body.employeeId) {
-        return { status: false, message: 'Employee ID is required' }
+        return { status: false, message: 'Employee ID is required' };
       }
 
       const created = await this.prisma.exitClearance.create({
@@ -109,7 +131,7 @@ export class ExitClearanceService {
           note: body.note ?? null,
           approvalStatus: body.approvalStatus || 'pending',
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -122,9 +144,9 @@ export class ExitClearanceService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: created }
+      return { status: true, data: created };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -137,64 +159,175 @@ export class ExitClearanceService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
-      return { status: false, message: error?.message || 'Failed to create exit clearance' }
+      return {
+        status: false,
+        message: error?.message || 'Failed to create exit clearance',
+      };
     }
   }
 
-  async update(id: string, body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    body: any,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.exitClearance.findUnique({ where: { id } })
+      const existing = await this.prisma.exitClearance.findUnique({
+        where: { id },
+      });
       if (!existing) {
-        return { status: false, message: 'Exit clearance not found' }
+        return { status: false, message: 'Exit clearance not found' };
       }
 
       const updated = await this.prisma.exitClearance.update({
         where: { id },
         data: {
-          employeeId: body.employeeId !== undefined ? body.employeeId : existing.employeeId,
-          employeeName: body.employeeName !== undefined ? body.employeeName : existing.employeeName,
-          designation: body.designation !== undefined ? body.designation : existing.designation,
-          department: body.department !== undefined ? body.department : existing.department,
-          subDepartment: body.subDepartment !== undefined ? body.subDepartment : existing.subDepartment,
-          location: body.location !== undefined ? body.location : existing.location,
-          leavingReason: body.leavingReason !== undefined ? body.leavingReason : existing.leavingReason,
-          contractEnd: body.contractEnd !== undefined ? (body.contractEnd ? new Date(body.contractEnd) : null) : existing.contractEnd,
-          lastWorkingDate: body.lastWorkingDate !== undefined ? new Date(body.lastWorkingDate) : existing.lastWorkingDate,
-          reportingManager: body.reportingManager !== undefined ? body.reportingManager : existing.reportingManager,
-          date: body.date !== undefined ? (body.date ? new Date(body.date) : new Date()) : existing.date,
+          employeeId:
+            body.employeeId !== undefined
+              ? body.employeeId
+              : existing.employeeId,
+          employeeName:
+            body.employeeName !== undefined
+              ? body.employeeName
+              : existing.employeeName,
+          designation:
+            body.designation !== undefined
+              ? body.designation
+              : existing.designation,
+          department:
+            body.department !== undefined
+              ? body.department
+              : existing.department,
+          subDepartment:
+            body.subDepartment !== undefined
+              ? body.subDepartment
+              : existing.subDepartment,
+          location:
+            body.location !== undefined ? body.location : existing.location,
+          leavingReason:
+            body.leavingReason !== undefined
+              ? body.leavingReason
+              : existing.leavingReason,
+          contractEnd:
+            body.contractEnd !== undefined
+              ? body.contractEnd
+                ? new Date(body.contractEnd)
+                : null
+              : existing.contractEnd,
+          lastWorkingDate:
+            body.lastWorkingDate !== undefined
+              ? new Date(body.lastWorkingDate)
+              : existing.lastWorkingDate,
+          reportingManager:
+            body.reportingManager !== undefined
+              ? body.reportingManager
+              : existing.reportingManager,
+          date:
+            body.date !== undefined
+              ? body.date
+                ? new Date(body.date)
+                : new Date()
+              : existing.date,
           // IT Department
-          itAccessControl: body.itAccessControl !== undefined ? !!body.itAccessControl : existing.itAccessControl,
-          itPasswordInactivated: body.itPasswordInactivated !== undefined ? !!body.itPasswordInactivated : existing.itPasswordInactivated,
-          itLaptopReturned: body.itLaptopReturned !== undefined ? !!body.itLaptopReturned : existing.itLaptopReturned,
-          itEquipment: body.itEquipment !== undefined ? !!body.itEquipment : existing.itEquipment,
-          itWifiDevice: body.itWifiDevice !== undefined ? !!body.itWifiDevice : existing.itWifiDevice,
-          itMobileDevice: body.itMobileDevice !== undefined ? !!body.itMobileDevice : existing.itMobileDevice,
-          itSimCard: body.itSimCard !== undefined ? !!body.itSimCard : existing.itSimCard,
-          itBillsSettlement: body.itBillsSettlement !== undefined ? !!body.itBillsSettlement : existing.itBillsSettlement,
+          itAccessControl:
+            body.itAccessControl !== undefined
+              ? !!body.itAccessControl
+              : existing.itAccessControl,
+          itPasswordInactivated:
+            body.itPasswordInactivated !== undefined
+              ? !!body.itPasswordInactivated
+              : existing.itPasswordInactivated,
+          itLaptopReturned:
+            body.itLaptopReturned !== undefined
+              ? !!body.itLaptopReturned
+              : existing.itLaptopReturned,
+          itEquipment:
+            body.itEquipment !== undefined
+              ? !!body.itEquipment
+              : existing.itEquipment,
+          itWifiDevice:
+            body.itWifiDevice !== undefined
+              ? !!body.itWifiDevice
+              : existing.itWifiDevice,
+          itMobileDevice:
+            body.itMobileDevice !== undefined
+              ? !!body.itMobileDevice
+              : existing.itMobileDevice,
+          itSimCard:
+            body.itSimCard !== undefined
+              ? !!body.itSimCard
+              : existing.itSimCard,
+          itBillsSettlement:
+            body.itBillsSettlement !== undefined
+              ? !!body.itBillsSettlement
+              : existing.itBillsSettlement,
           // Finance Department
-          financeAdvance: body.financeAdvance !== undefined ? !!body.financeAdvance : existing.financeAdvance,
-          financeLoan: body.financeLoan !== undefined ? !!body.financeLoan : existing.financeLoan,
-          financeOtherLiabilities: body.financeOtherLiabilities !== undefined ? !!body.financeOtherLiabilities : existing.financeOtherLiabilities,
+          financeAdvance:
+            body.financeAdvance !== undefined
+              ? !!body.financeAdvance
+              : existing.financeAdvance,
+          financeLoan:
+            body.financeLoan !== undefined
+              ? !!body.financeLoan
+              : existing.financeLoan,
+          financeOtherLiabilities:
+            body.financeOtherLiabilities !== undefined
+              ? !!body.financeOtherLiabilities
+              : existing.financeOtherLiabilities,
           // Admin Department
-          adminVehicle: body.adminVehicle !== undefined ? !!body.adminVehicle : existing.adminVehicle,
-          adminKeys: body.adminKeys !== undefined ? !!body.adminKeys : existing.adminKeys,
-          adminOfficeAccessories: body.adminOfficeAccessories !== undefined ? !!body.adminOfficeAccessories : existing.adminOfficeAccessories,
-          adminMobilePhone: body.adminMobilePhone !== undefined ? !!body.adminMobilePhone : existing.adminMobilePhone,
-          adminVisitingCards: body.adminVisitingCards !== undefined ? !!body.adminVisitingCards : existing.adminVisitingCards,
+          adminVehicle:
+            body.adminVehicle !== undefined
+              ? !!body.adminVehicle
+              : existing.adminVehicle,
+          adminKeys:
+            body.adminKeys !== undefined
+              ? !!body.adminKeys
+              : existing.adminKeys,
+          adminOfficeAccessories:
+            body.adminOfficeAccessories !== undefined
+              ? !!body.adminOfficeAccessories
+              : existing.adminOfficeAccessories,
+          adminMobilePhone:
+            body.adminMobilePhone !== undefined
+              ? !!body.adminMobilePhone
+              : existing.adminMobilePhone,
+          adminVisitingCards:
+            body.adminVisitingCards !== undefined
+              ? !!body.adminVisitingCards
+              : existing.adminVisitingCards,
           // HR Department
           hrEobi: body.hrEobi !== undefined ? !!body.hrEobi : existing.hrEobi,
-          hrProvidentFund: body.hrProvidentFund !== undefined ? !!body.hrProvidentFund : existing.hrProvidentFund,
-          hrIdCard: body.hrIdCard !== undefined ? !!body.hrIdCard : existing.hrIdCard,
-          hrMedical: body.hrMedical !== undefined ? !!body.hrMedical : existing.hrMedical,
-          hrThumbImpression: body.hrThumbImpression !== undefined ? !!body.hrThumbImpression : existing.hrThumbImpression,
-          hrLeavesRemaining: body.hrLeavesRemaining !== undefined ? !!body.hrLeavesRemaining : existing.hrLeavesRemaining,
-          hrOtherCompensation: body.hrOtherCompensation !== undefined ? !!body.hrOtherCompensation : existing.hrOtherCompensation,
+          hrProvidentFund:
+            body.hrProvidentFund !== undefined
+              ? !!body.hrProvidentFund
+              : existing.hrProvidentFund,
+          hrIdCard:
+            body.hrIdCard !== undefined ? !!body.hrIdCard : existing.hrIdCard,
+          hrMedical:
+            body.hrMedical !== undefined
+              ? !!body.hrMedical
+              : existing.hrMedical,
+          hrThumbImpression:
+            body.hrThumbImpression !== undefined
+              ? !!body.hrThumbImpression
+              : existing.hrThumbImpression,
+          hrLeavesRemaining:
+            body.hrLeavesRemaining !== undefined
+              ? !!body.hrLeavesRemaining
+              : existing.hrLeavesRemaining,
+          hrOtherCompensation:
+            body.hrOtherCompensation !== undefined
+              ? !!body.hrOtherCompensation
+              : existing.hrOtherCompensation,
           note: body.note !== undefined ? body.note : existing.note,
-          approvalStatus: body.approvalStatus !== undefined ? body.approvalStatus : existing.approvalStatus,
+          approvalStatus:
+            body.approvalStatus !== undefined
+              ? body.approvalStatus
+              : existing.approvalStatus,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -208,9 +341,9 @@ export class ExitClearanceService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: updated }
+      return { status: true, data: updated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -224,20 +357,28 @@ export class ExitClearanceService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
-      return { status: false, message: error?.message || 'Failed to update exit clearance' }
+      return {
+        status: false,
+        message: error?.message || 'Failed to update exit clearance',
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.exitClearance.findUnique({ where: { id } })
+      const existing = await this.prisma.exitClearance.findUnique({
+        where: { id },
+      });
       if (!existing) {
-        return { status: false, message: 'Exit clearance not found' }
+        return { status: false, message: 'Exit clearance not found' };
       }
 
-      await this.prisma.exitClearance.delete({ where: { id } })
+      await this.prisma.exitClearance.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -250,9 +391,9 @@ export class ExitClearanceService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, message: 'Exit clearance deleted successfully' }
+      return { status: true, message: 'Exit clearance deleted successfully' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -265,10 +406,12 @@ export class ExitClearanceService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
-      return { status: false, message: error?.message || 'Failed to delete exit clearance' }
+      return {
+        status: false,
+        message: error?.message || 'Failed to delete exit clearance',
+      };
     }
   }
 }
-

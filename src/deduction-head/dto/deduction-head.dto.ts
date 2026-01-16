@@ -29,4 +29,3 @@ export class UpdateDeductionHeadDto {
   @IsString()
   status?: string;
 }
-

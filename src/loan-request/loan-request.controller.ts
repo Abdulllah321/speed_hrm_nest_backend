@@ -1,8 +1,30 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { LoanRequestService } from './loan-request.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateLoanRequestDto, UpdateLoanRequestDto, ApproveLoanRequestDto } from './dto/create-loan-request.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  CreateLoanRequestDto,
+  UpdateLoanRequestDto,
+  ApproveLoanRequestDto,
+} from './dto/create-loan-request.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 @ApiTags('Loan Request')
 @Controller('api')
@@ -61,7 +83,11 @@ export class LoanRequestController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update loan request' })
-  async update(@Param('id') id: string, @Body() body: UpdateLoanRequestDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateLoanRequestDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -73,7 +99,11 @@ export class LoanRequestController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve loan request' })
-  async approve(@Param('id') id: string, @Body() body: ApproveLoanRequestDto, @Req() req) {
+  async approve(
+    @Param('id') id: string,
+    @Body() body: ApproveLoanRequestDto,
+    @Req() req,
+  ) {
     return this.service.approve(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -85,7 +115,11 @@ export class LoanRequestController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject loan request' })
-  async reject(@Param('id') id: string, @Body() body: ApproveLoanRequestDto, @Req() req) {
+  async reject(
+    @Param('id') id: string,
+    @Body() body: ApproveLoanRequestDto,
+    @Req() req,
+  ) {
     return this.service.reject(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,

@@ -1,8 +1,28 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
-import { LeavesPolicyService } from './leaves-policy.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { CreateLeavesPolicyDto, UpdateLeavesPolicyDto, BulkUpdateLeavesPolicyDto } from './dto/leaves-policy.dto'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { LeavesPolicyService } from './leaves-policy.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from '@nestjs/swagger';
+import {
+  CreateLeavesPolicyDto,
+  UpdateLeavesPolicyDto,
+  BulkUpdateLeavesPolicyDto,
+} from './dto/leaves-policy.dto';
 
 @ApiTags('Leaves Policy')
 @Controller('api')
@@ -14,7 +34,7 @@ export class LeavesPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all leaves policies' })
   async list() {
-    return this.service.list()
+    return this.service.list();
   }
 
   @Get('leaves-policies/:id')
@@ -22,22 +42,19 @@ export class LeavesPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get leaves policy by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('leaves-policies')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create leaves policy' })
-  async create(
-    @Body() body: CreateLeavesPolicyDto,
-    @Req() req: any,
-  ) {
+  async create(@Body() body: CreateLeavesPolicyDto, @Req() req: any) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Post('leaves-policies/bulk')
@@ -53,7 +70,7 @@ export class LeavesPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('leaves-policies/:id')
@@ -69,7 +86,7 @@ export class LeavesPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('leaves-policies/:id')
@@ -81,7 +98,7 @@ export class LeavesPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('leaves-policies/bulk')
@@ -89,28 +106,36 @@ export class LeavesPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update leaves policies in bulk' })
   @ApiBody({ type: BulkUpdateLeavesPolicyDto })
-  async updateBulk(
-    @Body() body: BulkUpdateLeavesPolicyDto,
-    @Req() req: any,
-  ) {
+  async updateBulk(@Body() body: BulkUpdateLeavesPolicyDto, @Req() req: any) {
     return this.service.updateBulk(body.items ?? [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('leaves-policies/bulk')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete leaves policies in bulk' })
-  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['uuid1', 'uuid2'],
+        },
+      },
+    },
+  })
   async removeBulk(@Body() body: { ids: string[] }, @Req() req: any) {
     return this.service.removeBulk(body.ids ?? [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('leaves-policies/:id/set-default')
@@ -122,6 +147,6 @@ export class LeavesPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 }

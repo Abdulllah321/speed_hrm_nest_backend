@@ -1,8 +1,30 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { BonusService } from './bonus.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateBonusDto, BulkCreateBonusDto, UpdateBonusDto } from './dto/create-bonus.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  CreateBonusDto,
+  BulkCreateBonusDto,
+  UpdateBonusDto,
+} from './dto/create-bonus.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 @ApiTags('Bonus')
 @Controller('api')
@@ -41,7 +63,11 @@ export class BonusController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Search bonuses by employees' })
-  @ApiQuery({ name: 'employeeIds', required: false, description: 'Comma separated IDs' })
+  @ApiQuery({
+    name: 'employeeIds',
+    required: false,
+    description: 'Comma separated IDs',
+  })
   @ApiQuery({ name: 'bonusMonthYear', required: false })
   @ApiQuery({ name: 'bonusTypeId', required: false })
   async search(
@@ -49,7 +75,9 @@ export class BonusController {
     @Query('bonusMonthYear') bonusMonthYear?: string,
     @Query('bonusTypeId') bonusTypeId?: string,
   ) {
-    const employeeIdsArray = employeeIds ? employeeIds.split(',').map(id => id.trim()) : [];
+    const employeeIdsArray = employeeIds
+      ? employeeIds.split(',').map((id) => id.trim())
+      : [];
     return this.service.searchByEmployees({
       employeeIds: employeeIdsArray,
       bonusMonthYear,
@@ -93,7 +121,11 @@ export class BonusController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bonus' })
-  async update(@Param('id') id: string, @Body() body: UpdateBonusDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateBonusDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -113,4 +145,3 @@ export class BonusController {
     });
   }
 }
-

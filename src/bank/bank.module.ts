@@ -10,4 +10,3 @@ import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
   providers: [BankService],
 })
 export class BankModule {}
-

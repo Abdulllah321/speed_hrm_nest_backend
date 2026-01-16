@@ -56,7 +56,10 @@ export class CreateBonusDto {
   @Type(() => CreateBonusItemDto)
   bonuses: CreateBonusItemDto[];
 
-  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_salary',
+    enum: ['with_salary', 'separately'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -64,7 +67,10 @@ export class CreateBonusDto {
   })
   paymentMethod?: string; // "with_salary" | "separately"
 
-  @ApiPropertyOptional({ example: 'deduct-current-month', enum: ['distributed-remaining-months', 'deduct-current-month'] })
+  @ApiPropertyOptional({
+    example: 'deduct-current-month',
+    enum: ['distributed-remaining-months', 'deduct-current-month'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
@@ -121,7 +127,10 @@ export class UpdateBonusDto {
   @IsString()
   status?: string;
 
-  @ApiPropertyOptional({ example: 'separately', enum: ['with_salary', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'separately',
+    enum: ['with_salary', 'separately'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -129,7 +138,10 @@ export class UpdateBonusDto {
   })
   paymentMethod?: string; // "with_salary" | "separately"
 
-  @ApiPropertyOptional({ example: 'distributed-remaining-months', enum: ['distributed-remaining-months', 'deduct-current-month'] })
+  @ApiPropertyOptional({
+    example: 'distributed-remaining-months',
+    enum: ['distributed-remaining-months', 'deduct-current-month'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
@@ -167,7 +179,10 @@ export class BulkCreateBonusDto {
   @Type(() => CreateBonusItemDto)
   bonuses: CreateBonusItemDto[];
 
-  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_salary',
+    enum: ['with_salary', 'separately'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -175,7 +190,10 @@ export class BulkCreateBonusDto {
   })
   paymentMethod?: string; // "with_salary" | "separately"
 
-  @ApiPropertyOptional({ example: 'deduct-current-month', enum: ['distributed-remaining-months', 'deduct-current-month'] })
+  @ApiPropertyOptional({
+    example: 'deduct-current-month',
+    enum: ['distributed-remaining-months', 'deduct-current-month'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {

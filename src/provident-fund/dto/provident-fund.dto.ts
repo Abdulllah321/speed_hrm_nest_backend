@@ -42,4 +42,3 @@ export class UpdateProvidentFundDto {
   @IsString()
   status?: string;
 }
-

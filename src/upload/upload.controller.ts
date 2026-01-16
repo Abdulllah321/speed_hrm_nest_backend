@@ -1,9 +1,25 @@
-import { Controller, Post, Req, Get, Param, Res, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Req,
+  Get,
+  Param,
+  Res,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
 import { UploadService } from './upload.service';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 
 @ApiTags('Upload')
 @Controller('api')
@@ -82,16 +98,23 @@ export class UploadController {
     try {
       const item = await this.uploadService.getUpload(id);
       if (!item || !item.path) {
-        return reply.status(404).send({ status: false, message: 'File not found' });
+        return reply
+          .status(404)
+          .send({ status: false, message: 'File not found' });
       }
-      
+
       const { stream } = await this.uploadService.downloadUpload(id);
       reply.header('Content-Type', item.mimetype);
-      reply.header('Content-Disposition', `inline; filename="${item.filename}"`);
+      reply.header(
+        'Content-Disposition',
+        `inline; filename="${item.filename}"`,
+      );
       reply.header('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
       return reply.send(stream);
     } catch (error: any) {
-      return reply.status(404).send({ status: false, message: 'File not found' });
+      return reply
+        .status(404)
+        .send({ status: false, message: 'File not found' });
     }
   }
 
@@ -102,7 +125,10 @@ export class UploadController {
   async downloadUpload(@Param('id') id: string, @Res() reply: FastifyReply) {
     const { item, stream } = await this.uploadService.downloadUpload(id);
     reply.header('Content-Type', item.mimetype);
-    reply.header('Content-Disposition', `attachment; filename="${item.filename}"`);
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename="${item.filename}"`,
+    );
     return reply.send(stream);
   }
 

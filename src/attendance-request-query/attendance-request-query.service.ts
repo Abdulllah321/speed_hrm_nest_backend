@@ -1,12 +1,12 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class AttendanceRequestQueryService {
   constructor(
     private prisma: PrismaService,
-    private activityLogs: ActivityLogsService
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async list() {
@@ -22,30 +22,30 @@ export class AttendanceRequestQueryService {
           },
         },
       },
-    })
+    });
 
     // Fetch all departments and designations for mapping
     const departments = await this.prisma.department.findMany({
       include: { subDepartments: true },
-    })
-    const designations = await this.prisma.designation.findMany()
+    });
+    const designations = await this.prisma.designation.findMany();
 
     // Map IDs to names
     const mappedQueries = queries.map((query) => {
       // Map department and subDepartment from AttendanceRequestQuery fields
       const dept = query.department
         ? departments.find((d) => d.id === query.department)
-        : null
+        : null;
       const subDept =
         dept && query.subDepartment
           ? dept.subDepartments.find((sd) => sd.id === query.subDepartment)
-          : null
+          : null;
 
       // Map designation from employee relation if available
-      const employeeDesignationId = query.employee?.designationId
+      const employeeDesignationId = query.employee?.designationId;
       const designation = employeeDesignationId
         ? designations.find((d) => d.id === employeeDesignationId)
-        : null
+        : null;
 
       return {
         ...query,
@@ -53,10 +53,10 @@ export class AttendanceRequestQueryService {
         department: dept?.name || query.department,
         subDepartment: subDept?.name || query.subDepartment,
         designation: designation?.name || null,
-      }
-    })
+      };
+    });
 
-    return { status: true, data: mappedQueries }
+    return { status: true, data: mappedQueries };
   }
 
   async get(id: string) {
@@ -72,10 +72,10 @@ export class AttendanceRequestQueryService {
           },
         },
       },
-    })
+    });
 
     if (!query) {
-      return { status: false, message: 'Attendance request query not found' }
+      return { status: false, message: 'Attendance request query not found' };
     }
 
     // Fetch department and designation for mapping
@@ -84,18 +84,18 @@ export class AttendanceRequestQueryService {
           where: { id: query.department },
           include: { subDepartments: true },
         })
-      : null
+      : null;
 
     const subDepartment =
       department && query.subDepartment
         ? department.subDepartments.find((sd) => sd.id === query.subDepartment)
-        : null
+        : null;
 
     const designation = query.employee?.designationId
       ? await this.prisma.designation.findUnique({
           where: { id: query.employee.designationId },
         })
-      : null
+      : null;
 
     return {
       status: true,
@@ -106,10 +106,13 @@ export class AttendanceRequestQueryService {
         subDepartment: subDepartment?.name || query.subDepartment,
         designation: designation?.name || null,
       },
-    }
+    };
   }
 
-  async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: any,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const created = await this.prisma.attendanceRequestQuery.create({
         data: {
@@ -125,19 +128,20 @@ export class AttendanceRequestQueryService {
           query: body.query,
           approvalStatus: body.approvalStatus || 'pending',
         },
-      })
+      });
 
       // Fetch the created record with employee relation to get actual employeeId
-      const createdWithEmployee = await this.prisma.attendanceRequestQuery.findUnique({
-        where: { id: created.id },
-        include: {
-          employee: {
-            select: {
-              employeeId: true,
+      const createdWithEmployee =
+        await this.prisma.attendanceRequestQuery.findUnique({
+          where: { id: created.id },
+          include: {
+            employee: {
+              select: {
+                employeeId: true,
+              },
             },
           },
-        },
-      })
+        });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -150,15 +154,19 @@ export class AttendanceRequestQueryService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { 
-        status: true, 
-        data: createdWithEmployee ? {
-          ...createdWithEmployee,
-          employeeId: createdWithEmployee.employee?.employeeId || createdWithEmployee.employeeId,
-        } : created
-      }
+      return {
+        status: true,
+        data: createdWithEmployee
+          ? {
+              ...createdWithEmployee,
+              employeeId:
+                createdWithEmployee.employee?.employeeId ||
+                createdWithEmployee.employeeId,
+            }
+          : created,
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -171,26 +179,26 @@ export class AttendanceRequestQueryService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
       return {
         status: false,
         message: error?.message || 'Failed to create attendance request query',
-      }
+      };
     }
   }
 
   async update(
     id: string,
     body: any,
-    ctx: { userId?: string; ipAddress?: string; userAgent?: string }
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const existing = await this.prisma.attendanceRequestQuery.findUnique({
         where: { id },
-      })
+      });
       if (!existing) {
-        return { status: false, message: 'Attendance request query not found' }
+        return { status: false, message: 'Attendance request query not found' };
       }
 
       const updated = await this.prisma.attendanceRequestQuery.update({
@@ -204,19 +212,20 @@ export class AttendanceRequestQueryService {
               : null,
           rejectionReason: body.rejectionReason || null,
         },
-      })
+      });
 
       // Fetch the updated record with employee relation to get actual employeeId
-      const updatedWithEmployee = await this.prisma.attendanceRequestQuery.findUnique({
-        where: { id },
-        include: {
-          employee: {
-            select: {
-              employeeId: true,
+      const updatedWithEmployee =
+        await this.prisma.attendanceRequestQuery.findUnique({
+          where: { id },
+          include: {
+            employee: {
+              select: {
+                employeeId: true,
+              },
             },
           },
-        },
-      })
+        });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -230,15 +239,19 @@ export class AttendanceRequestQueryService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { 
-        status: true, 
-        data: updatedWithEmployee ? {
-          ...updatedWithEmployee,
-          employeeId: updatedWithEmployee.employee?.employeeId || updatedWithEmployee.employeeId,
-        } : updated
-      }
+      return {
+        status: true,
+        data: updatedWithEmployee
+          ? {
+              ...updatedWithEmployee,
+              employeeId:
+                updatedWithEmployee.employee?.employeeId ||
+                updatedWithEmployee.employeeId,
+            }
+          : updated,
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -252,25 +265,28 @@ export class AttendanceRequestQueryService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
       return {
         status: false,
         message: error?.message || 'Failed to update attendance request query',
-      }
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.attendanceRequestQuery.findUnique({
         where: { id },
-      })
+      });
       if (!existing) {
-        return { status: false, message: 'Attendance request query not found' }
+        return { status: false, message: 'Attendance request query not found' };
       }
 
-      await this.prisma.attendanceRequestQuery.delete({ where: { id } })
+      await this.prisma.attendanceRequestQuery.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -283,9 +299,12 @@ export class AttendanceRequestQueryService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, message: 'Attendance request query deleted successfully' }
+      return {
+        status: true,
+        message: 'Attendance request query deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -298,13 +317,12 @@ export class AttendanceRequestQueryService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
       return {
         status: false,
         message: error?.message || 'Failed to delete attendance request query',
-      }
+      };
     }
   }
 }
-

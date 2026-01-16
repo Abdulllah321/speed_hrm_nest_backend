@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { CreateOvertimeRequestDto, UpdateOvertimeRequestDto } from './dto/create-overtime-request.dto';
+import {
+  CreateOvertimeRequestDto,
+  UpdateOvertimeRequestDto,
+} from './dto/create-overtime-request.dto';
 
 @Injectable()
 export class OvertimeRequestService {
@@ -103,7 +106,10 @@ export class OvertimeRequestService {
       console.error('Error listing overtime requests:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to list overtime requests',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to list overtime requests',
       };
     }
   }
@@ -180,12 +186,18 @@ export class OvertimeRequestService {
       console.error('Error getting overtime request:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get overtime request',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get overtime request',
       };
     }
   }
 
-  async create(body: CreateOvertimeRequestDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: CreateOvertimeRequestDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Validate employee exists
       const employee = await this.prisma.employee.findUnique({
@@ -267,7 +279,10 @@ export class OvertimeRequestService {
       console.error('Error creating overtime request:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to create overtime request',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to create overtime request',
       };
     }
   }
@@ -302,10 +317,13 @@ export class OvertimeRequestService {
       if (body.employeeId) updateData.employeeId = body.employeeId;
       if (body.overtimeType) updateData.overtimeType = body.overtimeType;
       if (body.title) updateData.title = body.title;
-      if (body.description !== undefined) updateData.description = body.description;
+      if (body.description !== undefined)
+        updateData.description = body.description;
       if (body.date) updateData.date = new Date(body.date);
-      if (body.weekdayOvertimeHours !== undefined) updateData.weekdayOvertimeHours = body.weekdayOvertimeHours;
-      if (body.holidayOvertimeHours !== undefined) updateData.holidayOvertimeHours = body.holidayOvertimeHours;
+      if (body.weekdayOvertimeHours !== undefined)
+        updateData.weekdayOvertimeHours = body.weekdayOvertimeHours;
+      if (body.holidayOvertimeHours !== undefined)
+        updateData.holidayOvertimeHours = body.holidayOvertimeHours;
       if (body.status) updateData.status = body.status;
       updateData.updatedById = ctx.userId;
 
@@ -359,17 +377,27 @@ export class OvertimeRequestService {
         updatedAt: updated.updatedAt.toISOString(),
       };
 
-      return { status: true, data: transformedData, message: 'Overtime request updated successfully' };
+      return {
+        status: true,
+        data: transformedData,
+        message: 'Overtime request updated successfully',
+      };
     } catch (error) {
       console.error('Error updating overtime request:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to update overtime request',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update overtime request',
       };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.overtimeRequest.findUnique({
         where: { id },
@@ -403,9 +431,11 @@ export class OvertimeRequestService {
       console.error('Error deleting overtime request:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to delete overtime request',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to delete overtime request',
       };
     }
   }
 }
-

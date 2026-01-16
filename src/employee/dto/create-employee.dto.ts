@@ -1,4 +1,14 @@
-import { IsNotEmpty, IsString, IsEmail, IsOptional, IsBoolean, IsDateString, IsNumber, IsDecimal, IsArray } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsEmail,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsNumber,
+  IsDecimal,
+  IsArray,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -284,7 +294,6 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   accountTitle?: string;
-
 
   @ApiPropertyOptional({ example: 'Current' })
   @IsOptional()
@@ -623,4 +632,3 @@ export class UpdateEmployeeDto {
   @IsOptional()
   socialSecurityRegistrations?: any;
 }
-

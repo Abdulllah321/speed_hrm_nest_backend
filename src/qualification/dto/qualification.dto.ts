@@ -29,4 +29,3 @@ export class UpdateQualificationDto {
   @IsString()
   status?: string;
 }
-

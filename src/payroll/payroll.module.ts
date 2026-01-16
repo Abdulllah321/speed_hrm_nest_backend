@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
   controllers: [PayrollController],
   providers: [PayrollService],
 })
-export class PayrollModule { }
+export class PayrollModule {}

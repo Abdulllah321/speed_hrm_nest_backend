@@ -130,9 +130,14 @@ export class RequestForwardingService {
   ) {
     // Validate request type
     if (
-      !['exemption', 'attendance', 'advance-salary', 'loan', 'overtime', 'leave-encashment'].includes(
-        body.requestType,
-      )
+      ![
+        'exemption',
+        'attendance',
+        'advance-salary',
+        'loan',
+        'overtime',
+        'leave-encashment',
+      ].includes(body.requestType)
     ) {
       throw new BadRequestException(
         'Invalid request type. Must be "exemption", "attendance", "advance-salary", "loan", "overtime", or "leave-encashment"',
@@ -294,9 +299,14 @@ export class RequestForwardingService {
   ) {
     // Validate request type
     if (
-      !['exemption', 'attendance', 'advance-salary', 'loan', 'overtime', 'leave-encashment'].includes(
-        requestType,
-      )
+      ![
+        'exemption',
+        'attendance',
+        'advance-salary',
+        'loan',
+        'overtime',
+        'leave-encashment',
+      ].includes(requestType)
     ) {
       throw new BadRequestException(
         'Invalid request type. Must be "exemption", "attendance", "advance-salary", "loan", "overtime", or "leave-encashment"',

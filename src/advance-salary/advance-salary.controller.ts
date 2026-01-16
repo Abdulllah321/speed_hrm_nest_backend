@@ -1,8 +1,30 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AdvanceSalaryService } from './advance-salary.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateAdvanceSalaryDto, UpdateAdvanceSalaryDto, ApproveAdvanceSalaryDto } from './dto/create-advance-salary.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  CreateAdvanceSalaryDto,
+  UpdateAdvanceSalaryDto,
+  ApproveAdvanceSalaryDto,
+} from './dto/create-advance-salary.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 @ApiTags('Advance Salary')
 @Controller('api')
@@ -61,7 +83,11 @@ export class AdvanceSalaryController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update advance salary request' })
-  async update(@Param('id') id: string, @Body() body: UpdateAdvanceSalaryDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateAdvanceSalaryDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -73,7 +99,11 @@ export class AdvanceSalaryController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve advance salary request' })
-  async approve(@Param('id') id: string, @Body() body: ApproveAdvanceSalaryDto, @Req() req) {
+  async approve(
+    @Param('id') id: string,
+    @Body() body: ApproveAdvanceSalaryDto,
+    @Req() req,
+  ) {
     return this.service.approve(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -85,7 +115,11 @@ export class AdvanceSalaryController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject advance salary request' })
-  async reject(@Param('id') id: string, @Body() body: ApproveAdvanceSalaryDto, @Req() req) {
+  async reject(
+    @Param('id') id: string,
+    @Body() body: ApproveAdvanceSalaryDto,
+    @Req() req,
+  ) {
     return this.service.reject(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,

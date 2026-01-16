@@ -1,30 +1,36 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class DeductionHeadService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prisma.deductionHead.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.deductionHead.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.deductionHead.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Deduction head not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.deductionHead.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Deduction head not found' };
+    return { status: true, data: item };
   }
 
-  async create(name: string, status: string | undefined, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    name: string,
+    status: string | undefined,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const created = await this.prisma.deductionHead.create({
-        data: { name, status: status || 'active', createdById: ctx.userId }
-      })
+        data: { name, status: status || 'active', createdById: ctx.userId },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -36,8 +42,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: created }
+      });
+      return { status: true, data: created };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -50,22 +56,25 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create deduction head' }
+      });
+      return { status: false, message: 'Failed to create deduction head' };
     }
   }
 
-  async createBulk(items: { name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No items to create' }
+  async createBulk(
+    items: { name: string; status?: string }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length) return { status: false, message: 'No items to create' };
     try {
       const result = await this.prisma.deductionHead.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
-          createdById: ctx.userId
+          createdById: ctx.userId,
         })),
         skipDuplicates: true,
-      })
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -76,8 +85,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, message: 'Deduction heads created' }
+      });
+      return { status: true, message: 'Deduction heads created' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -90,17 +99,27 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create deduction heads' }
+      });
+      return { status: false, message: 'Failed to create deduction heads' };
     }
   }
 
-  async update(id: string, name: string, status: string | undefined, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    name: string,
+    status: string | undefined,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.deductionHead.findUnique({ where: { id } })
-      const updateData: { name: string; status?: string } = { name }
-      if (status !== undefined) updateData.status = status
-      const updated = await this.prisma.deductionHead.update({ where: { id }, data: updateData })
+      const existing = await this.prisma.deductionHead.findUnique({
+        where: { id },
+      });
+      const updateData: { name: string; status?: string } = { name };
+      if (status !== undefined) updateData.status = status;
+      const updated = await this.prisma.deductionHead.update({
+        where: { id },
+        data: updateData,
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -113,8 +132,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: updated }
+      });
+      return { status: true, data: updated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -128,18 +147,26 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update deduction head' }
+      });
+      return { status: false, message: 'Failed to update deduction head' };
     }
   }
 
-  async updateBulk(items: { id: string; name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No items to update' }
+  async updateBulk(
+    items: { id: string; name: string; status?: string }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        const updateData: { name: string; status?: string } = { name: item.name }
-        if (item.status !== undefined) updateData.status = item.status
-        await this.prisma.deductionHead.update({ where: { id: item.id }, data: updateData })
+        const updateData: { name: string; status?: string } = {
+          name: item.name,
+        };
+        if (item.status !== undefined) updateData.status = item.status;
+        await this.prisma.deductionHead.update({
+          where: { id: item.id },
+          data: updateData,
+        });
       }
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -151,8 +178,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, message: 'Deduction heads updated' }
+      });
+      return { status: true, message: 'Deduction heads updated' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -165,15 +192,20 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update deduction heads' }
+      });
+      return { status: false, message: 'Failed to update deduction heads' };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.deductionHead.findUnique({ where: { id } })
-      const removed = await this.prisma.deductionHead.delete({ where: { id } })
+      const existing = await this.prisma.deductionHead.findUnique({
+        where: { id },
+      });
+      const removed = await this.prisma.deductionHead.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -185,8 +217,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: removed }
+      });
+      return { status: true, data: removed };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -199,15 +231,20 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete deduction head' }
+      });
+      return { status: false, message: 'Failed to delete deduction head' };
     }
   }
 
-  async removeBulk(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!ids?.length) return { status: false, message: 'No items to delete' }
+  async removeBulk(
+    ids: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prisma.deductionHead.deleteMany({ where: { id: { in: ids } } })
+      const removed = await this.prisma.deductionHead.deleteMany({
+        where: { id: { in: ids } },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -218,8 +255,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, message: 'Deduction heads deleted' }
+      });
+      return { status: true, message: 'Deduction heads deleted' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -232,9 +269,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete deduction heads' }
+      });
+      return { status: false, message: 'Failed to delete deduction heads' };
     }
   }
 }
-

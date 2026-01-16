@@ -29,4 +29,3 @@ export class UpdateInstituteDto {
   @IsString()
   status?: string;
 }
-

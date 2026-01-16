@@ -1,28 +1,30 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common'
-import * as jwt from 'jsonwebtoken'
-import authConfig from '../../config/auth.config'
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
+import authConfig from '../../config/auth.config';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest()
-    const authHeader = req.headers['authorization'] as string
-    let token: string | undefined
+    const req = context.switchToHttp().getRequest();
+    const authHeader = req.headers['authorization'] as string;
+    let token: string | undefined;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1]
+      token = authHeader.split(' ')[1];
     } else if (req.cookies && req.cookies['accessToken']) {
-      token = req.cookies['accessToken']
+      token = req.cookies['accessToken'];
     }
 
-    if (!token) return false
+    if (!token) return false;
     try {
-      const decoded = jwt.verify(token, authConfig.jwt.accessSecret, { issuer: authConfig.jwt.issuer }) as any
+      const decoded = jwt.verify(token, authConfig.jwt.accessSecret, {
+        issuer: authConfig.jwt.issuer,
+      }) as any;
 
-      req.user = decoded
-      return true
+      req.user = decoded;
+      return true;
     } catch {
-      return false
+      return false;
     }
   }
 }

@@ -1,28 +1,35 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class DesignationService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prisma.designation.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.designation.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.designation.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Designation not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.designation.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Designation not found' };
+    return { status: true, data: item };
   }
 
-  async create(name: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    name: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const created = await this.prisma.designation.create({ data: { name, status: 'active', createdById: ctx.userId } })
+      const created = await this.prisma.designation.create({
+        data: { name, status: 'active', createdById: ctx.userId },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -34,8 +41,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: created, message: 'Designation created successfully' }
+      });
+      return {
+        status: true,
+        data: created,
+        message: 'Designation created successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -48,18 +59,29 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create designation', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to create designation',
+        data: null,
+      };
     }
   }
 
-  async createBulk(names: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!names?.length) return { status: false, message: 'No items to create' }
+  async createBulk(
+    names: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!names?.length) return { status: false, message: 'No items to create' };
     try {
       const result = await this.prisma.designation.createMany({
-        data: names.map((n) => ({ name: n, status: 'active', createdById: ctx.userId })),
+        data: names.map((n) => ({
+          name: n,
+          status: 'active',
+          createdById: ctx.userId,
+        })),
         skipDuplicates: true,
-      })
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -70,8 +92,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: result, message: 'Designations created successfully' }
+      });
+      return {
+        status: true,
+        data: result,
+        message: 'Designations created successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -84,15 +110,28 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create designations', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to create designations',
+        data: null,
+      };
     }
   }
 
-  async update(id: string, name: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    name: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.designation.findUnique({ where: { id } })
-      const updated = await this.prisma.designation.update({ where: { id }, data: { name } })
+      const existing = await this.prisma.designation.findUnique({
+        where: { id },
+      });
+      const updated = await this.prisma.designation.update({
+        where: { id },
+        data: { name },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -105,8 +144,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: updated, message: 'Designation updated successfully' }
+      });
+      return {
+        status: true,
+        data: updated,
+        message: 'Designation updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -120,16 +163,26 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update designation', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to update designation',
+        data: null,
+      };
     }
   }
 
-  async updateBulk(items: { id: string; name: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No items to update' }
+  async updateBulk(
+    items: { id: string; name: string }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        await this.prisma.designation.update({ where: { id: item.id }, data: { name: item.name } })
+        await this.prisma.designation.update({
+          where: { id: item.id },
+          data: { name: item.name },
+        });
       }
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -141,8 +194,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: items, message: 'Designations updated successfully' }
+      });
+      return {
+        status: true,
+        data: items,
+        message: 'Designations updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -155,15 +212,24 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update designations', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to update designations',
+        data: null,
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.designation.findUnique({ where: { id } })
-      const removed = await this.prisma.designation.delete({ where: { id } })
+      const existing = await this.prisma.designation.findUnique({
+        where: { id },
+      });
+      const removed = await this.prisma.designation.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -175,8 +241,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: removed, message: 'Designation deleted successfully' }
+      });
+      return {
+        status: true,
+        data: removed,
+        message: 'Designation deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -189,15 +259,24 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete designation', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to delete designation',
+        data: null,
+      };
     }
   }
 
-  async removeBulk(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!ids?.length) return { status: false, message: 'No items to delete' }
+  async removeBulk(
+    ids: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prisma.designation.deleteMany({ where: { id: { in: ids } } })
+      const removed = await this.prisma.designation.deleteMany({
+        where: { id: { in: ids } },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -208,8 +287,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: ids, message: 'Designations deleted successfully' }
+      });
+      return {
+        status: true,
+        data: ids,
+        message: 'Designations deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -222,8 +305,12 @@ export class DesignationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete designations', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to delete designations',
+        data: null,
+      };
     }
   }
 }

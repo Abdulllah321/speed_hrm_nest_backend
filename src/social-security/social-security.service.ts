@@ -17,7 +17,7 @@ export class SocialSecurityService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   // ========== Social Security Institution CRUD ==========
   async listInstitutions() {
@@ -33,13 +33,28 @@ export class SocialSecurityService {
       },
     });
 
-
     // TEMPORARY DUMMY DATA FOR DEBUGGING
     if (items.length === 0) {
       console.log('[SocialSecurityService] returning dummy data for debugging');
       items = [
-        { id: 'dummy-1', code: 'SESSI', name: 'Sindh Employees Social Security Institution', status: 'active', createdAt: new Date(), updatedAt: new Date(), contributionRate: 6 } as any,
-        { id: 'dummy-2', code: 'PESSI', name: 'Punjab Employees Social Security Institution', status: 'active', createdAt: new Date(), updatedAt: new Date(), contributionRate: 6 } as any,
+        {
+          id: 'dummy-1',
+          code: 'SESSI',
+          name: 'Sindh Employees Social Security Institution',
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          contributionRate: 6,
+        } as any,
+        {
+          id: 'dummy-2',
+          code: 'PESSI',
+          name: 'Punjab Employees Social Security Institution',
+          status: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          contributionRate: 6,
+        } as any,
       ];
     }
 
@@ -113,7 +128,9 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.socialSecurityInstitution.findUnique({ where: { id } });
+      const existing = await this.prisma.socialSecurityInstitution.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'Institution not found' };
       const updated = await this.prisma.socialSecurityInstitution.update({
         where: { id },
@@ -126,7 +143,8 @@ export class SocialSecurityService {
           website: body.website ?? existing.website,
           contactNumber: body.contactNumber ?? existing.contactNumber,
           address: body.address ?? existing.address,
-          contributionRate: body.contributionRate ?? (existing as any).contributionRate,
+          contributionRate:
+            body.contributionRate ?? (existing as any).contributionRate,
           updatedById: ctx.userId,
         },
       });
@@ -162,9 +180,14 @@ export class SocialSecurityService {
     }
   }
 
-  async removeInstitution(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async removeInstitution(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.socialSecurityInstitution.findUnique({ where: { id } });
+      const existing = await this.prisma.socialSecurityInstitution.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'Institution not found' };
       await this.prisma.socialSecurityInstitution.delete({ where: { id } });
       await this.activityLogs.log({
@@ -200,35 +223,39 @@ export class SocialSecurityService {
   // ========== Employer Registration CRUD ==========
   async listEmployerRegistrations(institutionId?: string) {
     const where = institutionId ? { institutionId } : {};
-    const items = await this.prisma.socialSecurityEmployerRegistration.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        institution: true,
-        _count: {
-          select: {
-            employeeRegistrations: true,
-            contributions: true,
+    const items = await this.prisma.socialSecurityEmployerRegistration.findMany(
+      {
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          institution: true,
+          _count: {
+            select: {
+              employeeRegistrations: true,
+              contributions: true,
+            },
           },
         },
       },
-    });
+    );
     return { status: true, data: items };
   }
 
   async getEmployerRegistration(id: string) {
-    const item = await this.prisma.socialSecurityEmployerRegistration.findUnique({
-      where: { id },
-      include: {
-        institution: true,
-        employeeRegistrations: true,
-        contributions: {
-          take: 10,
-          orderBy: { createdAt: 'desc' },
+    const item =
+      await this.prisma.socialSecurityEmployerRegistration.findUnique({
+        where: { id },
+        include: {
+          institution: true,
+          employeeRegistrations: true,
+          contributions: {
+            take: 10,
+            orderBy: { createdAt: 'desc' },
+          },
         },
-      },
-    });
-    if (!item) return { status: false, message: 'Employer registration not found' };
+      });
+    if (!item)
+      return { status: false, message: 'Employer registration not found' };
     return { status: true, data: item };
   }
 
@@ -237,29 +264,32 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.socialSecurityEmployerRegistration.create({
-        data: {
-          institutionId: body.institutionId,
-          registrationNumber: body.registrationNumber,
-          employerName: body.employerName,
-          employerType: body.employerType,
-          businessAddress: body.businessAddress,
-          businessCity: body.businessCity,
-          businessState: body.businessState,
-          businessCountry: body.businessCountry,
-          contactPerson: body.contactPerson,
-          contactNumber: body.contactNumber,
-          email: body.email,
-          registrationDate: new Date(body.registrationDate),
-          expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
-          status: body.status ?? 'active',
-          totalEmployees: body.totalEmployees ?? 0,
-          monthlyContribution: body.monthlyContribution ? body.monthlyContribution as any : null,
-          notes: body.notes,
-          documentUrls: body.documentUrls as any,
-          createdById: ctx.userId,
-        },
-      });
+      const created =
+        await this.prisma.socialSecurityEmployerRegistration.create({
+          data: {
+            institutionId: body.institutionId,
+            registrationNumber: body.registrationNumber,
+            employerName: body.employerName,
+            employerType: body.employerType,
+            businessAddress: body.businessAddress,
+            businessCity: body.businessCity,
+            businessState: body.businessState,
+            businessCountry: body.businessCountry,
+            contactPerson: body.contactPerson,
+            contactNumber: body.contactNumber,
+            email: body.email,
+            registrationDate: new Date(body.registrationDate),
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+            status: body.status ?? 'active',
+            totalEmployees: body.totalEmployees ?? 0,
+            monthlyContribution: body.monthlyContribution
+              ? (body.monthlyContribution as any)
+              : null,
+            notes: body.notes,
+            documentUrls: body.documentUrls as any,
+            createdById: ctx.userId,
+          },
+        });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -286,7 +316,10 @@ export class SocialSecurityService {
         userAgent: ctx.userAgent,
         status: 'failure',
       });
-      return { status: false, message: 'Failed to create employer registration' };
+      return {
+        status: false,
+        message: 'Failed to create employer registration',
+      };
     }
   }
 
@@ -296,31 +329,45 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.socialSecurityEmployerRegistration.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'Employer registration not found' };
-      const updated = await this.prisma.socialSecurityEmployerRegistration.update({
-        where: { id },
-        data: {
-          registrationNumber: body.registrationNumber ?? existing.registrationNumber,
-          employerName: body.employerName ?? existing.employerName,
-          employerType: body.employerType ?? existing.employerType,
-          businessAddress: body.businessAddress ?? existing.businessAddress,
-          businessCity: body.businessCity ?? existing.businessCity,
-          businessState: body.businessState ?? existing.businessState,
-          businessCountry: body.businessCountry ?? existing.businessCountry,
-          contactPerson: body.contactPerson ?? existing.contactPerson,
-          contactNumber: body.contactNumber ?? existing.contactNumber,
-          email: body.email ?? existing.email,
-          registrationDate: body.registrationDate ? new Date(body.registrationDate) : existing.registrationDate,
-          expiryDate: body.expiryDate ? new Date(body.expiryDate) : existing.expiryDate,
-          status: body.status ?? existing.status,
-          totalEmployees: body.totalEmployees ?? existing.totalEmployees,
-          monthlyContribution: body.monthlyContribution ? body.monthlyContribution as any : existing.monthlyContribution,
-          notes: body.notes ?? existing.notes,
-          documentUrls: body.documentUrls ? body.documentUrls as any : existing.documentUrls,
-          updatedById: ctx.userId,
-        },
-      });
+      const existing =
+        await this.prisma.socialSecurityEmployerRegistration.findUnique({
+          where: { id },
+        });
+      if (!existing)
+        return { status: false, message: 'Employer registration not found' };
+      const updated =
+        await this.prisma.socialSecurityEmployerRegistration.update({
+          where: { id },
+          data: {
+            registrationNumber:
+              body.registrationNumber ?? existing.registrationNumber,
+            employerName: body.employerName ?? existing.employerName,
+            employerType: body.employerType ?? existing.employerType,
+            businessAddress: body.businessAddress ?? existing.businessAddress,
+            businessCity: body.businessCity ?? existing.businessCity,
+            businessState: body.businessState ?? existing.businessState,
+            businessCountry: body.businessCountry ?? existing.businessCountry,
+            contactPerson: body.contactPerson ?? existing.contactPerson,
+            contactNumber: body.contactNumber ?? existing.contactNumber,
+            email: body.email ?? existing.email,
+            registrationDate: body.registrationDate
+              ? new Date(body.registrationDate)
+              : existing.registrationDate,
+            expiryDate: body.expiryDate
+              ? new Date(body.expiryDate)
+              : existing.expiryDate,
+            status: body.status ?? existing.status,
+            totalEmployees: body.totalEmployees ?? existing.totalEmployees,
+            monthlyContribution: body.monthlyContribution
+              ? (body.monthlyContribution as any)
+              : existing.monthlyContribution,
+            notes: body.notes ?? existing.notes,
+            documentUrls: body.documentUrls
+              ? (body.documentUrls as any)
+              : existing.documentUrls,
+            updatedById: ctx.userId,
+          },
+        });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -349,15 +396,27 @@ export class SocialSecurityService {
         userAgent: ctx.userAgent,
         status: 'failure',
       });
-      return { status: false, message: 'Failed to update employer registration' };
+      return {
+        status: false,
+        message: 'Failed to update employer registration',
+      };
     }
   }
 
-  async removeEmployerRegistration(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async removeEmployerRegistration(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.socialSecurityEmployerRegistration.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'Employer registration not found' };
-      await this.prisma.socialSecurityEmployerRegistration.delete({ where: { id } });
+      const existing =
+        await this.prisma.socialSecurityEmployerRegistration.findUnique({
+          where: { id },
+        });
+      if (!existing)
+        return { status: false, message: 'Employer registration not found' };
+      await this.prisma.socialSecurityEmployerRegistration.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -384,49 +443,61 @@ export class SocialSecurityService {
         userAgent: ctx.userAgent,
         status: 'failure',
       });
-      return { status: false, message: 'Failed to delete employer registration' };
+      return {
+        status: false,
+        message: 'Failed to delete employer registration',
+      };
     }
   }
 
   // ========== Employee Registration CRUD ==========
-  async listEmployeeRegistrations(employeeId?: string, institutionId?: string, employerRegistrationId?: string) {
+  async listEmployeeRegistrations(
+    employeeId?: string,
+    institutionId?: string,
+    employerRegistrationId?: string,
+  ) {
     const where: any = {};
     if (employeeId) where.employeeId = employeeId;
     if (institutionId) where.institutionId = institutionId;
-    if (employerRegistrationId) where.employerRegistrationId = employerRegistrationId;
-    const items = await this.prisma.socialSecurityEmployeeRegistration.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        institution: true,
-        employerRegistration: true,
-        employee: {
-          select: {
-            id: true,
-            employeeId: true,
-            employeeName: true,
-            department: { select: { id: true, name: true } },
+    if (employerRegistrationId)
+      where.employerRegistrationId = employerRegistrationId;
+    const items = await this.prisma.socialSecurityEmployeeRegistration.findMany(
+      {
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          institution: true,
+          employerRegistration: true,
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+              department: { select: { id: true, name: true } },
+            },
           },
         },
       },
-    });
+    );
     return { status: true, data: items };
   }
 
   async getEmployeeRegistration(id: string) {
-    const item = await this.prisma.socialSecurityEmployeeRegistration.findUnique({
-      where: { id },
-      include: {
-        institution: true,
-        employerRegistration: true,
-        employee: true,
-        contributions: {
-          take: 12,
-          orderBy: { createdAt: 'desc' },
+    const item =
+      await this.prisma.socialSecurityEmployeeRegistration.findUnique({
+        where: { id },
+        include: {
+          institution: true,
+          employerRegistration: true,
+          employee: true,
+          contributions: {
+            take: 12,
+            orderBy: { createdAt: 'desc' },
+          },
         },
-      },
-    });
-    if (!item) return { status: false, message: 'Employee registration not found' };
+      });
+    if (!item)
+      return { status: false, message: 'Employee registration not found' };
     return { status: true, data: item };
   }
 
@@ -435,43 +506,58 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.socialSecurityEmployeeRegistration.create({
-        data: {
-          institutionId: body.institutionId,
-          employerRegistrationId: body.employerRegistrationId,
-          employeeId: body.employeeId,
-          registrationNumber: body.registrationNumber,
-          cardNumber: body.cardNumber,
-          registrationDate: new Date(body.registrationDate),
-          expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
-          status: body.status ?? 'active',
-          contributionRate: body.contributionRate as any,
-          baseSalary: body.baseSalary as any,
-          monthlyContribution: body.monthlyContribution as any,
-          isEmployerContribution: body.isEmployerContribution ?? true,
-          employeeContribution: body.employeeContribution ? body.employeeContribution as any : null,
-          employerContribution: body.employerContribution ? body.employerContribution as any : null,
-          cardIssueDate: body.cardIssueDate ? new Date(body.cardIssueDate) : null,
-          cardExpiryDate: body.cardExpiryDate ? new Date(body.cardExpiryDate) : null,
-          cardStatus: body.cardStatus,
-          documentUrls: body.documentUrls as any,
-          notes: body.notes,
-          createdById: ctx.userId,
-        },
-      });
+      const created =
+        await this.prisma.socialSecurityEmployeeRegistration.create({
+          data: {
+            institutionId: body.institutionId,
+            employerRegistrationId: body.employerRegistrationId,
+            employeeId: body.employeeId,
+            registrationNumber: body.registrationNumber,
+            cardNumber: body.cardNumber,
+            registrationDate: new Date(body.registrationDate),
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : null,
+            status: body.status ?? 'active',
+            contributionRate: body.contributionRate as any,
+            baseSalary: body.baseSalary as any,
+            monthlyContribution: body.monthlyContribution as any,
+            isEmployerContribution: body.isEmployerContribution ?? true,
+            employeeContribution: body.employeeContribution
+              ? (body.employeeContribution as any)
+              : null,
+            employerContribution: body.employerContribution
+              ? (body.employerContribution as any)
+              : null,
+            cardIssueDate: body.cardIssueDate
+              ? new Date(body.cardIssueDate)
+              : null,
+            cardExpiryDate: body.cardExpiryDate
+              ? new Date(body.cardExpiryDate)
+              : null,
+            cardStatus: body.cardStatus,
+            documentUrls: body.documentUrls as any,
+            notes: body.notes,
+            createdById: ctx.userId,
+          },
+        });
 
       // If contributionRate was not provided, update it from institution
-      if (body.contributionRate === undefined || body.contributionRate === null) {
+      if (
+        body.contributionRate === undefined ||
+        body.contributionRate === null
+      ) {
         const inst = await this.prisma.socialSecurityInstitution.findUnique({
-          where: { id: body.institutionId }
+          where: { id: body.institutionId },
         });
         if (inst) {
           await this.prisma.socialSecurityEmployeeRegistration.update({
             where: { id: created.id },
             data: {
               contributionRate: (inst as any).contributionRate,
-              monthlyContribution: Number((inst as any).contributionRate) * Number(body.baseSalary) / 100
-            }
+              monthlyContribution:
+                (Number((inst as any).contributionRate) *
+                  Number(body.baseSalary)) /
+                100,
+            },
           });
         }
       }
@@ -501,7 +587,10 @@ export class SocialSecurityService {
         userAgent: ctx.userAgent,
         status: 'failure',
       });
-      return { status: false, message: 'Failed to create employee registration' };
+      return {
+        status: false,
+        message: 'Failed to create employee registration',
+      };
     }
   }
 
@@ -511,30 +600,57 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.socialSecurityEmployeeRegistration.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'Employee registration not found' };
-      const updated = await this.prisma.socialSecurityEmployeeRegistration.update({
-        where: { id },
-        data: {
-          registrationNumber: body.registrationNumber ?? existing.registrationNumber,
-          cardNumber: body.cardNumber ?? existing.cardNumber,
-          registrationDate: body.registrationDate ? new Date(body.registrationDate) : existing.registrationDate,
-          expiryDate: body.expiryDate ? new Date(body.expiryDate) : existing.expiryDate,
-          status: body.status ?? existing.status,
-          contributionRate: body.contributionRate ? body.contributionRate as any : (existing as any).contributionRate,
-          baseSalary: body.baseSalary ? body.baseSalary as any : existing.baseSalary,
-          monthlyContribution: body.monthlyContribution ? body.monthlyContribution as any : existing.monthlyContribution,
-          isEmployerContribution: body.isEmployerContribution ?? existing.isEmployerContribution,
-          employeeContribution: body.employeeContribution ? body.employeeContribution as any : existing.employeeContribution,
-          employerContribution: body.employerContribution ? body.employerContribution as any : existing.employerContribution,
-          cardIssueDate: body.cardIssueDate ? new Date(body.cardIssueDate) : existing.cardIssueDate,
-          cardExpiryDate: body.cardExpiryDate ? new Date(body.cardExpiryDate) : existing.cardExpiryDate,
-          cardStatus: body.cardStatus ?? existing.cardStatus,
-          documentUrls: body.documentUrls ? body.documentUrls as any : existing.documentUrls,
-          notes: body.notes ?? existing.notes,
-          updatedById: ctx.userId,
-        },
-      });
+      const existing =
+        await this.prisma.socialSecurityEmployeeRegistration.findUnique({
+          where: { id },
+        });
+      if (!existing)
+        return { status: false, message: 'Employee registration not found' };
+      const updated =
+        await this.prisma.socialSecurityEmployeeRegistration.update({
+          where: { id },
+          data: {
+            registrationNumber:
+              body.registrationNumber ?? existing.registrationNumber,
+            cardNumber: body.cardNumber ?? existing.cardNumber,
+            registrationDate: body.registrationDate
+              ? new Date(body.registrationDate)
+              : existing.registrationDate,
+            expiryDate: body.expiryDate
+              ? new Date(body.expiryDate)
+              : existing.expiryDate,
+            status: body.status ?? existing.status,
+            contributionRate: body.contributionRate
+              ? (body.contributionRate as any)
+              : (existing as any).contributionRate,
+            baseSalary: body.baseSalary
+              ? (body.baseSalary as any)
+              : existing.baseSalary,
+            monthlyContribution: body.monthlyContribution
+              ? (body.monthlyContribution as any)
+              : existing.monthlyContribution,
+            isEmployerContribution:
+              body.isEmployerContribution ?? existing.isEmployerContribution,
+            employeeContribution: body.employeeContribution
+              ? (body.employeeContribution as any)
+              : existing.employeeContribution,
+            employerContribution: body.employerContribution
+              ? (body.employerContribution as any)
+              : existing.employerContribution,
+            cardIssueDate: body.cardIssueDate
+              ? new Date(body.cardIssueDate)
+              : existing.cardIssueDate,
+            cardExpiryDate: body.cardExpiryDate
+              ? new Date(body.cardExpiryDate)
+              : existing.cardExpiryDate,
+            cardStatus: body.cardStatus ?? existing.cardStatus,
+            documentUrls: body.documentUrls
+              ? (body.documentUrls as any)
+              : existing.documentUrls,
+            notes: body.notes ?? existing.notes,
+            updatedById: ctx.userId,
+          },
+        });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -563,15 +679,27 @@ export class SocialSecurityService {
         userAgent: ctx.userAgent,
         status: 'failure',
       });
-      return { status: false, message: 'Failed to update employee registration' };
+      return {
+        status: false,
+        message: 'Failed to update employee registration',
+      };
     }
   }
 
-  async removeEmployeeRegistration(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async removeEmployeeRegistration(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.socialSecurityEmployeeRegistration.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'Employee registration not found' };
-      await this.prisma.socialSecurityEmployeeRegistration.delete({ where: { id } });
+      const existing =
+        await this.prisma.socialSecurityEmployeeRegistration.findUnique({
+          where: { id },
+        });
+      if (!existing)
+        return { status: false, message: 'Employee registration not found' };
+      await this.prisma.socialSecurityEmployeeRegistration.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -598,12 +726,20 @@ export class SocialSecurityService {
         userAgent: ctx.userAgent,
         status: 'failure',
       });
-      return { status: false, message: 'Failed to delete employee registration' };
+      return {
+        status: false,
+        message: 'Failed to delete employee registration',
+      };
     }
   }
 
   // ========== Contribution CRUD ==========
-  async listContributions(employeeId?: string, institutionId?: string, month?: string, year?: string) {
+  async listContributions(
+    employeeId?: string,
+    institutionId?: string,
+    month?: string,
+    year?: string,
+  ) {
     const where: any = {};
     if (employeeId) where.employeeId = employeeId;
     if (institutionId) where.institutionId = institutionId;
@@ -660,13 +796,17 @@ export class SocialSecurityService {
           baseSalary: body.baseSalary as any,
           contributionRate: body.contributionRate as any,
           contributionAmount: body.contributionAmount as any,
-          employeeContribution: body.employeeContribution ? body.employeeContribution as any : null,
-          employerContribution: body.employerContribution ? body.employerContribution as any : null,
+          employeeContribution: body.employeeContribution
+            ? (body.employeeContribution as any)
+            : null,
+          employerContribution: body.employerContribution
+            ? (body.employerContribution as any)
+            : null,
           paymentStatus: body.paymentStatus ?? 'pending',
           paymentDate: body.paymentDate ? new Date(body.paymentDate) : null,
           paymentReference: body.paymentReference,
           dueDate: body.dueDate ? new Date(body.dueDate) : null,
-          lateFee: body.lateFee ? body.lateFee as any : null,
+          lateFee: body.lateFee ? (body.lateFee as any) : null,
           notes: body.notes,
           status: body.status ?? 'active',
           payrollDetailId: body.payrollDetailId,
@@ -709,21 +849,36 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.socialSecurityContribution.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'Contribution not found' };
+      const existing = await this.prisma.socialSecurityContribution.findUnique({
+        where: { id },
+      });
+      if (!existing)
+        return { status: false, message: 'Contribution not found' };
       const updated = await this.prisma.socialSecurityContribution.update({
         where: { id },
         data: {
-          baseSalary: body.baseSalary ? body.baseSalary as any : existing.baseSalary,
-          contributionRate: body.contributionRate ? body.contributionRate as any : (existing as any).contributionRate,
-          contributionAmount: body.contributionAmount ? body.contributionAmount as any : existing.contributionAmount,
-          employeeContribution: body.employeeContribution ? body.employeeContribution as any : existing.employeeContribution,
-          employerContribution: body.employerContribution ? body.employerContribution as any : existing.employerContribution,
+          baseSalary: body.baseSalary
+            ? (body.baseSalary as any)
+            : existing.baseSalary,
+          contributionRate: body.contributionRate
+            ? (body.contributionRate as any)
+            : (existing as any).contributionRate,
+          contributionAmount: body.contributionAmount
+            ? (body.contributionAmount as any)
+            : existing.contributionAmount,
+          employeeContribution: body.employeeContribution
+            ? (body.employeeContribution as any)
+            : existing.employeeContribution,
+          employerContribution: body.employerContribution
+            ? (body.employerContribution as any)
+            : existing.employerContribution,
           paymentStatus: body.paymentStatus ?? existing.paymentStatus,
-          paymentDate: body.paymentDate ? new Date(body.paymentDate) : existing.paymentDate,
+          paymentDate: body.paymentDate
+            ? new Date(body.paymentDate)
+            : existing.paymentDate,
           paymentReference: body.paymentReference ?? existing.paymentReference,
           dueDate: body.dueDate ? new Date(body.dueDate) : existing.dueDate,
-          lateFee: body.lateFee ? body.lateFee as any : existing.lateFee,
+          lateFee: body.lateFee ? (body.lateFee as any) : existing.lateFee,
           notes: body.notes ?? existing.notes,
           status: body.status ?? existing.status,
           payrollDetailId: body.payrollDetailId ?? existing.payrollDetailId,
@@ -762,10 +917,16 @@ export class SocialSecurityService {
     }
   }
 
-  async removeContribution(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async removeContribution(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.socialSecurityContribution.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'Contribution not found' };
+      const existing = await this.prisma.socialSecurityContribution.findUnique({
+        where: { id },
+      });
+      if (!existing)
+        return { status: false, message: 'Contribution not found' };
       await this.prisma.socialSecurityContribution.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -797,4 +958,3 @@ export class SocialSecurityService {
     }
   }
 }
-

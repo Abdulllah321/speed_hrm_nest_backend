@@ -1,8 +1,28 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { OvertimeRequestService } from './overtime-request.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateOvertimeRequestDto, UpdateOvertimeRequestDto } from './dto/create-overtime-request.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  CreateOvertimeRequestDto,
+  UpdateOvertimeRequestDto,
+} from './dto/create-overtime-request.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 @ApiTags('Overtime Request')
 @Controller('api')
@@ -58,7 +78,11 @@ export class OvertimeRequestController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update overtime request' })
-  async update(@Param('id') id: string, @Body() body: UpdateOvertimeRequestDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateOvertimeRequestDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -78,4 +102,3 @@ export class OvertimeRequestController {
     });
   }
 }
-

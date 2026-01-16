@@ -29,4 +29,3 @@ export class UpdateEmployeeGradeDto {
   @IsString()
   status?: string;
 }
-

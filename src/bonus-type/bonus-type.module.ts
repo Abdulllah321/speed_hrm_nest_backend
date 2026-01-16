@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common'
-import { BonusTypeController } from './bonus-type.controller'
-import { BonusTypeService } from './bonus-type.service'
-import { PrismaModule } from '../prisma/prisma.module'
+import { Module } from '@nestjs/common';
+import { BonusTypeController } from './bonus-type.controller';
+import { BonusTypeService } from './bonus-type.service';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [PrismaModule],

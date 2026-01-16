@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { BulkCreateIncrementDto, UpdateIncrementDto } from './dto/create-increment.dto';
+import {
+  BulkCreateIncrementDto,
+  UpdateIncrementDto,
+} from './dto/create-increment.dto';
 
 @Injectable()
 export class IncrementService {
@@ -10,11 +13,7 @@ export class IncrementService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async list(params?: {
-    employeeId?: string;
-    month?: string;
-    year?: string;
-  }) {
+  async list(params?: { employeeId?: string; month?: string; year?: string }) {
     try {
       const where: any = {};
 
@@ -97,8 +96,12 @@ export class IncrementService {
         department: increment.employee.department?.name,
         subDepartment: increment.employee.subDepartment?.name,
         incrementType: increment.incrementType,
-        incrementAmount: increment.incrementAmount ? Number(increment.incrementAmount) : undefined,
-        incrementPercentage: increment.incrementPercentage ? Number(increment.incrementPercentage) : undefined,
+        incrementAmount: increment.incrementAmount
+          ? Number(increment.incrementAmount)
+          : undefined,
+        incrementPercentage: increment.incrementPercentage
+          ? Number(increment.incrementPercentage)
+          : undefined,
         incrementMethod: increment.incrementMethod,
         salary: Number(increment.salary),
         promotionDate: increment.promotionDate.toISOString(),
@@ -116,7 +119,8 @@ export class IncrementService {
       console.error('Error listing increments:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to list increments',
+        message:
+          error instanceof Error ? error.message : 'Failed to list increments',
       };
     }
   }
@@ -190,8 +194,12 @@ export class IncrementService {
         designationId: increment.designationId,
         designationName: increment.designation?.name,
         incrementType: increment.incrementType,
-        incrementAmount: increment.incrementAmount ? Number(increment.incrementAmount) : undefined,
-        incrementPercentage: increment.incrementPercentage ? Number(increment.incrementPercentage) : undefined,
+        incrementAmount: increment.incrementAmount
+          ? Number(increment.incrementAmount)
+          : undefined,
+        incrementPercentage: increment.incrementPercentage
+          ? Number(increment.incrementPercentage)
+          : undefined,
         incrementMethod: increment.incrementMethod,
         salary: Number(increment.salary),
         promotionDate: increment.promotionDate.toISOString(),
@@ -209,15 +217,22 @@ export class IncrementService {
       console.error('Error getting increment:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get increment',
+        message:
+          error instanceof Error ? error.message : 'Failed to get increment',
       };
     }
   }
 
-  async bulkCreate(body: BulkCreateIncrementDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async bulkCreate(
+    body: BulkCreateIncrementDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!body.increments || body.increments.length === 0) {
-        return { status: false, message: 'At least one increment item is required' };
+        return {
+          status: false,
+          message: 'At least one increment item is required',
+        };
       }
 
       // Validate all employees exist
@@ -242,7 +257,10 @@ export class IncrementService {
         });
 
         if (employeeGrades.length !== employeeGradeIds.length) {
-          return { status: false, message: 'One or more employee grades not found or inactive' };
+          return {
+            status: false,
+            message: 'One or more employee grades not found or inactive',
+          };
         }
       }
 
@@ -257,7 +275,10 @@ export class IncrementService {
         });
 
         if (designations.length !== designationIds.length) {
-          return { status: false, message: 'One or more designations not found or inactive' };
+          return {
+            status: false,
+            message: 'One or more designations not found or inactive',
+          };
         }
       }
 
@@ -274,8 +295,12 @@ export class IncrementService {
               employeeGradeId: incrementItem.employeeGradeId || null,
               designationId: incrementItem.designationId || null,
               incrementType: incrementItem.incrementType,
-              incrementAmount: incrementItem.incrementAmount ? incrementItem.incrementAmount : null,
-              incrementPercentage: incrementItem.incrementPercentage ? incrementItem.incrementPercentage : null,
+              incrementAmount: incrementItem.incrementAmount
+                ? incrementItem.incrementAmount
+                : null,
+              incrementPercentage: incrementItem.incrementPercentage
+                ? incrementItem.incrementPercentage
+                : null,
               incrementMethod: incrementItem.incrementMethod,
               salary: incrementItem.salary,
               promotionDate: promotionDate,
@@ -315,8 +340,12 @@ export class IncrementService {
         employeeGradeId: increment.employeeGradeId,
         designationId: increment.designationId,
         incrementType: increment.incrementType,
-        incrementAmount: increment.incrementAmount ? Number(increment.incrementAmount) : undefined,
-        incrementPercentage: increment.incrementPercentage ? Number(increment.incrementPercentage) : undefined,
+        incrementAmount: increment.incrementAmount
+          ? Number(increment.incrementAmount)
+          : undefined,
+        incrementPercentage: increment.incrementPercentage
+          ? Number(increment.incrementPercentage)
+          : undefined,
         incrementMethod: increment.incrementMethod,
         salary: Number(increment.salary),
         promotionDate: increment.promotionDate.toISOString(),
@@ -338,7 +367,10 @@ export class IncrementService {
       console.error('Error creating increments:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to create increments',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to create increments',
       };
     }
   }
@@ -358,14 +390,20 @@ export class IncrementService {
       }
 
       // Validate employee grade if being updated
-      if (body.employeeGradeId && body.employeeGradeId !== existing.employeeGradeId) {
+      if (
+        body.employeeGradeId &&
+        body.employeeGradeId !== existing.employeeGradeId
+      ) {
         const employeeGrade = await this.prisma.employeeGrade.findUnique({
           where: { id: body.employeeGradeId },
           select: { id: true, status: true },
         });
 
         if (!employeeGrade || employeeGrade.status !== 'active') {
-          return { status: false, message: 'Employee grade not found or inactive' };
+          return {
+            status: false,
+            message: 'Employee grade not found or inactive',
+          };
         }
       }
 
@@ -377,21 +415,31 @@ export class IncrementService {
         });
 
         if (!designation || designation.status !== 'active') {
-          return { status: false, message: 'Designation not found or inactive' };
+          return {
+            status: false,
+            message: 'Designation not found or inactive',
+          };
         }
       }
 
       const updateData: any = {};
-      if (body.employeeGradeId !== undefined) updateData.employeeGradeId = body.employeeGradeId || null;
-      if (body.designationId !== undefined) updateData.designationId = body.designationId || null;
+      if (body.employeeGradeId !== undefined)
+        updateData.employeeGradeId = body.employeeGradeId || null;
+      if (body.designationId !== undefined)
+        updateData.designationId = body.designationId || null;
       if (body.incrementType) updateData.incrementType = body.incrementType;
-      if (body.incrementAmount !== undefined) updateData.incrementAmount = body.incrementAmount || null;
-      if (body.incrementPercentage !== undefined) updateData.incrementPercentage = body.incrementPercentage || null;
-      if (body.incrementMethod) updateData.incrementMethod = body.incrementMethod;
+      if (body.incrementAmount !== undefined)
+        updateData.incrementAmount = body.incrementAmount || null;
+      if (body.incrementPercentage !== undefined)
+        updateData.incrementPercentage = body.incrementPercentage || null;
+      if (body.incrementMethod)
+        updateData.incrementMethod = body.incrementMethod;
       if (body.salary !== undefined) updateData.salary = body.salary;
-      if (body.promotionDate) updateData.promotionDate = new Date(body.promotionDate);
+      if (body.promotionDate)
+        updateData.promotionDate = new Date(body.promotionDate);
       if (body.currentMonth) updateData.currentMonth = body.currentMonth;
-      if (body.monthsOfIncrement !== undefined) updateData.monthsOfIncrement = body.monthsOfIncrement;
+      if (body.monthsOfIncrement !== undefined)
+        updateData.monthsOfIncrement = body.monthsOfIncrement;
       if (body.notes !== undefined) updateData.notes = body.notes || null;
       if (body.status) updateData.status = body.status;
       updateData.updatedById = ctx.userId;
@@ -448,8 +496,12 @@ export class IncrementService {
         designationId: updated.designationId,
         designationName: updated.designation?.name,
         incrementType: updated.incrementType,
-        incrementAmount: updated.incrementAmount ? Number(updated.incrementAmount) : undefined,
-        incrementPercentage: updated.incrementPercentage ? Number(updated.incrementPercentage) : undefined,
+        incrementAmount: updated.incrementAmount
+          ? Number(updated.incrementAmount)
+          : undefined,
+        incrementPercentage: updated.incrementPercentage
+          ? Number(updated.incrementPercentage)
+          : undefined,
         incrementMethod: updated.incrementMethod,
         salary: Number(updated.salary),
         promotionDate: updated.promotionDate.toISOString(),
@@ -462,17 +514,25 @@ export class IncrementService {
         updatedAt: updated.updatedAt.toISOString(),
       };
 
-      return { status: true, data: transformedData, message: 'Increment updated successfully' };
+      return {
+        status: true,
+        data: transformedData,
+        message: 'Increment updated successfully',
+      };
     } catch (error) {
       console.error('Error updating increment:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to update increment',
+        message:
+          error instanceof Error ? error.message : 'Failed to update increment',
       };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.increment.findUnique({
         where: { id },
@@ -506,9 +566,9 @@ export class IncrementService {
       console.error('Error deleting increment:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to delete increment',
+        message:
+          error instanceof Error ? error.message : 'Failed to delete increment',
       };
     }
   }
 }
-

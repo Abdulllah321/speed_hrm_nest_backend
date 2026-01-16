@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { CreateRebateDto, UpdateRebateDto } from './dto/create-rebate.dto';
@@ -152,7 +156,8 @@ export class RebateService {
       console.error('Error getting rebate:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get rebate',
+        message:
+          error instanceof Error ? error.message : 'Failed to get rebate',
       };
     }
   }
@@ -324,11 +329,7 @@ export class RebateService {
       }
 
       // Check for duplicate if employeeId, rebateNatureId, or monthYear changed
-      if (
-        body.employeeId ||
-        body.rebateNatureId ||
-        body.monthYear
-      ) {
+      if (body.employeeId || body.rebateNatureId || body.monthYear) {
         const employeeId = body.employeeId || existing.employeeId;
         const rebateNatureId = body.rebateNatureId || existing.rebateNatureId;
         const monthYear = body.monthYear || existing.monthYear;
@@ -361,7 +362,8 @@ export class RebateService {
       if (body.monthYear) updateData.monthYear = body.monthYear;
       if (body.remarks !== undefined) updateData.remarks = body.remarks;
       if (body.status) updateData.status = body.status;
-      if (body.attachment !== undefined) updateData.attachment = body.attachment || null;
+      if (body.attachment !== undefined)
+        updateData.attachment = body.attachment || null;
 
       const updated = await this.prisma.rebate.update({
         where: { id },
@@ -471,4 +473,3 @@ export class RebateService {
     }
   }
 }
-

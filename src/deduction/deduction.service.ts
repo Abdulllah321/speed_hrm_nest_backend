@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { CreateDeductionDto, BulkCreateDeductionDto, UpdateDeductionDto } from './dto/create-deduction.dto';
+import {
+  CreateDeductionDto,
+  BulkCreateDeductionDto,
+  UpdateDeductionDto,
+} from './dto/create-deduction.dto';
 
 @Injectable()
 export class DeductionService {
@@ -87,7 +91,8 @@ export class DeductionService {
       console.error('Error listing deductions:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to list deductions',
+        message:
+          error instanceof Error ? error.message : 'Failed to list deductions',
       };
     }
   }
@@ -150,15 +155,22 @@ export class DeductionService {
       console.error('Error getting deduction:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get deduction',
+        message:
+          error instanceof Error ? error.message : 'Failed to get deduction',
       };
     }
   }
 
-  async create(body: CreateDeductionDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: CreateDeductionDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!body.deductions || body.deductions.length === 0) {
-        return { status: false, message: 'At least one deduction item is required' };
+        return {
+          status: false,
+          message: 'At least one deduction item is required',
+        };
       }
 
       // Validate all employees exist
@@ -173,14 +185,19 @@ export class DeductionService {
       }
 
       // Validate all deduction heads exist
-      const deductionHeadIds = Array.from(new Set(body.deductions.map((d) => d.deductionHeadId)));
+      const deductionHeadIds = Array.from(
+        new Set(body.deductions.map((d) => d.deductionHeadId)),
+      );
       const deductionHeads = await this.prisma.deductionHead.findMany({
         where: { id: { in: deductionHeadIds }, status: 'active' },
         select: { id: true },
       });
 
       if (deductionHeads.length !== deductionHeadIds.length) {
-        return { status: false, message: 'One or more deduction heads not found or inactive' };
+        return {
+          status: false,
+          message: 'One or more deduction heads not found or inactive',
+        };
       }
 
       const date = new Date(body.date);
@@ -209,7 +226,9 @@ export class DeductionService {
               data: {
                 amount: deductionItem.amount,
                 isTaxable: deductionItem.isTaxable ?? false,
-                taxPercentage: deductionItem.taxPercentage ? deductionItem.taxPercentage : null,
+                taxPercentage: deductionItem.taxPercentage
+                  ? deductionItem.taxPercentage
+                  : null,
                 notes: deductionItem.notes ?? null,
                 updatedById: ctx.userId,
               },
@@ -226,7 +245,9 @@ export class DeductionService {
                 year: body.year,
                 date: date,
                 isTaxable: deductionItem.isTaxable ?? false,
-                taxPercentage: deductionItem.taxPercentage ? deductionItem.taxPercentage : null,
+                taxPercentage: deductionItem.taxPercentage
+                  ? deductionItem.taxPercentage
+                  : null,
                 notes: deductionItem.notes ?? null,
                 status: 'active',
                 createdById: ctx.userId,
@@ -264,12 +285,16 @@ export class DeductionService {
       console.error('Error creating deduction:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to create deduction',
+        message:
+          error instanceof Error ? error.message : 'Failed to create deduction',
       };
     }
   }
 
-  async bulkCreate(body: BulkCreateDeductionDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async bulkCreate(
+    body: BulkCreateDeductionDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     return this.create(body, ctx);
   }
 
@@ -290,10 +315,14 @@ export class DeductionService {
       const updated = await this.prisma.deduction.update({
         where: { id },
         data: {
-          ...(body.deductionHeadId && { deductionHeadId: body.deductionHeadId }),
+          ...(body.deductionHeadId && {
+            deductionHeadId: body.deductionHeadId,
+          }),
           ...(body.amount !== undefined && { amount: body.amount }),
           ...(body.isTaxable !== undefined && { isTaxable: body.isTaxable }),
-          ...(body.taxPercentage !== undefined && { taxPercentage: body.taxPercentage }),
+          ...(body.taxPercentage !== undefined && {
+            taxPercentage: body.taxPercentage,
+          }),
           ...(body.notes !== undefined && { notes: body.notes }),
           ...(body.status && { status: body.status }),
           updatedById: ctx.userId,
@@ -331,17 +360,25 @@ export class DeductionService {
         });
       }
 
-      return { status: true, data: updated, message: 'Deduction updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'Deduction updated successfully',
+      };
     } catch (error) {
       console.error('Error updating deduction:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to update deduction',
+        message:
+          error instanceof Error ? error.message : 'Failed to update deduction',
       };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.deduction.findUnique({
         where: { id },
@@ -375,15 +412,22 @@ export class DeductionService {
       console.error('Error deleting deduction:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to delete deduction',
+        message:
+          error instanceof Error ? error.message : 'Failed to delete deduction',
       };
     }
   }
 
-  async bulkDelete(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async bulkDelete(
+    ids: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!ids || ids.length === 0) {
-        return { status: false, message: 'No deductions selected for deletion' };
+        return {
+          status: false,
+          message: 'No deductions selected for deletion',
+        };
       }
 
       const result = await this.prisma.deduction.deleteMany({
@@ -413,7 +457,10 @@ export class DeductionService {
       console.error('Error bulk deleting deductions:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to delete deductions',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to delete deductions',
       };
     }
   }
@@ -435,7 +482,10 @@ export class DeductionService {
       console.error('Error listing deduction heads:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to list deduction heads',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to list deduction heads',
       };
     }
   }
@@ -455,7 +505,10 @@ export class DeductionService {
       console.error('Error getting deduction head:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get deduction head',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get deduction head',
       };
     }
   }

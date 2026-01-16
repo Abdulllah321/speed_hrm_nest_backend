@@ -66,4 +66,3 @@ export class UpdateTaxSlabDto {
   @IsString()
   status?: string;
 }
-

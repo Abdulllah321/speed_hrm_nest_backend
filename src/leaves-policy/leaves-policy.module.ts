@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common'
-import { LeavesPolicyController } from './leaves-policy.controller'
-import { LeavesPolicyService } from './leaves-policy.service'
-import { PrismaModule } from '../prisma/prisma.module'
+import { Module } from '@nestjs/common';
+import { LeavesPolicyController } from './leaves-policy.controller';
+import { LeavesPolicyService } from './leaves-policy.service';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [PrismaModule],

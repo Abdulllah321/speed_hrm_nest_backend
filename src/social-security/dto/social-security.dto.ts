@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsString, IsOptional, IsNumber, IsBoolean, IsDateString, IsObject } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsDateString,
+  IsObject,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -19,7 +27,9 @@ export class CreateSocialSecurityInstitutionDto {
   @IsString()
   province?: string;
 
-  @ApiPropertyOptional({ example: 'Social security institution for Sindh province' })
+  @ApiPropertyOptional({
+    example: 'Social security institution for Sindh province',
+  })
   @IsOptional()
   @IsString()
   description?: string;
@@ -62,7 +72,9 @@ export class UpdateSocialSecurityInstitutionDto {
   @IsString()
   code?: string;
 
-  @ApiPropertyOptional({ example: 'Sindh Employees Social Security Institution' })
+  @ApiPropertyOptional({
+    example: 'Sindh Employees Social Security Institution',
+  })
   @IsOptional()
   @IsString()
   name?: string;
@@ -72,7 +84,9 @@ export class UpdateSocialSecurityInstitutionDto {
   @IsString()
   province?: string;
 
-  @ApiPropertyOptional({ example: 'Social security institution for Sindh province' })
+  @ApiPropertyOptional({
+    example: 'Social security institution for Sindh province',
+  })
   @IsOptional()
   @IsString()
   description?: string;
@@ -182,7 +196,7 @@ export class CreateSocialSecurityEmployerRegistrationDto {
   @Type(() => Number)
   totalEmployees?: number;
 
-  @ApiPropertyOptional({ example: 50000.00 })
+  @ApiPropertyOptional({ example: 50000.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -193,7 +207,9 @@ export class CreateSocialSecurityEmployerRegistrationDto {
   @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ example: { certificate: 'https://example.com/cert.pdf' } })
+  @ApiPropertyOptional({
+    example: { certificate: 'https://example.com/cert.pdf' },
+  })
   @IsOptional()
   @IsObject()
   documentUrls?: any;
@@ -276,7 +292,7 @@ export class UpdateSocialSecurityEmployerRegistrationDto {
   @Type(() => Number)
   totalEmployees?: number;
 
-  @ApiPropertyOptional({ example: 50000.00 })
+  @ApiPropertyOptional({ example: 50000.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -287,7 +303,9 @@ export class UpdateSocialSecurityEmployerRegistrationDto {
   @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ example: { certificate: 'https://example.com/cert.pdf' } })
+  @ApiPropertyOptional({
+    example: { certificate: 'https://example.com/cert.pdf' },
+  })
   @IsOptional()
   @IsObject()
   documentUrls?: any;
@@ -341,13 +359,13 @@ export class CreateSocialSecurityEmployeeRegistrationDto {
   @Type(() => Number)
   contributionRate?: number;
 
-  @ApiProperty({ example: 50000.00 })
+  @ApiProperty({ example: 50000.0 })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
   baseSalary: number;
 
-  @ApiProperty({ example: 3000.00 })
+  @ApiProperty({ example: 3000.0 })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
@@ -358,13 +376,13 @@ export class CreateSocialSecurityEmployeeRegistrationDto {
   @IsBoolean()
   isEmployerContribution?: boolean;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   employeeContribution?: number;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -433,13 +451,13 @@ export class UpdateSocialSecurityEmployeeRegistrationDto {
   @Type(() => Number)
   contributionRate?: number;
 
-  @ApiPropertyOptional({ example: 50000.00 })
+  @ApiPropertyOptional({ example: 50000.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   baseSalary?: number;
 
-  @ApiPropertyOptional({ example: 3000.00 })
+  @ApiPropertyOptional({ example: 3000.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -450,13 +468,13 @@ export class UpdateSocialSecurityEmployeeRegistrationDto {
   @IsBoolean()
   isEmployerContribution?: boolean;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   employeeContribution?: number;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -525,7 +543,7 @@ export class CreateSocialSecurityContributionDto {
   @IsDateString()
   date: string;
 
-  @ApiProperty({ example: 50000.00 })
+  @ApiProperty({ example: 50000.0 })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
@@ -537,19 +555,19 @@ export class CreateSocialSecurityContributionDto {
   @Type(() => Number)
   contributionRate: number;
 
-  @ApiProperty({ example: 3000.00 })
+  @ApiProperty({ example: 3000.0 })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
   contributionAmount: number;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   employeeContribution?: number;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -575,7 +593,7 @@ export class CreateSocialSecurityContributionDto {
   @IsDateString()
   dueDate?: string;
 
-  @ApiPropertyOptional({ example: 100.00 })
+  @ApiPropertyOptional({ example: 100.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -603,7 +621,7 @@ export class UpdateSocialSecurityContributionDto {
   @IsString()
   id: string;
 
-  @ApiPropertyOptional({ example: 50000.00 })
+  @ApiPropertyOptional({ example: 50000.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -615,19 +633,19 @@ export class UpdateSocialSecurityContributionDto {
   @Type(() => Number)
   contributionRate?: number;
 
-  @ApiPropertyOptional({ example: 3000.00 })
+  @ApiPropertyOptional({ example: 3000.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   contributionAmount?: number;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
   employeeContribution?: number;
 
-  @ApiPropertyOptional({ example: 1500.00 })
+  @ApiPropertyOptional({ example: 1500.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -653,7 +671,7 @@ export class UpdateSocialSecurityContributionDto {
   @IsDateString()
   dueDate?: string;
 
-  @ApiPropertyOptional({ example: 100.00 })
+  @ApiPropertyOptional({ example: 100.0 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -674,4 +692,3 @@ export class UpdateSocialSecurityContributionDto {
   @IsString()
   payrollDetailId?: string;
 }
-

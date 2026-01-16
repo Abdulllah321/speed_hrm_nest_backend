@@ -1,7 +1,20 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { UserPreferencesService } from './user-preferences.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { UpsertUserPreferenceDto } from './dto/user-preference.dto';
 
 @ApiTags('User Preferences')
@@ -13,7 +26,10 @@ export class UserPreferencesController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get user preference by key' })
-  @ApiResponse({ status: 200, description: 'Preference retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Preference retrieved successfully',
+  })
   async get(@Req() req: any, @Param('key') key: string) {
     const userId = req.user?.userId;
     if (!userId) {
@@ -35,4 +51,3 @@ export class UserPreferencesController {
     return this.service.upsert(userId, body.key, body.value);
   }
 }
-

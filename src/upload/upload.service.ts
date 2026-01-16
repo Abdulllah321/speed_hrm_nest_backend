@@ -54,7 +54,14 @@ export class UploadService {
         path: relativePath,
         createdById: createdById,
       },
-      select: { id: true, filename: true, mimetype: true, size: true, createdAt: true, path: true },
+      select: {
+        id: true,
+        filename: true,
+        mimetype: true,
+        size: true,
+        createdAt: true,
+        path: true,
+      },
     });
 
     // Generate URL for the uploaded file
@@ -73,9 +80,12 @@ export class UploadService {
     };
   }
 
-  async uploadMultiple(files: MultipartFile[], createdById: string | null = null) {
+  async uploadMultiple(
+    files: MultipartFile[],
+    createdById: string | null = null,
+  ) {
     const uploadedRecords = await Promise.all(
-      files.map((file) => this.uploadFile(file, createdById))
+      files.map((file) => this.uploadFile(file, createdById)),
     );
     return uploadedRecords;
   }
@@ -83,7 +93,14 @@ export class UploadService {
   async listUploads() {
     return this.prisma.fileUpload.findMany({
       orderBy: { createdAt: 'desc' },
-      select: { id: true, filename: true, mimetype: true, size: true, createdAt: true, createdById: true },
+      select: {
+        id: true,
+        filename: true,
+        mimetype: true,
+        size: true,
+        createdAt: true,
+        createdById: true,
+      },
     });
   }
 
@@ -96,7 +113,8 @@ export class UploadService {
     if (!item || !item.path) throw new NotFoundException('File not found');
 
     const absPath = path.join(this.uploadRoot, path.basename(item.path));
-    if (!fs.existsSync(absPath)) throw new NotFoundException('File not found on disk');
+    if (!fs.existsSync(absPath))
+      throw new NotFoundException('File not found on disk');
 
     return { item, stream: fs.createReadStream(absPath) };
   }

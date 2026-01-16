@@ -19,7 +19,7 @@ export class CreateRebateDto {
   @IsString()
   rebateNatureId: string;
 
-  @ApiProperty({ example: 5000.00 })
+  @ApiProperty({ example: 5000.0 })
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
@@ -35,7 +35,10 @@ export class CreateRebateDto {
   @IsString()
   remarks?: string;
 
-  @ApiPropertyOptional({ example: '/uploads/file-123.pdf', description: 'File path/URL' })
+  @ApiPropertyOptional({
+    example: '/uploads/file-123.pdf',
+    description: 'File path/URL',
+  })
   @IsOptional()
   @IsString()
   attachment?: string;
@@ -52,7 +55,7 @@ export class UpdateRebateDto {
   @IsString()
   rebateNatureId?: string;
 
-  @ApiPropertyOptional({ example: 6000.00 })
+  @ApiPropertyOptional({ example: 6000.0 })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -79,9 +82,11 @@ export class UpdateRebateDto {
   })
   status?: string;
 
-  @ApiPropertyOptional({ example: '/uploads/file-123.pdf', description: 'File path/URL' })
+  @ApiPropertyOptional({
+    example: '/uploads/file-123.pdf',
+    description: 'File path/URL',
+  })
   @IsOptional()
   @IsString()
   attachment?: string;
 }
-

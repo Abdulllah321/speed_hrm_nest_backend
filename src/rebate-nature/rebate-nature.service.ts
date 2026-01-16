@@ -46,21 +46,21 @@ export class RebateNatureService {
         type: 'fixed',
         status: 'active',
       },
-      orderBy: [
-        { category: 'asc' },
-        { name: 'asc' },
-      ],
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
 
     // Group by category
-    const grouped = fixedNatures.reduce((acc, nature) => {
-      const category = nature.category || 'Other';
-      if (!acc[category]) {
-        acc[category] = [];
-      }
-      acc[category].push(nature);
-      return acc;
-    }, {} as Record<string, typeof fixedNatures>);
+    const grouped = fixedNatures.reduce(
+      (acc, nature) => {
+        const category = nature.category || 'Other';
+        if (!acc[category]) {
+          acc[category] = [];
+        }
+        acc[category].push(nature);
+        return acc;
+      },
+      {} as Record<string, typeof fixedNatures>,
+    );
 
     return grouped;
   }
@@ -79,10 +79,7 @@ export class RebateNatureService {
           },
         },
       },
-      orderBy: [
-        { category: 'asc' },
-        { name: 'asc' },
-      ],
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }
 

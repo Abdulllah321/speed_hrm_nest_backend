@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateMaritalStatusDto {
@@ -46,4 +52,3 @@ export class BulkUpdateMaritalStatusDto {
   @Type(() => BulkUpdateMaritalStatusItemDto)
   items: BulkUpdateMaritalStatusItemDto[];
 }
-

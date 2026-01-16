@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
@@ -15,7 +12,7 @@ export class LoanRequestService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(params?: {
     employeeId?: string;
@@ -217,9 +214,7 @@ export class LoanRequestService {
       return {
         status: false,
         message:
-          error instanceof Error
-            ? error.message
-            : 'Failed to get loan request',
+          error instanceof Error ? error.message : 'Failed to get loan request',
       };
     }
   }
@@ -240,7 +235,8 @@ export class LoanRequestService {
       if (body.loanRequests.length > 1) {
         return {
           status: false,
-          message: 'Only one loan request per employee is allowed. Please create separate requests for multiple employees.',
+          message:
+            'Only one loan request per employee is allowed. Please create separate requests for multiple employees.',
         };
       }
 
@@ -263,7 +259,10 @@ export class LoanRequestService {
       });
 
       if (loanTypes.length !== loanTypeIds.length) {
-        return { status: false, message: 'One or more loan types not found or inactive' };
+        return {
+          status: false,
+          message: 'One or more loan types not found or inactive',
+        };
       }
 
       // Create loan requests in a transaction
@@ -279,8 +278,10 @@ export class LoanRequestService {
               loanTypeId: loanRequestItem.loanTypeId,
               amount: loanRequestItem.amount,
               requestedDate: requestedDate,
-              repaymentStartMonthYear: loanRequestItem.repaymentStartMonthYear || null,
-              numberOfInstallments: loanRequestItem.numberOfInstallments || null,
+              repaymentStartMonthYear:
+                loanRequestItem.repaymentStartMonthYear || null,
+              numberOfInstallments:
+                loanRequestItem.numberOfInstallments || null,
               reason: loanRequestItem.reason,
               additionalDetails: loanRequestItem.additionalDetails || null,
               approvalStatus: 'pending',
@@ -399,7 +400,8 @@ export class LoanRequestService {
       }
 
       if (body.repaymentStartMonthYear !== undefined) {
-        updateData.repaymentStartMonthYear = body.repaymentStartMonthYear || null;
+        updateData.repaymentStartMonthYear =
+          body.repaymentStartMonthYear || null;
       }
 
       if (body.numberOfInstallments !== undefined) {

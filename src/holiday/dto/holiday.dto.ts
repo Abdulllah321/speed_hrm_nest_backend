@@ -1,4 +1,9 @@
-import { IsNotEmpty, IsString, IsDateString, IsOptional } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsDateString,
+  IsOptional,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateHolidayDto {
@@ -49,4 +54,3 @@ export class UpdateHolidayDto {
   @IsString()
   status?: string;
 }
-

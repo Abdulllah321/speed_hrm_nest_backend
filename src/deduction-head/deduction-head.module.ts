@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common'
-import { DeductionHeadController } from './deduction-head.controller'
-import { DeductionHeadService } from './deduction-head.service'
-import { PrismaModule } from '../prisma/prisma.module'
-import { ActivityLogsModule } from '../activity-logs/activity-logs.module'
+import { Module } from '@nestjs/common';
+import { DeductionHeadController } from './deduction-head.controller';
+import { DeductionHeadService } from './deduction-head.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 @Module({
   imports: [PrismaModule, ActivityLogsModule],
@@ -10,4 +10,3 @@ import { ActivityLogsModule } from '../activity-logs/activity-logs.module'
   providers: [DeductionHeadService],
 })
 export class DeductionHeadModule {}
-

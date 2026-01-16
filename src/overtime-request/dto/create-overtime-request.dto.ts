@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsDateString, IsEnum } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsDateString,
+  IsEnum,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum OvertimeType {
@@ -79,9 +86,11 @@ export class UpdateOvertimeRequestDto {
   @IsNumber()
   holidayOvertimeHours?: number;
 
-  @ApiPropertyOptional({ example: 'approved', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'approved',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   status?: string;
 }
-

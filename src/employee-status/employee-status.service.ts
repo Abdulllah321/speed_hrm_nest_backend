@@ -1,19 +1,21 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class EmployeeStatusService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async list() {
-    const items = await this.prisma.employeeStatus.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.employeeStatus.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.employeeStatus.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Status not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.employeeStatus.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Status not found' };
+    return { status: true, data: item };
   }
 
   async create(data: { status: string; statusType?: string }) {
@@ -27,9 +29,17 @@ export class EmployeeStatusService {
           statusType: data.statusType || 'Active',
         },
       });
-      return { status: true, data: item, message: 'Employee status created successfully' };
+      return {
+        status: true,
+        data: item,
+        message: 'Employee status created successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create status' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to create status',
+      };
     }
   }
 
@@ -39,9 +49,17 @@ export class EmployeeStatusService {
         where: { id },
         data,
       });
-      return { status: true, data: item, message: 'Employee status updated successfully' };
+      return {
+        status: true,
+        data: item,
+        message: 'Employee status updated successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update status' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update status',
+      };
     }
   }
 
@@ -50,7 +68,11 @@ export class EmployeeStatusService {
       await this.prisma.employeeStatus.delete({ where: { id } });
       return { status: true, message: 'Employee status deleted successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete status' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to delete status',
+      };
     }
   }
 
@@ -72,7 +94,10 @@ export class EmployeeStatusService {
         skipDuplicates: true,
       });
 
-      return { status: true, message: 'Employee statuses created successfully' };
+      return {
+        status: true,
+        message: 'Employee statuses created successfully',
+      };
     } catch (error) {
       let errorMessage = 'Failed to create employee statuses';
       if (error instanceof Error) {

@@ -29,4 +29,3 @@ export class UpdateLeaveTypeDto {
   @IsString()
   status?: string;
 }
-

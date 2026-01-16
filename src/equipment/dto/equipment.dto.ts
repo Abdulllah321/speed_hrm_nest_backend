@@ -29,4 +29,3 @@ export class UpdateEquipmentDto {
   @IsString()
   status?: string;
 }
-

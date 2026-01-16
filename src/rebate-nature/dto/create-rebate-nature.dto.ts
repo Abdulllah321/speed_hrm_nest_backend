@@ -1,4 +1,12 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsBoolean, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  Min,
+  IsBoolean,
+  IsIn,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateRebateNatureDto {
@@ -7,13 +15,20 @@ export class CreateRebateNatureDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'other', enum: ['fixed', 'other'], description: 'Type of rebate nature' })
+  @ApiProperty({
+    example: 'other',
+    enum: ['fixed', 'other'],
+    description: 'Type of rebate nature',
+  })
   @IsString()
   @IsOptional()
   @IsIn(['fixed', 'other'])
   type?: string;
 
-  @ApiProperty({ example: 'Education', description: 'Category for fixed type rebate natures' })
+  @ApiProperty({
+    example: 'Education',
+    description: 'Category for fixed type rebate natures',
+  })
   @IsString()
   @IsOptional()
   category?: string;

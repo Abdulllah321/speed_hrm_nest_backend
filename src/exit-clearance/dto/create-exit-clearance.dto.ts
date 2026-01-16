@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsDateString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateExitClearanceDto {
@@ -171,7 +177,10 @@ export class CreateExitClearanceDto {
   @IsString()
   note?: string;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'pending',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   approvalStatus?: string;
@@ -353,4 +362,3 @@ export class UpdateExitClearanceDto {
   @IsString()
   approvalStatus?: string;
 }
-

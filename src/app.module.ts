@@ -54,6 +54,9 @@ import { SocialSecurityModule } from './social-security/social-security.module';
 import { AllocationModule } from './allocation/allocation.module';
 import { PFModule } from './pf/pf.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { RoleModule } from './role/role.module';
+import { PermissionModule } from './permission/permission.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -119,8 +122,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
     AllocationModule,
     PFModule,
     DashboardModule,
+    RoleModule,
+    PermissionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

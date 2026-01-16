@@ -52,7 +52,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const responseObj = exceptionResponse as any;
         errorResponse = {
           status: false,
-          message: responseObj.message || exception.message || 'An error occurred',
+          message:
+            responseObj.message || exception.message || 'An error occurred',
           errors: responseObj.errors || undefined,
           statusCode: status,
           timestamp: new Date().toISOString(),
@@ -78,14 +79,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response.status(errorResponse.statusCode || HttpStatus.BAD_REQUEST).send(errorResponse);
+      return response
+        .status(errorResponse.statusCode || HttpStatus.BAD_REQUEST)
+        .send(errorResponse);
     }
 
     // Handle Prisma Validation Errors
     if (exception instanceof Prisma.PrismaClientValidationError) {
       errorResponse = {
         status: false,
-        message: 'Invalid data provided. Please check your input and try again.',
+        message:
+          'Invalid data provided. Please check your input and try again.',
         statusCode: HttpStatus.BAD_REQUEST,
         timestamp: new Date().toISOString(),
         path: request.url,
@@ -112,7 +116,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response.status(HttpStatus.SERVICE_UNAVAILABLE).send(errorResponse);
+      return response
+        .status(HttpStatus.SERVICE_UNAVAILABLE)
+        .send(errorResponse);
     }
 
     // Handle Prisma Client Unknown Errors
@@ -129,7 +135,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response.status(HttpStatus.INTERNAL_SERVER_ERROR).send(errorResponse);
+      return response
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .send(errorResponse);
     }
 
     // Handle Prisma Client RPC Errors
@@ -146,7 +154,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response.status(HttpStatus.INTERNAL_SERVER_ERROR).send(errorResponse);
+      return response
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .send(errorResponse);
     }
 
     // Handle generic errors
@@ -163,7 +173,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response.status(HttpStatus.INTERNAL_SERVER_ERROR).send(errorResponse);
+      return response
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .send(errorResponse);
     }
 
     // Fallback for unknown error types
@@ -173,7 +185,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       `${request.method} ${request.url}`,
     );
 
-    return response.status(HttpStatus.INTERNAL_SERVER_ERROR).send(errorResponse);
+    return response
+      .status(HttpStatus.INTERNAL_SERVER_ERROR)
+      .send(errorResponse);
   }
 
   private handlePrismaError(
@@ -201,7 +215,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Foreign key constraint violation
         return {
           ...baseResponse,
-          message: 'The operation failed because it references a record that does not exist.',
+          message:
+            'The operation failed because it references a record that does not exist.',
         };
 
       case 'P2025':
@@ -216,14 +231,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Required relation violation
         return {
           ...baseResponse,
-          message: 'The operation failed because a required relation is missing.',
+          message:
+            'The operation failed because a required relation is missing.',
         };
 
       case 'P2000':
         // Input value too long
         return {
           ...baseResponse,
-          message: 'The provided value is too long. Please provide a shorter value.',
+          message:
+            'The provided value is too long. Please provide a shorter value.',
         };
 
       case 'P2001':
@@ -238,28 +255,32 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Null constraint violation
         return {
           ...baseResponse,
-          message: 'A required field is missing. Please provide all required information.',
+          message:
+            'A required field is missing. Please provide all required information.',
         };
 
       case 'P2012':
         // Missing required value
         return {
           ...baseResponse,
-          message: 'A required value is missing. Please check your input and try again.',
+          message:
+            'A required value is missing. Please check your input and try again.',
         };
 
       case 'P2013':
         // Missing required argument
         return {
           ...baseResponse,
-          message: 'A required argument is missing. Please provide all required information.',
+          message:
+            'A required argument is missing. Please provide all required information.',
         };
 
       case 'P2015':
         // Related record not found
         return {
           ...baseResponse,
-          message: 'A related record was not found. Please check your input and try again.',
+          message:
+            'A related record was not found. Please check your input and try again.',
         };
 
       case 'P2016':
@@ -273,28 +294,32 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Records for relation not connected
         return {
           ...baseResponse,
-          message: 'The records are not properly connected. Please check your input.',
+          message:
+            'The records are not properly connected. Please check your input.',
         };
 
       case 'P2018':
         // Required connected records not found
         return {
           ...baseResponse,
-          message: 'Required connected records were not found. Please check your input.',
+          message:
+            'Required connected records were not found. Please check your input.',
         };
 
       case 'P2019':
         // Input error
         return {
           ...baseResponse,
-          message: 'Invalid input provided. Please check your data and try again.',
+          message:
+            'Invalid input provided. Please check your data and try again.',
         };
 
       case 'P2020':
         // Value out of range
         return {
           ...baseResponse,
-          message: 'The provided value is out of range. Please provide a valid value.',
+          message:
+            'The provided value is out of range. Please provide a valid value.',
         };
 
       case 'P2021':
@@ -317,7 +342,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Inconsistent column data
         return {
           ...baseResponse,
-          message: 'Database data inconsistency detected. Please contact support.',
+          message:
+            'Database data inconsistency detected. Please contact support.',
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
         };
 
@@ -333,7 +359,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Multiple errors occurred
         return {
           ...baseResponse,
-          message: 'Multiple errors occurred. Please check your input and try again.',
+          message:
+            'Multiple errors occurred. Please check your input and try again.',
         };
 
       case 'P2028':
@@ -364,7 +391,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Invalid number of arguments
         return {
           ...baseResponse,
-          message: 'Invalid number of arguments provided. Please check your request.',
+          message:
+            'Invalid number of arguments provided. Please check your request.',
         };
 
       case 'P2034':
@@ -393,4 +421,3 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       .trim();
   }
 }
-

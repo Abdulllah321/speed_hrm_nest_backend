@@ -1,8 +1,27 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
-import { ProvidentFundService } from './provident-fund.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { CreateProvidentFundDto, UpdateProvidentFundDto } from './dto/provident-fund.dto'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { ProvidentFundService } from './provident-fund.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from '@nestjs/swagger';
+import {
+  CreateProvidentFundDto,
+  UpdateProvidentFundDto,
+} from './dto/provident-fund.dto';
 
 @ApiTags('Provident Fund')
 @Controller('api')
@@ -14,7 +33,7 @@ export class ProvidentFundController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all provident funds' })
   async list() {
-    return this.service.list()
+    return this.service.list();
   }
 
   @Get('provident-funds/:id')
@@ -22,22 +41,19 @@ export class ProvidentFundController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get provident fund by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('provident-funds')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create provident fund' })
-  async create(
-    @Body() body: CreateProvidentFundDto,
-    @Req() req: any,
-  ) {
+  async create(@Body() body: CreateProvidentFundDto, @Req() req: any) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Post('provident-funds/bulk')
@@ -53,7 +69,7 @@ export class ProvidentFundController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('provident-funds/:id')
@@ -69,7 +85,7 @@ export class ProvidentFundController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('provident-funds/:id')
@@ -81,6 +97,6 @@ export class ProvidentFundController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 }

@@ -1,4 +1,13 @@
-import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, Min, Max, ValidateIf } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  Min,
+  Max,
+  ValidateIf,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -23,7 +32,9 @@ export class CreateAllowanceHeadDto {
 
   @ApiPropertyOptional({ example: 10 })
   @ValidateIf((o) => o.calculationType === 'Percentage')
-  @IsNotEmpty({ message: 'Percentage is required when calculation type is Percentage' })
+  @IsNotEmpty({
+    message: 'Percentage is required when calculation type is Percentage',
+  })
   @IsNumber({}, { message: 'Percentage must be a number' })
   @Type(() => Number)
   @Min(0, { message: 'Percentage must be greater than or equal to 0' })
@@ -74,4 +85,3 @@ export class UpdateAllowanceHeadDto {
   @IsString()
   status?: string;
 }
-

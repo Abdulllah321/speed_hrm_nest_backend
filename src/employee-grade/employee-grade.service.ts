@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class EmployeeGradeService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async list() {
     const items = await this.prisma.employeeGrade.findMany({
@@ -29,9 +29,17 @@ export class EmployeeGradeService {
           status: data.status || 'Active',
         },
       });
-      return { status: true, data: item, message: 'Employee grade created successfully' };
+      return {
+        status: true,
+        data: item,
+        message: 'Employee grade created successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create grade' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to create grade',
+      };
     }
   }
 
@@ -41,9 +49,17 @@ export class EmployeeGradeService {
         where: { id },
         data,
       });
-      return { status: true, data: item, message: 'Employee grade updated successfully' };
+      return {
+        status: true,
+        data: item,
+        message: 'Employee grade updated successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update grade' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update grade',
+      };
     }
   }
 
@@ -52,7 +68,11 @@ export class EmployeeGradeService {
       await this.prisma.employeeGrade.delete({ where: { id } });
       return { status: true, message: 'Employee grade deleted successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete grade' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to delete grade',
+      };
     }
   }
 

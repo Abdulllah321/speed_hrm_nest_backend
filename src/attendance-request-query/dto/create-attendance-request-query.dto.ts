@@ -1,4 +1,9 @@
-import { IsNotEmpty, IsString, IsOptional, IsDateString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAttendanceRequestQueryDto {
@@ -52,9 +57,11 @@ export class CreateAttendanceRequestQueryDto {
   @IsString()
   query: string;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'pending',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   approvalStatus?: string; // default "pending"
 }
-

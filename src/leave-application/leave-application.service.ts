@@ -1,13 +1,13 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class LeaveApplicationService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async getLeaveBalance(employeeId: string) {
     try {
@@ -25,18 +25,23 @@ export class LeaveApplicationService {
             },
           },
         },
-      })
+      });
 
       if (!employee) {
-        return { status: false, message: 'Employee not found' }
+        return { status: false, message: 'Employee not found' };
       }
 
       if (!employee.leavesPolicy) {
-        return { status: false, message: 'Employee does not have a leave policy assigned' }
+        return {
+          status: false,
+          message: 'Employee does not have a leave policy assigned',
+        };
       }
 
       // Get all approved leave applications for this employee
-      const leaveApplications = await (this.prisma as any).leaveApplication.findMany({
+      const leaveApplications = await (
+        this.prisma as any
+      ).leaveApplication.findMany({
         where: {
           employeeId,
           status: 'approved',
@@ -44,50 +49,59 @@ export class LeaveApplicationService {
         include: {
           leaveType: true,
         },
-      })
+      });
 
       // Calculate used leaves by leave type
-      const usedLeavesMap = new Map<string, number>()
+      const usedLeavesMap = new Map<string, number>();
 
       leaveApplications.forEach((app) => {
-        const leaveTypeId = app.leaveTypeId
-        const currentUsed = usedLeavesMap.get(leaveTypeId) || 0
+        const leaveTypeId = app.leaveTypeId;
+        const currentUsed = usedLeavesMap.get(leaveTypeId) || 0;
 
         // Calculate days between fromDate and toDate
-        const fromDate = new Date(app.fromDate)
-        const toDate = new Date(app.toDate)
-        const diffTime = Math.abs(toDate.getTime() - fromDate.getTime())
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 // +1 to include both dates
+        const fromDate = new Date(app.fromDate);
+        const toDate = new Date(app.toDate);
+        const diffTime = Math.abs(toDate.getTime() - fromDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both dates
 
         // Adjust based on day type
-        let daysToDeduct = diffDays
+        let daysToDeduct = diffDays;
         if (app.dayType === 'halfDay') {
-          daysToDeduct = diffDays * 0.5
+          daysToDeduct = diffDays * 0.5;
         } else if (app.dayType === 'shortLeave') {
-          daysToDeduct = diffDays * 0.25 // Assuming short leave is 0.25 day
+          daysToDeduct = diffDays * 0.25; // Assuming short leave is 0.25 day
         }
 
-        usedLeavesMap.set(leaveTypeId, currentUsed + daysToDeduct)
-      })
+        usedLeavesMap.set(leaveTypeId, currentUsed + daysToDeduct);
+      });
 
       // Build leave balance array
-      const leaveBalances = employee.leavesPolicy.leaveTypes.map((policyLeaveType) => {
-        const totalLeaves = policyLeaveType.numberOfLeaves
-        const usedLeaves = usedLeavesMap.get(policyLeaveType.leaveTypeId) || 0
-        const remainingLeaves = Math.max(0, totalLeaves - usedLeaves)
+      const leaveBalances = employee.leavesPolicy.leaveTypes.map(
+        (policyLeaveType) => {
+          const totalLeaves = policyLeaveType.numberOfLeaves;
+          const usedLeaves =
+            usedLeavesMap.get(policyLeaveType.leaveTypeId) || 0;
+          const remainingLeaves = Math.max(0, totalLeaves - usedLeaves);
 
-        return {
-          id: policyLeaveType.leaveTypeId, // Add id for DataTable compatibility
-          leaveTypeId: policyLeaveType.leaveTypeId,
-          leaveTypeName: policyLeaveType.leaveType.name,
-          totalLeaves,
-          usedLeaves: Math.round(usedLeaves * 100) / 100, // Round to 2 decimal places
-          remainingLeaves: Math.round(remainingLeaves * 100) / 100,
-        }
-      })
+          return {
+            id: policyLeaveType.leaveTypeId, // Add id for DataTable compatibility
+            leaveTypeId: policyLeaveType.leaveTypeId,
+            leaveTypeName: policyLeaveType.leaveType.name,
+            totalLeaves,
+            usedLeaves: Math.round(usedLeaves * 100) / 100, // Round to 2 decimal places
+            remainingLeaves: Math.round(remainingLeaves * 100) / 100,
+          };
+        },
+      );
 
-      const totalTaken = leaveBalances.reduce((sum, bal) => sum + bal.usedLeaves, 0)
-      const totalRemaining = leaveBalances.reduce((sum, bal) => sum + bal.remainingLeaves, 0)
+      const totalTaken = leaveBalances.reduce(
+        (sum, bal) => sum + bal.usedLeaves,
+        0,
+      );
+      const totalRemaining = leaveBalances.reduce(
+        (sum, bal) => sum + bal.remainingLeaves,
+        0,
+      );
 
       return {
         status: true,
@@ -100,22 +114,25 @@ export class LeaveApplicationService {
           totalTaken: Math.round(totalTaken * 100) / 100,
           totalRemaining: Math.round(totalRemaining * 100) / 100,
         },
-      }
+      };
     } catch (error: any) {
-      console.error('Error fetching leave balance:', error)
-      return { status: false, message: error?.message || 'Failed to fetch leave balance' }
+      console.error('Error fetching leave balance:', error);
+      return {
+        status: false,
+        message: error?.message || 'Failed to fetch leave balance',
+      };
     }
   }
 
   async create(
     body: {
-      employeeId: string
-      leaveTypeId: string
-      dayType: 'fullDay' | 'halfDay' | 'shortLeave'
-      fromDate: string
-      toDate: string
-      reasonForLeave: string
-      addressWhileOnLeave: string
+      employeeId: string;
+      leaveTypeId: string;
+      dayType: 'fullDay' | 'halfDay' | 'shortLeave';
+      fromDate: string;
+      toDate: string;
+      reasonForLeave: string;
+      addressWhileOnLeave: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -130,50 +147,56 @@ export class LeaveApplicationService {
             },
           },
         },
-      })
+      });
 
       if (!employee) {
-        return { status: false, message: 'Employee not found' }
+        return { status: false, message: 'Employee not found' };
       }
 
       if (!employee.leavesPolicy) {
-        return { status: false, message: 'Employee does not have a leave policy assigned' }
+        return {
+          status: false,
+          message: 'Employee does not have a leave policy assigned',
+        };
       }
 
       // Check if leave type exists in policy
       const policyLeaveType = employee.leavesPolicy.leaveTypes.find(
         (lt) => lt.leaveTypeId === body.leaveTypeId,
-      )
+      );
 
       if (!policyLeaveType) {
-        return { status: false, message: 'Leave type not found in employee leave policy' }
+        return {
+          status: false,
+          message: 'Leave type not found in employee leave policy',
+        };
       }
 
       // Check leave balance
-      const balanceResult = await this.getLeaveBalance(body.employeeId)
+      const balanceResult = await this.getLeaveBalance(body.employeeId);
       if (!balanceResult.status || !balanceResult.data) {
-        return balanceResult
+        return balanceResult;
       }
 
       const leaveBalance = balanceResult.data.leaveBalances.find(
         (bal: any) => bal.leaveTypeId === body.leaveTypeId,
-      )
+      );
 
       if (!leaveBalance || leaveBalance.remainingLeaves <= 0) {
-        return { status: false, message: 'Insufficient leave balance' }
+        return { status: false, message: 'Insufficient leave balance' };
       }
 
       // Calculate days requested
-      const fromDate = new Date(body.fromDate)
-      const toDate = new Date(body.toDate)
-      const diffTime = Math.abs(toDate.getTime() - fromDate.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+      const fromDate = new Date(body.fromDate);
+      const toDate = new Date(body.toDate);
+      const diffTime = Math.abs(toDate.getTime() - fromDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
       // Check if attendance already exists for any day in the requested range
-      const checkFromDate = new Date(fromDate)
-      checkFromDate.setHours(0, 0, 0, 0)
-      const checkToDate = new Date(toDate)
-      checkToDate.setHours(23, 59, 59, 999)
+      const checkFromDate = new Date(fromDate);
+      checkFromDate.setHours(0, 0, 0, 0);
+      const checkToDate = new Date(toDate);
+      checkToDate.setHours(23, 59, 59, 999);
 
       const existingAttendance = await this.prisma.attendance.findFirst({
         where: {
@@ -183,24 +206,28 @@ export class LeaveApplicationService {
             lte: checkToDate,
           },
         },
-      })
+      });
 
       if (existingAttendance) {
         return {
           status: false,
-          message: 'Attendance result already marked for one or more days in this range. Cannot apply for leave.',
-        }
+          message:
+            'Attendance result already marked for one or more days in this range. Cannot apply for leave.',
+        };
       }
 
-      let daysToDeduct = diffDays
+      let daysToDeduct = diffDays;
       if (body.dayType === 'halfDay') {
-        daysToDeduct = diffDays * 0.5
+        daysToDeduct = diffDays * 0.5;
       } else if (body.dayType === 'shortLeave') {
-        daysToDeduct = diffDays * 0.25
+        daysToDeduct = diffDays * 0.25;
       }
 
       if (daysToDeduct > leaveBalance.remainingLeaves) {
-        return { status: false, message: 'Requested days exceed remaining leave balance' }
+        return {
+          status: false,
+          message: 'Requested days exceed remaining leave balance',
+        };
       }
 
       // Create leave application
@@ -226,7 +253,7 @@ export class LeaveApplicationService {
           },
           leaveType: true,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -239,9 +266,9 @@ export class LeaveApplicationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: created }
+      return { status: true, data: created };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -254,38 +281,43 @@ export class LeaveApplicationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: error?.message || 'Failed to create leave application' }
+      });
+      return {
+        status: false,
+        message: error?.message || 'Failed to create leave application',
+      };
     }
   }
 
   async list(filters?: {
-    departmentId?: string
-    subDepartmentId?: string
-    employeeId?: string
-    status?: string
-    fromDate?: string
-    toDate?: string
+    departmentId?: string;
+    subDepartmentId?: string;
+    employeeId?: string;
+    status?: string;
+    fromDate?: string;
+    toDate?: string;
   }) {
     try {
-      const where: any = {}
+      const where: any = {};
 
       if (filters?.employeeId) {
-        where.employeeId = filters.employeeId
+        where.employeeId = filters.employeeId;
       }
 
       if (filters?.status && filters.status !== 'all') {
-        where.status = filters.status
+        where.status = filters.status;
       }
 
       if (filters?.fromDate) {
-        where.fromDate = { gte: new Date(filters.fromDate) }
+        where.fromDate = { gte: new Date(filters.fromDate) };
       }
       if (filters?.toDate) {
-        where.toDate = { lte: new Date(filters.toDate) }
+        where.toDate = { lte: new Date(filters.toDate) };
       }
 
-      const leaveApplications = await (this.prisma as any).leaveApplication.findMany({
+      const leaveApplications = await (
+        this.prisma as any
+      ).leaveApplication.findMany({
         where,
         include: {
           employee: {
@@ -314,17 +346,17 @@ export class LeaveApplicationService {
         orderBy: {
           createdAt: 'desc',
         },
-      })
+      });
 
       // Filter by department/sub-department if needed
-      let filtered = leaveApplications
+      let filtered = leaveApplications;
 
       if (filters?.departmentId) {
         filtered = filtered.filter(
           (app) =>
             app.employee.departmentId === filters.departmentId ||
             app.employee.department?.id === filters.departmentId,
-        )
+        );
       }
 
       if (filters?.subDepartmentId) {
@@ -332,7 +364,7 @@ export class LeaveApplicationService {
           (app) =>
             app.employee.subDepartmentId === filters.subDepartmentId ||
             app.employee.subDepartment?.id === filters.subDepartmentId,
-        )
+        );
       }
 
       // Map to response format
@@ -356,16 +388,22 @@ export class LeaveApplicationService {
         status: app.status,
         createdAt: app.createdAt.toISOString(),
         updatedAt: app.updatedAt.toISOString(),
-      }))
+      }));
 
-      return { status: true, data: mapped }
+      return { status: true, data: mapped };
     } catch (error: any) {
-      console.error('Error fetching leave applications:', error)
-      return { status: false, message: error?.message || 'Failed to fetch leave applications' }
+      console.error('Error fetching leave applications:', error);
+      return {
+        status: false,
+        message: error?.message || 'Failed to fetch leave applications',
+      };
     }
   }
 
-  async approve(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async approve(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await (this.prisma as any).leaveApplication.findUnique({
         where: { id },
@@ -378,14 +416,14 @@ export class LeaveApplicationService {
           },
           leaveType: true,
         },
-      })
+      });
 
       if (!existing) {
-        return { status: false, message: 'Leave application not found' }
+        return { status: false, message: 'Leave application not found' };
       }
 
       if (existing.status === 'approved') {
-        return { status: false, message: 'Leave application already approved' }
+        return { status: false, message: 'Leave application already approved' };
       }
 
       const updated = await (this.prisma as any).leaveApplication.update({
@@ -406,7 +444,7 @@ export class LeaveApplicationService {
           },
           leaveType: true,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -420,9 +458,9 @@ export class LeaveApplicationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: updated }
+      return { status: true, data: updated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -435,12 +473,19 @@ export class LeaveApplicationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: error?.message || 'Failed to approve leave application' }
+      });
+      return {
+        status: false,
+        message: error?.message || 'Failed to approve leave application',
+      };
     }
   }
 
-  async reject(id: string, remarks: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async reject(
+    id: string,
+    remarks: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await (this.prisma as any).leaveApplication.findUnique({
         where: { id },
@@ -453,14 +498,14 @@ export class LeaveApplicationService {
           },
           leaveType: true,
         },
-      })
+      });
 
       if (!existing) {
-        return { status: false, message: 'Leave application not found' }
+        return { status: false, message: 'Leave application not found' };
       }
 
       if (existing.status === 'rejected') {
-        return { status: false, message: 'Leave application already rejected' }
+        return { status: false, message: 'Leave application already rejected' };
       }
 
       const updated = await (this.prisma as any).leaveApplication.update({
@@ -482,7 +527,7 @@ export class LeaveApplicationService {
           },
           leaveType: true,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -496,9 +541,9 @@ export class LeaveApplicationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: updated }
+      return { status: true, data: updated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -511,9 +556,11 @@ export class LeaveApplicationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: error?.message || 'Failed to reject leave application' }
+      });
+      return {
+        status: false,
+        message: error?.message || 'Failed to reject leave application',
+      };
     }
   }
 }
-

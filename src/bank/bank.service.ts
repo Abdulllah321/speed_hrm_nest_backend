@@ -7,7 +7,7 @@ export class BankService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prisma.bank.findMany({
@@ -309,4 +309,3 @@ export class BankService {
     }
   }
 }
-

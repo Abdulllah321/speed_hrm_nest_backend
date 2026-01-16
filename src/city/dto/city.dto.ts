@@ -49,4 +49,3 @@ export class UpdateCityDto {
   @IsString()
   status?: string;
 }
-

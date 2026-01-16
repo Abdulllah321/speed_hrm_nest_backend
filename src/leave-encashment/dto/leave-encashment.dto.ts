@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsDateString,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -109,7 +117,10 @@ export class UpdateLeaveEncashmentDto {
   @IsNumber()
   perDayAmount?: number;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'pending',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   approvalStatus?: string; // pending, approved, rejected
@@ -119,7 +130,10 @@ export class UpdateLeaveEncashmentDto {
   @IsString()
   rejectionReason?: string;
 
-  @ApiPropertyOptional({ example: 'active', enum: ['pending', 'active', 'completed', 'cancelled', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'active',
+    enum: ['pending', 'active', 'completed', 'cancelled', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   status?: string; // pending, active, completed, cancelled, rejected
@@ -131,4 +145,3 @@ export class ApproveLeaveEncashmentDto {
   @IsString()
   rejectionReason?: string;
 }
-

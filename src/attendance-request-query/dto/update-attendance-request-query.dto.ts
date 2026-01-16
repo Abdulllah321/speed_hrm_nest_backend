@@ -3,4 +3,3 @@ export class UpdateAttendanceRequestQueryDto {
   approvedBy?: string;
   rejectionReason?: string;
 }
-

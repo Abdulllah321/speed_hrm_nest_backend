@@ -14,7 +14,10 @@ export class LoginDto {
 }
 
 export class RefreshTokenDto {
-  @ApiPropertyOptional({ example: 'eyJhbGciOiJIUzI1NiIsInR5c...', description: 'Optional if sent via cookie' })
+  @ApiPropertyOptional({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5c...',
+    description: 'Optional if sent via cookie',
+  })
   @IsOptional()
   @IsString()
   refreshToken?: string;
@@ -68,4 +71,3 @@ export class UpdateUserDto {
   @IsString()
   roleId?: string;
 }
-

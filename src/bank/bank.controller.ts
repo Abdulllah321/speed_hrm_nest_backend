@@ -11,7 +11,13 @@ import {
 } from '@nestjs/common';
 import { BankService } from './bank.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from '@nestjs/swagger';
 import { CreateBankDto, UpdateBankDto } from './dto/bank.dto';
 
 @ApiTags('Bank')
@@ -39,10 +45,7 @@ export class BankController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create bank' })
-  async create(
-    @Body() body: CreateBankDto,
-    @Req() req: any,
-  ) {
+  async create(@Body() body: CreateBankDto, @Req() req: any) {
     return this.service.create(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -120,11 +123,19 @@ export class BankController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete banks in bulk' })
-  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
-  async removeBulk(
-    @Body() body: { ids: string[] },
-    @Req() req: any,
-  ) {
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['uuid1', 'uuid2'],
+        },
+      },
+    },
+  })
+  async removeBulk(@Body() body: { ids: string[] }, @Req() req: any) {
     return this.service.removeBulk(body.ids ?? [], {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -132,4 +143,3 @@ export class BankController {
     });
   }
 }
-

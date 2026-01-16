@@ -11,4 +11,3 @@ import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
   exports: [BonusService],
 })
 export class BonusModule {}
-

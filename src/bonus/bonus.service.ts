@@ -12,7 +12,7 @@ export class BonusService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(params?: {
     employeeId?: string;
@@ -411,7 +411,9 @@ export class BonusService {
           }),
           ...(body.notes !== undefined && { notes: body.notes }),
           ...(body.isTaxable !== undefined && { isTaxable: body.isTaxable }),
-          ...(body.taxPercentage !== undefined && { taxPercentage: body.taxPercentage }),
+          ...(body.taxPercentage !== undefined && {
+            taxPercentage: body.taxPercentage,
+          }),
           ...(body.status && { status: body.status }),
           updatedById: ctx.userId,
         },

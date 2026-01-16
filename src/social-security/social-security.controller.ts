@@ -1,7 +1,24 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { SocialSecurityService } from './social-security.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import {
   CreateSocialSecurityInstitutionDto,
   UpdateSocialSecurityInstitutionDto,
@@ -83,8 +100,14 @@ export class SocialSecurityController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employer registrations' })
-  @ApiQuery({ name: 'institutionId', required: false, description: 'Filter by institution ID' })
-  async listEmployerRegistrations(@Query('institutionId') institutionId?: string) {
+  @ApiQuery({
+    name: 'institutionId',
+    required: false,
+    description: 'Filter by institution ID',
+  })
+  async listEmployerRegistrations(
+    @Query('institutionId') institutionId?: string,
+  ) {
     return this.service.listEmployerRegistrations(institutionId);
   }
 
@@ -144,15 +167,31 @@ export class SocialSecurityController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employee registrations' })
-  @ApiQuery({ name: 'employeeId', required: false, description: 'Filter by employee ID' })
-  @ApiQuery({ name: 'institutionId', required: false, description: 'Filter by institution ID' })
-  @ApiQuery({ name: 'employerRegistrationId', required: false, description: 'Filter by employer registration ID' })
+  @ApiQuery({
+    name: 'employeeId',
+    required: false,
+    description: 'Filter by employee ID',
+  })
+  @ApiQuery({
+    name: 'institutionId',
+    required: false,
+    description: 'Filter by institution ID',
+  })
+  @ApiQuery({
+    name: 'employerRegistrationId',
+    required: false,
+    description: 'Filter by employer registration ID',
+  })
   async listEmployeeRegistrations(
     @Query('employeeId') employeeId?: string,
     @Query('institutionId') institutionId?: string,
     @Query('employerRegistrationId') employerRegistrationId?: string,
   ) {
-    return this.service.listEmployeeRegistrations(employeeId, institutionId, employerRegistrationId);
+    return this.service.listEmployeeRegistrations(
+      employeeId,
+      institutionId,
+      employerRegistrationId,
+    );
   }
 
   @Get('social-security-employee-registrations/:id')
@@ -211,17 +250,38 @@ export class SocialSecurityController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all contributions' })
-  @ApiQuery({ name: 'employeeId', required: false, description: 'Filter by employee ID' })
-  @ApiQuery({ name: 'institutionId', required: false, description: 'Filter by institution ID' })
-  @ApiQuery({ name: 'month', required: false, description: 'Filter by month (01-12)' })
-  @ApiQuery({ name: 'year', required: false, description: 'Filter by year (YYYY)' })
+  @ApiQuery({
+    name: 'employeeId',
+    required: false,
+    description: 'Filter by employee ID',
+  })
+  @ApiQuery({
+    name: 'institutionId',
+    required: false,
+    description: 'Filter by institution ID',
+  })
+  @ApiQuery({
+    name: 'month',
+    required: false,
+    description: 'Filter by month (01-12)',
+  })
+  @ApiQuery({
+    name: 'year',
+    required: false,
+    description: 'Filter by year (YYYY)',
+  })
   async listContributions(
     @Query('employeeId') employeeId?: string,
     @Query('institutionId') institutionId?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
   ) {
-    return this.service.listContributions(employeeId, institutionId, month, year);
+    return this.service.listContributions(
+      employeeId,
+      institutionId,
+      month,
+      year,
+    );
   }
 
   @Get('social-security-contributions/:id')
@@ -275,4 +335,3 @@ export class SocialSecurityController {
     });
   }
 }
-

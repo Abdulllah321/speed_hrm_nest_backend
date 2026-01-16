@@ -43,4 +43,3 @@ export class CreateLeaveApplicationDto {
   @IsString()
   addressWhileOnLeave: string;
 }
-

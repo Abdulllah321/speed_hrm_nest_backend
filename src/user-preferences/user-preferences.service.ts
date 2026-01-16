@@ -26,11 +26,7 @@ export class UserPreferencesService {
     }
   }
 
-  async upsert(
-    userId: string,
-    key: string,
-    value: string,
-  ) {
+  async upsert(userId: string, key: string, value: string) {
     try {
       const preference = await this.prisma.userPreference.upsert({
         where: {
@@ -49,10 +45,13 @@ export class UserPreferencesService {
         },
       });
 
-      return { status: true, data: preference, message: 'Preference saved successfully' };
+      return {
+        status: true,
+        data: preference,
+        message: 'Preference saved successfully',
+      };
     } catch (error: any) {
       return { status: false, message: 'Failed to save user preference' };
     }
   }
 }
-

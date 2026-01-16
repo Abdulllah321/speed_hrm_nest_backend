@@ -1,4 +1,14 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsBoolean, IsDateString, IsArray, ValidateNested, IsIn } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsArray,
+  ValidateNested,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -18,7 +28,11 @@ export class CreateAllowanceItemDto {
   @IsNumber()
   amount: number;
 
-  @ApiPropertyOptional({ example: 'specific', enum: ['recurring', 'specific'], description: 'Type of allowance: recurring or specific' })
+  @ApiPropertyOptional({
+    example: 'specific',
+    enum: ['recurring', 'specific'],
+    description: 'Type of allowance: recurring or specific',
+  })
   @IsOptional()
   @IsString()
   type?: string;
@@ -38,15 +52,24 @@ export class CreateAllowanceItemDto {
   @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ example: 'distributed-remaining-months', enum: ['distributed-remaining-months', 'deduct-current-month'], description: 'Adjustment method for allowance' })
+  @ApiPropertyOptional({
+    example: 'distributed-remaining-months',
+    enum: ['distributed-remaining-months', 'deduct-current-month'],
+    description: 'Adjustment method for allowance',
+  })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
-    message: 'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
+    message:
+      'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
 
-  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'], description: 'Payment method for allowance' })
+  @ApiPropertyOptional({
+    example: 'with_salary',
+    enum: ['with_salary', 'separately'],
+    description: 'Payment method for allowance',
+  })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {
@@ -90,7 +113,11 @@ export class UpdateAllowanceDto {
   @IsNumber()
   amount?: number;
 
-  @ApiPropertyOptional({ example: 'specific', enum: ['recurring', 'specific'], description: 'Type of allowance: recurring or specific' })
+  @ApiPropertyOptional({
+    example: 'specific',
+    enum: ['recurring', 'specific'],
+    description: 'Type of allowance: recurring or specific',
+  })
   @IsOptional()
   @IsString()
   type?: string;
@@ -115,15 +142,22 @@ export class UpdateAllowanceDto {
   @IsString()
   status?: string;
 
-  @ApiPropertyOptional({ example: 'distributed-remaining-months', enum: ['distributed-remaining-months', 'deduct-current-month'] })
+  @ApiPropertyOptional({
+    example: 'distributed-remaining-months',
+    enum: ['distributed-remaining-months', 'deduct-current-month'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['distributed-remaining-months', 'deduct-current-month'], {
-    message: 'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
+    message:
+      'adjustmentMethod must be either "distributed-remaining-months" or "deduct-current-month"',
   })
   adjustmentMethod?: string; // "distributed-remaining-months" | "deduct-current-month"
 
-  @ApiPropertyOptional({ example: 'with_salary', enum: ['with_salary', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_salary',
+    enum: ['with_salary', 'separately'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['with_salary', 'separately'], {

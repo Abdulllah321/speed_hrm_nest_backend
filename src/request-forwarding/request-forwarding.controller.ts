@@ -1,9 +1,24 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { RequestForwardingService } from './request-forwarding.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CreateRequestForwardingDto } from './dto/create-request-forwarding.dto';
 import { UpdateRequestForwardingDto } from './dto/update-request-forwarding.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 
 @ApiTags('Request Forwarding')
 @Controller('api')
@@ -21,7 +36,9 @@ export class RequestForwardingController {
   @Get('request-forwarding/:requestType')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get request forwarding configuration by request type' })
+  @ApiOperation({
+    summary: 'Get request forwarding configuration by request type',
+  })
   async getByRequestType(@Param('requestType') requestType: string) {
     return this.service.getByRequestType(requestType);
   }

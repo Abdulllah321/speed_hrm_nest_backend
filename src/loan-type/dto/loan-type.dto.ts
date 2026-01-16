@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -55,4 +61,3 @@ export class BulkUpdateLoanTypeDto {
   @Type(() => BulkUpdateLoanTypeItemDto)
   items: BulkUpdateLoanTypeItemDto[];
 }
-

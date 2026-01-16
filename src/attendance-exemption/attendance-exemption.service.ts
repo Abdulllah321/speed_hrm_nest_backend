@@ -1,12 +1,12 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class AttendanceExemptionService {
   constructor(
     private prisma: PrismaService,
-    private activityLogs: ActivityLogsService
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async list() {
@@ -22,30 +22,30 @@ export class AttendanceExemptionService {
           },
         },
       },
-    })
+    });
 
     // Fetch all departments and designations for mapping
     const departments = await this.prisma.department.findMany({
       include: { subDepartments: true },
-    })
-    const designations = await this.prisma.designation.findMany()
+    });
+    const designations = await this.prisma.designation.findMany();
 
     // Map IDs to names
     const mappedExemptions = exemptions.map((exemption) => {
       // Map department and subDepartment from AttendanceExemption fields
       const dept = exemption.department
         ? departments.find((d) => d.id === exemption.department)
-        : null
+        : null;
       const subDept =
         dept && exemption.subDepartment
           ? dept.subDepartments.find((sd) => sd.id === exemption.subDepartment)
-          : null
+          : null;
 
       // Map designation from employee relation if available
-      const employeeDesignationId = exemption.employee?.designationId
+      const employeeDesignationId = exemption.employee?.designationId;
       const designation = employeeDesignationId
         ? designations.find((d) => d.id === employeeDesignationId)
-        : null
+        : null;
 
       return {
         ...exemption,
@@ -53,10 +53,10 @@ export class AttendanceExemptionService {
         subDepartment: subDept?.name || exemption.subDepartment,
         designation: designation?.name || null,
         employeeId: exemption.employee?.employeeId || exemption.employeeId,
-      }
-    })
+      };
+    });
 
-    return { status: true, data: mappedExemptions }
+    return { status: true, data: mappedExemptions };
   }
 
   async get(id: string) {
@@ -72,10 +72,10 @@ export class AttendanceExemptionService {
           },
         },
       },
-    })
+    });
 
     if (!exemption) {
-      return { status: false, message: 'Attendance exemption not found' }
+      return { status: false, message: 'Attendance exemption not found' };
     }
 
     // Fetch department and designation for mapping
@@ -84,18 +84,20 @@ export class AttendanceExemptionService {
           where: { id: exemption.department },
           include: { subDepartments: true },
         })
-      : null
+      : null;
 
     const subDepartment =
       department && exemption.subDepartment
-        ? department.subDepartments.find((sd) => sd.id === exemption.subDepartment)
-        : null
+        ? department.subDepartments.find(
+            (sd) => sd.id === exemption.subDepartment,
+          )
+        : null;
 
     const designation = exemption.employee?.designationId
       ? await this.prisma.designation.findUnique({
           where: { id: exemption.employee.designationId },
         })
-      : null
+      : null;
 
     return {
       status: true,
@@ -106,10 +108,13 @@ export class AttendanceExemptionService {
         designation: designation?.name || null,
         employeeId: exemption.employee?.employeeId || exemption.employeeId,
       },
-    }
+    };
   }
 
-  async create(body: any, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: any,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const created = await this.prisma.attendanceExemption.create({
         data: {
@@ -124,7 +129,7 @@ export class AttendanceExemptionService {
           approvalStatus: body.approvalStatus || 'pending',
           createdById: ctx.userId || null,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -137,9 +142,9 @@ export class AttendanceExemptionService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: created }
+      return { status: true, data: created };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -152,26 +157,26 @@ export class AttendanceExemptionService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
       return {
         status: false,
         message: error?.message || 'Failed to create attendance exemption',
-      }
+      };
     }
   }
 
   async update(
     id: string,
     body: any,
-    ctx: { userId?: string; ipAddress?: string; userAgent?: string }
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
-      })
+      });
       if (!existing) {
-        return { status: false, message: 'Attendance exemption not found' }
+        return { status: false, message: 'Attendance exemption not found' };
       }
 
       const updated = await this.prisma.attendanceExemption.update({
@@ -186,7 +191,7 @@ export class AttendanceExemptionService {
           rejectionReason: body.rejectionReason || null,
           updatedById: ctx.userId || null,
         },
-      })
+      });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -200,9 +205,9 @@ export class AttendanceExemptionService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, data: updated }
+      return { status: true, data: updated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -216,25 +221,28 @@ export class AttendanceExemptionService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
       return {
         status: false,
         message: error?.message || 'Failed to update attendance exemption',
-      }
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
-      })
+      });
       if (!existing) {
-        return { status: false, message: 'Attendance exemption not found' }
+        return { status: false, message: 'Attendance exemption not found' };
       }
 
-      await this.prisma.attendanceExemption.delete({ where: { id } })
+      await this.prisma.attendanceExemption.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -247,9 +255,12 @@ export class AttendanceExemptionService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
+      });
 
-      return { status: true, message: 'Attendance exemption deleted successfully' }
+      return {
+        status: true,
+        message: 'Attendance exemption deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -262,13 +273,12 @@ export class AttendanceExemptionService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
+      });
 
       return {
         status: false,
         message: error?.message || 'Failed to delete attendance exemption',
-      }
+      };
     }
   }
 }
-

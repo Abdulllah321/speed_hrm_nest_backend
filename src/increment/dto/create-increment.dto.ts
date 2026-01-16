@@ -108,7 +108,10 @@ export class UpdateIncrementDto {
   @IsString()
   designationId?: string;
 
-  @ApiPropertyOptional({ enum: IncrementType, example: IncrementType.INCREMENT })
+  @ApiPropertyOptional({
+    enum: IncrementType,
+    example: IncrementType.INCREMENT,
+  })
   @IsOptional()
   @IsEnum(IncrementType)
   incrementType?: IncrementType;
@@ -125,7 +128,10 @@ export class UpdateIncrementDto {
   @Min(0)
   incrementPercentage?: number;
 
-  @ApiPropertyOptional({ enum: IncrementMethod, example: IncrementMethod.PERCENT })
+  @ApiPropertyOptional({
+    enum: IncrementMethod,
+    example: IncrementMethod.PERCENT,
+  })
   @IsOptional()
   @IsEnum(IncrementMethod)
   incrementMethod?: IncrementMethod;
@@ -157,9 +163,11 @@ export class UpdateIncrementDto {
   @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ example: 'approved', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'approved',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   status?: string;
 }
-

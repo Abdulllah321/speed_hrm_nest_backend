@@ -1,4 +1,15 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsInt, Min, Max } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsDateString,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -53,7 +64,7 @@ export class CreateLoanRequestDto {
   @ValidateNested({ each: true })
   @Type(() => CreateLoanRequestItemDto)
   loanRequests: CreateLoanRequestItemDto[];
-  
+
   // Note: Currently only single employee loan requests are supported
   // The array structure is maintained for API consistency, but only one item should be provided
 }
@@ -96,7 +107,10 @@ export class UpdateLoanRequestDto {
   @IsString()
   additionalDetails?: string;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['pending', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    example: 'pending',
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   approvalStatus?: string; // pending, approved, rejected
@@ -106,7 +120,17 @@ export class UpdateLoanRequestDto {
   @IsString()
   rejectionReason?: string;
 
-  @ApiPropertyOptional({ example: 'pending', enum: ['pending', 'approved', 'rejected', 'disbursed', 'completed', 'cancelled'] })
+  @ApiPropertyOptional({
+    example: 'pending',
+    enum: [
+      'pending',
+      'approved',
+      'rejected',
+      'disbursed',
+      'completed',
+      'cancelled',
+    ],
+  })
   @IsOptional()
   @IsString()
   status?: string; // pending, approved, rejected, disbursed, completed, cancelled

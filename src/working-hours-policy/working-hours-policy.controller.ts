@@ -1,8 +1,28 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common'
-import { WorkingHoursPolicyService } from './working-hours-policy.service'
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger'
-import { CreateWorkingHoursPolicyDto, UpdateWorkingHoursPolicyDto } from './dto/working-hours-policy.dto'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { WorkingHoursPolicyService } from './working-hours-policy.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+} from '@nestjs/swagger';
+import {
+  CreateWorkingHoursPolicyDto,
+  UpdateWorkingHoursPolicyDto,
+} from './dto/working-hours-policy.dto';
 
 @ApiTags('Working Hours Policy')
 @Controller('api')
@@ -14,7 +34,7 @@ export class WorkingHoursPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all working hours policies' })
   async list() {
-    return this.service.list()
+    return this.service.list();
   }
 
   @Get('working-hours-policies/:id')
@@ -22,7 +42,7 @@ export class WorkingHoursPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get working hours policy by id' })
   async get(@Param('id') id: string) {
-    return this.service.get(id)
+    return this.service.get(id);
   }
 
   @Post('working-hours-policies')
@@ -34,19 +54,23 @@ export class WorkingHoursPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('working-hours-policies/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update working hours policy' })
-  async update(@Param('id') id: string, @Body() body: UpdateWorkingHoursPolicyDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateWorkingHoursPolicyDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('working-hours-policies/:id')
@@ -58,7 +82,7 @@ export class WorkingHoursPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('working-hours-policies/:id/set-default')
@@ -70,7 +94,7 @@ export class WorkingHoursPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   // ==================== Policy Assignments ====================
@@ -83,7 +107,7 @@ export class WorkingHoursPolicyController {
     @Query('employeeId') employeeId?: string,
     @Query('policyId') policyId?: string,
   ) {
-    return this.service.listAssignments({ employeeId, policyId })
+    return this.service.listAssignments({ employeeId, policyId });
   }
 
   @Get('working-hours-policy-assignments/:id')
@@ -91,7 +115,7 @@ export class WorkingHoursPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get policy assignment by id' })
   async getAssignment(@Param('id') id: string) {
-    return this.service.getAssignment(id)
+    return this.service.getAssignment(id);
   }
 
   @Get('employees/:employeeId/policy-assignments')
@@ -99,33 +123,55 @@ export class WorkingHoursPolicyController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get policy assignments for employee' })
   async getEmployeeAssignments(@Param('employeeId') employeeId: string) {
-    return this.service.getEmployeeAssignments(employeeId)
+    return this.service.getEmployeeAssignments(employeeId);
   }
 
   @Post('working-hours-policy-assignments')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create policy assignment' })
-  @ApiBody({ schema: { type: 'object', properties: { employeeId: { type: 'string' }, policyId: { type: 'string' }, effectDate: { type: 'string' } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        employeeId: { type: 'string' },
+        policyId: { type: 'string' },
+        effectDate: { type: 'string' },
+      },
+    },
+  })
   async createAssignment(@Body() body: any, @Req() req) {
     return this.service.createAssignment(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Put('working-hours-policy-assignments/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update policy assignment' })
-  @ApiBody({ schema: { type: 'object', properties: { employeeId: { type: 'string' }, policyId: { type: 'string' }, effectDate: { type: 'string' } } } })
-  async updateAssignment(@Param('id') id: string, @Body() body: any, @Req() req) {
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        employeeId: { type: 'string' },
+        policyId: { type: 'string' },
+        effectDate: { type: 'string' },
+      },
+    },
+  })
+  async updateAssignment(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Req() req,
+  ) {
     return this.service.updateAssignment(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 
   @Delete('working-hours-policy-assignments/:id')
@@ -137,6 +183,6 @@ export class WorkingHoursPolicyController {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    })
+    });
   }
 }

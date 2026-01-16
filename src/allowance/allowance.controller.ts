@@ -1,8 +1,30 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AllowanceService } from './allowance.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateAllowanceDto, BulkCreateAllowanceDto, UpdateAllowanceDto } from './dto/create-allowance.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  CreateAllowanceDto,
+  BulkCreateAllowanceDto,
+  UpdateAllowanceDto,
+} from './dto/create-allowance.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 @ApiTags('Allowance')
 @Controller('api')
@@ -70,7 +92,11 @@ export class AllowanceController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allowance' })
-  async update(@Param('id') id: string, @Body() body: UpdateAllowanceDto, @Req() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateAllowanceDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -94,7 +120,18 @@ export class AllowanceController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allowances in bulk' })
-  @ApiBody({ schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' }, example: ['uuid1', 'uuid2'] } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['uuid1', 'uuid2'],
+        },
+      },
+    },
+  })
   async bulkDelete(@Body() body: { ids: string[] }, @Req() req) {
     return this.service.bulkDelete(body.ids, {
       userId: req.user?.userId,

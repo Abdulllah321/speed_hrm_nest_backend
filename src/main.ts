@@ -1,11 +1,14 @@
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyCookie from '@fastify/cookie';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
-import 'dotenv/config'
+import 'dotenv/config';
 
 async function bootstrap() {
   // Create Fastify adapter first
@@ -24,7 +27,10 @@ async function bootstrap() {
   });
 
   // Now create the NestJS application with the configured adapter
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter);
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    adapter,
+  );
 
   // Global exception filter for user-friendly error responses
   app.useGlobalFilters(new GlobalExceptionFilter());
@@ -76,16 +82,25 @@ async function bootstrap() {
     },
   });
 
-  const origins = (process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean);
+  const origins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   app.enableCors({
     origin: origins.length ? origins : true,
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-New-Access-Token', 'X-New-Refresh-Token']
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Refresh-Token',
+      'X-New-Access-Token',
+      'X-New-Refresh-Token',
+    ],
   });
   await app.listen({
     port: parseInt(process.env.PORT ?? '5000'),
-    host: process.env.HOSTNAME || '0.0.0.0'
+    host: process.env.HOSTNAME || '0.0.0.0',
   });
 }
 bootstrap();

@@ -1,28 +1,39 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class InstituteService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prisma.institute.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.institute.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.institute.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Institute not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.institute.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Institute not found' };
+    return { status: true, data: item };
   }
 
-  async create(body: { name: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: { name: string; status?: string },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const created = await this.prisma.institute.create({ data: { name: body.name, status: body.status ?? 'active', createdById: ctx.userId } })
+      const created = await this.prisma.institute.create({
+        data: {
+          name: body.name,
+          status: body.status ?? 'active',
+          createdById: ctx.userId,
+        },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -34,8 +45,12 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: created, message: 'Institute created successfully' }
+      });
+      return {
+        status: true,
+        data: created,
+        message: 'Institute created successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -48,15 +63,31 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create institute', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to create institute',
+        data: null,
+      };
     }
   }
 
-  async update(id: string, body: { name: string; status?: string }, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    body: { name: string; status?: string },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.institute.findUnique({ where: { id } })
-      const updated = await this.prisma.institute.update({ where: { id }, data: { name: body.name ?? existing?.name, status: body.status ?? existing?.status ?? 'active' } })
+      const existing = await this.prisma.institute.findUnique({
+        where: { id },
+      });
+      const updated = await this.prisma.institute.update({
+        where: { id },
+        data: {
+          name: body.name ?? existing?.name,
+          status: body.status ?? existing?.status ?? 'active',
+        },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
@@ -69,8 +100,12 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: updated, message: 'Institute updated successfully' }
+      });
+      return {
+        status: true,
+        data: updated,
+        message: 'Institute updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -84,15 +119,24 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to update institute', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to update institute',
+        data: null,
+      };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.institute.findUnique({ where: { id } })
-      const removed = await this.prisma.institute.delete({ where: { id } })
+      const existing = await this.prisma.institute.findUnique({
+        where: { id },
+      });
+      const removed = await this.prisma.institute.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -104,8 +148,12 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: removed, message: 'Institute deleted successfully' }
+      });
+      return {
+        status: true,
+        data: removed,
+        message: 'Institute deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -118,16 +166,31 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to delete institute', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to delete institute',
+        data: null,
+      };
     }
   }
 
-  async createBulk(items: { name: string; status?: string }[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    if (!items?.length) return { status: false, message: 'No institutes to create' }
-    const data = items.map((i) => ({ name: i.name, status: i.status ?? 'active', createdById: ctx.userId }))
+  async createBulk(
+    items: { name: string; status?: string }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length)
+      return { status: false, message: 'No institutes to create' };
+    const data = items.map((i) => ({
+      name: i.name,
+      status: i.status ?? 'active',
+      createdById: ctx.userId,
+    }));
     try {
-      const result = await this.prisma.institute.createMany({ data, skipDuplicates: true })
+      const result = await this.prisma.institute.createMany({
+        data,
+        skipDuplicates: true,
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
@@ -138,8 +201,12 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      })
-      return { status: true, data: result, message: 'Institutes created successfully' }
+      });
+      return {
+        status: true,
+        data: result,
+        message: 'Institutes created successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -152,8 +219,12 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      })
-      return { status: false, message: 'Failed to create institutes', data: null }
+      });
+      return {
+        status: false,
+        message: 'Failed to create institutes',
+        data: null,
+      };
     }
   }
 
@@ -166,15 +237,17 @@ export class InstituteService {
       'Quaid-e-Azam University',
       'University of the Punjab',
       'National University of Sciences and Technology',
-    ]
-    let created = 0
-    let skipped = 0
+    ];
+    let created = 0;
+    let skipped = 0;
     for (const name of seedItems) {
       try {
-        await this.prisma.institute.create({ data: { name, status: 'active', createdById: ctx.userId } })
-        created++
+        await this.prisma.institute.create({
+          data: { name, status: 'active', createdById: ctx.userId },
+        });
+        created++;
       } catch {
-        skipped++
+        skipped++;
       }
     }
     await this.activityLogs.log({
@@ -187,7 +260,11 @@ export class InstituteService {
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       status: 'success',
-    })
-    return { status: true, data: { total: seedItems.length, created, skipped }, message: 'Institutes seeded successfully' }
+    });
+    return {
+      status: true,
+      data: { total: seedItems.length, created, skipped },
+      message: 'Institutes seeded successfully',
+    };
   }
 }

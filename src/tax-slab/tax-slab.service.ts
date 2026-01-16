@@ -7,7 +7,7 @@ export class TaxSlabService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prisma.taxSlab.findMany({

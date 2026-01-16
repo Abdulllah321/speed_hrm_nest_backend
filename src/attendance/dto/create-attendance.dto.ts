@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsDateString, IsNumber, IsDecimal } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsNumber,
+  IsDecimal,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -23,7 +31,10 @@ export class CreateAttendanceDto {
   @IsDateString()
   checkOut?: string;
 
-  @ApiPropertyOptional({ example: 'Present', enum: ['Present', 'Absent', 'Leave', 'Holiday'] })
+  @ApiPropertyOptional({
+    example: 'Present',
+    enum: ['Present', 'Absent', 'Leave', 'Holiday'],
+  })
   @IsOptional()
   @IsString()
   status?: string;
@@ -44,7 +55,7 @@ export class CreateAttendanceDto {
   @Type(() => Number)
   latitude?: number;
 
-  @ApiPropertyOptional({ example: -74.0060 })
+  @ApiPropertyOptional({ example: -74.006 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -128,7 +139,7 @@ export class UpdateAttendanceDto {
   @Type(() => Number)
   latitude?: number;
 
-  @ApiPropertyOptional({ example: -74.0060 })
+  @ApiPropertyOptional({ example: -74.006 })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -174,4 +185,3 @@ export class UpdateAttendanceDto {
   @IsString()
   approvedBy?: string;
 }
-

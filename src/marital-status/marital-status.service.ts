@@ -1,32 +1,42 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../prisma/prisma.service'
-import { ActivityLogsService } from '../activity-logs/activity-logs.service'
-import { UpdateMaritalStatusDto, BulkUpdateMaritalStatusItemDto } from './dto/marital-status.dto'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import {
+  UpdateMaritalStatusDto,
+  BulkUpdateMaritalStatusItemDto,
+} from './dto/marital-status.dto';
 
 @Injectable()
 export class MaritalStatusService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prisma.maritalStatus.findMany({ orderBy: { createdAt: 'desc' } })
-    return { status: true, data: items }
+    const items = await this.prisma.maritalStatus.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.maritalStatus.findUnique({ where: { id } })
-    if (!item) return { status: false, message: 'Marital status not found' }
-    return { status: true, data: item }
+    const item = await this.prisma.maritalStatus.findUnique({ where: { id } });
+    if (!item) return { status: false, message: 'Marital status not found' };
+    return { status: true, data: item };
   }
 
-  async bulkCreate(names: string[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async bulkCreate(
+    names: string[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Filter out empty names and map to objects
       const validData = names
-        .filter((name) => name && typeof name === 'string' && name.trim().length > 0)
-        .map(name => ({
+        .filter(
+          (name) => name && typeof name === 'string' && name.trim().length > 0,
+        )
+        .map((name) => ({
           name: name.trim(),
           status: 'active',
           createdById: ctx?.userId,
@@ -53,7 +63,11 @@ export class MaritalStatusService {
         status: 'success',
       });
 
-      return { status: true, message: 'Marital statuses created successfully', data: result };
+      return {
+        status: true,
+        message: 'Marital statuses created successfully',
+        data: result,
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -67,13 +81,22 @@ export class MaritalStatusService {
         userAgent: ctx?.userAgent,
         status: 'failure',
       });
-      return { status: false, message: error?.message || 'Failed to create marital statuses' };
+      return {
+        status: false,
+        message: error?.message || 'Failed to create marital statuses',
+      };
     }
   }
 
-  async update(id: string, updateDto: UpdateMaritalStatusDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdateMaritalStatusDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.maritalStatus.findUnique({ where: { id } });
+      const existing = await this.prisma.maritalStatus.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
@@ -100,7 +123,11 @@ export class MaritalStatusService {
         status: 'success',
       });
 
-      return { status: true, data: updated, message: 'Marital status updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'Marital status updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -115,13 +142,21 @@ export class MaritalStatusService {
         userAgent: ctx?.userAgent,
         status: 'failure',
       });
-      return { status: false, message: error?.message || 'Failed to update marital status' };
+      return {
+        status: false,
+        message: error?.message || 'Failed to update marital status',
+      };
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const existing = await this.prisma.maritalStatus.findUnique({ where: { id } });
+      const existing = await this.prisma.maritalStatus.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
@@ -141,7 +176,11 @@ export class MaritalStatusService {
         status: 'success',
       });
 
-      return { status: true, data: removed, message: 'Marital status deleted successfully' };
+      return {
+        status: true,
+        data: removed,
+        message: 'Marital status deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -155,16 +194,27 @@ export class MaritalStatusService {
         userAgent: ctx?.userAgent,
         status: 'failure',
       });
-      return { status: false, message: error?.message || 'Failed to delete marital status' };
+      return {
+        status: false,
+        message: error?.message || 'Failed to delete marital status',
+      };
     }
   }
 
-  async updateBulk(items: BulkUpdateMaritalStatusItemDto[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateBulk(
+    items: BulkUpdateMaritalStatusItemDto[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Filter out items with empty or invalid IDs
-      const validItems = (items || []).filter(item => item.id && item.id.trim().length > 0);
+      const validItems = (items || []).filter(
+        (item) => item.id && item.id.trim().length > 0,
+      );
       if (validItems.length === 0) {
-        return { status: false, message: 'No valid marital status IDs provided' };
+        return {
+          status: false,
+          message: 'No valid marital status IDs provided',
+        };
       }
 
       const updatedItems: any[] = [];
@@ -194,7 +244,11 @@ export class MaritalStatusService {
         status: 'success',
       });
 
-      return { status: true, data: updatedItems, message: 'Marital statuses updated successfully' };
+      return {
+        status: true,
+        data: updatedItems,
+        message: 'Marital statuses updated successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -208,11 +262,17 @@ export class MaritalStatusService {
         userAgent: ctx?.userAgent,
         status: 'failure',
       });
-      return { status: false, message: error?.message || 'Failed to update marital statuses' };
+      return {
+        status: false,
+        message: error?.message || 'Failed to update marital statuses',
+      };
     }
   }
 
-  async removeBulk(ids: string[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async removeBulk(
+    ids: string[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!ids || ids.length === 0) {
         return { status: false, message: 'No IDs provided' };
@@ -234,7 +294,11 @@ export class MaritalStatusService {
         status: 'success',
       });
 
-      return { status: true, data: result, message: 'Marital statuses deleted successfully' };
+      return {
+        status: true,
+        data: result,
+        message: 'Marital statuses deleted successfully',
+      };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -248,7 +312,10 @@ export class MaritalStatusService {
         userAgent: ctx?.userAgent,
         status: 'failure',
       });
-      return { status: false, message: error?.message || 'Failed to delete marital statuses' };
+      return {
+        status: false,
+        message: error?.message || 'Failed to delete marital statuses',
+      };
     }
   }
 }

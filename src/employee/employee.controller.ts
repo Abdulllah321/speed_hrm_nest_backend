@@ -16,8 +16,18 @@ import type { FastifyRequest } from 'fastify';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { CreateEmployeeDto, UpdateEmployeeDto } from './dto/create-employee.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
+import {
+  CreateEmployeeDto,
+  UpdateEmployeeDto,
+} from './dto/create-employee.dto';
 
 @ApiTags('Employee')
 @Controller('api')
@@ -207,7 +217,7 @@ export class EmployeeController {
       // Extract userId from JWT token (could be 'sub', 'id', or 'userId')
       const user = request.user as any;
       const userId = user?.userId || user?.sub || user?.id || null;
-      
+
       const result = await this.service.bulkUploadFromCSV(fullPath, {
         userId: userId,
         ipAddress: request.ip,

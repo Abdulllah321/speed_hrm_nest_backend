@@ -1,14 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { CreateAllowanceDto, BulkCreateAllowanceDto, UpdateAllowanceDto } from './dto/create-allowance.dto';
+import {
+  CreateAllowanceDto,
+  BulkCreateAllowanceDto,
+  UpdateAllowanceDto,
+} from './dto/create-allowance.dto';
 
 @Injectable()
 export class AllowanceService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(params?: {
     employeeId?: string;
@@ -89,7 +93,8 @@ export class AllowanceService {
       console.error('Error listing allowances:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to list allowances',
+        message:
+          error instanceof Error ? error.message : 'Failed to list allowances',
       };
     }
   }
@@ -154,15 +159,22 @@ export class AllowanceService {
       console.error('Error getting allowance:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get allowance',
+        message:
+          error instanceof Error ? error.message : 'Failed to get allowance',
       };
     }
   }
 
-  async create(body: CreateAllowanceDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    body: CreateAllowanceDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!body.allowances || body.allowances.length === 0) {
-        return { status: false, message: 'At least one allowance item is required' };
+        return {
+          status: false,
+          message: 'At least one allowance item is required',
+        };
       }
 
       // Validate all employees exist
@@ -177,14 +189,19 @@ export class AllowanceService {
       }
 
       // Validate all allowance heads exist
-      const allowanceHeadIds = Array.from(new Set(body.allowances.map((a) => a.allowanceHeadId)));
+      const allowanceHeadIds = Array.from(
+        new Set(body.allowances.map((a) => a.allowanceHeadId)),
+      );
       const allowanceHeads = await this.prisma.allowanceHead.findMany({
         where: { id: { in: allowanceHeadIds }, status: 'active' },
         select: { id: true },
       });
 
       if (allowanceHeads.length !== allowanceHeadIds.length) {
-        return { status: false, message: 'One or more allowance heads not found or inactive' };
+        return {
+          status: false,
+          message: 'One or more allowance heads not found or inactive',
+        };
       }
 
       const date = new Date(body.date);
@@ -207,11 +224,14 @@ export class AllowanceService {
               month: body.month,
               year: body.year,
               date: date,
-              type: allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
+              type:
+                allowanceItem.type === 'recurring' ? 'recurring' : 'specific',
               paymentMethod: allowanceItem.paymentMethod || 'with_salary',
               adjustmentMethod: allowanceItem.adjustmentMethod || null,
               isTaxable: allowanceItem.isTaxable ?? false,
-              taxPercentage: allowanceItem.taxPercentage ? allowanceItem.taxPercentage : null,
+              taxPercentage: allowanceItem.taxPercentage
+                ? allowanceItem.taxPercentage
+                : null,
               notes: allowanceItem.notes ?? null,
               status: 'active',
               createdById: ctx.userId,
@@ -248,12 +268,16 @@ export class AllowanceService {
       console.error('Error creating allowance:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to create allowance',
+        message:
+          error instanceof Error ? error.message : 'Failed to create allowance',
       };
     }
   }
 
-  async bulkCreate(body: BulkCreateAllowanceDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async bulkCreate(
+    body: BulkCreateAllowanceDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     return this.create(body, ctx);
   }
 
@@ -274,13 +298,19 @@ export class AllowanceService {
       const updated = await this.prisma.allowance.update({
         where: { id },
         data: {
-          ...(body.allowanceHeadId && { allowanceHeadId: body.allowanceHeadId }),
+          ...(body.allowanceHeadId && {
+            allowanceHeadId: body.allowanceHeadId,
+          }),
           ...(body.amount !== undefined && { amount: body.amount }),
           ...(body.type && { type: body.type }),
           ...(body.paymentMethod && { paymentMethod: body.paymentMethod }),
-          ...(body.adjustmentMethod !== undefined && { adjustmentMethod: body.adjustmentMethod }),
+          ...(body.adjustmentMethod !== undefined && {
+            adjustmentMethod: body.adjustmentMethod,
+          }),
           ...(body.isTaxable !== undefined && { isTaxable: body.isTaxable }),
-          ...(body.taxPercentage !== undefined && { taxPercentage: body.taxPercentage }),
+          ...(body.taxPercentage !== undefined && {
+            taxPercentage: body.taxPercentage,
+          }),
           ...(body.notes !== undefined && { notes: body.notes }),
           ...(body.status && { status: body.status }),
           updatedById: ctx.userId,
@@ -318,17 +348,25 @@ export class AllowanceService {
         });
       }
 
-      return { status: true, data: updated, message: 'Allowance updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'Allowance updated successfully',
+      };
     } catch (error) {
       console.error('Error updating allowance:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to update allowance',
+        message:
+          error instanceof Error ? error.message : 'Failed to update allowance',
       };
     }
   }
 
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.allowance.findUnique({
         where: { id },
@@ -362,15 +400,22 @@ export class AllowanceService {
       console.error('Error deleting allowance:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to delete allowance',
+        message:
+          error instanceof Error ? error.message : 'Failed to delete allowance',
       };
     }
   }
 
-  async bulkDelete(ids: string[], ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async bulkDelete(
+    ids: string[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!ids || ids.length === 0) {
-        return { status: false, message: 'No allowances selected for deletion' };
+        return {
+          status: false,
+          message: 'No allowances selected for deletion',
+        };
       }
 
       const result = await this.prisma.allowance.deleteMany({
@@ -400,7 +445,10 @@ export class AllowanceService {
       console.error('Error bulk deleting allowances:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to delete allowances',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to delete allowances',
       };
     }
   }
@@ -422,7 +470,10 @@ export class AllowanceService {
       console.error('Error listing allowance heads:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to list allowance heads',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to list allowance heads',
       };
     }
   }
@@ -442,7 +493,10 @@ export class AllowanceService {
       console.error('Error getting allowance head:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get allowance head',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get allowance head',
       };
     }
   }

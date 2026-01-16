@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsNumber, IsInt } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsInt,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -246,4 +253,3 @@ export class UpdateWorkingHoursPolicyDto {
   @IsBoolean()
   isDefault?: boolean;
 }
-
