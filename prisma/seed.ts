@@ -55,12 +55,12 @@ async function executeBackupSql(pool: Pool): Promise<void> {
 
       // Use pg_restore for custom format
       const pgRestoreCmd = `pg_restore --no-owner --no-acl --clean --if-exists -h ${host} -p ${port} -U ${username} -d ${database} "${backupPath}"`;
-      
+
       // Set PGPASSWORD environment variable for password
       const env = { ...process.env, PGPASSWORD: password };
-      
+
       try {
-        execSync(pgRestoreCmd, { 
+        execSync(pgRestoreCmd, {
           env,
           stdio: 'inherit',
           shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
@@ -74,7 +74,7 @@ async function executeBackupSql(pool: Pool): Promise<void> {
       // Plain SQL file - execute directly
       console.log('📦 Executing plain SQL file...');
       const sqlContent = readFileSync(backupPath, 'utf-8');
-      
+
       // Split by semicolons and execute each statement
       // Remove comments and empty statements
       const statements = sqlContent
@@ -90,9 +90,9 @@ async function executeBackupSql(pool: Pool): Promise<void> {
               await client.query(statement);
             } catch (error: any) {
               // Ignore errors for statements that might fail (e.g., CREATE DATABASE if exists)
-              if (!error.message.includes('already exists') && 
-                  !error.message.includes('does not exist') &&
-                  !error.message.includes('cannot drop')) {
+              if (!error.message.includes('already exists') &&
+                !error.message.includes('does not exist') &&
+                !error.message.includes('cannot drop')) {
                 console.warn(`⚠️  SQL statement warning: ${error.message.substring(0, 100)}`);
               }
             }
