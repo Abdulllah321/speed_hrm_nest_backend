@@ -97,6 +97,8 @@ model Employee {
   socialSecurityRegistrations     SocialSecurityEmployeeRegistration[]
   subDepartmentAsHead             SubDepartment?                       @relation("SubDepartmentHead")
   policyAssignments               WorkingHoursPolicyAssignment[]
+  payrollApprovalRequests         PayrollApprovalRequest[]
+  payrollApprovalLevelAssignments PayrollApprovalLevel[]               @relation("PayrollApprovalLevelAssignedEmployee")
 }
 
 model EmployeeRejoiningHistory {

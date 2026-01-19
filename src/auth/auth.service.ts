@@ -21,7 +21,7 @@ function parseExpiryToMs(expiry: string) {
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async login(
     email: string,
@@ -459,8 +459,59 @@ export class AuthService {
   async getAllUsers() {
     const users = await this.prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        role: true,
+      }
     });
     return { status: true, data: users };
+  }
+
+  async createUser(data: any) {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
+
+    if (existingUser) {
+      // If user exists, we allow updating the password if it's being created by an admin (implied by the flow)
+      // This handles the case where Employee creation auto-created a user with a random password
+      if (data.password) {
+        const hashedPassword = await bcrypt.hash(
+          data.password,
+          authConfig.password.saltRounds,
+        );
+
+        const updatedUser = await this.prisma.user.update({
+          where: { email: data.email },
+          data: {
+            password: hashedPassword,
+            // Update other fields if provided and needed, e.g. linking employee if not linked
+            ...(data.employeeId ? { employeeId: data.employeeId } : {}),
+            ...(data.roleId ? { roleId: data.roleId } : {}),
+            ...(data.firstName ? { firstName: data.firstName } : {}),
+            ...(data.lastName ? { lastName: data.lastName } : {}),
+          },
+        });
+        
+        return { status: true, data: updatedUser, message: 'User account updated successfully' };
+      }
+
+      return { status: false, message: 'User with this email already exists' };
+    }
+
+    const hashedPassword = await bcrypt.hash(
+      data.password,
+      authConfig.password.saltRounds,
+    );
+
+    const user = await this.prisma.user.create({
+      data: {
+        ...data,
+        password: hashedPassword,
+        isFirstPassword: true, // Default to true for new users
+      },
+    });
+
+    return { status: true, data: user, message: 'User created successfully' };
   }
 
   async updateUser(id: string, data: any) {

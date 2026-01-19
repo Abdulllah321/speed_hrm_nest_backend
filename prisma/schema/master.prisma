@@ -297,6 +297,7 @@ model Department {
   employees                       Employee[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingDepartment")
   subDepartments                  SubDepartment[]
+  payrollApprovalLevels           PayrollApprovalLevel[]
 }
 
 model SubDepartment {
@@ -312,6 +313,7 @@ model SubDepartment {
   createdBy                       User?                            @relation("SubDepartmentCreatedBy", fields: [createdById], references: [id])
   department                      Department                       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   head                            Employee?                        @relation("SubDepartmentHead", fields: [headId], references: [id])
+  payrollApprovalLevels           PayrollApprovalLevel[]
 
   @@unique([name, departmentId])
 }

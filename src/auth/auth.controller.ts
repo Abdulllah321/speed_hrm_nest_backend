@@ -26,7 +26,7 @@ import {
 @ApiTags('Auth')
 @Controller('api/auth')
 export class AuthController {
-  constructor(private service: AuthService) {}
+  constructor(private service: AuthService) { }
 
   private getCookieOptions(req: any) {
     const isProd = process.env.NODE_ENV === 'production';
@@ -284,6 +284,14 @@ export class AuthController {
   @ApiOperation({ summary: 'Get all users' })
   async users() {
     return this.service.getAllUsers();
+  }
+
+  @Post('users')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create user' })
+  async createUser(@Body() body: any) {
+    return this.service.createUser(body);
   }
 
   @Post('users/update')

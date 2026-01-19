@@ -14,7 +14,7 @@ export class AdvanceSalaryService {
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
-  ) {}
+  ) { }
 
   private async resolveApproverUserId(args: {
     level: {
@@ -815,6 +815,115 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     return this.rejectLevel(id, undefined, body, ctx);
+  }
+
+  async rejectLevel(
+    id: string,
+    level: 1 | 2 | undefined,
+    body: ApproveAdvanceSalaryDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      if (!ctx.userId) return { status: false, message: 'Unauthorized' };
+
+      const existing = await this.prisma.advanceSalary.findUnique({
+        where: { id },
+        include: {
+          employee: { select: { id: true, employeeName: true, userId: true } },
+        },
+      });
+      if (!existing)
+        return { status: false, message: 'Advance salary not found' };
+      if (
+        existing.approvalStatus === 'approved' ||
+        existing.approvalStatus === 'rejected'
+      ) {
+        return {
+          status: false,
+          message: `Advance salary already ${existing.approvalStatus}`,
+        };
+      }
+
+      const effectiveLevel = level || this.getPendingApprovalLevel(existing);
+      if (!effectiveLevel)
+        return { status: false, message: 'No pending approval found' };
+
+      const updateData: any = {
+        approvalStatus: 'rejected',
+        status: 'rejected',
+        rejectionReason: body.rejectionReason,
+        updatedById: ctx.userId,
+      };
+
+      if (effectiveLevel === 1) {
+        if ((existing as any).approval1 !== ctx.userId)
+          return { status: false, message: 'Forbidden' };
+        updateData.approval1Status = 'rejected';
+        updateData.approval1Date = new Date();
+      } else if (effectiveLevel === 2) {
+        if ((existing as any).approval2 !== ctx.userId)
+          return { status: false, message: 'Forbidden' };
+        updateData.approval2Status = 'rejected';
+        updateData.approval2Date = new Date();
+      }
+
+      const updated = await this.prisma.advanceSalary.update({
+        where: { id },
+        data: updateData,
+        include: {
+          employee: { select: { id: true, employeeName: true, userId: true } },
+        },
+      });
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'reject',
+        module: 'advance-salary',
+        entity: 'AdvanceSalary',
+        entityId: id,
+        description: `Rejected advance salary (Level ${effectiveLevel}) for ${updated.employee.employeeName}`,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      });
+
+      await this.notifications.markRelatedAsRead(ctx.userId, {
+        entityType: 'AdvanceSalary',
+        entityId: id,
+      });
+
+      const requesterUserId =
+        existing.createdById || (existing as any).employee?.userId || null;
+      if (requesterUserId) {
+        await this.notifications.create({
+          userId: requesterUserId,
+          title: 'Advance salary request rejected',
+          message: body.rejectionReason || 'Request was rejected',
+          category: 'advance-salary',
+          priority: 'high',
+          actionType: 'advance-salary.view',
+          actionPayload: { requestId: id },
+          entityType: 'AdvanceSalary',
+          entityId: id,
+          channels: ['inApp', 'email'],
+        });
+      }
+
+      return {
+        status: true,
+        data: updated,
+        message: 'Advance salary rejected successfully',
+      };
+    } catch (error) {
+      console.error('Error rejecting advance salary:', error);
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to reject advance salary',
+      };
+    }
   }
 
   async remove(
