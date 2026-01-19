@@ -123,13 +123,8 @@ export class RebateNatureService {
   async remove(id: string) {
     await this.findOne(id); // Ensure exists
 
-    try {
-      return await this.prisma.rebateNature.delete({
-        where: { id },
-      });
-    } catch (error) {
-      // Handle foreign key constraint errors if needed (though Restrict in schema handles it by throwing)
-      throw error;
-    }
+    return this.prisma.rebateNature.delete({
+      where: { id },
+    });
   }
 }

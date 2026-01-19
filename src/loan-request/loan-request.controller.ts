@@ -111,6 +111,24 @@ export class LoanRequestController {
     });
   }
 
+  @Post('loan-requests/:id/approve-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve loan request by approval level' })
+  async approveLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: ApproveLoanRequestDto,
+    @Req() req,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.approveLevel(id, levelNumber as 1 | 2, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Post('loan-requests/:id/reject')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -121,6 +139,24 @@ export class LoanRequestController {
     @Req() req,
   ) {
     return this.service.reject(id, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('loan-requests/:id/reject-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject loan request by approval level' })
+  async rejectLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: ApproveLoanRequestDto,
+    @Req() req,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.rejectLevel(id, levelNumber as 1 | 2, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

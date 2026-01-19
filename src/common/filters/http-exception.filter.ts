@@ -202,14 +202,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     };
 
     switch (error.code) {
-      case 'P2002':
-        // Unique constraint violation
+      case 'P2002': {
         const target = (error.meta?.target as string[]) || [];
         const field = target[0] || 'field';
         return {
           ...baseResponse,
           message: `A record with this ${this.formatFieldName(field)} already exists. Please use a different value.`,
         };
+      }
 
       case 'P2003':
         // Foreign key constraint violation

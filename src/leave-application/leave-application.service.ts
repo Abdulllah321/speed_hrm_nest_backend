@@ -1,13 +1,98 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class LeaveApplicationService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
+    private notifications: NotificationsService,
   ) {}
+
+  private async resolveApproverUserId(args: {
+    level: {
+      approverType: string;
+      departmentHeadMode?: string | null;
+      specificEmployeeId?: string | null;
+      departmentId?: string | null;
+      subDepartmentId?: string | null;
+    };
+    employee: {
+      departmentId: string;
+      subDepartmentId?: string | null;
+      reportingManager?: string | null;
+    };
+  }) {
+    const { level, employee } = args;
+
+    if (level.approverType === 'reporting-manager') {
+      if (!employee.reportingManager) return null;
+      const manager = await this.prisma.employee.findUnique({
+        where: { id: employee.reportingManager },
+        select: { userId: true },
+      });
+      return manager?.userId || null;
+    }
+
+    if (level.approverType === 'specific-employee') {
+      if (!level.specificEmployeeId) return null;
+      const specific = await this.prisma.employee.findUnique({
+        where: { id: level.specificEmployeeId },
+        select: { userId: true },
+      });
+      return specific?.userId || null;
+    }
+
+    if (level.approverType === 'department-head') {
+      const departmentId =
+        level.departmentHeadMode === 'specific'
+          ? level.departmentId
+          : employee.departmentId;
+      if (!departmentId) return null;
+      const department = await this.prisma.department.findUnique({
+        where: { id: departmentId },
+        select: { headId: true },
+      });
+      if (!department?.headId) return null;
+      const head = await this.prisma.employee.findUnique({
+        where: { id: department.headId },
+        select: { userId: true },
+      });
+      return head?.userId || null;
+    }
+
+    if (level.approverType === 'sub-department-head') {
+      const subDepartmentId =
+        level.departmentHeadMode === 'specific'
+          ? level.subDepartmentId
+          : employee.subDepartmentId;
+      if (!subDepartmentId) return null;
+      const subDepartment = await this.prisma.subDepartment.findUnique({
+        where: { id: subDepartmentId },
+        select: { headId: true },
+      });
+      if (!subDepartment?.headId) return null;
+      const head = await this.prisma.employee.findUnique({
+        where: { id: subDepartment.headId },
+        select: { userId: true },
+      });
+      return head?.userId || null;
+    }
+
+    return null;
+  }
+
+  private getPendingApprovalLevel(app: any): 1 | 2 | null {
+    if (app.status === 'approved' || app.status === 'rejected') return null;
+
+    if (!app.approval1Status || app.approval1Status !== 'approved') return 1;
+
+    if (app.approval2 && app.approval2Status !== 'approved') return 2;
+
+    return null;
+  }
 
   async getLeaveBalance(employeeId: string) {
     try {
@@ -231,6 +316,80 @@ export class LeaveApplicationService {
       }
 
       // Create leave application
+      const forwarding =
+        await this.prisma.requestForwardingConfiguration.findUnique({
+          where: { requestType: 'leave-application' },
+          include: { approvalLevels: { orderBy: { level: 'asc' } } },
+        });
+
+      const activeForwarding =
+        forwarding && forwarding.status === 'active' ? forwarding : null;
+
+      const now = new Date();
+      let status: string = 'pending';
+      let approval1: string | null = null;
+      let approval1Status: string | null = null;
+      let approval1Date: Date | null = null;
+      let approval2: string | null = null;
+      let approval2Status: string | null = null;
+      const approval2Date: Date | null = null;
+
+      if (activeForwarding?.approvalFlow === 'auto-approved') {
+        status = 'approved';
+        approval1Status = 'auto-approved';
+        approval1Date = now;
+      } else if (activeForwarding?.approvalFlow === 'multi-level') {
+        const level1 = activeForwarding.approvalLevels.find(
+          (l) => l.level === 1,
+        );
+        if (!level1) {
+          return {
+            status: false,
+            message: 'Approval level 1 is required for multi-level flow',
+          };
+        }
+
+        const approver1UserId = await this.resolveApproverUserId({
+          level: level1,
+          employee: {
+            departmentId: employee.departmentId,
+            subDepartmentId: employee.subDepartmentId,
+            reportingManager: employee.reportingManager,
+          },
+        });
+        if (!approver1UserId) {
+          return {
+            status: false,
+            message: 'Could not resolve approver for approval level 1',
+          };
+        }
+
+        approval1 = approver1UserId;
+        approval1Status = 'pending';
+
+        const level2 = activeForwarding.approvalLevels.find(
+          (l) => l.level === 2,
+        );
+        if (level2) {
+          const approver2UserId = await this.resolveApproverUserId({
+            level: level2,
+            employee: {
+              departmentId: employee.departmentId,
+              subDepartmentId: employee.subDepartmentId,
+              reportingManager: employee.reportingManager,
+            },
+          });
+          if (!approver2UserId) {
+            return {
+              status: false,
+              message: 'Could not resolve approver for approval level 2',
+            };
+          }
+          approval2 = approver2UserId;
+          approval2Status = 'pending';
+        }
+      }
+
       const created = await (this.prisma as any).leaveApplication.create({
         data: {
           employeeId: body.employeeId,
@@ -240,7 +399,13 @@ export class LeaveApplicationService {
           toDate: new Date(body.toDate) as any,
           reasonForLeave: body.reasonForLeave,
           addressWhileOnLeave: body.addressWhileOnLeave,
-          status: 'pending',
+          status,
+          approval1,
+          approval1Status,
+          approval1Date: approval1Date as any,
+          approval2,
+          approval2Status,
+          approval2Date: approval2Date as any,
           createdById: ctx.userId,
         },
         include: {
@@ -267,6 +432,50 @@ export class LeaveApplicationService {
         userAgent: ctx.userAgent,
         status: 'success',
       });
+
+      const requesterUserId =
+        ctx.userId ||
+        (
+          await this.prisma.employee.findUnique({
+            where: { id: created.employeeId },
+            select: { userId: true },
+          })
+        )?.userId ||
+        null;
+
+      const dateRange = `${new Date(body.fromDate).toLocaleDateString()} - ${new Date(body.toDate).toLocaleDateString()}`;
+      if (created.status === 'pending' && created.approval1) {
+        await this.notifications.create({
+          userId: created.approval1,
+          title: 'Leave application awaiting approval',
+          message: `${created.employee.employeeName} requested ${dateRange}`,
+          category: 'leave-application',
+          priority: 'high',
+          actionType: 'leave-application.pending-approval',
+          actionPayload: { applicationId: created.id, level: 1 },
+          entityType: 'LeaveApplication',
+          entityId: created.id,
+          channels: ['inApp', 'email', 'sms'],
+        });
+      }
+
+      if (requesterUserId) {
+        await this.notifications.create({
+          userId: requesterUserId,
+          title:
+            created.status === 'approved'
+              ? 'Leave application approved'
+              : 'Leave application submitted',
+          message: `${created.leaveType.name} (${created.dayType}) ${dateRange}`,
+          category: 'leave-application',
+          priority: created.status === 'approved' ? 'normal' : 'low',
+          actionType: 'leave-application.view',
+          actionPayload: { applicationId: created.id },
+          entityType: 'LeaveApplication',
+          entityId: created.id,
+          channels: ['inApp'],
+        });
+      }
 
       return { status: true, data: created };
     } catch (error: any) {
@@ -382,8 +591,14 @@ export class LeaveApplicationService {
         toDate: app.toDate.toISOString(),
         approval1: app.approval1 || null,
         approval1Status: app.approval1Status || null,
+        approval1Date: app.approval1Date
+          ? app.approval1Date.toISOString()
+          : null,
         approval2: app.approval2 || null,
         approval2Status: app.approval2Status || null,
+        approval2Date: app.approval2Date
+          ? app.approval2Date.toISOString()
+          : null,
         remarks: app.remarks || null,
         status: app.status,
         createdAt: app.createdAt.toISOString(),
@@ -404,7 +619,19 @@ export class LeaveApplicationService {
     id: string,
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
+    return this.approveLevel(id, undefined, ctx);
+  }
+
+  async approveLevel(
+    id: string,
+    level: 1 | 2 | undefined,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
+      if (!ctx.userId) {
+        return { status: false, message: 'Unauthorized' };
+      }
+
       const existing = await (this.prisma as any).leaveApplication.findUnique({
         where: { id },
         include: {
@@ -426,41 +653,211 @@ export class LeaveApplicationService {
         return { status: false, message: 'Leave application already approved' };
       }
 
-      const updated = await (this.prisma as any).leaveApplication.update({
-        where: { id },
-        data: {
-          status: 'approved',
-          approval1: ctx.userId,
-          approval1Status: 'approved',
-          approval1Date: new Date() as any,
-          updatedById: ctx.userId,
-        },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeName: true,
-            },
+      if (existing.status === 'rejected') {
+        return { status: false, message: 'Leave application already rejected' };
+      }
+
+      const effectiveLevel = level || this.getPendingApprovalLevel(existing);
+      if (!effectiveLevel) {
+        return { status: false, message: 'No pending approval found' };
+      }
+
+      if (effectiveLevel === 1) {
+        if (!existing.approval1) {
+          return {
+            status: false,
+            message: 'No approver configured for level 1',
+          };
+        }
+        if (existing.approval1 !== ctx.userId) {
+          return { status: false, message: 'Forbidden' };
+        }
+
+        const nextStatus = existing.approval2 ? 'pending' : 'approved';
+
+        const updated = await (this.prisma as any).leaveApplication.update({
+          where: { id },
+          data: {
+            status: nextStatus,
+            approval1Status: 'approved',
+            approval1Date: new Date() as any,
+            updatedById: ctx.userId,
           },
-          leaveType: true,
-        },
-      });
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+              },
+            },
+            leaveType: true,
+          },
+        });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-applications',
-        entity: 'LeaveApplication',
-        entityId: id,
-        description: `Approved leave application for ${updated.employee.employeeName}`,
-        oldValues: JSON.stringify({ status: existing.status }),
-        newValues: JSON.stringify({ status: 'approved' }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: id,
+          description: `Approved leave application (Level 1) for ${updated.employee.employeeName}`,
+          oldValues: JSON.stringify({
+            status: existing.status,
+            approval1Status: existing.approval1Status,
+          }),
+          newValues: JSON.stringify({
+            status: nextStatus,
+            approval1Status: 'approved',
+          }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        });
 
-      return { status: true, data: updated };
+        await this.notifications.markRelatedAsRead(ctx.userId, {
+          entityType: 'LeaveApplication',
+          entityId: id,
+        });
+
+        const requesterUserId =
+          existing.createdById ||
+          (
+            await this.prisma.employee.findUnique({
+              where: { id: existing.employeeId },
+              select: { userId: true },
+            })
+          )?.userId ||
+          null;
+
+        if (existing.approval2 && nextStatus === 'pending') {
+          await this.notifications.create({
+            userId: existing.approval2,
+            title: 'Leave application awaiting approval',
+            message: `${updated.employee.employeeName} is awaiting Level 2 approval`,
+            category: 'leave-application',
+            priority: 'high',
+            actionType: 'leave-application.pending-approval',
+            actionPayload: { applicationId: id, level: 2 },
+            entityType: 'LeaveApplication',
+            entityId: id,
+            channels: ['inApp', 'email', 'sms'],
+          });
+        }
+
+        if (requesterUserId) {
+          await this.notifications.create({
+            userId: requesterUserId,
+            title:
+              nextStatus === 'approved'
+                ? 'Leave application approved'
+                : 'Leave application partially approved',
+            message:
+              nextStatus === 'approved'
+                ? `${updated.leaveType.name} approved`
+                : `${updated.leaveType.name} approved at Level 1`,
+            category: 'leave-application',
+            priority: nextStatus === 'approved' ? 'normal' : 'low',
+            actionType: 'leave-application.view',
+            actionPayload: { applicationId: id },
+            entityType: 'LeaveApplication',
+            entityId: id,
+            channels: ['inApp'],
+          });
+        }
+
+        return { status: true, data: updated };
+      }
+
+      if (effectiveLevel === 2) {
+        if (existing.approval1Status !== 'approved') {
+          return {
+            status: false,
+            message: 'Approval level 1 must be approved first',
+          };
+        }
+        if (!existing.approval2) {
+          return {
+            status: false,
+            message: 'No approver configured for level 2',
+          };
+        }
+        if (existing.approval2 !== ctx.userId) {
+          return { status: false, message: 'Forbidden' };
+        }
+
+        const updated = await (this.prisma as any).leaveApplication.update({
+          where: { id },
+          data: {
+            status: 'approved',
+            approval2Status: 'approved',
+            approval2Date: new Date() as any,
+            updatedById: ctx.userId,
+          },
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+              },
+            },
+            leaveType: true,
+          },
+        });
+
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: id,
+          description: `Approved leave application (Level 2) for ${updated.employee.employeeName}`,
+          oldValues: JSON.stringify({
+            status: existing.status,
+            approval2Status: existing.approval2Status,
+          }),
+          newValues: JSON.stringify({
+            status: 'approved',
+            approval2Status: 'approved',
+          }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        });
+
+        await this.notifications.markRelatedAsRead(ctx.userId, {
+          entityType: 'LeaveApplication',
+          entityId: id,
+        });
+
+        const requesterUserId =
+          existing.createdById ||
+          (
+            await this.prisma.employee.findUnique({
+              where: { id: existing.employeeId },
+              select: { userId: true },
+            })
+          )?.userId ||
+          null;
+
+        if (requesterUserId) {
+          await this.notifications.create({
+            userId: requesterUserId,
+            title: 'Leave application approved',
+            message: `${updated.leaveType.name} approved at Level 2`,
+            category: 'leave-application',
+            priority: 'normal',
+            actionType: 'leave-application.view',
+            actionPayload: { applicationId: id },
+            entityType: 'LeaveApplication',
+            entityId: id,
+            channels: ['inApp'],
+          });
+        }
+
+        return { status: true, data: updated };
+      }
+
+      return { status: false, message: 'Invalid approval level' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -486,7 +883,20 @@ export class LeaveApplicationService {
     remarks: string,
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
+    return this.rejectLevel(id, undefined, remarks, ctx);
+  }
+
+  async rejectLevel(
+    id: string,
+    level: 1 | 2 | undefined,
+    remarks: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
+      if (!ctx.userId) {
+        return { status: false, message: 'Unauthorized' };
+      }
+
       const existing = await (this.prisma as any).leaveApplication.findUnique({
         where: { id },
         include: {
@@ -504,46 +914,198 @@ export class LeaveApplicationService {
         return { status: false, message: 'Leave application not found' };
       }
 
+      if (existing.status === 'approved') {
+        return { status: false, message: 'Leave application already approved' };
+      }
+
       if (existing.status === 'rejected') {
         return { status: false, message: 'Leave application already rejected' };
       }
 
-      const updated = await (this.prisma as any).leaveApplication.update({
-        where: { id },
-        data: {
-          status: 'rejected',
-          approval1: ctx.userId,
-          approval1Status: 'rejected',
-          approval1Date: new Date() as any,
-          remarks: remarks || existing.remarks,
-          updatedById: ctx.userId,
-        },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeName: true,
-            },
+      const effectiveLevel = level || this.getPendingApprovalLevel(existing);
+      if (!effectiveLevel) {
+        return { status: false, message: 'No pending approval found' };
+      }
+
+      if (effectiveLevel === 1) {
+        if (!existing.approval1) {
+          return {
+            status: false,
+            message: 'No approver configured for level 1',
+          };
+        }
+        if (existing.approval1 !== ctx.userId) {
+          return { status: false, message: 'Forbidden' };
+        }
+
+        const updated = await (this.prisma as any).leaveApplication.update({
+          where: { id },
+          data: {
+            status: 'rejected',
+            approval1Status: 'rejected',
+            approval1Date: new Date() as any,
+            remarks: remarks || existing.remarks,
+            updatedById: ctx.userId,
           },
-          leaveType: true,
-        },
-      });
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+              },
+            },
+            leaveType: true,
+          },
+        });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-applications',
-        entity: 'LeaveApplication',
-        entityId: id,
-        description: `Rejected leave application for ${updated.employee.employeeName}`,
-        oldValues: JSON.stringify({ status: existing.status }),
-        newValues: JSON.stringify({ status: 'rejected', remarks }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: id,
+          description: `Rejected leave application (Level 1) for ${updated.employee.employeeName}`,
+          oldValues: JSON.stringify({
+            status: existing.status,
+            approval1Status: existing.approval1Status,
+            remarks: existing.remarks,
+          }),
+          newValues: JSON.stringify({
+            status: 'rejected',
+            approval1Status: 'rejected',
+            remarks,
+          }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        });
 
-      return { status: true, data: updated };
+        await this.notifications.markRelatedAsRead(ctx.userId, {
+          entityType: 'LeaveApplication',
+          entityId: id,
+        });
+
+        const requesterUserId =
+          existing.createdById ||
+          (
+            await this.prisma.employee.findUnique({
+              where: { id: existing.employeeId },
+              select: { userId: true },
+            })
+          )?.userId ||
+          null;
+
+        if (requesterUserId) {
+          await this.notifications.create({
+            userId: requesterUserId,
+            title: 'Leave application rejected',
+            message: `${updated.leaveType.name} rejected at Level 1${remarks ? `: ${remarks}` : ''}`,
+            category: 'leave-application',
+            priority: 'normal',
+            actionType: 'leave-application.view',
+            actionPayload: { applicationId: id },
+            entityType: 'LeaveApplication',
+            entityId: id,
+            channels: ['inApp'],
+          });
+        }
+
+        return { status: true, data: updated };
+      }
+
+      if (effectiveLevel === 2) {
+        if (existing.approval1Status !== 'approved') {
+          return {
+            status: false,
+            message: 'Approval level 1 must be approved first',
+          };
+        }
+        if (!existing.approval2) {
+          return {
+            status: false,
+            message: 'No approver configured for level 2',
+          };
+        }
+        if (existing.approval2 !== ctx.userId) {
+          return { status: false, message: 'Forbidden' };
+        }
+
+        const updated = await (this.prisma as any).leaveApplication.update({
+          where: { id },
+          data: {
+            status: 'rejected',
+            approval2Status: 'rejected',
+            approval2Date: new Date() as any,
+            remarks: remarks || existing.remarks,
+            updatedById: ctx.userId,
+          },
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+              },
+            },
+            leaveType: true,
+          },
+        });
+
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: id,
+          description: `Rejected leave application (Level 2) for ${updated.employee.employeeName}`,
+          oldValues: JSON.stringify({
+            status: existing.status,
+            approval2Status: existing.approval2Status,
+            remarks: existing.remarks,
+          }),
+          newValues: JSON.stringify({
+            status: 'rejected',
+            approval2Status: 'rejected',
+            remarks,
+          }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        });
+
+        await this.notifications.markRelatedAsRead(ctx.userId, {
+          entityType: 'LeaveApplication',
+          entityId: id,
+        });
+
+        const requesterUserId =
+          existing.createdById ||
+          (
+            await this.prisma.employee.findUnique({
+              where: { id: existing.employeeId },
+              select: { userId: true },
+            })
+          )?.userId ||
+          null;
+
+        if (requesterUserId) {
+          await this.notifications.create({
+            userId: requesterUserId,
+            title: 'Leave application rejected',
+            message: `${updated.leaveType.name} rejected at Level 2${remarks ? `: ${remarks}` : ''}`,
+            category: 'leave-application',
+            priority: 'normal',
+            actionType: 'leave-application.view',
+            actionPayload: { applicationId: id },
+            entityType: 'LeaveApplication',
+            entityId: id,
+            channels: ['inApp'],
+          });
+        }
+
+        return { status: true, data: updated };
+      }
+
+      return { status: false, message: 'Invalid approval level' };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,

@@ -64,6 +64,7 @@ export class CreateRequestForwardingDto {
       'advance-salary',
       'loan',
       'overtime',
+      'leave-application',
       'leave-encashment',
     ],
   })

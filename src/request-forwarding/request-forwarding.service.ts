@@ -136,11 +136,12 @@ export class RequestForwardingService {
         'advance-salary',
         'loan',
         'overtime',
+        'leave-application',
         'leave-encashment',
       ].includes(body.requestType)
     ) {
       throw new BadRequestException(
-        'Invalid request type. Must be "exemption", "attendance", "advance-salary", "loan", "overtime", or "leave-encashment"',
+        'Invalid request type. Must be "exemption", "attendance", "advance-salary", "loan", "overtime", "leave-application", or "leave-encashment"',
       );
     }
 
@@ -305,11 +306,12 @@ export class RequestForwardingService {
         'advance-salary',
         'loan',
         'overtime',
+        'leave-application',
         'leave-encashment',
       ].includes(requestType)
     ) {
       throw new BadRequestException(
-        'Invalid request type. Must be "exemption", "attendance", "advance-salary", "loan", "overtime", or "leave-encashment"',
+        'Invalid request type. Must be "exemption", "attendance", "advance-salary", "loan", "overtime", "leave-application", or "leave-encashment"',
       );
     }
 

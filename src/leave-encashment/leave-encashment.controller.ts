@@ -123,10 +123,41 @@ export class LeaveEncashmentController {
     });
   }
 
+  @Post('leave-encashments/:id/approve-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Approve leave encashment request by approval level',
+  })
+  async approveLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: ApproveLeaveEncashmentDto,
+    @Req() req,
+  ) {
+    const user = req.user as any;
+    const userId = user?.userId || user?.sub || user?.id || null;
+    const levelNumber = Number(level);
+
+    return this.service.approveLevel(id, levelNumber as 1 | 2, body, {
+      userId: userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Post('leave-encashments/:id/reject')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject leave encashment request' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        rejectionReason: { type: 'string' },
+      },
+    },
+  })
   async reject(
     @Param('id') id: string,
     @Body() body: ApproveLeaveEncashmentDto,
@@ -137,6 +168,37 @@ export class LeaveEncashmentController {
     const userId = user?.userId || user?.sub || user?.id || null;
 
     return this.service.reject(id, body, {
+      userId: userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('leave-encashments/:id/reject-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Reject leave encashment request by approval level',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        rejectionReason: { type: 'string' },
+      },
+    },
+  })
+  async rejectLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: ApproveLeaveEncashmentDto,
+    @Req() req,
+  ) {
+    const user = req.user as any;
+    const userId = user?.userId || user?.sub || user?.id || null;
+    const levelNumber = Number(level);
+
+    return this.service.rejectLevel(id, levelNumber as 1 | 2, body, {
       userId: userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

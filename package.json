@@ -8,6 +8,7 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "postinstall": "prisma generate --schema prisma/schema",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -18,14 +19,14 @@
     "test:cov": "jest --coverage",
     "test:debug": "bun --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "prisma:push": "prisma db push",
+    "prisma:generate": "prisma generate --schema prisma/schema",
+    "prisma:migrate": "prisma migrate dev --schema prisma/schema",
+    "prisma:studio": "prisma studio --schema prisma/schema",
+    "prisma:push": "prisma db push --schema prisma/schema",
     "prisma:seed": "prisma db seed",
     "check-seed": "bun run check-seed.ts",
-    "prisma:deploy": "prisma generate && prisma migrate dev && prisma db push",
-    "prisma:seed:reset": "prisma migrate reset && prisma generate && prisma db push && prisma db seed"
+    "prisma:deploy": "prisma generate --schema prisma/schema && prisma migrate dev --schema prisma/schema && prisma db push --schema prisma/schema",
+    "prisma:seed:reset": "prisma migrate reset --schema prisma/schema && prisma generate --schema prisma/schema && prisma db push --schema prisma/schema && prisma db seed"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

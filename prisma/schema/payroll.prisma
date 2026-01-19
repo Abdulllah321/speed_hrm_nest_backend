@@ -66,6 +66,13 @@ model AdvanceSalary {
   deductionYear      String
   deductionMonthYear String
   reason             String
+  approval1          String?
+  approval1Status    String?
+  approval1Date      DateTime?
+  approval2          String?
+  approval2Status    String?
+  approval2Date      DateTime?
+  remarks            String?
   approvalStatus     String    @default("pending")
   approvedById       String?
   approvedAt         DateTime?
@@ -99,7 +106,12 @@ model OvertimeRequest {
   holidayOvertimeHours Decimal  @default(0) @db.Decimal(5, 2)
   status               String   @default("pending")
   approval1            String?
+  approval1Status      String?
+  approval1Date        DateTime?
   approval2            String?
+  approval2Status      String?
+  approval2Date        DateTime?
+  remarks              String?
   createdById          String?
   updatedById          String?
   createdAt            DateTime @default(now())
@@ -193,6 +205,13 @@ model LeaveEncashment {
   grossSalary      Decimal?  @db.Decimal(10, 2)
   annualSalary     Decimal?  @db.Decimal(10, 2)
   perDayAmount     Decimal?  @db.Decimal(10, 2)
+  approval1        String?
+  approval1Status  String?
+  approval1Date    DateTime?
+  approval2        String?
+  approval2Status  String?
+  approval2Date    DateTime?
+  remarks          String?
   approvalStatus   String    @default("pending")
   approvedById     String?
   approvedAt       DateTime?
@@ -297,4 +316,107 @@ model PFWithdrawal {
   @@index([approvalStatus])
   @@index([status])
   @@index([withdrawalDate])
+}
+
+model PayrollApprovalRequest {
+  id              String                 @id @default(uuid())
+  requestType     PayrollRequestType
+  referenceId     String
+  employeeId      String
+  configurationId String?
+  currentLevel    Int?
+  maxLevel        Int?
+  status          PayrollApprovalStatus  @default(pending)
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  employee        Employee               @relation(fields: [employeeId], references: [id])
+  configuration   RequestForwardingConfiguration? @relation(fields: [configurationId], references: [id], onDelete: SetNull)
+  createdBy       User?                  @relation("PayrollApprovalRequestCreatedBy", fields: [createdById], references: [id])
+  updatedBy       User?                  @relation("PayrollApprovalRequestUpdatedBy", fields: [updatedById], references: [id])
+  levels          PayrollApprovalLevel[]
+  histories       PayrollApprovalHistory[]
+
+  @@index([requestType])
+  @@index([employeeId])
+  @@index([status])
+}
+
+model PayrollApprovalLevel {
+  id                    String                 @id @default(uuid())
+  approvalRequestId     String
+  level                 Int
+  approverType          String
+  departmentHeadMode    String?
+  thresholdAmount       Decimal?               @db.Decimal(10, 2)
+  thresholdPercentage   Decimal?               @db.Decimal(5, 2)
+  autoApprovalTrigger   AutoApprovalTrigger?
+  autoApprovalCondition String?
+  status                PayrollApprovalStatus  @default(pending)
+  assignedApproverId    String?
+  assignedEmployeeId    String?
+  departmentId          String?
+  subDepartmentId       String?
+  approvedById          String?
+  approvedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  approvalRequest       PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  assignedApprover      User?                  @relation("PayrollApprovalLevelAssignedApprover", fields: [assignedApproverId], references: [id])
+  assignedEmployee      Employee?              @relation("PayrollApprovalLevelAssignedEmployee", fields: [assignedEmployeeId], references: [id])
+  department            Department?            @relation(fields: [departmentId], references: [id])
+  subDepartment         SubDepartment?         @relation(fields: [subDepartmentId], references: [id])
+  approvedBy            User?                  @relation("PayrollApprovalLevelApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([approvalRequestId])
+  @@index([level])
+  @@index([status])
+  @@unique([approvalRequestId, level])
+}
+
+model PayrollApprovalHistory {
+  id                String                @id @default(uuid())
+  approvalRequestId String
+  level             Int
+  status            PayrollApprovalStatus
+  action            String
+  performedById     String?
+  performedAt       DateTime             @default(now())
+  remarks           String?
+  approvalRequest   PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  performedBy       User?                @relation("PayrollApprovalHistoryPerformedBy", fields: [performedById], references: [id])
+
+  @@index([approvalRequestId])
+  @@index([performedById])
+  @@index([status])
+}
+
+enum PayrollRequestType {
+  advance_salary
+  overtime_request
+  leave_encashment
+  pf_withdrawal
+  leave_application
+  attendance_request_query
+  loan_request
+  other
+}
+
+enum PayrollApprovalStatus {
+  pending
+  approved
+  rejected
+  auto_approved
+  cancelled
+  forwarded
+}
+
+enum AutoApprovalTrigger {
+  none
+  amount_below_threshold
+  amount_above_threshold
+  time_based
+  manual_override
 }

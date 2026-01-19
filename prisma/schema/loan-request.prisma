@@ -8,6 +8,13 @@ model LoanRequest {
   numberOfInstallments    Int?
   reason                  String
   additionalDetails       String?
+  approval1               String?
+  approval1Status         String?
+  approval1Date           DateTime?
+  approval2               String?
+  approval2Status         String?
+  approval2Date           DateTime?
+  remarks                 String?
   approvalStatus          String    @default("pending")
   approvedById            String?
   approvedAt              DateTime?

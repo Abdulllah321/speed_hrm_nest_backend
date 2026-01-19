@@ -21,6 +21,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiBody,
   ApiQuery,
 } from '@nestjs/swagger';
 
@@ -100,5 +101,79 @@ export class OvertimeRequestController {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
+  }
+
+  @Put('overtime-requests/:id/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve overtime request' })
+  async approve(@Param('id') id: string, @Req() req: any) {
+    return this.service.approve(id, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('overtime-requests/:id/approve-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve overtime request by approval level' })
+  async approveLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Req() req: any,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.approveLevel(id, levelNumber as 1 | 2, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('overtime-requests/:id/reject')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject overtime request' })
+  @ApiBody({
+    schema: { type: 'object', properties: { remarks: { type: 'string' } } },
+  })
+  async reject(
+    @Param('id') id: string,
+    @Body() body: { remarks?: string },
+    @Req() req: any,
+  ) {
+    return this.service.reject(id, body.remarks || '', {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('overtime-requests/:id/reject-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject overtime request by approval level' })
+  @ApiBody({
+    schema: { type: 'object', properties: { remarks: { type: 'string' } } },
+  })
+  async rejectLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: { remarks?: string },
+    @Req() req: any,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.rejectLevel(
+      id,
+      levelNumber as 1 | 2,
+      body.remarks || '',
+      {
+        userId: req.user?.userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
   }
 }

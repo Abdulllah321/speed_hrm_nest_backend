@@ -65,6 +65,89 @@ export class AttendanceRequestQueryController {
     });
   }
 
+  @Put('attendance-request-queries/:id/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve attendance request query' })
+  async approve(@Param('id') id: string, @Req() req: any) {
+    return this.service.approve(id, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('attendance-request-queries/:id/approve-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Approve attendance request query by approval level',
+  })
+  async approveLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Req() req: any,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.approveLevel(id, levelNumber as 1 | 2, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('attendance-request-queries/:id/reject')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject attendance request query' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        rejectionReason: { type: 'string' },
+      },
+    },
+  })
+  async reject(
+    @Param('id') id: string,
+    @Body() body: { rejectionReason?: string },
+    @Req() req: any,
+  ) {
+    return this.service.reject(id, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('attendance-request-queries/:id/reject-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Reject attendance request query by approval level',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        rejectionReason: { type: 'string' },
+      },
+    },
+  })
+  async rejectLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: { rejectionReason?: string },
+    @Req() req: any,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.rejectLevel(id, levelNumber as 1 | 2, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Delete('attendance-request-queries/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

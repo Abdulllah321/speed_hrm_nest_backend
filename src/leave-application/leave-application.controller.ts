@@ -115,6 +115,23 @@ export class LeaveApplicationController {
     });
   }
 
+  @Put('leave-applications/:id/approve-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve leave application by approval level' })
+  async approveLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Req() req: any,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.approveLevel(id, levelNumber as 1 | 2, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Put('leave-applications/:id/reject')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -132,5 +149,31 @@ export class LeaveApplicationController {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
+  }
+
+  @Put('leave-applications/:id/reject-level/:level')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject leave application by approval level' })
+  @ApiBody({
+    schema: { type: 'object', properties: { remarks: { type: 'string' } } },
+  })
+  async rejectLevel(
+    @Param('id') id: string,
+    @Param('level') level: string,
+    @Body() body: { remarks?: string },
+    @Req() req: any,
+  ) {
+    const levelNumber = Number(level);
+    return this.service.rejectLevel(
+      id,
+      levelNumber as 1 | 2,
+      body.remarks || '',
+      {
+        userId: req.user?.userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
   }
 }

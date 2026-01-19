@@ -57,6 +57,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { RoleModule } from './role/role.module';
 import { PermissionModule } from './permission/permission.module';
 import { UserModule } from './user/user.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -113,6 +114,7 @@ import { UserModule } from './user/user.module';
     HolidayModule, // added swagger
     UploadModule, // added swagger
     ActivityLogsModule,
+    NotificationsModule,
     BankModule, // added swagger
     RebateNatureModule, // added swagger
     RebateModule, // added swagger
