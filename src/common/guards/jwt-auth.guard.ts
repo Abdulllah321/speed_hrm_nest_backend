@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import authConfig from '../../config/auth.config';
 
@@ -15,7 +15,10 @@ export class JwtAuthGuard implements CanActivate {
       token = req.cookies['accessToken'];
     }
 
-    if (!token) return false;
+    if (!token) {
+      throw new UnauthorizedException('No token provided');
+    }
+
     try {
       const decoded = jwt.verify(token, authConfig.jwt.accessSecret, {
         issuer: authConfig.jwt.issuer,
@@ -24,7 +27,7 @@ export class JwtAuthGuard implements CanActivate {
       req.user = decoded;
       return true;
     } catch {
-      return false;
+      throw new UnauthorizedException('Invalid token');
     }
   }
 }

@@ -36,13 +36,17 @@ export class PermissionsGuard implements CanActivate {
     // Check if user has required permissions
     const userPermissions = await this.getUserPermissions(user.roleId);
 
+    if (userPermissions.includes('*')) {
+      return true;
+    }
+
     return requiredPermissions.some((permission) =>
       userPermissions.includes(permission),
     );
   }
 
   private async getUserPermissions(roleId: string): Promise<string[]> {
-    const cacheKey = `permissions_role_${roleId}`;
+    const cacheKey = `permissions_v2_role_${roleId}`;
     const cached = await this.cacheManager.get<string[]>(cacheKey);
     if (cached) {
       return cached;
@@ -61,6 +65,13 @@ export class PermissionsGuard implements CanActivate {
 
     if (!role) {
       return [];
+    }
+
+    // Super Admin and Admin bypass
+    if (role.name === 'super_admin' || role.name === 'admin') {
+      const allPermissions = ['*'];
+      await this.cacheManager.set(cacheKey, allPermissions, 3600000);
+      return allPermissions;
     }
 
     const permissions = role.permissions.map((p) => p.permission.name);
