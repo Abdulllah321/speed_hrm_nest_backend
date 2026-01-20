@@ -5,11 +5,12 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
 
 # Copy prisma files and config
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
+
+RUN bun install --frozen-lockfile
 
 # GENERATE PRISMA CLIENT HERE
 # Using 'bun run' ensures we use the local prisma version and context
