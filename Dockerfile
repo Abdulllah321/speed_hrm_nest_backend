@@ -10,7 +10,10 @@ COPY package.json bun.lock* ./
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
 
-RUN bun install --no-save
+# Set dummy DATABASE_URL for build time (required by prisma.config.ts)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+
+RUN bun install
 
 # GENERATE PRISMA CLIENT HERE
 # Using 'bun run' ensures we use the local prisma version and context
