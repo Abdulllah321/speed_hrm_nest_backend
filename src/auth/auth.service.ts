@@ -89,6 +89,16 @@ export class AuthService {
       },
     });
 
+    // Record login history
+    await this.prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        ipAddress: ipAddress || 'Unknown',
+        userAgent: userAgent || null,
+        status: 'success',
+      },
+    });
+
     return {
       status: true,
       data: {
@@ -113,8 +123,19 @@ export class AuthService {
       const stored = await this.prisma.refreshToken.findUnique({
         where: { token },
       });
-      if (!stored || stored.isRevoked || new Date() > stored.expiresAt)
-        return { status: false, message: 'Invalid refresh token' };
+      if (!stored) {
+        console.error('Refresh Token Error: Token not found in DB');
+        return { status: false, message: 'Invalid refresh token (not found)' };
+      }
+      if (stored.isRevoked) {
+        console.error(`Refresh Token Error: Token revoked. Family: ${stored.family}`);
+        return { status: false, message: 'Invalid refresh token (revoked)' };
+      }
+      if (new Date() > stored.expiresAt) {
+        console.error('Refresh Token Error: Token expired');
+        return { status: false, message: 'Invalid refresh token (expired)' };
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: decoded.userId },
       });
@@ -123,15 +144,6 @@ export class AuthService {
       const refreshTokenExpiryMs = parseExpiryToMs(
         authConfig.jwt.refreshExpiresIn,
       );
-      const accessTokenExpiryMs = parseExpiryToMs(
-        authConfig.jwt.accessExpiresIn,
-      );
-
-      // Revoke old refresh token (token rotation for security)
-      await this.prisma.refreshToken.update({
-        where: { id: stored.id },
-        data: { isRevoked: true },
-      });
 
       const family = decoded.family;
       const accessOpts: jwt.SignOptions = {
@@ -153,56 +165,66 @@ export class AuthService {
         refreshOpts,
       );
 
-      // Create new refresh token with same family (same device)
-      await this.prisma.refreshToken.create({
-        data: {
-          userId: user.id,
-          token: newRefreshToken,
-          family,
-          expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
-        },
-      });
-
-      // Update or create session with new access token
-      const existingSession = await this.prisma.session.findFirst({
-        where: { userId: user.id, isActive: true },
-        orderBy: { lastActivityAt: 'desc' },
-      });
-
-      if (existingSession) {
-        // Update existing session with new token and extend expiry
-        await this.prisma.session.update({
-          where: { id: existingSession.id },
-          data: {
-            token: accessToken,
-            lastActivityAt: new Date(),
-            expiresAt: new Date(
-              Date.now() + authConfig.security.sessionTimeout,
-            ),
-          },
+      // Use transaction to ensure atomicity
+      await this.prisma.$transaction(async (tx) => {
+        // Revoke old refresh token (token rotation for security)
+        await tx.refreshToken.update({
+          where: { id: stored.id },
+          data: { isRevoked: true },
         });
-      } else {
-        // Create new session if none exists
-        await this.prisma.session.create({
+
+        // Create new refresh token with same family (same device)
+        await tx.refreshToken.create({
           data: {
             userId: user.id,
-            token: accessToken,
-            isActive: true,
-            ipAddress: null,
-            userAgent: null,
-            lastActivityAt: new Date(),
-            expiresAt: new Date(
-              Date.now() + authConfig.security.sessionTimeout,
-            ),
+            token: newRefreshToken,
+            family,
+            expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
           },
         });
-      }
+
+        // Update or create session with new access token
+        const existingSession = await tx.session.findFirst({
+          where: { userId: user.id, isActive: true },
+          orderBy: { lastActivityAt: 'desc' },
+        });
+
+        if (existingSession) {
+          // Update existing session with new token and extend expiry
+          await tx.session.update({
+            where: { id: existingSession.id },
+            data: {
+              token: accessToken,
+              lastActivityAt: new Date(),
+              expiresAt: new Date(
+                Date.now() + authConfig.security.sessionTimeout,
+              ),
+            },
+          });
+        } else {
+          // Create new session if none exists
+          await tx.session.create({
+            data: {
+              userId: user.id,
+              token: accessToken,
+              isActive: true,
+              ipAddress: null,
+              userAgent: null,
+              lastActivityAt: new Date(),
+              expiresAt: new Date(
+                Date.now() + authConfig.security.sessionTimeout,
+              ),
+            },
+          });
+        }
+      });
 
       return {
         status: true,
         data: { accessToken, refreshToken: newRefreshToken },
       };
-    } catch {
+    } catch (error) {
+      console.error('Refresh Token Error:', error);
       return { status: false, message: 'Invalid refresh token' };
     }
   }
@@ -426,12 +448,25 @@ export class AuthService {
     return { status: true, data: user, message: 'Profile updated' };
   }
 
-  async getActiveSessions(userId: string) {
+  async getActiveSessions(userId: string, currentAccessToken?: string) {
     const sessions = await this.prisma.session.findMany({
       where: { userId, isActive: true },
       orderBy: { lastActivityAt: 'desc' },
     });
-    return { status: true, data: sessions };
+
+    const data = sessions.map((session) => ({
+      id: session.id,
+      userId: session.userId,
+      ipAddress: session.ipAddress,
+      userAgent: session.userAgent,
+      deviceInfo: session.deviceInfo,
+      lastActivityAt: session.lastActivityAt,
+      expiresAt: session.expiresAt,
+      createdAt: session.createdAt,
+      isCurrent: currentAccessToken ? session.token === currentAccessToken : false,
+    }));
+
+    return { status: true, data };
   }
 
   async terminateSession(userId: string, sessionId: string) {

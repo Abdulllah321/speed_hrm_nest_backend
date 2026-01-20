@@ -199,7 +199,7 @@ export class AuthController {
     const authHeader = req.headers['authorization'] as string;
     const accessToken = authHeader?.startsWith('Bearer ')
       ? authHeader.split(' ')[1]
-      : undefined;
+      : req.cookies?.['accessToken'];
     return this.service.checkSession(req.user.userId, accessToken);
   }
 
@@ -253,7 +253,11 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get active sessions' })
   async sessions(@Req() req: any) {
-    return this.service.getActiveSessions(req.user.userId);
+    const authHeader = req.headers['authorization'] as string;
+    const accessToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : req.cookies?.['accessToken'];
+    return this.service.getActiveSessions(req.user.userId, accessToken);
   }
 
   @Post('sessions/terminate')
