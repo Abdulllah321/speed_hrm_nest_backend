@@ -40,8 +40,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/docker-entrypoint.sh ./
 
-# Other necessary files
-COPY check-seed.ts countries.json city.json ./
+# Other necessary# Other files
+COPY check-seed.ts countries.json city.json backup.sql ./
 
 RUN chmod +x docker-entrypoint.sh
 
