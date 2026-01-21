@@ -2,9 +2,6 @@ FROM oven/bun:1
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
-
 # Copy prisma schema
 COPY prisma ./prisma
 
