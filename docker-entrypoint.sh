@@ -8,11 +8,11 @@ PRISMA_SCHEMA="prisma/schema"
 
 # Generate Prisma client (always needed)
 echo "📦 Generating Prisma client..."
-bun run prisma generate --schema "$PRISMA_SCHEMA"
+bun run prisma:generate
 
 # Push schema to database
 echo "📊 Pushing database schema..."
-bun run prisma db push --schema "$PRISMA_SCHEMA" --accept-data-loss
+bun run prisma:push --accept-data-loss
 
 # Check if database is already seeded
 echo "🔍 Checking if database needs seeding..."

@@ -15,12 +15,12 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN bun install
 
+# Copy source code and build
+COPY . .
+
 # GENERATE PRISMA CLIENT HERE
 # Using 'bun run' ensures we use the local prisma version and context
 RUN bun run prisma:generate
-
-# Copy source code and build
-COPY . .
 RUN bun run build
 
 # --- Production stage ---
