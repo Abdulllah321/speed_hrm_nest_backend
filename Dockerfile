@@ -1,4 +1,4 @@
-# Production Dockerfile for NestJS Backend
+# --- Build stage ---
 FROM oven/bun:1 AS builder
 
 WORKDIR /app
@@ -15,22 +15,24 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN bun install
 
+# Generate Prisma client
+RUN bun run prisma:generate
+
 # Copy source code and build
 COPY . .
-
-# GENERATE PRISMA CLIENT HERE
-# Using 'bun run' ensures we use the local prisma version and context
-RUN bun run prisma:generate
 RUN bun run build
 
 # --- Production stage ---
-FROM oven/bun:1-slim 
+FROM oven/bun:1-slim
 
-RUN apt-get update && apt-get install -y openssl wget postgresql-client docker.io && rm -rf /var/lib/apt/lists/*
+# Install required tools: openssl, wget, postgresql-client (for pg_restore)
+RUN apt-get update && \
+    apt-get install -y openssl wget postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Only copy what is needed
+# Copy only necessary files from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
@@ -38,7 +40,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/docker-entrypoint.sh ./
 
-# Other files
+# Other necessary files
 COPY check-seed.ts countries.json city.json ./
 
 RUN chmod +x docker-entrypoint.sh
