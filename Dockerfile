@@ -5,11 +5,15 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
 
 # Copy prisma files and config
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
+
+# Set dummy DATABASE_URL for build time (required by prisma.config.ts)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+
+RUN bun install
 
 # GENERATE PRISMA CLIENT HERE
 # Using 'bun run' ensures we use the local prisma version and context
