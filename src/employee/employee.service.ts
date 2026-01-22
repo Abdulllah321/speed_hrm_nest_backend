@@ -353,6 +353,14 @@ export class EmployeeService {
     });
     if (!employee) return { status: false, message: 'Employee not found' };
 
+    // Apply latest active increment salary if available
+    if (
+      (employee as any).increments &&
+      (employee as any).increments.length > 0
+    ) {
+      (employee as any).employeeSalary = (employee as any).increments[0].salary;
+    }
+
     // Type assertion since we know the query includes these relations
     const emp = employee as typeof employee & {
       user?: { id: string; avatar: string | null } | null;
