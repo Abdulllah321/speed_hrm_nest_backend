@@ -15,6 +15,7 @@ model User {
   passwordChangedAt                          DateTime?
   mustChangePassword                         Boolean                              @default(false)
   isFirstPassword                            Boolean                              @default(true)
+  isDashboardEnabled                         Boolean                              @default(false)
   createdAt                                  DateTime                             @default(now())
   updatedAt                                  DateTime                             @updatedAt
   roleId                                     String?

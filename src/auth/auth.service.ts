@@ -532,6 +532,7 @@ export class AuthService {
             ...(data.roleId ? { roleId: data.roleId } : {}),
             ...(data.firstName ? { firstName: data.firstName } : {}),
             ...(data.lastName ? { lastName: data.lastName } : {}),
+            ...(data.isDashboardEnabled !== undefined ? { isDashboardEnabled: data.isDashboardEnabled } : {}),
           },
         });
         
