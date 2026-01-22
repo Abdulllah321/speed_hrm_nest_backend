@@ -496,6 +496,14 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
       include: {
         role: true,
+        employee: {
+          select: {
+            id: true,
+            employeeName: true,
+            department: { select: { name: true } },
+            designation: { select: { name: true } },
+          },
+        },
       }
     });
     return { status: true, data: users };

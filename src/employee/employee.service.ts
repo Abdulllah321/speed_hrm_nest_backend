@@ -140,6 +140,8 @@ export class EmployeeService {
         departmentId: true,
         subDepartmentId: true,
         providentFund: true,
+        officialEmail: true,
+        personalEmail: true,
         department: {
           select: { name: true },
         },
@@ -163,6 +165,8 @@ export class EmployeeService {
       subDepartmentName: emp.subDepartment?.name || null,
       designationName: emp.designation?.name || null,
       providentFund: emp.providentFund,
+      officialEmail: emp.officialEmail,
+      personalEmail: emp.personalEmail,
     }));
 
     await this.cacheManager.set(cacheKey, result, 3600000);
@@ -262,6 +266,12 @@ export class EmployeeService {
           select: {
             id: true,
             name: true,
+            startWorkingHours: true,
+            endWorkingHours: true,
+            startBreakTime: true,
+            endBreakTime: true,
+            lateStartTime: true,
+            shortDayMins: true,
           },
         },
         location: {
