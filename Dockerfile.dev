@@ -2,12 +2,12 @@ FROM oven/bun:1
 
 WORKDIR /app
 
+# Copy prisma schema
+COPY prisma ./prisma
+
 # Install dependencies
 COPY package.json bun.lock* ./
 RUN bun install
-
-# Copy prisma schema
-COPY prisma ./prisma
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
