@@ -9,3 +9,4 @@ export class ActivityLogsGateway {
     this.server.emit('activity_log', payload);
   }
 }
+ 
