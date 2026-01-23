@@ -662,6 +662,20 @@ export class LeaveApplicationService {
         return { status: false, message: 'No pending approval found' };
       }
 
+      // Check for Admin Override (Allow 'admin' role or 'leave-application.update' permission to bypass approver check)
+      let canOverride = false;
+      const user = await this.prisma.user.findUnique({
+        where: { id: ctx.userId },
+        include: { role: { include: { permissions: { include: { permission: true } } } } }
+      });
+
+      if (user?.role?.name === 'admin') {
+        canOverride = true;
+      } else if (user?.role?.permissions.some(p => p.permission.name === 'leave-application.update')) {
+        // canOverride = true; // Uncomment if we want to allow anyone with update permission to override
+        // For now, let's stick to Admin or explicit approver
+      }
+
       if (effectiveLevel === 1) {
         if (!existing.approval1) {
           return {
@@ -669,8 +683,10 @@ export class LeaveApplicationService {
             message: 'No approver configured for level 1',
           };
         }
-        if (existing.approval1 !== ctx.userId) {
-          return { status: false, message: 'Forbidden' };
+        
+        // Strict check: Must be the assigned approver OR be an Admin overriding it
+        if (existing.approval1 !== ctx.userId && !canOverride) {
+          return { status: false, message: 'Forbidden: You are not the assigned approver' };
         }
 
         const nextStatus = existing.approval2 ? 'pending' : 'approved';
@@ -781,8 +797,8 @@ export class LeaveApplicationService {
             message: 'No approver configured for level 2',
           };
         }
-        if (existing.approval2 !== ctx.userId) {
-          return { status: false, message: 'Forbidden' };
+        if (existing.approval2 !== ctx.userId && !canOverride) {
+          return { status: false, message: 'Forbidden: You are not the assigned approver' };
         }
 
         const updated = await (this.prisma as any).leaveApplication.update({
@@ -927,6 +943,17 @@ export class LeaveApplicationService {
         return { status: false, message: 'No pending approval found' };
       }
 
+      // Check for Admin Override
+      let canOverride = false;
+      const user = await this.prisma.user.findUnique({
+        where: { id: ctx.userId },
+        include: { role: { include: { permissions: { include: { permission: true } } } } }
+      });
+
+      if (user?.role?.name === 'admin') {
+        canOverride = true;
+      }
+
       if (effectiveLevel === 1) {
         if (!existing.approval1) {
           return {
@@ -934,7 +961,7 @@ export class LeaveApplicationService {
             message: 'No approver configured for level 1',
           };
         }
-        if (existing.approval1 !== ctx.userId) {
+        if (existing.approval1 !== ctx.userId && !canOverride) {
           return { status: false, message: 'Forbidden' };
         }
 
@@ -1026,7 +1053,7 @@ export class LeaveApplicationService {
             message: 'No approver configured for level 2',
           };
         }
-        if (existing.approval2 !== ctx.userId) {
+        if (existing.approval2 !== ctx.userId && !canOverride) {
           return { status: false, message: 'Forbidden' };
         }
 
