@@ -58,6 +58,7 @@ import { RoleModule } from './role/role.module';
 import { PermissionModule } from './permission/permission.module';
 import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
 
 @Module({
   imports: [
@@ -126,6 +127,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     DashboardModule,
     RoleModule,
     PermissionModule,
+    ChartOfAccountModule,
   ],
   controllers: [AppController],
   providers: [AppService],

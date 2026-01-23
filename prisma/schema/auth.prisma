@@ -33,6 +33,7 @@ model User {
   attendanceExemptionsUpdated                AttendanceExemption[]                @relation("AttendanceExemptionUpdatedBy")
   banksCreated                               Bank[]                               @relation("BankCreatedBy")
   banksUpdated                               Bank[]                               @relation("BankUpdatedBy")
+  chartOfAccountsCreated                     ChartOfAccount[]                     @relation("ChartOfAccountCreatedBy")
   bonuses                                    Bonus[]                              @relation("BonusCreatedBy")
   bonusesUpdated                             Bonus[]                              @relation("BonusUpdatedBy")
   bonusTypesCreated                          BonusType[]                          @relation("BonusTypeCreatedBy")
