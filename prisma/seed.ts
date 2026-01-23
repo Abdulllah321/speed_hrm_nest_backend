@@ -109,11 +109,27 @@ async function executeBackupSql(pool: Pool): Promise<void> {
   }
 }
 
+import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+
 async function main() {
-  console.log('🌱 Seeding database from backup.sql...');
+  console.log('🌱 Seeding database...');
   console.log('');
 
-  await executeBackupSql(pool);
+  try {
+     // Run specific seeds
+     await seedChartOfAccounts(prisma);
+  } catch(e) {
+      console.error('Error running specific seeds:', e);
+  }
+
+  // Check if we should also run the backup restore
+  if (process.env.RUN_BACKUP_RESTORE === 'true') {
+     console.log('🌱 Seeding database from backup.sql...');
+     await executeBackupSql(pool);
+  } else {
+     console.log('Skipping backup.sql restore (RUN_BACKUP_RESTORE not set)');
+  }
+
 
   console.log('');
   console.log('═══════════════════════════════════════════');
