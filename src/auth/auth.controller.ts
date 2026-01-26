@@ -56,7 +56,10 @@ export class AuthController {
       if (originHost.includes('.localtest.me')) {
         // Only set domain if we are NOT on localhost (localhost cannot set cookies for .localtest.me)
         const currentHost = String(req?.hostname || '');
-        if (!currentHost.includes('localhost') && !currentHost.startsWith('127.')) {
+        if (
+          !currentHost.includes('localhost') &&
+          !currentHost.startsWith('127.')
+        ) {
           domain = '.localtest.me';
         }
       } else if (originHost.includes('localhost')) {
@@ -74,6 +77,18 @@ export class AuthController {
       if (!isLocalhost && host.includes('.localtest.me')) {
         domain = '.localtest.me';
       }
+    }
+
+    // Safety check: If we are running on localhost/127.0.0.1, we CANNOT set a custom domain
+    // like .localtest.me because the browser will reject the cookie.
+    // We must force domain to undefined (host-only) in this case.
+    const currentHost = String(req?.hostname || '');
+    if (
+      currentHost.includes('localhost') ||
+      currentHost.startsWith('127.') ||
+      currentHost.startsWith('0.0.0.0')
+    ) {
+      domain = undefined;
     }
 
     return {
