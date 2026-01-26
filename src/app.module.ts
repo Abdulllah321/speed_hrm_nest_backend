@@ -59,6 +59,7 @@ import { PermissionModule } from './permission/permission.module';
 import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
+import { TransferModule } from './employee/transfer/transfer.module';
 
 @Module({
   imports: [
@@ -128,8 +129,9 @@ import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-accoun
     RoleModule,
     PermissionModule,
     ChartOfAccountModule,
+    TransferModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -99,6 +99,7 @@ model Employee {
   policyAssignments               WorkingHoursPolicyAssignment[]
   payrollApprovalRequests         PayrollApprovalRequest[]
   payrollApprovalLevelAssignments PayrollApprovalLevel[]               @relation("PayrollApprovalLevelAssignedEmployee")
+  transferHistory                 EmployeeTransferHistory[]
 }
 
 model EmployeeRejoiningHistory {
@@ -127,6 +128,32 @@ model EmployeeRejoiningHistory {
 
   @@index([employeeId])
   @@index([rejoiningDate])
+}
+
+model EmployeeTransferHistory {
+  id                 String    @id @default(uuid())
+  employeeId         String
+  transferDate       DateTime
+  previousLocationId String?
+  newLocationId      String?
+  previousCityId     String?
+  newCityId          String?
+  previousStateId    String?
+  newStateId         String?
+  reason             String?
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  createdBy          User?     @relation("TransferHistoryCreatedBy", fields: [createdById], references: [id])
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousLocation   Location? @relation("TransferHistoryPreviousLocation", fields: [previousLocationId], references: [id])
+  newLocation        Location? @relation("TransferHistoryNewLocation", fields: [newLocationId], references: [id])
+  previousCity       City?     @relation("TransferHistoryPreviousCity", fields: [previousCityId], references: [id])
+  newCity            City?     @relation("TransferHistoryNewCity", fields: [newCityId], references: [id])
+  previousState      State?    @relation("TransferHistoryPreviousState", fields: [previousStateId], references: [id])
+  newState           State?    @relation("TransferHistoryNewState", fields: [newStateId], references: [id])
+
+  @@index([employeeId])
+  @@index([transferDate])
 }
 
 model EmployeeQualification {

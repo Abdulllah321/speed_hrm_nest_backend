@@ -91,51 +91,57 @@ model Country {
 }
 
 model City {
-  id                     String                  @id @default(uuid())
+  id                     String                    @id @default(uuid())
   name                   String
   countryId              String
   stateId                String
-  status                 String                  @default("active")
+  status                 String                    @default("active")
   createdById            String?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-  country                Country                 @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  createdBy              User?                   @relation("CityCreatedBy", fields: [createdById], references: [id])
-  state                  State                   @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  country                Country                   @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdBy              User?                     @relation("CityCreatedBy", fields: [createdById], references: [id])
+  state                  State                     @relation(fields: [stateId], references: [id], onDelete: Cascade)
   employees              Employee[]
   employeeQualifications EmployeeQualification[]
   locations              Location[]
+  previousTransfers      EmployeeTransferHistory[] @relation("TransferHistoryPreviousCity")
+  newTransfers           EmployeeTransferHistory[] @relation("TransferHistoryNewCity")
 
   @@unique([name, countryId, stateId])
 }
 
 model State {
-  id                     String                  @id @default(uuid())
+  id                     String                    @id @default(uuid())
   name                   String
   countryId              String
-  status                 String                  @default("active")
+  status                 String                    @default("active")
   createdById            String?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
   cities                 City[]
   employees              Employee[]
   employeeQualifications EmployeeQualification[]
-  country                Country                 @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  createdBy              User?                   @relation("StateCreatedBy", fields: [createdById], references: [id])
+  country                Country                   @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdBy              User?                     @relation("StateCreatedBy", fields: [createdById], references: [id])
+  previousTransfers      EmployeeTransferHistory[] @relation("TransferHistoryPreviousState")
+  newTransfers           EmployeeTransferHistory[] @relation("TransferHistoryNewState")
 }
 
 model Location {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  address     String?
-  cityId      String?
-  status      String     @default("active")
-  createdById String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  employees   Employee[]
-  city        City?      @relation(fields: [cityId], references: [id])
-  createdBy   User?      @relation("LocationCreatedBy", fields: [createdById], references: [id])
+  id                String                    @id @default(uuid())
+  name              String                    @unique
+  address           String?
+  cityId            String?
+  status            String                    @default("active")
+  createdById       String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  employees         Employee[]
+  city              City?                     @relation(fields: [cityId], references: [id])
+  createdBy         User?                     @relation("LocationCreatedBy", fields: [createdById], references: [id])
+  previousTransfers EmployeeTransferHistory[] @relation("TransferHistoryPreviousLocation")
+  newTransfers      EmployeeTransferHistory[] @relation("TransferHistoryNewLocation")
 }
 
 model AllowanceHead {
