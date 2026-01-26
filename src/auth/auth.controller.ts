@@ -54,7 +54,11 @@ export class AuthController {
       // Extract parent domain from Origin (e.g., auth.localtest.me -> .localtest.me)
       // or subdomain.localtest.me -> .localtest.me
       if (originHost.includes('.localtest.me')) {
-        domain = '.localtest.me';
+        // Only set domain if we are NOT on localhost (localhost cannot set cookies for .localtest.me)
+        const currentHost = String(req?.hostname || '');
+        if (!currentHost.includes('localhost') && !currentHost.startsWith('127.')) {
+          domain = '.localtest.me';
+        }
       } else if (originHost.includes('localhost')) {
         // If Origin is localhost, don't set domain (cookie will be for localhost only)
         domain = undefined;

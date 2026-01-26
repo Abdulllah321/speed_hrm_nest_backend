@@ -108,6 +108,7 @@ model User {
   payrollApprovalLevelAssignments            PayrollApprovalLevel[]               @relation("PayrollApprovalLevelAssignedApprover")
   payrollApprovalLevelsApproved              PayrollApprovalLevel[]               @relation("PayrollApprovalLevelApprovedBy")
   payrollApprovalHistoryPerformed            PayrollApprovalHistory[]             @relation("PayrollApprovalHistoryPerformedBy")
+  transferHistoryCreated                     EmployeeTransferHistory[]            @relation("TransferHistoryCreatedBy")
 }
 
 model Role {
