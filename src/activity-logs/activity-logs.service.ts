@@ -10,6 +10,83 @@ export class ActivityLogsService {
     private gateway: ActivityLogsGateway,
   ) {}
 
+  async findAll(query: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    module?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (query.action) {
+      where.action = query.action;
+    }
+
+    if (query.module) {
+      where.module = query.module;
+    }
+
+    if (query.search) {
+      where.OR = [
+        { description: { contains: query.search, mode: 'insensitive' } },
+        { ipAddress: { contains: query.search, mode: 'insensitive' } },
+        { user: { email: { contains: query.search, mode: 'insensitive' } } },
+        { user: { firstName: { contains: query.search, mode: 'insensitive' } } },
+        { user: { lastName: { contains: query.search, mode: 'insensitive' } } },
+      ];
+    }
+
+    if (query.startDate && query.endDate) {
+      where.createdAt = {
+        gte: new Date(query.startDate),
+        lte: new Date(query.endDate),
+      };
+    } else if (query.startDate) {
+      where.createdAt = {
+        gte: new Date(query.startDate),
+      };
+    } else if (query.endDate) {
+      where.createdAt = {
+        lte: new Date(query.endDate),
+      };
+    }
+
+    const [logs, total] = await Promise.all([
+      this.prisma.activityLog.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.activityLog.count({ where }),
+    ]);
+
+    return {
+      logs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async log(data: {
     userId?: string;
     action: string;

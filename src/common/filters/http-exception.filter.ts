@@ -62,11 +62,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
 
       // Log the error
-      this.logger.error(
-        `HTTP ${status} Error: ${errorResponse.message}`,
-        exception.stack,
-        `${request.method} ${request.url}`,
-      );
+      if (status === HttpStatus.UNAUTHORIZED) {
+        this.logger.warn(
+          `HTTP ${status} Warning: ${errorResponse.message} - ${request.method} ${request.url}`,
+        );
+      } else {
+        this.logger.error(
+          `HTTP ${status} Error: ${errorResponse.message}`,
+          exception.stack,
+          `${request.method} ${request.url}`,
+        );
+      }
 
       return response.status(status).send(errorResponse);
     }
