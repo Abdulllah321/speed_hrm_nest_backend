@@ -8,6 +8,7 @@ model User {
   avatar                                     String?
   employeeId                                 String?                              @unique
   status                                     String                               @default("active")
+  isDashboardEnabled                         Boolean                              @default(true)
   failedLoginAttempts                        Int                                  @default(0)
   lockedUntil                                DateTime?
   lastLoginAt                                DateTime?

@@ -16,7 +16,7 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLogsService: ActivityLogsService,
-  ) {}
+  ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -447,13 +447,13 @@ export class PayrollService {
         employee: {
           employeeId: employee.employeeId,
           employeeName: employee.employeeName,
-          department: employee.department,
-          subDepartment: employee.subDepartment,
-          designation: employee.designation,
-          country: employee.country,
-          state: employee.state,
-          city: employee.city,
-          branch: employee.location,
+          department: emp.department?.name || null,
+          subDepartment: emp.subDepartment?.name || null,
+          designation: emp.designation?.name || null,
+          country: emp.country?.name || null,
+          state: emp.state?.name || null,
+          city: emp.city?.name || null,
+          branch: emp.location?.name || null,
         },
         basicSalary: calculatedBasicSalary.toNumber(),
         salaryBreakup,
