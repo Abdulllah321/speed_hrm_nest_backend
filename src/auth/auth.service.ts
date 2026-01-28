@@ -48,7 +48,13 @@ export class AuthService {
       issuer: authConfig.jwt.issuer,
     };
     const accessToken = jwt.sign(
-      { userId: user.id, email: user.email, roleId: user.roleId },
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        permissions:
+          user.role?.permissions.map((p) => p.permission.name) || [],
+      },
       authConfig.jwt.accessSecret,
       accessOpts,
     );
@@ -138,6 +144,9 @@ export class AuthService {
 
       const user = await this.prisma.user.findUnique({
         where: { id: decoded.userId },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
       });
       if (!user || user.status !== 'active')
         return { status: false, message: 'User not found or inactive' };
@@ -151,7 +160,13 @@ export class AuthService {
         issuer: authConfig.jwt.issuer,
       };
       const accessToken = jwt.sign(
-        { userId: user.id, email: user.email, roleId: user.roleId },
+        {
+          userId: user.id,
+          email: user.email,
+          roleId: user.roleId,
+          permissions:
+            user.role?.permissions.map((p) => p.permission.name) || [],
+        },
         authConfig.jwt.accessSecret,
         accessOpts,
       );
