@@ -16,7 +16,7 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLogsService: ActivityLogsService,
-  ) {}
+  ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -34,6 +34,13 @@ export class PayrollService {
     const employees = await this.prisma.employee.findMany({
       where: whereClause,
       include: {
+        department: true,
+        subDepartment: true,
+        designation: true,
+        country: true,
+        state: true,
+        city: true,
+        location: true,
         workingHoursPolicy: true,
         leavesPolicy: true,
         socialSecurityInstitution: {
@@ -437,6 +444,17 @@ export class PayrollService {
         employeeId: employee.id,
         employeeName: employee.employeeName,
         employeeCode: employee.employeeId,
+        employee: {
+          employeeId: employee.employeeId,
+          employeeName: employee.employeeName,
+          department: emp.department?.name || null,
+          subDepartment: emp.subDepartment?.name || null,
+          designation: emp.designation?.name || null,
+          country: emp.country?.name || null,
+          state: emp.state?.name || null,
+          city: emp.city?.name || null,
+          branch: emp.location?.name || null,
+        },
         basicSalary: calculatedBasicSalary.toNumber(),
         salaryBreakup,
         allowanceBreakup,
@@ -658,12 +676,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-            departmentId: filters.departmentId,
-          }),
+          departmentId: filters.departmentId,
+        }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-            subDepartmentId: filters.subDepartmentId,
-          }),
+          subDepartmentId: filters.subDepartmentId,
+        }),
       };
     }
 
@@ -754,12 +772,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-            departmentId: filters.departmentId,
-          }),
+          departmentId: filters.departmentId,
+        }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-            subDepartmentId: filters.subDepartmentId,
-          }),
+          subDepartmentId: filters.subDepartmentId,
+        }),
       };
     }
 
@@ -1056,7 +1074,7 @@ export class PayrollService {
         const matchesMonth =
           advance.deductionMonth === normalizedMonthForComparison ||
           String(Number(advance.deductionMonth)).padStart(2, '0') ===
-            normalizedMonthForComparison;
+          normalizedMonthForComparison;
         const matchesYear =
           advance.deductionYear === normalizedYearForComparison ||
           String(advance.deductionYear) === normalizedYearForComparison;
@@ -1170,7 +1188,7 @@ export class PayrollService {
           0,
           Math.floor(
             (incrementDate.getTime() - lastDate.getTime()) /
-              (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
           ),
         );
 
@@ -1210,7 +1228,7 @@ export class PayrollService {
         0,
         Math.floor(
           (monthEnd.getTime() - lastDate.getTime() + 1000 * 60 * 60 * 24) /
-            (1000 * 60 * 60 * 24),
+          (1000 * 60 * 60 * 24),
         ),
       );
       if (daysAfterLastIncrement > 0) {

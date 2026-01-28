@@ -29,7 +29,7 @@ import {
 @ApiTags('Loan Request')
 @Controller('api')
 export class LoanRequestController {
-  constructor(private service: LoanRequestService) {}
+  constructor(private service: LoanRequestService) { }
 
   @Get('loan-requests')
   @UseGuards(JwtAuthGuard)
@@ -42,6 +42,7 @@ export class LoanRequestController {
   @ApiQuery({ name: 'requestedDate', required: false })
   @ApiQuery({ name: 'repaymentStartMonthYear', required: false })
   async list(
+    @Req() req: any,
     @Query('employeeId') employeeId?: string,
     @Query('loanTypeId') loanTypeId?: string,
     @Query('status') status?: string,
@@ -56,7 +57,7 @@ export class LoanRequestController {
       approvalStatus,
       requestedDate,
       repaymentStartMonthYear,
-    });
+    }, req.user);
   }
 
   @Get('loan-requests/:id')
