@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { Decimal } from '@prisma/client/runtime/client';
 
@@ -7,8 +8,9 @@ import { Decimal } from '@prisma/client/runtime/client';
 export class AttendanceService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(filters?: {
     employeeId?: string;
@@ -97,17 +99,20 @@ export class AttendanceService {
           startDate: { lte: dateEnd },
           endDate: { gte: dateStart },
         },
-        include: {
-          workingHoursPolicy: true,
-        },
         orderBy: { createdAt: 'desc' }, // Most recent assignment takes precedence
       });
 
     // Use assigned policy if exists, otherwise fall back to employee's default policy
-    let policy = policyAssignment?.workingHoursPolicy || null;
+    let policy: any = null;
+
+    if (policyAssignment?.workingHoursPolicyId) {
+      policy = await this.prismaMaster.workingHoursPolicy.findUnique({
+        where: { id: policyAssignment.workingHoursPolicyId },
+      });
+    }
 
     if (!policy && employee?.workingHoursPolicyId) {
-      policy = await this.prisma.workingHoursPolicy.findUnique({
+      policy = await this.prismaMaster.workingHoursPolicy.findUnique({
         where: { id: employee.workingHoursPolicyId },
       });
     }
@@ -385,7 +390,7 @@ export class AttendanceService {
       const errors: Array<{ date: string; error: string }> = [];
 
       // Fetch all active holidays
-      const holidays = await this.prisma.holiday.findMany({
+      const holidays = await this.prismaMaster.holiday.findMany({
         where: { status: 'active' },
       });
 
@@ -978,11 +983,11 @@ export class AttendanceService {
           const checkIn =
             checkInValue && checkInValue.trim()
               ? (() => {
-                  const time24 = convertTo24Hour(checkInValue);
-                  const dateTimeStr = `${dateStr}T${time24}`;
-                  const parsed = new Date(dateTimeStr);
-                  return isNaN(parsed.getTime()) ? undefined : parsed;
-                })()
+                const time24 = convertTo24Hour(checkInValue);
+                const dateTimeStr = `${dateStr}T${time24}`;
+                const parsed = new Date(dateTimeStr);
+                return isNaN(parsed.getTime()) ? undefined : parsed;
+              })()
               : undefined;
 
           const checkOutValue =
@@ -997,14 +1002,14 @@ export class AttendanceService {
           const checkOut =
             checkOutValue && checkOutValue.trim()
               ? (() => {
-                  const time24 = convertTo24Hour(checkOutValue);
-                  const dateTimeStr = `${dateStr}T${time24}`;
-                  const parsed = new Date(dateTimeStr);
-                  return isNaN(parsed.getTime()) ? undefined : parsed;
-                })()
+                const time24 = convertTo24Hour(checkOutValue);
+                const dateTimeStr = `${dateStr}T${time24}`;
+                const parsed = new Date(dateTimeStr);
+                return isNaN(parsed.getTime()) ? undefined : parsed;
+              })()
               : undefined;
           // Check if this date is a public holiday
-          const holiday = await this.prisma.holiday.findFirst({
+          const holiday = await this.prismaMaster.holiday.findFirst({
             where: {
               dateFrom: { lte: date },
               dateTo: { gte: date },
@@ -1025,9 +1030,6 @@ export class AttendanceService {
                 startDate: { lte: dateEnd },
                 endDate: { gte: dateStart },
               },
-              include: {
-                workingHoursPolicy: true,
-              },
               orderBy: { createdAt: 'desc' },
             });
 
@@ -1038,9 +1040,16 @@ export class AttendanceService {
           });
 
           // Use assigned policy if exists, otherwise use default
-          let policy = policyAssignment?.workingHoursPolicy || null;
+          let policy: any = null;
+
+          if (policyAssignment?.workingHoursPolicyId) {
+            policy = await this.prismaMaster.workingHoursPolicy.findUnique({
+              where: { id: policyAssignment.workingHoursPolicyId },
+            });
+          }
+
           if (!policy && employeeWithPolicy?.workingHoursPolicyId) {
-            policy = await this.prisma.workingHoursPolicy.findUnique({
+            policy = await this.prismaMaster.workingHoursPolicy.findUnique({
               where: { id: employeeWithPolicy.workingHoursPolicyId },
             });
           }
@@ -1126,8 +1135,8 @@ export class AttendanceService {
               longitude:
                 record.Longitude || record.longitude
                   ? new Decimal(
-                      parseFloat(record.Longitude || record.longitude),
-                    )
+                    parseFloat(record.Longitude || record.longitude),
+                  )
                   : null,
               workingHours: workingHours,
               overtimeHours: overtimeHours,
@@ -1155,8 +1164,8 @@ export class AttendanceService {
               longitude:
                 record.Longitude || record.longitude
                   ? new Decimal(
-                      parseFloat(record.Longitude || record.longitude),
-                    )
+                    parseFloat(record.Longitude || record.longitude),
+                  )
                   : null,
               workingHours: workingHours,
               overtimeHours: overtimeHours,
@@ -1252,22 +1261,62 @@ export class AttendanceService {
       if (filters?.subDepartmentId)
         employeeWhere.subDepartmentId = filters.subDepartmentId;
 
-      // Get employees with their related data
-      const employees = await this.prisma.employee.findMany({
+      // Get employees (Tenant data only)
+      const rawEmployees = await this.prisma.employee.findMany({
         where: employeeWhere,
-        include: {
-          department: {
-            select: { id: true, name: true },
-          },
-          subDepartment: {
-            select: { id: true, name: true },
-          },
-          designation: {
-            select: { id: true, name: true },
-          },
-          workingHoursPolicy: true,
-        },
       });
+
+      // Fetch Master Data
+      const deptIds = [
+        ...new Set(rawEmployees.map((e) => e.departmentId).filter(Boolean)),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(rawEmployees.map((e) => e.subDepartmentId).filter(Boolean)),
+      ] as string[];
+      const desgIds = [
+        ...new Set(rawEmployees.map((e) => e.designationId).filter(Boolean)),
+      ] as string[];
+      const policyIds = [
+        ...new Set(
+          rawEmployees.map((e) => e.workingHoursPolicyId).filter(Boolean),
+        ),
+      ] as string[];
+
+      const [departments, subDepartments, designations, policies] =
+        await Promise.all([
+          this.prismaMaster.department.findMany({
+            where: { id: { in: deptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.subDepartment.findMany({
+            where: { id: { in: subDeptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.designation.findMany({
+            where: { id: { in: desgIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.workingHoursPolicy.findMany({
+            where: { id: { in: policyIds } },
+          }),
+        ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((d) => [d.id, d]));
+      const desgMap = new Map(designations.map((d) => [d.id, d]));
+      const policyMap = new Map(policies.map((p) => [p.id, p]));
+
+      const employees = rawEmployees.map((e) => ({
+        ...e,
+        department: e.departmentId ? deptMap.get(e.departmentId) : null,
+        subDepartment: e.subDepartmentId
+          ? subDeptMap.get(e.subDepartmentId)
+          : null,
+        designation: e.designationId ? desgMap.get(e.designationId) : null,
+        workingHoursPolicy: e.workingHoursPolicyId
+          ? policyMap.get(e.workingHoursPolicyId)
+          : null,
+      }));
 
       // Get holidays for the date range
       const dateFrom =
@@ -1282,7 +1331,7 @@ export class AttendanceService {
       endDate.setHours(23, 59, 59, 999);
 
       // Get all holidays (they're stored normalized to year 2000, so we check if they fall in the month/day range)
-      const allHolidays = await this.prisma.holiday.findMany({
+      const allHolidays = await this.prismaMaster.holiday.findMany({
         where: { status: 'active' },
       });
 
@@ -1435,7 +1484,7 @@ export class AttendanceService {
         const totalDays =
           Math.round(
             (endMidnight.getTime() - startMidnight.getTime()) /
-              (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
           ) + 1;
         let scheduleDays = 0;
         let offDays = 0;

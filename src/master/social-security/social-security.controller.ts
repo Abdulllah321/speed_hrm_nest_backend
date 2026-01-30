@@ -35,7 +35,7 @@ import {
 @ApiTags('Social Security')
 @Controller('api')
 export class SocialSecurityController {
-  constructor(private service: SocialSecurityService) {}
+  constructor(private service: SocialSecurityService) { }
 
   // ========== Institution Endpoints ==========
   @Get('social-security-institutions')
@@ -114,9 +114,13 @@ export class SocialSecurityController {
     description: 'Filter by institution ID',
   })
   async listEmployerRegistrations(
+    @Query('companyId') companyId: string,
     @Query('institutionId') institutionId?: string,
   ) {
-    return this.service.listEmployerRegistrations(institutionId);
+    if (!companyId) {
+      return { status: false, message: 'Company ID is required' };
+    }
+    return this.service.listEmployerRegistrations(companyId, institutionId);
   }
 
   @Get('social-security-employer-registrations/:id')
@@ -196,11 +200,16 @@ export class SocialSecurityController {
     description: 'Filter by employer registration ID',
   })
   async listEmployeeRegistrations(
+    @Query('companyId') companyId: string,
     @Query('employeeId') employeeId?: string,
     @Query('institutionId') institutionId?: string,
     @Query('employerRegistrationId') employerRegistrationId?: string,
   ) {
+    if (!companyId) {
+      return { status: false, message: 'Company ID is required' };
+    }
     return this.service.listEmployeeRegistrations(
+      companyId,
       employeeId,
       institutionId,
       employerRegistrationId,
@@ -289,12 +298,17 @@ export class SocialSecurityController {
     description: 'Filter by year (YYYY)',
   })
   async listContributions(
+    @Query('companyId') companyId: string,
     @Query('employeeId') employeeId?: string,
     @Query('institutionId') institutionId?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
   ) {
+    if (!companyId) {
+      return { status: false, message: 'Company ID is required' };
+    }
     return this.service.listContributions(
+      companyId,
       employeeId,
       institutionId,
       month,

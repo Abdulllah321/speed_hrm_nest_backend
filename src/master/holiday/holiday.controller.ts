@@ -10,9 +10,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { HolidayService } from './holiday.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { Permissions } from '../common/decorators/permissions.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -27,7 +27,7 @@ import { CreateHolidayDto, UpdateHolidayDto } from './dto/holiday.dto';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class HolidayController {
-  constructor(private service: HolidayService) {}
+  constructor(private service: HolidayService) { }
 
   @Get('holidays')
   @Permissions('hr.holiday.read')

@@ -10,21 +10,26 @@ import {
   Req,
 } from '@nestjs/common';
 import { ChartOfAccountService } from './chart-of-account.service';
-import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
+import {
+  CreateChartOfAccountDto,
+  UpdateChartOfAccountDto,
+} from './dto/chart-of-account.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Chart of Accounts')
 @Controller('api/finance/chart-of-accounts')
 export class ChartOfAccountController {
-  constructor(private readonly chartOfAccountService: ChartOfAccountService) {}
+  constructor(private readonly chartOfAccountService: ChartOfAccountService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new chart of account' })
   create(@Body() createDto: CreateChartOfAccountDto, @Req() req: any) {
-    return this.chartOfAccountService.create(createDto, { userId: req.user?.userId });
+    return this.chartOfAccountService.create(createDto, {
+      userId: req.user?.userId,
+    });
   }
 
   @Get()
@@ -52,7 +57,9 @@ export class ChartOfAccountController {
     @Body() updateDto: UpdateChartOfAccountDto,
     @Req() req: any,
   ) {
-    return this.chartOfAccountService.update(id, updateDto, { userId: req.user?.userId });
+    return this.chartOfAccountService.update(id, updateDto, {
+      userId: req.user?.userId,
+    });
   }
 
   @Delete(':id')

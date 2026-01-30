@@ -1,14 +1,16 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsGateway } from './activity-logs.gateway';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 
 @Injectable()
 export class ActivityLogsService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => ActivityLogsGateway))
     private gateway: ActivityLogsGateway,
-  ) {}
+  ) { }
 
   async findAll(query: {
     page?: number;
@@ -38,7 +40,9 @@ export class ActivityLogsService {
         { description: { contains: query.search, mode: 'insensitive' } },
         { ipAddress: { contains: query.search, mode: 'insensitive' } },
         { user: { email: { contains: query.search, mode: 'insensitive' } } },
-        { user: { firstName: { contains: query.search, mode: 'insensitive' } } },
+        {
+          user: { firstName: { contains: query.search, mode: 'insensitive' } },
+        },
         { user: { lastName: { contains: query.search, mode: 'insensitive' } } },
       ];
     }
@@ -59,7 +63,7 @@ export class ActivityLogsService {
     }
 
     const [logs, total] = await Promise.all([
-      this.prisma.activityLog.findMany({
+      this.prismaMaster.activityLog.findMany({
         where,
         skip,
         take: limit,
@@ -75,7 +79,7 @@ export class ActivityLogsService {
           },
         },
       }),
-      this.prisma.activityLog.count({ where }),
+      this.prismaMaster.activityLog.count({ where }),
     ]);
 
     return {
@@ -105,7 +109,7 @@ export class ActivityLogsService {
     let validUserId: string | null = null;
     if (data.userId) {
       try {
-        const user = await this.prisma.user.findUnique({
+        const user = await this.prismaMaster.user.findUnique({
           where: { id: data.userId },
           select: { id: true },
         });
@@ -118,7 +122,7 @@ export class ActivityLogsService {
       }
     }
 
-    const created = await this.prisma.activityLog.create({
+    const created = await this.prismaMaster.activityLog.create({
       data: {
         userId: validUserId,
         action: data.action,

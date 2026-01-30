@@ -24,7 +24,7 @@ import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 @ApiTags('Location')
 @Controller('api')
 export class LocationController {
-  constructor(private service: LocationService) {}
+  constructor(private service: LocationService) { }
 
   @Get('locations')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.location.read'))

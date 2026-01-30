@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { PrismaService } from '../../database/prisma.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   CreateAdvanceSalaryDto,
   UpdateAdvanceSalaryDto,
@@ -12,6 +13,7 @@ import {
 export class AdvanceSalaryService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
   ) { }
@@ -56,7 +58,7 @@ export class AdvanceSalaryService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
+      const department = await this.prismaMaster.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -74,7 +76,7 @@ export class AdvanceSalaryService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
+      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -114,6 +116,7 @@ export class AdvanceSalaryService {
     status?: string;
   }) {
     try {
+
       const where: any = {};
 
       if (params?.employeeId) {
@@ -148,42 +151,8 @@ export class AdvanceSalaryService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -192,7 +161,62 @@ export class AdvanceSalaryService {
         },
       });
 
-      return { status: true, data: advanceSalaries };
+      if (advanceSalaries.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Collect IDs for Master Data fetching
+      const userIds = new Set<string>();
+      const deptIds = new Set<string>();
+      const subDeptIds = new Set<string>();
+
+      advanceSalaries.forEach((as) => {
+        if (as.approvedById) userIds.add(as.approvedById);
+        if (as.createdById) userIds.add(as.createdById);
+        if (as.updatedById) userIds.add(as.updatedById);
+        if (as.employee?.departmentId) deptIds.add(as.employee.departmentId);
+        if (as.employee?.subDepartmentId)
+          subDeptIds.add(as.employee.subDepartmentId);
+      });
+
+      const [users, departments, subDepartments] = await Promise.all([
+        this.prismaMaster.user.findMany({
+          where: { id: { in: Array.from(userIds) } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }),
+        this.prismaMaster.department.findMany({
+          where: { id: { in: Array.from(deptIds) } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: Array.from(subDeptIds) } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+
+      const mapped = advanceSalaries.map((as) => ({
+        ...as,
+        employee: as.employee
+          ? {
+            ...as.employee,
+            department: as.employee.departmentId
+              ? deptMap.get(as.employee.departmentId)
+              : null,
+            subDepartment: as.employee.subDepartmentId
+              ? subDeptMap.get(as.employee.subDepartmentId)
+              : null,
+          }
+          : null,
+        approvedBy: as.approvedById ? userMap.get(as.approvedById) : null,
+        createdBy: as.createdById ? userMap.get(as.createdById) : null,
+        updatedBy: as.updatedById ? userMap.get(as.updatedById) : null,
+      }));
+
+      return { status: true, data: mapped };
     } catch (error) {
       console.error('Error listing advance salaries:', error);
       return {
@@ -207,6 +231,7 @@ export class AdvanceSalaryService {
 
   async get(id: string) {
     try {
+
       const advanceSalary = await this.prisma.advanceSalary.findUnique({
         where: { id },
         include: {
@@ -215,42 +240,8 @@ export class AdvanceSalaryService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -260,7 +251,55 @@ export class AdvanceSalaryService {
         return { status: false, message: 'Advance salary not found' };
       }
 
-      return { status: true, data: advanceSalary };
+      // Fetch Master Data
+      const userIds = [
+        advanceSalary.approvedById,
+        advanceSalary.createdById,
+        advanceSalary.updatedById,
+      ].filter(Boolean) as string[];
+
+      const [users, department, subDepartment] = await Promise.all([
+        this.prismaMaster.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }),
+        advanceSalary.employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: advanceSalary.employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        advanceSalary.employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: advanceSalary.employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+      ]);
+
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const mapped = {
+        ...advanceSalary,
+        employee: advanceSalary.employee
+          ? {
+            ...advanceSalary.employee,
+            department: department || null,
+            subDepartment: subDepartment || null,
+          }
+          : null,
+        approvedBy: advanceSalary.approvedById
+          ? userMap.get(advanceSalary.approvedById)
+          : null,
+        createdBy: advanceSalary.createdById
+          ? userMap.get(advanceSalary.createdById)
+          : null,
+        updatedBy: advanceSalary.updatedById
+          ? userMap.get(advanceSalary.updatedById)
+          : null,
+      };
+
+      return { status: true, data: mapped };
     } catch (error) {
       console.error('Error getting advance salary:', error);
       return {
@@ -278,6 +317,7 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!body.advanceSalaries || body.advanceSalaries.length === 0) {
         return {
           status: false,
@@ -503,6 +543,7 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.advanceSalary.findUnique({
         where: { id },
       });
@@ -603,6 +644,7 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) return { status: false, message: 'Unauthorized' };
 
       const existing = await this.prisma.advanceSalary.findUnique({
@@ -824,6 +866,7 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) return { status: false, message: 'Unauthorized' };
 
       const existing = await this.prisma.advanceSalary.findUnique({
@@ -931,6 +974,7 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.advanceSalary.findUnique({
         where: { id },
       });

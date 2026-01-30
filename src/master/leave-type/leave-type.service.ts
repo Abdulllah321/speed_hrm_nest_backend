@@ -1,23 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class LeaveTypeService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.leaveType.findMany({
+    const items = await this.prismaMaster.leaveType.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.leaveType.findUnique({ where: { id } });
+    const item = await this.prismaMaster.leaveType.findUnique({
+      where: { id },
+    });
     if (!item) return { status: false, message: 'Leave type not found' };
     return { status: true, data: item };
   }
@@ -27,7 +29,7 @@ export class LeaveTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.leaveType.create({
+      const created = await this.prismaMaster.leaveType.create({
         data: {
           name: body.name,
           status: body.status ?? 'active',
@@ -70,10 +72,10 @@ export class LeaveTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leaveType.findUnique({
+      const existing = await this.prismaMaster.leaveType.findUnique({
         where: { id },
       });
-      const updated = await this.prisma.leaveType.update({
+      const updated = await this.prismaMaster.leaveType.update({
         where: { id },
         data: {
           name: body.name ?? existing?.name,
@@ -117,10 +119,12 @@ export class LeaveTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leaveType.findUnique({
+      const existing = await this.prismaMaster.leaveType.findUnique({
         where: { id },
       });
-      const removed = await this.prisma.leaveType.delete({ where: { id } });
+      const removed = await this.prismaMaster.leaveType.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -158,7 +162,7 @@ export class LeaveTypeService {
     if (!items?.length)
       return { status: false, message: 'No leave types to create' };
     try {
-      const result = await this.prisma.leaveType.createMany({
+      const result = await this.prismaMaster.leaveType.createMany({
         data: items.map((i) => ({
           name: i.name,
           status: i.status ?? 'active',
@@ -203,10 +207,10 @@ export class LeaveTypeService {
       return { status: false, message: 'No leave types to update' };
     try {
       for (const i of items) {
-        const existing = await this.prisma.leaveType.findUnique({
+        const existing = await this.prismaMaster.leaveType.findUnique({
           where: { id: i.id },
         });
-        await this.prisma.leaveType.update({
+        await this.prismaMaster.leaveType.update({
           where: { id: i.id },
           data: {
             name: i.name ?? existing?.name,
@@ -250,10 +254,10 @@ export class LeaveTypeService {
     if (!ids?.length)
       return { status: false, message: 'No leave types to delete' };
     try {
-      const existing = await this.prisma.leaveType.findMany({
+      const existing = await this.prismaMaster.leaveType.findMany({
         where: { id: { in: ids } },
       });
-      const result = await this.prisma.leaveType.deleteMany({
+      const result = await this.prismaMaster.leaveType.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

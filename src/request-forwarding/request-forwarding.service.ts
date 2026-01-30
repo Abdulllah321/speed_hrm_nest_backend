@@ -3,17 +3,19 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { CreateRequestForwardingDto } from './dto/create-request-forwarding.dto';
 import { UpdateRequestForwardingDto } from './dto/update-request-forwarding.dto';
+import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class RequestForwardingService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const configurations =
@@ -29,41 +31,68 @@ export class RequestForwardingService {
                   employeeName: true,
                 },
               },
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
             },
           },
         },
         orderBy: { createdAt: 'desc' },
       });
 
-    return { status: true, data: configurations };
+    // Collect all IDs for Master DB lookup
+    const deptIds = new Set<string>();
+    const subDeptIds = new Set<string>();
+    const userIds = new Set<string>();
+
+    configurations.forEach((config) => {
+      if (config.createdById) userIds.add(config.createdById);
+      if (config.updatedById) userIds.add(config.updatedById);
+      config.approvalLevels.forEach((level) => {
+        if (level.departmentId) deptIds.add(level.departmentId);
+        if (level.subDepartmentId) subDeptIds.add(level.subDepartmentId);
+      });
+    });
+
+    // Fetch Master DB data in parallel
+    const [departments, subDepartments, users] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: Array.from(deptIds) } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: Array.from(subDeptIds) } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.user.findMany({
+        where: { id: { in: Array.from(userIds) } },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      }),
+    ]);
+
+    // Create maps for quick lookup
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    // Map the results back
+    const mapped = configurations.map((config) => ({
+      ...config,
+      createdBy: config.createdById
+        ? userMap.get(config.createdById) || null
+        : null,
+      updatedBy: config.updatedById
+        ? userMap.get(config.updatedById) || null
+        : null,
+      approvalLevels: config.approvalLevels.map((level) => ({
+        ...level,
+        department: level.departmentId
+          ? deptMap.get(level.departmentId) || null
+          : null,
+        subDepartment: level.subDepartmentId
+          ? subDeptMap.get(level.subDepartmentId) || null
+          : null,
+      })),
+    }));
+
+    return { status: true, data: mapped };
   }
 
   async getByRequestType(requestType: string) {
@@ -81,34 +110,6 @@ export class RequestForwardingService {
                   employeeName: true,
                 },
               },
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
             },
           },
         },
@@ -121,7 +122,60 @@ export class RequestForwardingService {
       };
     }
 
-    return { status: true, data: configuration };
+    // Collect all IDs for Master DB lookup
+    const deptIds = new Set<string>();
+    const subDeptIds = new Set<string>();
+    const userIds = new Set<string>();
+
+    if (configuration.createdById) userIds.add(configuration.createdById);
+    if (configuration.updatedById) userIds.add(configuration.updatedById);
+    configuration.approvalLevels.forEach((level) => {
+      if (level.departmentId) deptIds.add(level.departmentId);
+      if (level.subDepartmentId) subDeptIds.add(level.subDepartmentId);
+    });
+
+    // Fetch Master DB data in parallel
+    const [departments, subDepartments, users] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: Array.from(deptIds) } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: Array.from(subDeptIds) } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.user.findMany({
+        where: { id: { in: Array.from(userIds) } },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      }),
+    ]);
+
+    // Create maps for quick lookup
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    // Map the results back
+    const mapped = {
+      ...configuration,
+      createdBy: configuration.createdById
+        ? userMap.get(configuration.createdById) || null
+        : null,
+      updatedBy: configuration.updatedById
+        ? userMap.get(configuration.updatedById) || null
+        : null,
+      approvalLevels: configuration.approvalLevels.map((level) => ({
+        ...level,
+        department: level.departmentId
+          ? deptMap.get(level.departmentId) || null
+          : null,
+        subDepartment: level.subDepartmentId
+          ? subDeptMap.get(level.subDepartmentId) || null
+          : null,
+      })),
+    };
+
+    return { status: true, data: mapped };
   }
 
   async create(
@@ -256,32 +310,61 @@ export class RequestForwardingService {
                   employeeName: true,
                 },
               },
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
             },
           },
         },
       });
     });
 
+    if (!result) {
+      return { status: false, message: 'Failed to create configuration' };
+    }
+
+    // Collect all IDs for Master DB lookup
+    const deptIds = new Set<string>();
+    const subDeptIds = new Set<string>();
+
+    result.approvalLevels.forEach((level) => {
+      if (level.departmentId) deptIds.add(level.departmentId);
+      if (level.subDepartmentId) subDeptIds.add(level.subDepartmentId);
+    });
+
+    // Fetch Master DB data in parallel (Promise.all as requested)
+    const [departments, subDepartments] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: Array.from(deptIds) } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: Array.from(subDeptIds) } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+
+    const mappedResult = {
+      ...result,
+      approvalLevels: result.approvalLevels.map((level) => ({
+        ...level,
+        department: level.departmentId
+          ? deptMap.get(level.departmentId) || null
+          : null,
+        subDepartment: level.subDepartmentId
+          ? subDeptMap.get(level.subDepartmentId) || null
+          : null,
+      })),
+    };
+
     // Log activity
-    if (result) {
+    if (mappedResult) {
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'request-forwarding',
         entity: 'RequestForwardingConfiguration',
-        entityId: result.id,
+        entityId: mappedResult.id,
         description: `Created request forwarding configuration for ${body.requestType}`,
         newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
@@ -290,7 +373,7 @@ export class RequestForwardingService {
       });
     }
 
-    return { status: true, data: result };
+    return { status: true, data: mappedResult };
   }
 
   async update(
@@ -449,33 +532,62 @@ export class RequestForwardingService {
                   employeeName: true,
                 },
               },
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
             },
           },
         },
       });
     });
 
+    if (!result) {
+      return { status: false, message: 'Failed to update configuration' };
+    }
+
+    // Collect all IDs for Master DB lookup
+    const deptIds = new Set<string>();
+    const subDeptIds = new Set<string>();
+
+    result.approvalLevels.forEach((level) => {
+      if (level.departmentId) deptIds.add(level.departmentId);
+      if (level.subDepartmentId) subDeptIds.add(level.subDepartmentId);
+    });
+
+    // Fetch Master DB data in parallel (Promise.all as requested)
+    const [departments, subDepartments] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: Array.from(deptIds) } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: Array.from(subDeptIds) } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+
+    const mappedResult = {
+      ...result,
+      approvalLevels: result.approvalLevels.map((level) => ({
+        ...level,
+        department: level.departmentId
+          ? deptMap.get(level.departmentId) || null
+          : null,
+        subDepartment: level.subDepartmentId
+          ? subDeptMap.get(level.subDepartmentId) || null
+          : null,
+      })),
+    };
+
     // Log activity
-    if (result) {
+    if (mappedResult) {
       const action = existing ? 'update' : 'create';
       await this.activityLogs.log({
         userId: ctx.userId,
         action: action,
         module: 'request-forwarding',
         entity: 'RequestForwardingConfiguration',
-        entityId: result.id,
+        entityId: mappedResult.id,
         description: `${existing ? 'Updated' : 'Created'} request forwarding configuration for ${requestType}`,
         oldValues: existing ? JSON.stringify(existing) : undefined,
         newValues: JSON.stringify({ requestType, ...body }),
@@ -485,7 +597,7 @@ export class RequestForwardingService {
       });
     }
 
-    return { status: true, data: result };
+    return { status: true, data: mappedResult };
   }
 
   async delete(

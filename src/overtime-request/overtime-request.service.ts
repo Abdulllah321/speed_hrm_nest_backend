@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 import {
   CreateOvertimeRequestDto,
   UpdateOvertimeRequestDto,
@@ -11,6 +12,7 @@ import {
 export class OvertimeRequestService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
   ) {}
@@ -55,7 +57,7 @@ export class OvertimeRequestService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
+      const department = await this.prismaMaster.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -73,7 +75,7 @@ export class OvertimeRequestService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
+      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -143,26 +145,8 @@ export class OvertimeRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -171,34 +155,90 @@ export class OvertimeRequestService {
         },
       });
 
+      // Fetch Master data in parallel for performance
+      const deptIds = [
+        ...new Set(
+          overtimeRequests.map((r) => r.employee.departmentId).filter(Boolean),
+        ),
+      ];
+      const subDeptIds = [
+        ...new Set(
+          overtimeRequests
+            .map((r) => r.employee.subDepartmentId)
+            .filter(Boolean),
+        ),
+      ];
+      const userIds = [
+        ...new Set([
+          ...overtimeRequests.map((r) => r.createdById).filter(Boolean),
+          ...overtimeRequests.map((r) => r.approval1).filter(Boolean),
+          ...overtimeRequests.map((r) => r.approval2).filter(Boolean),
+        ]),
+      ];
+
+      const [departments, subDepartments, users] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds as string[] } },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds as string[] } },
+        }),
+        this.prismaMaster.user.findMany({
+          where: { id: { in: userIds as string[] } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
       // Transform data to match frontend expectations
-      const transformedData = overtimeRequests.map((request) => ({
-        id: request.id,
-        employeeId: request.employeeId,
-        employeeName: request.employee.employeeName,
-        employeeCode: request.employee.employeeId,
-        overtimeType: request.overtimeType,
-        title: request.title,
-        description: request.description,
-        date: request.date.toISOString(),
-        weekdayOvertimeHours: Number(request.weekdayOvertimeHours),
-        holidayOvertimeHours: Number(request.holidayOvertimeHours),
-        status: request.status,
-        approval1: request.approval1,
-        approval1Status: (request as any).approval1Status || null,
-        approval1Date: (request as any).approval1Date
-          ? (request as any).approval1Date.toISOString()
-          : null,
-        approval2: request.approval2,
-        approval2Status: (request as any).approval2Status || null,
-        approval2Date: (request as any).approval2Date
-          ? (request as any).approval2Date.toISOString()
-          : null,
-        remarks: (request as any).remarks || null,
-        createdById: request.createdById,
-        createdAt: request.createdAt.toISOString(),
-        updatedAt: request.updatedAt.toISOString(),
-      }));
+      const transformedData = overtimeRequests.map((request) => {
+        const creator = request.createdById
+          ? userMap.get(request.createdById)
+          : null;
+        return {
+          id: request.id,
+          employeeId: request.employeeId,
+          employeeName: request.employee.employeeName,
+          employeeCode: request.employee.employeeId,
+          department: deptMap.get(request.employee.departmentId)?.name || 'N/A',
+          subDepartment: request.employee.subDepartmentId
+            ? subDeptMap.get(request.employee.subDepartmentId)?.name || 'N/A'
+            : 'N/A',
+          overtimeType: request.overtimeType,
+          title: request.title,
+          description: request.description,
+          date: request.date.toISOString(),
+          weekdayOvertimeHours: Number(request.weekdayOvertimeHours),
+          holidayOvertimeHours: Number(request.holidayOvertimeHours),
+          status: request.status,
+          approval1: request.approval1,
+          approval1Name: request.approval1
+            ? `${userMap.get(request.approval1)?.firstName || ''} ${userMap.get(request.approval1)?.lastName || ''}`.trim()
+            : null,
+          approval1Status: (request as any).approval1Status || null,
+          approval1Date: (request as any).approval1Date
+            ? (request as any).approval1Date.toISOString()
+            : null,
+          approval2: request.approval2,
+          approval2Name: request.approval2
+            ? `${userMap.get(request.approval2)?.firstName || ''} ${userMap.get(request.approval2)?.lastName || ''}`.trim()
+            : null,
+          approval2Status: (request as any).approval2Status || null,
+          approval2Date: (request as any).approval2Date
+            ? (request as any).approval2Date.toISOString()
+            : null,
+          remarks: (request as any).remarks || null,
+          createdById: request.createdById,
+          creatorName: creator
+            ? `${creator.firstName} ${creator.lastName}`
+            : null,
+          createdAt: request.createdAt.toISOString(),
+          updatedAt: request.updatedAt.toISOString(),
+        };
+      });
 
       return { status: true, data: transformedData };
     } catch (error) {
@@ -223,34 +263,8 @@ export class OvertimeRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -260,12 +274,45 @@ export class OvertimeRequestService {
         return { status: false, message: 'Overtime request not found' };
       }
 
+      // Fetch Master data
+      const userIds = [
+        overtimeRequest.createdById,
+        (overtimeRequest as any).updatedById,
+        overtimeRequest.approval1,
+        overtimeRequest.approval2,
+      ].filter(Boolean) as string[];
+
+      const [dept, subDept, users] = await Promise.all([
+        this.prismaMaster.department.findUnique({
+          where: { id: overtimeRequest.employee.departmentId },
+        }),
+        overtimeRequest.employee.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+              where: { id: overtimeRequest.employee.subDepartmentId },
+            })
+          : null,
+        this.prismaMaster.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }),
+      ]);
+
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const creator = overtimeRequest.createdById
+        ? userMap.get(overtimeRequest.createdById)
+        : null;
+      const updater = (overtimeRequest as any).updatedById
+        ? userMap.get((overtimeRequest as any).updatedById)
+        : null;
+
       // Transform data to match frontend expectations
       const transformedData = {
         id: overtimeRequest.id,
         employeeId: overtimeRequest.employeeId,
         employeeName: overtimeRequest.employee.employeeName,
         employeeCode: overtimeRequest.employee.employeeId,
+        department: dept?.name || 'N/A',
+        subDepartment: subDept?.name || 'N/A',
         overtimeType: overtimeRequest.overtimeType,
         title: overtimeRequest.title,
         description: overtimeRequest.description,
@@ -274,17 +321,25 @@ export class OvertimeRequestService {
         holidayOvertimeHours: Number(overtimeRequest.holidayOvertimeHours),
         status: overtimeRequest.status,
         approval1: overtimeRequest.approval1,
+        approval1Name: overtimeRequest.approval1
+          ? `${userMap.get(overtimeRequest.approval1)?.firstName || ''} ${userMap.get(overtimeRequest.approval1)?.lastName || ''}`.trim()
+          : null,
         approval1Status: (overtimeRequest as any).approval1Status || null,
         approval1Date: (overtimeRequest as any).approval1Date
           ? (overtimeRequest as any).approval1Date.toISOString()
           : null,
         approval2: overtimeRequest.approval2,
+        approval2Name: overtimeRequest.approval2
+          ? `${userMap.get(overtimeRequest.approval2)?.firstName || ''} ${userMap.get(overtimeRequest.approval2)?.lastName || ''}`.trim()
+          : null,
         approval2Status: (overtimeRequest as any).approval2Status || null,
         approval2Date: (overtimeRequest as any).approval2Date
           ? (overtimeRequest as any).approval2Date.toISOString()
           : null,
         remarks: (overtimeRequest as any).remarks || null,
         createdById: overtimeRequest.createdById,
+        createdBy: creator,
+        updatedBy: updater,
         createdAt: overtimeRequest.createdAt.toISOString(),
         updatedAt: overtimeRequest.updatedAt.toISOString(),
       };

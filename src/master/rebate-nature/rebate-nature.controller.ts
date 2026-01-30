@@ -19,16 +19,16 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { Permissions } from '../common/decorators/permissions.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Rebate Nature')
 @Controller('api/rebate-nature')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RebateNatureController {
-  constructor(private readonly rebateNatureService: RebateNatureService) {}
+  constructor(private readonly rebateNatureService: RebateNatureService) { }
 
   @Post()
   @Permissions('hr.rebate-nature.create')

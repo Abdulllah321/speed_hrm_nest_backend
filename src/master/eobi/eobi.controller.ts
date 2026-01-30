@@ -24,7 +24,7 @@ import { CreateEobiDto, UpdateEobiDto } from './dto/eobi.dto';
 @ApiTags('EOBI')
 @Controller('api')
 export class EobiController {
-  constructor(private service: EobiService) {}
+  constructor(private service: EobiService) { }
 
   @Get('eobis')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.read'))

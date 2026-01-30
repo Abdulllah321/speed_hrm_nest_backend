@@ -28,7 +28,7 @@ import { UploadModule } from './upload/upload.module';
 import { BonusTypeModule } from './master/bonus-type/bonus-type.module';
 import { SalaryBreakupModule } from './master/salary-breakup/salary-breakup.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
-import { HolidayModule } from './holiday/holiday.module';
+import { HolidayModule } from './master/holiday/holiday.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
 import { AttendanceRequestQueryModule } from './attendance-request-query/attendance-request-query.module';
@@ -37,7 +37,7 @@ import { LeaveApplicationModule } from './leave-application/leave-application.mo
 import { RequestForwardingModule } from './request-forwarding/request-forwarding.module';
 import { AllowanceModule } from './allowance/allowance.module';
 import { DeductionModule } from './deduction/deduction.module';
-import { AdvanceSalaryModule } from './advance-salary/advance-salary.module';
+import { AdvanceSalaryModule } from './master/advance-salary/advance-salary.module';
 import { LeaveEncashmentModule } from './leave-encashment/leave-encashment.module';
 import { LoanRequestModule } from './loan-request/loan-request.module';
 import { AllowanceHeadModule } from './master/allowance-head/allowance-head.module';
@@ -46,7 +46,7 @@ import { OvertimeRequestModule } from './overtime-request/overtime-request.modul
 import { IncrementModule } from './increment/increment.module';
 import { BonusModule } from './bonus/bonus.module';
 import { BankModule } from './master/bank/bank.module';
-import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
+import { RebateNatureModule } from './master/rebate-nature/rebate-nature.module';
 import { RebateModule } from './rebate/rebate.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
@@ -60,6 +60,8 @@ import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
 import { TransferModule } from './employee/transfer/transfer.module';
+import { DatabaseModule } from './database/database.module';
+import { CompanyModule } from './admin/company/company.module';
 
 @Module({
   imports: [
@@ -74,6 +76,7 @@ import { TransferModule } from './employee/transfer/transfer.module';
         }),
       }),
     }),
+    DatabaseModule,
     PrismaModule,
     AuthModule, // added swagger
     EmployeeModule, // added swagger
@@ -130,6 +133,7 @@ import { TransferModule } from './employee/transfer/transfer.module';
     PermissionModule,
     ChartOfAccountModule,
     TransferModule,
+    CompanyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

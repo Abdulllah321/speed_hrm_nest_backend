@@ -1,19 +1,18 @@
 model ChartOfAccount {
-  id          String           @id @default(uuid())
-  code        String           @unique
+  id          String      @id @default(uuid())
+  code        String      @unique
   name        String
   type        AccountType
-  isGroup     Boolean          @default(false)
+  isGroup     Boolean     @default(false)
   parentId    String?
-  balance     Decimal          @default(0.0) @db.Decimal(15, 2)
-  isActive    Boolean          @default(true)
-  createdById String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  balance     Decimal     @default(0.0) @db.Decimal(15, 2)
+  isActive    Boolean     @default(true)
+  createdById String? // User in Master DB
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  parent      ChartOfAccount?  @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
-  children    ChartOfAccount[] @relation("ChartOfAccountHierarchy")
-  createdBy   User?            @relation("ChartOfAccountCreatedBy", fields: [createdById], references: [id])
+  parent   ChartOfAccount?  @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
+  children ChartOfAccount[] @relation("ChartOfAccountHierarchy")
 
   @@index([parentId])
   @@index([type])

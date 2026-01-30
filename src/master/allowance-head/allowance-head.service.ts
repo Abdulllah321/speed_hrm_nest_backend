@@ -1,23 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 
 @Injectable()
 export class AllowanceHeadService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.allowanceHead.findMany({
+    const items = await this.prismaMaster.allowanceHead.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.allowanceHead.findUnique({ where: { id } });
+    const item = await this.prismaMaster.allowanceHead.findUnique({
+      where: { id },
+    });
     if (!item) return { status: false, message: 'Allowance head not found' };
     return { status: true, data: item };
   }
@@ -33,7 +35,7 @@ export class AllowanceHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.allowanceHead.create({
+      const created = await this.prismaMaster.allowanceHead.create({
         data: {
           name: body.name,
           calculationType: body.calculationType ?? 'Amount',
@@ -85,7 +87,7 @@ export class AllowanceHeadService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prisma.allowanceHead.createMany({
+      const result = await this.prismaMaster.allowanceHead.createMany({
         data: items.map((item) => ({
           name: item.name,
           calculationType: item.calculationType ?? 'Amount',
@@ -137,7 +139,7 @@ export class AllowanceHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.allowanceHead.findUnique({
+      const existing = await this.prismaMaster.allowanceHead.findUnique({
         where: { id },
       });
       const updateData: {
@@ -156,7 +158,7 @@ export class AllowanceHeadService {
           ? Number(body.percentage)
           : null;
       if (body.status !== undefined) updateData.status = body.status;
-      const updated = await this.prisma.allowanceHead.update({
+      const updated = await this.prismaMaster.allowanceHead.update({
         where: { id },
         data: updateData,
       });
@@ -222,7 +224,7 @@ export class AllowanceHeadService {
             ? Number(item.percentage)
             : null;
         if (item.status !== undefined) updateData.status = item.status;
-        await this.prisma.allowanceHead.update({
+        await this.prismaMaster.allowanceHead.update({
           where: { id: item.id },
           data: updateData,
         });
@@ -261,10 +263,12 @@ export class AllowanceHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.allowanceHead.findUnique({
+      const existing = await this.prismaMaster.allowanceHead.findUnique({
         where: { id },
       });
-      const removed = await this.prisma.allowanceHead.delete({ where: { id } });
+      const removed = await this.prismaMaster.allowanceHead.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -301,7 +305,7 @@ export class AllowanceHeadService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prisma.allowanceHead.deleteMany({
+      const removed = await this.prismaMaster.allowanceHead.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 
 @Injectable()
 export class QualificationService {
   constructor(
-    private prisma: PrismaService,
+    private prisma: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const items = await this.prisma.qualification.findMany({

@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { Holiday } from '@prisma/client';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { Holiday } from '@prisma/management-client';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class HolidayService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.holiday.findMany({
+    const items = await this.prismaMaster.holiday.findMany({
       orderBy: { createdAt: 'desc' },
     });
     // Convert dates to current year for display (holidays are recurring annually)
@@ -40,7 +40,7 @@ export class HolidayService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.holiday.findUnique({ where: { id } });
+    const item = await this.prismaMaster.holiday.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'Holiday not found' };
     // Convert dates to current year for display
     const currentYear = new Date().getFullYear();
@@ -82,7 +82,7 @@ export class HolidayService {
         };
       }
 
-      const created = await this.prisma.holiday.create({
+      const created = await this.prismaMaster.holiday.create({
         data: {
           name: body.name,
           dateFrom: normalizedDateFrom,
@@ -146,7 +146,9 @@ export class HolidayService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.holiday.findUnique({ where: { id } });
+      const existing = await this.prismaMaster.holiday.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return { status: false, message: 'Holiday not found' };
       }
@@ -195,7 +197,7 @@ export class HolidayService {
         }
       }
 
-      const updated = await this.prisma.holiday.update({
+      const updated = await this.prismaMaster.holiday.update({
         where: { id },
         data: updateData,
       });
@@ -258,12 +260,14 @@ export class HolidayService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.holiday.findUnique({ where: { id } });
+      const existing = await this.prismaMaster.holiday.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return { status: false, message: 'Holiday not found' };
       }
 
-      const removed = await this.prisma.holiday.delete({ where: { id } });
+      const removed = await this.prismaMaster.holiday.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -333,7 +337,7 @@ export class HolidayService {
           continue;
         }
 
-        const holiday = await this.prisma.holiday.create({
+        const holiday = await this.prismaMaster.holiday.create({
           data: {
             name: item.name,
             dateFrom: normalizedDateFrom,
@@ -404,7 +408,7 @@ export class HolidayService {
 
     try {
       for (const item of items) {
-        const existing = await this.prisma.holiday.findUnique({
+        const existing = await this.prismaMaster.holiday.findUnique({
           where: { id: item.id },
         });
         if (!existing) continue;
@@ -430,7 +434,7 @@ export class HolidayService {
           continue;
         }
 
-        await this.prisma.holiday.update({
+        await this.prismaMaster.holiday.update({
           where: { id: item.id },
           data: updateData,
         });
@@ -475,10 +479,10 @@ export class HolidayService {
       return { status: false, message: 'No holidays to delete' };
 
     try {
-      const existing = await this.prisma.holiday.findMany({
+      const existing = await this.prismaMaster.holiday.findMany({
         where: { id: { in: ids } },
       });
-      const result = await this.prisma.holiday.deleteMany({
+      const result = await this.prismaMaster.holiday.deleteMany({
         where: { id: { in: ids } },
       });
 

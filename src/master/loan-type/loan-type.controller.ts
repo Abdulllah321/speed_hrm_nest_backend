@@ -29,7 +29,7 @@ import {
 @ApiTags('Loan Type')
 @Controller('api')
 export class LoanTypeController {
-  constructor(private service: LoanTypeService) {}
+  constructor(private service: LoanTypeService) { }
 
   @Get('loan-types')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.read'))

@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   controllers: [AllowanceHeadController],
   providers: [AllowanceHeadService],
 })
-export class AllowanceHeadModule {}
+export class AllowanceHeadModule { }

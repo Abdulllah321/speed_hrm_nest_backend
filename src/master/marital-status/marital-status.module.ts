@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   controllers: [MaritalStatusController],
   providers: [MaritalStatusService],
 })
-export class MaritalStatusModule {}
+export class MaritalStatusModule { }

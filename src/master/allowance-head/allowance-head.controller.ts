@@ -27,7 +27,7 @@ import {
 @ApiTags('Allowance Head')
 @Controller('api')
 export class AllowanceHeadController {
-  constructor(private service: AllowanceHeadService) {}
+  constructor(private service: AllowanceHeadService) { }
 
   @Get('allowance-heads')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.read'))

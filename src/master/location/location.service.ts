@@ -1,16 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class LocationService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.location.findMany({
+    const items = await this.prismaMaster.location.findMany({
       include: { city: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -18,7 +19,7 @@ export class LocationService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.location.findUnique({
+    const item = await this.prismaMaster.location.findUnique({
       where: { id },
       include: { city: true },
     });
@@ -31,7 +32,7 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.location.create({
+      const created = await this.prismaMaster.location.create({
         data: {
           name: body.name,
           address: body.address || null,
@@ -76,8 +77,10 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.location.findUnique({ where: { id } });
-      const updated = await this.prisma.location.update({
+      const existing = await this.prismaMaster.location.findUnique({
+        where: { id },
+      });
+      const updated = await this.prismaMaster.location.update({
         where: { id },
         data: {
           name: body.name ?? existing?.name,
@@ -131,8 +134,12 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.location.findUnique({ where: { id } });
-      const removed = await this.prisma.location.delete({ where: { id } });
+      const existing = await this.prismaMaster.location.findUnique({
+        where: { id },
+      });
+      const removed = await this.prismaMaster.location.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -175,7 +182,7 @@ export class LocationService {
     if (!items?.length)
       return { status: false, message: 'No locations to create' };
     try {
-      const result = await this.prisma.location.createMany({
+      const result = await this.prismaMaster.location.createMany({
         data: items.map((i) => ({
           name: i.name,
           address: i.address || null,
@@ -228,10 +235,10 @@ export class LocationService {
       return { status: false, message: 'No locations to update' };
     try {
       for (const i of items) {
-        const existing = await this.prisma.location.findUnique({
+        const existing = await this.prismaMaster.location.findUnique({
           where: { id: i.id },
         });
-        await this.prisma.location.update({
+        await this.prismaMaster.location.update({
           where: { id: i.id },
           data: {
             name: i.name ?? existing?.name,
@@ -280,10 +287,10 @@ export class LocationService {
     if (!ids?.length)
       return { status: false, message: 'No locations to delete' };
     try {
-      const existing = await this.prisma.location.findMany({
+      const existing = await this.prismaMaster.location.findMany({
         where: { id: { in: ids } },
       });
-      const result = await this.prisma.location.deleteMany({
+      const result = await this.prismaMaster.location.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

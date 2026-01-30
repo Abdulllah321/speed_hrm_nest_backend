@@ -1,23 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class TaxSlabService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.taxSlab.findMany({
+    const items = await this.prismaMaster.taxSlab.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.taxSlab.findUnique({ where: { id } });
+    const item = await this.prismaMaster.taxSlab.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'Tax slab not found' };
     return { status: true, data: item };
   }
@@ -33,7 +33,7 @@ export class TaxSlabService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.taxSlab.create({
+      const created = await this.prismaMaster.taxSlab.create({
         data: {
           name: body.name,
           minAmount: body.minAmount as any,
@@ -85,7 +85,7 @@ export class TaxSlabService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const res = await this.prisma.taxSlab.createMany({
+      const res = await this.prismaMaster.taxSlab.createMany({
         data: items.map((i) => ({
           name: i.name,
           minAmount: i.minAmount as any,
@@ -137,9 +137,11 @@ export class TaxSlabService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.taxSlab.findUnique({ where: { id } });
+      const existing = await this.prismaMaster.taxSlab.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'Tax slab not found' };
-      const updated = await this.prisma.taxSlab.update({
+      const updated = await this.prismaMaster.taxSlab.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -186,9 +188,11 @@ export class TaxSlabService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.taxSlab.findUnique({ where: { id } });
+      const existing = await this.prismaMaster.taxSlab.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'Tax slab not found' };
-      await this.prisma.taxSlab.delete({ where: { id } });
+      await this.prismaMaster.taxSlab.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -230,7 +234,7 @@ export class TaxSlabService {
 
     for (const id of ids) {
       try {
-        const existing = await this.prisma.taxSlab.findUnique({
+        const existing = await this.prismaMaster.taxSlab.findUnique({
           where: { id },
         });
 
@@ -252,7 +256,7 @@ export class TaxSlabService {
           continue;
         }
 
-        await this.prisma.taxSlab.delete({ where: { id } });
+        await this.prismaMaster.taxSlab.delete({ where: { id } });
 
         await this.activityLogs.log({
           userId: ctx.userId,
@@ -310,7 +314,7 @@ export class TaxSlabService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const i of items) {
-        await this.prisma.taxSlab.update({
+        await this.prismaMaster.taxSlab.update({
           where: { id: i.id },
           data: {
             name: i.name,

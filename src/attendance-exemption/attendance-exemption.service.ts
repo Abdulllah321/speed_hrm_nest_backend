@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class AttendanceExemptionService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   private async resolveApproverUserId(args: {
     level: {
@@ -49,7 +51,7 @@ export class AttendanceExemptionService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
+      const department = await this.prismaMaster.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -67,7 +69,7 @@ export class AttendanceExemptionService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
+      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -105,105 +107,135 @@ export class AttendanceExemptionService {
   }
 
   async list() {
-    const exemptions = await this.prisma.attendanceExemption.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        employee: {
-          select: {
-            departmentId: true,
-            subDepartmentId: true,
-            designationId: true,
-            employeeId: true,
+    try {
+
+      const exemptions = await this.prisma.attendanceExemption.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          employee: {
+            select: {
+              departmentId: true,
+              subDepartmentId: true,
+              designationId: true,
+              employeeId: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    // Fetch all departments and designations for mapping
-    const departments = await this.prisma.department.findMany({
-      include: { subDepartments: true },
-    });
-    const designations = await this.prisma.designation.findMany();
+      if (exemptions.length === 0) {
+        return { status: true, data: [] };
+      }
 
-    // Map IDs to names
-    const mappedExemptions = exemptions.map((exemption) => {
-      // Map department and subDepartment from AttendanceExemption fields
-      const dept = exemption.department
-        ? departments.find((d) => d.id === exemption.department)
-        : null;
-      const subDept =
-        dept && exemption.subDepartment
-          ? dept.subDepartments.find((sd) => sd.id === exemption.subDepartment)
-          : null;
+      // Collect IDs for Master Data fetching
+      const deptIds = new Set<string>();
+      const subDeptIds = new Set<string>();
+      const desgIds = new Set<string>();
 
-      // Map designation from employee relation if available
-      const employeeDesignationId = exemption.employee?.designationId;
-      const designation = employeeDesignationId
-        ? designations.find((d) => d.id === employeeDesignationId)
-        : null;
+      exemptions.forEach((ex) => {
+        if (ex.department) deptIds.add(ex.department);
+        if (ex.subDepartment) subDeptIds.add(ex.subDepartment);
+        if (ex.employee?.designationId) desgIds.add(ex.employee.designationId);
+      });
 
-      return {
-        ...exemption,
-        department: dept?.name || exemption.department,
-        subDepartment: subDept?.name || exemption.subDepartment,
-        designation: designation?.name || null,
-        employeeId: exemption.employee?.employeeId || exemption.employeeId,
-      };
-    });
+      const [departments, subDepartments, designations] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: Array.from(deptIds) } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: Array.from(subDeptIds) } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.designation.findMany({
+          where: { id: { in: Array.from(desgIds) } },
+          select: { id: true, name: true },
+        }),
+      ]);
 
-    return { status: true, data: mappedExemptions };
+      const deptMap = new Map(departments.map((d) => [d.id, d.name]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd.name]));
+      const desgMap = new Map(designations.map((d) => [d.id, d.name]));
+
+      const mappedExemptions = exemptions.map((exemption) => {
+        return {
+          ...exemption,
+          department: exemption.department
+            ? deptMap.get(exemption.department) || exemption.department
+            : exemption.department,
+          subDepartment: exemption.subDepartment
+            ? subDeptMap.get(exemption.subDepartment) || exemption.subDepartment
+            : exemption.subDepartment,
+          designation: exemption.employee?.designationId
+            ? desgMap.get(exemption.employee.designationId) || null
+            : null,
+          employeeId: exemption.employee?.employeeId || exemption.employeeId,
+        };
+      });
+
+      return { status: true, data: mappedExemptions };
+    } catch (error: any) {
+      console.error('Error listing exemptions:', error);
+      return { status: false, message: 'Failed to list exemptions', data: [] };
+    }
   }
 
   async get(id: string) {
-    const exemption = await this.prisma.attendanceExemption.findUnique({
-      where: { id },
-      include: {
-        employee: {
-          select: {
-            departmentId: true,
-            subDepartmentId: true,
-            designationId: true,
-            employeeId: true,
+    try {
+
+      const exemption = await this.prisma.attendanceExemption.findUnique({
+        where: { id },
+        include: {
+          employee: {
+            select: {
+              departmentId: true,
+              subDepartmentId: true,
+              designationId: true,
+              employeeId: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!exemption) {
-      return { status: false, message: 'Attendance exemption not found' };
+      if (!exemption) {
+        return { status: false, message: 'Attendance exemption not found' };
+      }
+
+      const [department, subDepartment, designation] = await Promise.all([
+        exemption.department
+          ? this.prismaMaster.department.findUnique({
+            where: { id: exemption.department },
+            select: { name: true },
+          })
+          : null,
+        exemption.subDepartment
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: exemption.subDepartment },
+            select: { name: true },
+          })
+          : null,
+        exemption.employee?.designationId
+          ? this.prismaMaster.designation.findUnique({
+            where: { id: exemption.employee.designationId },
+            select: { name: true },
+          })
+          : null,
+      ]);
+
+      return {
+        status: true,
+        data: {
+          ...exemption,
+          department: department?.name || exemption.department,
+          subDepartment: subDepartment?.name || exemption.subDepartment,
+          designation: designation?.name || null,
+          employeeId: exemption.employee?.employeeId || exemption.employeeId,
+        },
+      };
+    } catch (error: any) {
+      console.error('Error getting exemption:', error);
+      return { status: false, message: 'Failed to get exemption' };
     }
-
-    // Fetch department and designation for mapping
-    const department = exemption.department
-      ? await this.prisma.department.findUnique({
-          where: { id: exemption.department },
-          include: { subDepartments: true },
-        })
-      : null;
-
-    const subDepartment =
-      department && exemption.subDepartment
-        ? department.subDepartments.find(
-            (sd) => sd.id === exemption.subDepartment,
-          )
-        : null;
-
-    const designation = exemption.employee?.designationId
-      ? await this.prisma.designation.findUnique({
-          where: { id: exemption.employee.designationId },
-        })
-      : null;
-
-    return {
-      status: true,
-      data: {
-        ...exemption,
-        department: department?.name || exemption.department,
-        subDepartment: subDepartment?.name || exemption.subDepartment,
-        designation: designation?.name || null,
-        employeeId: exemption.employee?.employeeId || exemption.employeeId,
-      },
-    };
   }
 
   async create(
@@ -211,6 +243,7 @@ export class AttendanceExemptionService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!body.employeeId) {
         return {
           status: false,
@@ -372,6 +405,7 @@ export class AttendanceExemptionService {
     }
 
     try {
+
       const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
       });
@@ -430,6 +464,7 @@ export class AttendanceExemptionService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -735,6 +770,7 @@ export class AttendanceExemptionService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
       });

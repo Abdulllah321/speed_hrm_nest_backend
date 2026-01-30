@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import {
   CreateLeaveEncashmentDto,
@@ -11,8 +12,9 @@ import {
 export class LeaveEncashmentService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   private async resolveApproverUserId(args: {
     level: {
@@ -54,7 +56,7 @@ export class LeaveEncashmentService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
+      const department = await this.prismaMaster.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -72,7 +74,7 @@ export class LeaveEncashmentService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
+      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -85,6 +87,73 @@ export class LeaveEncashmentService {
     }
 
     return null;
+  }
+
+  private async enrichSingleLeaveEncashment(leaveEncashment: any) {
+    if (!leaveEncashment) return null;
+
+    const [department, subDepartment, approvedBy, createdBy, updatedBy] =
+      await Promise.all([
+        leaveEncashment.employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: leaveEncashment.employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        leaveEncashment.employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: leaveEncashment.employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        leaveEncashment.approvedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: leaveEncashment.approvedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        leaveEncashment.createdById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: leaveEncashment.createdById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        leaveEncashment.updatedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: leaveEncashment.updatedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+      ]);
+
+    return {
+      ...leaveEncashment,
+      employee: leaveEncashment.employee
+        ? {
+          ...leaveEncashment.employee,
+          department,
+          subDepartment,
+        }
+        : null,
+      approvedBy,
+      createdBy,
+      updatedBy,
+    };
   }
 
   private getPendingApprovalLevel(req: any): 1 | 2 | null {
@@ -118,6 +187,7 @@ export class LeaveEncashmentService {
     status?: string;
   }) {
     try {
+
       const where: any = {};
 
       if (params?.employeeId) {
@@ -152,42 +222,8 @@ export class LeaveEncashmentService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -196,7 +232,73 @@ export class LeaveEncashmentService {
         },
       });
 
-      return { status: true, data: leaveEncashments };
+      if (leaveEncashments.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Collect Master IDs
+      const deptIds = [
+        ...new Set(
+          leaveEncashments.map((l) => l.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(
+          leaveEncashments
+            .map((l) => l.employee?.subDepartmentId)
+            .filter(Boolean),
+        ),
+      ] as string[];
+      const userIds = [
+        ...new Set(
+          [
+            ...leaveEncashments.map((l) => l.approvedById),
+            ...leaveEncashments.map((l) => l.createdById),
+            ...leaveEncashments.map((l) => l.updatedById),
+            ...leaveEncashments.map((l) => l.approval1),
+            ...leaveEncashments.map((l) => l.approval2),
+          ].filter(Boolean),
+        ),
+      ] as string[];
+
+      const [departments, subDepartments, users] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const enriched = leaveEncashments.map((l) => {
+        const le = l as any;
+        return {
+          ...le,
+          employee: le.employee
+            ? {
+              ...le.employee,
+              department: deptMap.get(le.employee.departmentId) || null,
+              subDepartment:
+                subDeptMap.get(le.employee.subDepartmentId) || null,
+            }
+            : null,
+          approvedBy: userMap.get(le.approvedById) || null,
+          createdBy: userMap.get(le.createdById) || null,
+          updatedBy: userMap.get(le.updatedById) || null,
+        };
+      });
+
+      return { status: true, data: enriched };
     } catch (error) {
       console.error('Error listing leave encashments:', error);
       return {
@@ -211,6 +313,7 @@ export class LeaveEncashmentService {
 
   async get(id: string) {
     try {
+
       const leaveEncashment = await this.prisma.leaveEncashment.findUnique({
         where: { id },
         include: {
@@ -219,42 +322,8 @@ export class LeaveEncashmentService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -264,7 +333,9 @@ export class LeaveEncashmentService {
         return { status: false, message: 'Leave encashment not found' };
       }
 
-      return { status: true, data: leaveEncashment };
+      const enriched = await this.enrichSingleLeaveEncashment(leaveEncashment);
+
+      return { status: true, data: enriched };
     } catch (error) {
       console.error('Error getting leave encashment:', error);
       return {
@@ -282,6 +353,7 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!body.leaveEncashments || body.leaveEncashments.length === 0) {
         return {
           status: false,
@@ -418,12 +490,28 @@ export class LeaveEncashmentService {
               status,
               createdById: ctx.userId,
             },
+            include: {
+              employee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  employeeName: true,
+                  departmentId: true,
+                  subDepartmentId: true,
+                },
+              },
+            },
           });
           createdLeaveEncashments.push(created);
         }
 
         return createdLeaveEncashments;
       });
+
+      // Enrich result with Master data
+      const enrichedResult = await Promise.all(
+        result.map((l) => this.enrichSingleLeaveEncashment(l)),
+      );
 
       // Log activity
       if (Array.isArray(result) && result.length > 0 && ctx.userId) {
@@ -442,7 +530,7 @@ export class LeaveEncashmentService {
 
       return {
         status: true,
-        data: result,
+        data: enrichedResult,
         message: `Successfully created ${result.length} leave encashment request(s)`,
       };
     } catch (error) {
@@ -463,6 +551,7 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.leaveEncashment.findUnique({
         where: { id },
       });
@@ -526,6 +615,17 @@ export class LeaveEncashmentService {
       const updated = await this.prisma.leaveEncashment.update({
         where: { id },
         data: updateData,
+        include: {
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+              departmentId: true,
+              subDepartmentId: true,
+            },
+          },
+        },
       });
 
       // Log activity
@@ -543,9 +643,11 @@ export class LeaveEncashmentService {
         });
       }
 
+      const enriched = await this.enrichSingleLeaveEncashment(updated);
+
       return {
         status: true,
-        data: updated,
+        data: enriched,
         message: 'Leave encashment updated successfully',
       };
     } catch (error) {
@@ -575,6 +677,7 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -587,6 +690,9 @@ export class LeaveEncashmentService {
               id: true,
               employeeId: true,
               employeeName: true,
+              departmentId: true,
+              subDepartmentId: true,
+              reportingManager: true,
             },
           },
         },
@@ -643,6 +749,8 @@ export class LeaveEncashmentService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -660,9 +768,11 @@ export class LeaveEncashmentService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLeaveEncashment(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Leave encashment approved successfully',
         };
       }
@@ -706,6 +816,8 @@ export class LeaveEncashmentService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -723,9 +835,11 @@ export class LeaveEncashmentService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLeaveEncashment(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Leave encashment approved successfully',
         };
       }
@@ -758,6 +872,7 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -770,6 +885,9 @@ export class LeaveEncashmentService {
               id: true,
               employeeId: true,
               employeeName: true,
+              departmentId: true,
+              subDepartmentId: true,
+              reportingManager: true,
             },
           },
         },
@@ -823,6 +941,8 @@ export class LeaveEncashmentService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -840,9 +960,11 @@ export class LeaveEncashmentService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLeaveEncashment(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Leave encashment rejected successfully',
         };
       }
@@ -887,6 +1009,8 @@ export class LeaveEncashmentService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -904,9 +1028,11 @@ export class LeaveEncashmentService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLeaveEncashment(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Leave encashment rejected successfully',
         };
       }
@@ -929,6 +1055,7 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.leaveEncashment.findUnique({
         where: { id },
       });

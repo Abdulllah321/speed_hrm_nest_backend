@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { AttendanceRequestQueryController } from './attendance-request-query.controller';
 import { AttendanceRequestQueryService } from './attendance-request-query.service';
-import { PrismaModule } from '../prisma/prisma.module';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
+import { DatabaseModule } from '../database/database.module';
 
 @Module({
-  imports: [PrismaModule, ActivityLogsModule],
+  imports: [ActivityLogsModule, DatabaseModule],
   controllers: [AttendanceRequestQueryController],
   providers: [AttendanceRequestQueryService],
   exports: [AttendanceRequestQueryService],
