@@ -10,20 +10,28 @@ import {
 import { TransferService } from './transfer.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-// Assuming RBAC or Permission guard exists, add later if needed.
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
+@ApiTags('Employee Transfer')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
-@UseGuards(JwtAuthGuard)
 export class TransferController {
   constructor(private readonly transferService: TransferService) {}
 
-  @Post('employee-transfer')
-  create(@Body() createTransferDto: CreateTransferDto, @Req() req: any) {
-    return this.transferService.create(createTransferDto, req.user.id);
-  }
+    @Post('employee-transfer')
+    @Permissions('hr.employee.transfer')
+    @ApiOperation({ summary: 'Transfer an employee' })
+    create(@Body() createTransferDto: CreateTransferDto, @Req() req: any) {
+        return this.transferService.create(createTransferDto, req.user.id);
+    }
 
-  @Get('employee-transfer/employee/:id')
-  findAll(@Param('id') id: string) {
-    return this.transferService.findAll(id);
-  }
+    @Get('employee-transfer/employee/:id')
+    @Permissions('hr.employee.read')
+    @ApiOperation({ summary: 'Get employee transfer history' })
+    findAll(@Param('id') id: string) {
+        return this.transferService.findAll(id);
+    }
 }

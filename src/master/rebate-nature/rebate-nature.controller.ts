@@ -20,15 +20,18 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Rebate Nature')
 @Controller('api/rebate-nature')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RebateNatureController {
   constructor(private readonly rebateNatureService: RebateNatureService) { }
 
   @Post()
+  @Permissions('hr.rebate-nature.create')
   @ApiOperation({ summary: 'Create a new rebate nature' })
   @ApiResponse({
     status: 201,
@@ -40,6 +43,7 @@ export class RebateNatureController {
   }
 
   @Get('fixed/grouped')
+  @Permissions('hr.rebate-nature.read')
   @ApiOperation({ summary: 'Get fixed rebate natures grouped by category' })
   @ApiResponse({
     status: 200,
@@ -50,6 +54,7 @@ export class RebateNatureController {
   }
 
   @Get()
+  @Permissions('hr.rebate-nature.read')
   @ApiOperation({ summary: 'Get all rebate natures or filter by type' })
   @ApiResponse({
     status: 200,
@@ -63,6 +68,7 @@ export class RebateNatureController {
   }
 
   @Get(':id')
+  @Permissions('hr.rebate-nature.read')
   @ApiOperation({ summary: 'Get a rebate nature by id' })
   @ApiResponse({ status: 200, description: 'Return the rebate nature.' })
   @ApiResponse({ status: 404, description: 'Rebate nature not found.' })
@@ -71,6 +77,7 @@ export class RebateNatureController {
   }
 
   @Patch(':id')
+  @Permissions('hr.rebate-nature.update')
   @ApiOperation({ summary: 'Update a rebate nature' })
   @ApiResponse({
     status: 200,
@@ -85,6 +92,7 @@ export class RebateNatureController {
   }
 
   @Delete(':id')
+  @Permissions('hr.rebate-nature.delete')
   @ApiOperation({ summary: 'Delete a rebate nature' })
   @ApiResponse({
     status: 200,

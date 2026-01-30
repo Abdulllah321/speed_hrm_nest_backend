@@ -1,9 +1,11 @@
 import { Controller, Get, UseGuards, Request } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../common/guards/permission.guard';
 
 // Prefix with `api` to align with frontend base URL (`/api`)
 @Controller('api/dashboard')
+@UseGuards(JwtAuthGuard, PermissionGuard('hr.dashboard.view'))
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) { }
 

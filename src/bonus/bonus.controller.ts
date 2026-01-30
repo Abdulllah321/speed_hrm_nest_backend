@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { BonusService } from './bonus.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   CreateBonusDto,
   BulkCreateBonusDto,
@@ -32,7 +34,8 @@ export class BonusController {
   constructor(private service: BonusService) {}
 
   @Get('bonuses')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List bonuses' })
   @ApiQuery({ name: 'employeeId', required: false })
@@ -60,7 +63,8 @@ export class BonusController {
   }
 
   @Get('bonuses/search')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Search bonuses by employees' })
   @ApiQuery({
@@ -86,7 +90,8 @@ export class BonusController {
   }
 
   @Get('bonuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get bonus by id' })
   async get(@Param('id') id: string) {
@@ -94,7 +99,8 @@ export class BonusController {
   }
 
   @Post('bonuses/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create bonuses in bulk' })
   async bulkCreate(@Body() body: BulkCreateBonusDto, @Req() req) {
@@ -106,7 +112,8 @@ export class BonusController {
   }
 
   @Post('bonuses')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create bonus' })
   async create(@Body() body: CreateBonusDto, @Req() req) {
@@ -118,7 +125,8 @@ export class BonusController {
   }
 
   @Put('bonuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bonus' })
   async update(
@@ -134,7 +142,8 @@ export class BonusController {
   }
 
   @Delete('bonuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.bonus.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete bonus' })
   async remove(@Param('id') id: string, @Req() req) {

@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { AttendanceRequestQueryService } from './attendance-request-query.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import { CreateAttendanceRequestQueryDto } from './dto/create-attendance-request-query.dto';
 import {
   ApiTags,
@@ -21,29 +23,28 @@ import {
 } from '@nestjs/swagger';
 
 @ApiTags('Attendance Request Query')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class AttendanceRequestQueryController {
   constructor(private service: AttendanceRequestQueryService) {}
 
   @Get('attendance-request-queries')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.read')
   @ApiOperation({ summary: 'List attendance request queries' })
   async list() {
     return this.service.list();
   }
 
   @Get('attendance-request-queries/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.read')
   @ApiOperation({ summary: 'Get attendance request query by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('attendance-request-queries')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.create')
   @ApiOperation({ summary: 'Create attendance request query' })
   async create(@Body() body: CreateAttendanceRequestQueryDto, @Req() req: any) {
     return this.service.create(body, {
@@ -54,8 +55,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.update')
   @ApiOperation({ summary: 'Update attendance request query' })
   async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     return this.service.update(id, body, {
@@ -66,8 +66,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/approve')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.approve')
   @ApiOperation({ summary: 'Approve attendance request query' })
   async approve(@Param('id') id: string, @Req() req: any) {
     return this.service.approve(id, {
@@ -78,8 +77,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/approve-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.approve')
   @ApiOperation({
     summary: 'Approve attendance request query by approval level',
   })
@@ -97,8 +95,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/reject')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.approve')
   @ApiOperation({ summary: 'Reject attendance request query' })
   @ApiBody({
     schema: {
@@ -121,8 +118,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/reject-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.approve')
   @ApiOperation({
     summary: 'Reject attendance request query by approval level',
   })
@@ -149,8 +145,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Delete('attendance-request-queries/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance-request-query.delete')
   @ApiOperation({ summary: 'Delete attendance request query' })
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.service.remove(id, {
