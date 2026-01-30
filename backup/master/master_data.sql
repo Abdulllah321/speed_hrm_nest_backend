@@ -1,23 +1,4 @@
---
--- PostgreSQL database dump
---
 
-\restrict JtcPH1txMb7aM375IsavNYUCaXr1S1qavPhEZ1X1BwfgMEwDhomyP89FWMgh8in
-
--- Dumped from database version 16.11
--- Dumped by pg_dump version 18.1
-
-SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
-SET check_function_bodies = false;
-SET xmloption = content;
-SET client_min_messages = warning;
-SET row_security = off;
 
 --
 -- Data for Name: Role; Type: TABLE DATA; Schema: public; Owner: -
@@ -1797,31 +1778,6 @@ INSERT INTO public."RefreshToken" (id, "userId", token, family, "isRevoked", "ex
 INSERT INTO public."RefreshToken" (id, "userId", token, family, "isRevoked", "expiresAt", "createdAt") VALUES ('ca992aa4-9995-41d8-94f5-e7f808a8b0b6', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0NmFhYzZiMi04ZjViLTQ3YzAtOWM2YS1hYTY1NTk4MzVhOGUiLCJmYW1pbHkiOiI2Yjg2NjA1NS0yZTAxLTRjMjItYjhmNC1lMmE3YmVkZmIzMTkiLCJpYXQiOjE3Njk3NjkzNTksImV4cCI6MTc3MjM2MTM1OSwiaXNzIjoic3BlZWQtbGltaXQtYXBwIn0.zpGehgjbJuqggb7KSFQrHKxd8UGQ6lOKKpmh4TW0lJQ', '6b866055-2e01-4c22-b8f4-e2a7bedfb319', true, '2026-03-01 10:35:59.158', '2026-01-30 10:35:59.16');
 INSERT INTO public."RefreshToken" (id, "userId", token, family, "isRevoked", "expiresAt", "createdAt") VALUES ('349ca0a3-b258-4d99-bf28-97b4d631f830', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI0NmFhYzZiMi04ZjViLTQ3YzAtOWM2YS1hYTY1NTk4MzVhOGUiLCJmYW1pbHkiOiI2Yjg2NjA1NS0yZTAxLTRjMjItYjhmNC1lMmE3YmVkZmIzMTkiLCJpYXQiOjE3Njk3Njk2MDQsImV4cCI6MTc3MjM2MTYwNCwiaXNzIjoic3BlZWQtbGltaXQtYXBwIn0.VwA_dPbq7Qnjb9nJc6Cipd1sf6Ma3GgWKJhLcCuFWr4', '6b866055-2e01-4c22-b8f4-e2a7bedfb319', false, '2026-03-01 10:40:04.562', '2026-01-30 10:40:04.564');
 
-
---
--- Data for Name: RolePermission; Type: TABLE DATA; Schema: public; Owner: -
---
-
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('dd380b7c-2807-4217-b65b-b9b221419e5f', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '660225dc-ec16-41fd-8ad3-a1f4c3dcaa29');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('e062e2d4-c81c-4c7b-9ac0-eca66528c8df', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '049861ad-cb6f-4597-9f1e-11a2db19c92a');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('fe5259a3-7055-469c-8b7f-800c81ac9f99', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', 'f19c5de6-5f3b-44bd-9ebf-b281670abfa2');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('81257631-8250-49e9-9779-815d7d49a54a', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', 'c9c261c8-cade-4230-b94a-398bece4efb5');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('f2d5b25d-844e-4ed6-9a69-4cbad62cf03a', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '7e1606f1-99da-47e8-9d44-0e20858b7fca');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('badf7086-d163-4953-87fc-d6e91a4e18be', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', 'c85f95e3-bf32-4707-bc8e-00cff985edf4');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('60a8688d-957d-4827-893b-baa2098da533', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '447b3504-0eeb-44a6-85fd-b02b168695e1');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('45e6d298-716a-4735-9d34-f5a6256ef462', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '59f8ecfb-926f-4bd6-b908-77a0b2a8da58');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('7f54e017-da1f-4b5e-a93e-79200482d4c5', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '9e6518c8-f647-4ea4-a7d4-3d9dddf3c636');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('491b4bf5-8c35-4064-9d4f-7b52f99200a1', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', 'd874f1a6-36d8-4429-a167-231e68621596');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('7e37fd89-c564-473f-9344-341462facb74', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', '42b746a6-b0c3-4712-8827-2b79e2a2e6cc');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('ab9f97a0-95c2-42a5-bc0d-010924757c24', '4fbdb247-4cc7-406d-9651-7e9bd2eb9f21', 'e76646ef-4c1c-4f61-9964-8c465eeb0bbd');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('6e8878f1-526c-4dc0-a68b-5098e7aaf50f', 'ee4979f3-a89f-4259-b583-28678de79bce', '660225dc-ec16-41fd-8ad3-a1f4c3dcaa29');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('8a78a38e-9e2d-4ce5-a199-163818d01e8e', 'ee4979f3-a89f-4259-b583-28678de79bce', '049861ad-cb6f-4597-9f1e-11a2db19c92a');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('834faf53-9767-4ece-aba2-98baf53a433d', 'ee4979f3-a89f-4259-b583-28678de79bce', 'f19c5de6-5f3b-44bd-9ebf-b281670abfa2');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('af717586-2452-4d4e-8f82-b0533ac52da8', 'ee4979f3-a89f-4259-b583-28678de79bce', 'd874f1a6-36d8-4429-a167-231e68621596');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('63d8e175-0f64-4050-ab6d-590f0ce150b4', 'ee4979f3-a89f-4259-b583-28678de79bce', '42b746a6-b0c3-4712-8827-2b79e2a2e6cc');
-INSERT INTO public."RolePermission" (id, "roleId", "permissionId") VALUES ('a8cd5ac0-687d-4f29-ac92-0dc3c4ef61bd', 'ee4979f3-a89f-4259-b583-28678de79bce', 'e76646ef-4c1c-4f61-9964-8c465eeb0bbd');
-
-
 --
 -- Data for Name: SalaryBreakup; Type: TABLE DATA; Schema: public; Owner: -
 --
@@ -1976,5 +1932,4 @@ INSERT INTO public."TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAm
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JtcPH1txMb7aM375IsavNYUCaXr1S1qavPhEZ1X1BwfgMEwDhomyP89FWMgh8in
 

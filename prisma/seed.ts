@@ -93,6 +93,70 @@ async function restoreDatabase(connectionString: string, filePath: string): Prom
   }
 }
 
+
+/**
+ * Create database if it doesn't exist
+ */
+async function createDatabase(dbName: string) {
+  const baseUrl = process.env.DATABASE_URL || process.env.DATABASE_URL_MANAGEMENT!;
+  const config = parseUrl(baseUrl);
+
+  if (!config) {
+    console.error('❌ Could not parse connection string for database creation');
+    return;
+  }
+
+  // Connect to 'postgres' maintenance database
+  const maintenancePool = new Pool({
+    user: config.username,
+    password: config.password,
+    host: config.host,
+    port: parseInt(config.port),
+    database: 'postgres',
+  });
+
+  try {
+    // Check if DB exists
+    const checkRes = await maintenancePool.query(
+      `SELECT 1 FROM pg_database WHERE datname = $1`,
+      [dbName]
+    );
+
+    if (checkRes.rowCount === 0) {
+      console.log(`✨ Creating database '${dbName}'...`);
+      await maintenancePool.query(`CREATE DATABASE "${dbName}"`);
+      console.log(`   ✅ Database '${dbName}' created.`);
+    } else {
+      // console.log(`   ℹ️  Database '${dbName}' already exists.`);
+    }
+  } catch (e: any) {
+    console.warn(`   ⚠️  Error checking/creating database '${dbName}': ${e.message}`);
+  } finally {
+    await maintenancePool.end();
+  }
+}
+
+/**
+ * Push schema to tenant database
+ */
+async function pushTenantSchema(connectionString: string) {
+  try {
+    console.log('   ↳ Pushing schema to tenant database...');
+    // We rely on the prisma/schema path for tenants.
+    // Env variable override for just this command
+    const env = { ...process.env, DATABASE_URL: connectionString };
+
+    // Using --skip-generate to speed it up, assuming client is already generated
+    execSync('npx prisma db push --schema prisma/schema --accept-data-loss --config prisma.config.ts', {
+      env,
+      stdio: 'ignore' // Hide output to reduce noise, or 'pipe' if we want to log errors
+    });
+    console.log('   ✅ Schema pushed successfully.');
+  } catch (e: any) {
+    console.error(`   ❌ Schema push failed: ${e.message}`);
+  }
+}
+
 async function main() {
   console.log('🌱 Seeding database...');
   console.log('');
@@ -104,8 +168,9 @@ async function main() {
   ];
 
   const backupDir = possibleBackupDirs.find(d => existsSync(d) && statSync(d).isDirectory());
+  console.log('RUN_BACKUP_RESTORE =', process.env.RUN_BACKUP_RESTORE);
 
-  if (process.env.RUN_BACKUP_RESTORE === 'true') {
+  if (String(process.env.RUN_BACKUP_RESTORE).toLowerCase() === 'true') {
     if (backupDir) {
       console.log(`📂 Found multi-tenant backup directory: ${backupDir}`);
 
@@ -127,6 +192,10 @@ async function main() {
         if (!process.env.DATABASE_URL_MANAGEMENT) {
           console.error('❌ DATABASE_URL_MANAGEMENT is not defined in .env');
         } else {
+          // Ensure master DB exists (though usually it does if we are running seed)
+          // const masterConfig = parseUrl(process.env.DATABASE_URL_MANAGEMENT);
+          // if (masterConfig) await createDatabase(masterConfig.database);
+
           await restoreDatabase(process.env.DATABASE_URL_MANAGEMENT, masterFile);
         }
       }
@@ -147,6 +216,13 @@ async function main() {
             // Construct connection string for this tenant
             const tenantUrl = `${baseConfig.protocol}//${baseConfig.username}:${baseConfig.password}@${baseConfig.host}:${baseConfig.port}/${dbName}`;
 
+            // A. Create DB if missing
+            await createDatabase(dbName);
+
+            // B. Push Schema (since backup is data-only)
+            await pushTenantSchema(tenantUrl);
+
+            // C. Restore Data
             await restoreDatabase(tenantUrl, join(companiesDir, file));
           }
         }
@@ -170,22 +246,14 @@ async function main() {
       }
     }
   } else {
-    console.log('Skipping backup restore (RUN_BACKUP_RESTORE not set)');
-  }
-
-  // 4. Run specific seeds
-  try {
-    console.log('🌱 Running specific seeds (ChartOfAccounts)...');
-    await seedChartOfAccounts(prisma);
-  } catch (e) {
-    console.error('Error running specific seeds:', e);
+    console.log('no data restored from backup')
   }
 
   console.log('');
   console.log('✅ Database seeding finished.');
 }
 
-import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+
 
 main()
   .catch((e) => {
