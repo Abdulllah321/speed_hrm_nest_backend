@@ -1,0 +1,810 @@
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import {
+  CreateSubDepartmentDto,
+  UpdateDepartmentDto,
+  UpdateSubDepartmentDto,
+  BulkUpdateDepartmentItemDto,
+} from './dto/department-dto';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
+
+@Injectable()
+export class DepartmentService {
+  constructor(
+    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
+    private activityLogs: ActivityLogsService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) { }
+
+  async getAllDepartments() {
+    const cacheKey = 'departments_all';
+    const cachedData = await this.cacheManager.get(cacheKey);
+    if (cachedData) {
+      return { status: true, data: cachedData };
+    }
+
+    const departments = await this.prismaMaster.department.findMany({
+      include: {
+        subDepartments: true,
+        allocation: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    // Fetch Master Users and Tenant Employees manually
+    const userIds = [
+      ...new Set(departments.map((d) => d.createdById).filter(Boolean)),
+    ];
+    const headIds = [
+      ...new Set([
+        ...departments.map((d) => d.headId).filter(Boolean),
+        ...departments
+          .flatMap((d) => d.subDepartments.map((sd) => sd.headId))
+          .filter(Boolean),
+      ]),
+    ];
+
+    this.prisma.ensureTenantContext();
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds as string[] } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const data = departments.map((dept) => {
+      const creator = dept.createdById ? userMap.get(dept.createdById) : null;
+      const head = dept.headId ? headMap.get(dept.headId) : null;
+
+      return {
+        ...dept,
+        createdBy: creator
+          ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+          : null,
+        headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+        allocationName: dept.allocation ? dept.allocation.name : null,
+        subDepartments: dept.subDepartments.map((sd) => {
+          const sdHead = sd.headId ? headMap.get(sd.headId) : null;
+          return {
+            ...sd,
+            headName: sdHead
+              ? `${sdHead.employeeName} (${sdHead.employeeId})`
+              : null,
+          };
+        }),
+      };
+    });
+
+    await this.cacheManager.set(cacheKey, data, 3600000); // 1 hour TTL
+    return { status: true, data };
+  }
+
+  async getDepartmentById(id: string) {
+    const department: any = await this.prismaMaster.department.findUnique({
+      where: { id },
+      include: {
+        subDepartments: true,
+        allocation: { select: { id: true, name: true } },
+      },
+    });
+    if (!department) return { status: false, message: 'Department not found' };
+
+    const userIds = [department.createdById].filter(Boolean) as string[];
+    const headIds = [
+      department.headId,
+      ...department.subDepartments.map((sd: any) => sd.headId),
+    ].filter(Boolean) as string[];
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const creator = department.createdById
+      ? userMap.get(department.createdById)
+      : null;
+    const head = department.headId ? headMap.get(department.headId) : null;
+
+    const data = {
+      ...department,
+      createdBy: creator
+        ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+        : null,
+      headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+      allocationName: department.allocation ? department.allocation.name : null,
+      subDepartments: department.subDepartments.map((sd: any) => {
+        const sdHead = sd.headId ? headMap.get(sd.headId) : null;
+        return {
+          ...sd,
+          headName: sdHead
+            ? `${sdHead.employeeName} (${sdHead.employeeId})`
+            : null,
+        };
+      }),
+    };
+    return { status: true, data };
+  }
+
+  async createDepartments(
+    items: { name: string; allocationId?: string; headId?: string }[],
+    createdById: string,
+  ) {
+    try {
+      // We use a transaction or just loop since createMany doesn't support all relations/validations properly if we want to return full objects or potential errors per item easily
+      // But for bulk insert efficiency createMany is better. However, createMany cannot set relations if they are not foreign keys directly.
+      // Fortunately allocationId and headId are FKs on Department.
+
+      const departments = await this.prismaMaster.department.createMany({
+        data: items.map((item) => ({
+          name: item.name,
+          allocationId: item.allocationId || null,
+          headId: item.headId || null,
+          createdById,
+        })),
+        skipDuplicates: true,
+      });
+
+      await this.activityLogs.log({
+        userId: createdById,
+        action: 'create',
+        module: 'departments',
+        entity: 'Department',
+        description: `Created departments (${departments.count})`,
+        newValues: JSON.stringify(items),
+        status: 'success',
+      });
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: departments,
+        message: 'Departments created successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: createdById,
+        action: 'create',
+        module: 'departments',
+        entity: 'Department',
+        description: 'Failed to create departments',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to create departments',
+        data: null,
+      };
+    }
+  }
+
+  async updateDepartment(
+    id: string,
+    updateDepartmentDto: UpdateDepartmentDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prismaMaster.department.findUnique({
+        where: { id },
+      });
+      const department = await this.prismaMaster.department.update({
+        where: { id },
+        data: {
+          name: updateDepartmentDto.name,
+          headId: updateDepartmentDto.headId || null,
+          allocationId: updateDepartmentDto.allocationId || null,
+        },
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'departments',
+        entity: 'Department',
+        entityId: id,
+        description: `Updated department ${department.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(updateDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: department,
+        message: 'Department updated successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'departments',
+        entity: 'Department',
+        entityId: id,
+        description: 'Failed to update department',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(updateDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to update department',
+        data: null,
+      };
+    }
+  }
+
+  async updateDepartments(
+    updateDepartmentDto: BulkUpdateDepartmentItemDto[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      // Filter out items with empty or invalid IDs (for bulk updates, id is required)
+      const validDtos = (updateDepartmentDto || []).filter(
+        (dto) => dto.id && dto.id.trim().length > 0,
+      );
+      if (validDtos.length === 0) {
+        return { status: false, message: 'No valid department IDs provided' };
+      }
+
+      const updatedDepartments: any[] = [];
+      for (const dto of validDtos) {
+        if (!dto.id) {
+          continue; // Skip items without ID (shouldn't happen due to filter, but defensive check)
+        }
+        const department = await this.prismaMaster.department.update({
+          where: { id: dto.id },
+          data: {
+            name: dto.name,
+            headId: dto.headId || null,
+            allocationId: dto.allocationId || null,
+          },
+        });
+        updatedDepartments.push(department);
+      }
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'departments',
+        entity: 'Department',
+        description: `Bulk updated departments (${updatedDepartments.length})`,
+        newValues: JSON.stringify(updateDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: updatedDepartments,
+        message: 'Departments updated successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'departments',
+        entity: 'Department',
+        description: 'Failed bulk update departments',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(updateDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to update departments',
+        data: null,
+      };
+    }
+  }
+
+  async deleteDepartments(
+    departmentIds: string[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const departments = await this.prismaMaster.department.deleteMany({
+        where: { id: { in: departmentIds } },
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'departments',
+        entity: 'Department',
+        description: `Bulk deleted departments (${departments.count})`,
+        oldValues: JSON.stringify(departmentIds),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: departments,
+        message: 'Departments deleted successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'departments',
+        entity: 'Department',
+        description: 'Failed bulk delete departments',
+        errorMessage: error?.message,
+        oldValues: JSON.stringify(departmentIds),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to delete departments',
+        data: null,
+      };
+    }
+  }
+
+  async deleteDepartment(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prismaMaster.department.findUnique({
+        where: { id },
+      });
+      const department = await this.prismaMaster.department.delete({
+        where: { id },
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'departments',
+        entity: 'Department',
+        entityId: id,
+        description: `Deleted department ${existing?.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: department,
+        message: 'Department deleted successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'departments',
+        entity: 'Department',
+        entityId: id,
+        description: 'Failed to delete department',
+        errorMessage: error?.message,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to delete department',
+        data: null,
+      };
+    }
+  }
+
+  async getAllSubDepartments() {
+    const cacheKey = 'subdepartments_all';
+    const cachedData = await this.cacheManager.get(cacheKey);
+    if (cachedData) {
+      return {
+        status: true,
+        data: cachedData,
+        message: 'Sub-departments fetched successfully',
+      };
+    }
+
+    const subDepartments = await this.prismaMaster.subDepartment.findMany({
+      include: {
+        department: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const userIds = [
+      ...new Set(subDepartments.map((sd) => sd.createdById).filter(Boolean)),
+    ];
+    const headIds = [
+      ...new Set(subDepartments.map((sd) => sd.headId).filter(Boolean)),
+    ];
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds as string[] } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const data = subDepartments.map((sd) => {
+      const creator = sd.createdById ? userMap.get(sd.createdById) : null;
+      const head = sd.headId ? headMap.get(sd.headId) : null;
+
+      return {
+        ...sd,
+        departmentName: sd.department.name,
+        createdBy: creator
+          ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+          : null,
+        headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+      };
+    });
+
+    await this.cacheManager.set(cacheKey, data, 3600000);
+    return {
+      status: true,
+      data,
+      message: 'Sub-departments fetched successfully',
+    };
+  }
+
+  async getSubDepartmentsByDepartment(departmentId: string) {
+    const subDepartments = await this.prismaMaster.subDepartment.findMany({
+      where: { departmentId },
+      include: {
+        department: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const userIds = [
+      ...new Set(subDepartments.map((sd) => sd.createdById).filter(Boolean)),
+    ];
+    const headIds = [
+      ...new Set(subDepartments.map((sd) => sd.headId).filter(Boolean)),
+    ];
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds as string[] } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const data = subDepartments.map((sd) => {
+      const creator = sd.createdById ? userMap.get(sd.createdById) : null;
+      const head = sd.headId ? headMap.get(sd.headId) : null;
+
+      return {
+        ...sd,
+        departmentName: sd.department.name,
+        createdBy: creator
+          ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+          : null,
+        headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+      };
+    });
+    return {
+      status: true,
+      data,
+      message: 'Sub-departments fetched successfully',
+    };
+  }
+
+  async createSubDepartments(
+    createSubDepartmentDto: CreateSubDepartmentDto[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const subDepartments = await this.prismaMaster.subDepartment.createMany({
+        data: createSubDepartmentDto.map((dto) => ({
+          name: dto.name,
+          departmentId: dto.departmentId,
+          createdById: dto.createdById,
+          headId: (dto as any).headId || null,
+        })),
+        skipDuplicates: true,
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'create',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        description: `Created sub-departments (${subDepartments.count})`,
+        newValues: JSON.stringify(createSubDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('subdepartments_all');
+      // Also invalidate departments as they contain subDepartments relation
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: subDepartments,
+        message: 'Sub-departments created successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'create',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        description: 'Failed to create sub-departments',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(createSubDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to create sub-departments',
+        data: null,
+      };
+    }
+  }
+
+  async updateSubDepartments(
+    updateSubDepartmentDto: UpdateSubDepartmentDto[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      // Filter out items with empty or invalid IDs (for bulk updates, id is required)
+      const validDtos = (updateSubDepartmentDto || []).filter(
+        (dto) => dto.id && dto.id.trim().length > 0,
+      );
+      if (validDtos.length === 0) {
+        return {
+          status: false,
+          message: 'No valid sub-department IDs provided',
+        };
+      }
+
+      const updatedSubDepartments: any[] = [];
+      for (const dto of validDtos) {
+        if (!dto.id) {
+          continue; // Skip items without ID (shouldn't happen due to filter, but defensive check)
+        }
+        const subDepartment = await this.prismaMaster.subDepartment.update({
+          where: { id: dto.id },
+          data: {
+            name: dto.name,
+            headId: dto.headId || null,
+          },
+        });
+        updatedSubDepartments.push(subDepartment);
+      }
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        description: `Bulk updated sub-departments (${updatedSubDepartments.length})`,
+        newValues: JSON.stringify(updateSubDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('subdepartments_all');
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: updatedSubDepartments,
+        message: 'Sub-departments updated successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        description: 'Failed bulk update sub-departments',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(updateSubDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to update sub-departments',
+        data: null,
+      };
+    }
+  }
+
+  async updateSubDepartment(
+    id: string,
+    updateSubDepartmentDto: UpdateSubDepartmentDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prismaMaster.subDepartment.findUnique({
+        where: { id },
+      });
+      const subDepartment = await this.prismaMaster.subDepartment.update({
+        where: { id },
+        data: {
+          name: updateSubDepartmentDto.name,
+          headId: updateSubDepartmentDto.headId || null,
+        },
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        entityId: id,
+        description: `Updated sub-department ${subDepartment.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(updateSubDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('subdepartments_all');
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: subDepartment,
+        message: 'Sub-department updated successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        entityId: id,
+        description: 'Failed to update sub-department',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(updateSubDepartmentDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to update sub-department',
+        data: null,
+      };
+    }
+  }
+
+  async deleteSubDepartments(
+    subDepartmentIds: string[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const subDepartments = await this.prismaMaster.subDepartment.deleteMany({
+        where: { id: { in: subDepartmentIds } },
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        description: `Bulk deleted sub-departments (${subDepartments.count})`,
+        oldValues: JSON.stringify(subDepartmentIds),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('subdepartments_all');
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: subDepartments,
+        message: 'Sub-departments deleted successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        description: 'Failed bulk delete sub-departments',
+        errorMessage: error?.message,
+        oldValues: JSON.stringify(subDepartmentIds),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to delete sub-departments',
+        data: null,
+      };
+    }
+  }
+
+  async deleteSubDepartment(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prismaMaster.subDepartment.findUnique({
+        where: { id },
+      });
+      const subDepartment = await this.prismaMaster.subDepartment.delete({
+        where: { id },
+      });
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        entityId: id,
+        description: `Deleted sub-department ${existing?.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      });
+      await this.cacheManager.del('subdepartments_all');
+      await this.cacheManager.del('departments_all');
+      return {
+        status: true,
+        data: subDepartment,
+        message: 'Sub-department deleted successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'sub-departments',
+        entity: 'SubDepartment',
+        entityId: id,
+        description: 'Failed to delete sub-department',
+        errorMessage: error?.message,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'failure',
+      });
+      return {
+        status: false,
+        message: 'Failed to delete sub-department',
+        data: null,
+      };
+    }
+  }
+}

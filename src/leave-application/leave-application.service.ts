@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -7,9 +8,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 export class LeaveApplicationService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
-  ) {}
+  ) { }
 
   private async resolveApproverUserId(args: {
     level: {
@@ -51,7 +53,7 @@ export class LeaveApplicationService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
+      const department = await this.prismaMaster.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -69,7 +71,7 @@ export class LeaveApplicationService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
+      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -96,27 +98,23 @@ export class LeaveApplicationService {
 
   async getLeaveBalance(employeeId: string) {
     try {
-      // Get employee with leave policy
       const employee = await this.prisma.employee.findUnique({
         where: { id: employeeId },
-        include: {
-          leavesPolicy: {
-            include: {
-              leaveTypes: {
-                include: {
-                  leaveType: true,
-                },
-              },
-            },
-          },
-        },
       });
 
       if (!employee) {
         return { status: false, message: 'Employee not found' };
       }
 
-      if (!employee.leavesPolicy) {
+      // Get leaves policy from Master DB
+      const leavesPolicy = await this.prismaMaster.leavesPolicy.findUnique({
+        where: { id: employee.leavesPolicyId },
+        include: {
+          leaveTypes: true, // Master relation
+        },
+      });
+
+      if (!leavesPolicy) {
         return {
           status: false,
           message: 'Employee does not have a leave policy assigned',
@@ -124,17 +122,27 @@ export class LeaveApplicationService {
       }
 
       // Get all approved leave applications for this employee
-      const leaveApplications = await (
-        this.prisma as any
-      ).leaveApplication.findMany({
+      const leaveApplications = await this.prisma.leaveApplication.findMany({
         where: {
           employeeId,
           status: 'approved',
         },
-        include: {
-          leaveType: true,
-        },
       });
+
+      // Fetch LeaveType names from Master DB
+      const leaveTypeIds = [
+        ...new Set([
+          ...leavesPolicy.leaveTypes.map((lt) => lt.leaveTypeId),
+          ...leaveApplications.map((app) => app.leaveTypeId),
+        ]),
+      ];
+
+      const masterLeaveTypes = await this.prismaMaster.leaveType.findMany({
+        where: { id: { in: leaveTypeIds } },
+        select: { id: true, name: true },
+      });
+
+      const leaveTypeMap = new Map(masterLeaveTypes.map((lt) => [lt.id, lt]));
 
       // Calculate used leaves by leave type
       const usedLeavesMap = new Map<string, number>();
@@ -144,8 +152,8 @@ export class LeaveApplicationService {
         const currentUsed = usedLeavesMap.get(leaveTypeId) || 0;
 
         // Calculate days between fromDate and toDate
-        const fromDate = new Date(app.fromDate);
-        const toDate = new Date(app.toDate);
+        const fromDate = new Date(app.fromDate as any);
+        const toDate = new Date(app.toDate as any);
         const diffTime = Math.abs(toDate.getTime() - fromDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both dates
 
@@ -161,23 +169,21 @@ export class LeaveApplicationService {
       });
 
       // Build leave balance array
-      const leaveBalances = employee.leavesPolicy.leaveTypes.map(
-        (policyLeaveType) => {
-          const totalLeaves = policyLeaveType.numberOfLeaves;
-          const usedLeaves =
-            usedLeavesMap.get(policyLeaveType.leaveTypeId) || 0;
-          const remainingLeaves = Math.max(0, totalLeaves - usedLeaves);
+      const leaveBalances = leavesPolicy.leaveTypes.map((policyLeaveType) => {
+        const totalLeaves = policyLeaveType.numberOfLeaves;
+        const usedLeaves = usedLeavesMap.get(policyLeaveType.leaveTypeId) || 0;
+        const remainingLeaves = Math.max(0, totalLeaves - usedLeaves);
+        const leaveType = leaveTypeMap.get(policyLeaveType.leaveTypeId);
 
-          return {
-            id: policyLeaveType.leaveTypeId, // Add id for DataTable compatibility
-            leaveTypeId: policyLeaveType.leaveTypeId,
-            leaveTypeName: policyLeaveType.leaveType.name,
-            totalLeaves,
-            usedLeaves: Math.round(usedLeaves * 100) / 100, // Round to 2 decimal places
-            remainingLeaves: Math.round(remainingLeaves * 100) / 100,
-          };
-        },
-      );
+        return {
+          id: policyLeaveType.leaveTypeId, // Add id for DataTable compatibility
+          leaveTypeId: policyLeaveType.leaveTypeId,
+          leaveTypeName: leaveType?.name || 'Unknown',
+          totalLeaves,
+          usedLeaves: Math.round(usedLeaves * 100) / 100, // Round to 2 decimal places
+          remainingLeaves: Math.round(remainingLeaves * 100) / 100,
+        };
+      });
 
       const totalTaken = leaveBalances.reduce(
         (sum, bal) => sum + bal.usedLeaves,
@@ -194,7 +200,7 @@ export class LeaveApplicationService {
           employeeId: employee.id,
           employeeName: employee.employeeName,
           leavePolicyId: employee.leavesPolicyId,
-          leavePolicyName: employee.leavesPolicy.name,
+          leavePolicyName: leavesPolicy.name,
           leaveBalances,
           totalTaken: Math.round(totalTaken * 100) / 100,
           totalRemaining: Math.round(totalRemaining * 100) / 100,
@@ -225,20 +231,20 @@ export class LeaveApplicationService {
       // Validate employee exists
       const employee = await this.prisma.employee.findUnique({
         where: { id: body.employeeId },
-        include: {
-          leavesPolicy: {
-            include: {
-              leaveTypes: true,
-            },
-          },
-        },
       });
 
       if (!employee) {
         return { status: false, message: 'Employee not found' };
       }
 
-      if (!employee.leavesPolicy) {
+      const leavesPolicy = await this.prismaMaster.leavesPolicy.findUnique({
+        where: { id: employee.leavesPolicyId },
+        include: {
+          leaveTypes: true,
+        },
+      });
+
+      if (!leavesPolicy) {
         return {
           status: false,
           message: 'Employee does not have a leave policy assigned',
@@ -246,7 +252,7 @@ export class LeaveApplicationService {
       }
 
       // Check if leave type exists in policy
-      const policyLeaveType = employee.leavesPolicy.leaveTypes.find(
+      const policyLeaveType = leavesPolicy.leaveTypes.find(
         (lt) => lt.leaveTypeId === body.leaveTypeId,
       );
 
@@ -390,7 +396,7 @@ export class LeaveApplicationService {
         }
       }
 
-      const created = await (this.prisma as any).leaveApplication.create({
+      const created = await this.prisma.leaveApplication.create({
         data: {
           employeeId: body.employeeId,
           leaveTypeId: body.leaveTypeId,
@@ -408,17 +414,23 @@ export class LeaveApplicationService {
           approval2Date: approval2Date as any,
           createdById: ctx.userId,
         },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-            },
-          },
-          leaveType: true,
-        },
       });
+
+      // Fetch tags for response
+      const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+        where: { id: created.leaveTypeId },
+        select: { name: true },
+      });
+
+      const mappedCreated = {
+        ...created,
+        employee: {
+          id: employee.id,
+          employeeId: employee.employeeId,
+          employeeName: employee.employeeName,
+        },
+        leaveType: masterLeaveType,
+      };
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -426,7 +438,7 @@ export class LeaveApplicationService {
         module: 'leave-applications',
         entity: 'LeaveApplication',
         entityId: created.id,
-        description: `Created leave application for ${created.employee.employeeName}`,
+        description: `Created leave application for ${employee.employeeName}`,
         newValues: JSON.stringify(body),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
@@ -448,7 +460,7 @@ export class LeaveApplicationService {
         await this.notifications.create({
           userId: created.approval1,
           title: 'Leave application awaiting approval',
-          message: `${created.employee.employeeName} requested ${dateRange}`,
+          message: `${employee.employeeName} requested ${dateRange}`,
           category: 'leave-application',
           priority: 'high',
           actionType: 'leave-application.pending-approval',
@@ -466,7 +478,7 @@ export class LeaveApplicationService {
             created.status === 'approved'
               ? 'Leave application approved'
               : 'Leave application submitted',
-          message: `${created.leaveType.name} (${created.dayType}) ${dateRange}`,
+          message: `${masterLeaveType?.name || 'Leave'} (${created.dayType}) ${dateRange}`,
           category: 'leave-application',
           priority: created.status === 'approved' ? 'normal' : 'low',
           actionType: 'leave-application.view',
@@ -477,7 +489,7 @@ export class LeaveApplicationService {
         });
       }
 
-      return { status: true, data: created };
+      return { status: true, data: mappedCreated };
     } catch (error: any) {
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -524,55 +536,88 @@ export class LeaveApplicationService {
         where.toDate = { lte: new Date(filters.toDate) };
       }
 
-      const leaveApplications = await (
-        this.prisma as any
-      ).leaveApplication.findMany({
+      const leaveApplications = await this.prisma.leaveApplication.findMany({
         where,
-        include: {
-          employee: {
-            include: {
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          leaveType: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
         orderBy: {
           createdAt: 'desc',
         },
       });
 
+      // Collect IDs for manual fetching
+      const employeeIds = [
+        ...new Set(leaveApplications.map((app) => app.employeeId)),
+      ];
+      const leaveTypeIds = [
+        ...new Set(leaveApplications.map((app) => app.leaveTypeId)),
+      ];
+
+      const [employees, masterLeaveTypes] = await Promise.all([
+        this.prisma.employee.findMany({
+          where: { id: { in: employeeIds } },
+          select: {
+            id: true,
+            employeeId: true,
+            employeeName: true,
+            departmentId: true,
+            subDepartmentId: true,
+          },
+        }),
+        this.prismaMaster.leaveType.findMany({
+          where: { id: { in: leaveTypeIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const deptIds = [
+        ...new Set(employees.map((e) => e.departmentId).filter(Boolean)),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(employees.map((e) => e.subDepartmentId).filter(Boolean)),
+      ] as string[];
+
+      const [departments, subDepartments] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const leaveTypeMap = new Map(masterLeaveTypes.map((lt) => [lt.id, lt]));
+      const employeeMap = new Map(
+        employees.map((e) => [
+          e.id,
+          {
+            ...e,
+            department: e.departmentId ? deptMap.get(e.departmentId) : null,
+            subDepartment: e.subDepartmentId
+              ? subDeptMap.get(e.subDepartmentId)
+              : null,
+          },
+        ]),
+      );
+
       // Filter by department/sub-department if needed
-      let filtered = leaveApplications;
+      let filtered = leaveApplications.map((app) => ({
+        ...app,
+        employee: employeeMap.get(app.employeeId) || null,
+        leaveType: leaveTypeMap.get(app.leaveTypeId) || null,
+      }));
 
       if (filters?.departmentId) {
         filtered = filtered.filter(
-          (app) =>
-            app.employee.departmentId === filters.departmentId ||
-            app.employee.department?.id === filters.departmentId,
+          (app) => app.employee?.departmentId === filters.departmentId,
         );
       }
 
       if (filters?.subDepartmentId) {
         filtered = filtered.filter(
-          (app) =>
-            app.employee.subDepartmentId === filters.subDepartmentId ||
-            app.employee.subDepartment?.id === filters.subDepartmentId,
+          (app) => app.employee?.subDepartmentId === filters.subDepartmentId,
         );
       }
 
@@ -580,12 +625,12 @@ export class LeaveApplicationService {
       const mapped = filtered.map((app) => ({
         id: app.id,
         employeeId: app.employeeId,
-        employeeName: app.employee.employeeName,
-        employeeCode: app.employee.employeeId,
-        department: app.employee.department?.name || null,
-        subDepartment: app.employee.subDepartment?.name || null,
+        employeeName: app.employee?.employeeName || 'Unknown',
+        employeeCode: app.employee?.employeeId || 'Unknown',
+        department: app.employee?.department?.name || null,
+        subDepartment: app.employee?.subDepartment?.name || null,
         leaveType: app.leaveTypeId,
-        leaveTypeName: app.leaveType.name,
+        leaveTypeName: app.leaveType?.name || 'Unknown',
         dayType: app.dayType,
         fromDate: app.fromDate.toISOString(),
         toDate: app.toDate.toISOString(),
@@ -632,17 +677,8 @@ export class LeaveApplicationService {
         return { status: false, message: 'Unauthorized' };
       }
 
-      const existing = await (this.prisma as any).leaveApplication.findUnique({
+      const existing = await this.prisma.leaveApplication.findUnique({
         where: { id },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeName: true,
-            },
-          },
-          leaveType: true,
-        },
       });
 
       if (!existing) {
@@ -657,23 +693,35 @@ export class LeaveApplicationService {
         return { status: false, message: 'Leave application already rejected' };
       }
 
+      // Fetch employee for approval logic
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: existing.employeeId },
+      });
+
+      if (!employee) {
+        return { status: false, message: 'Employee not found' };
+      }
+
       const effectiveLevel = level || this.getPendingApprovalLevel(existing);
       if (!effectiveLevel) {
         return { status: false, message: 'No pending approval found' };
       }
 
-      // Check for Admin Override (Allow 'admin' role or 'leave-application.update' permission to bypass approver check)
+      // Check for Admin Override
       let canOverride = false;
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prismaMaster.user.findUnique({
         where: { id: ctx.userId },
-        include: { role: { include: { permissions: { include: { permission: true } } } } }
+        include: {
+          role: {
+            include: {
+              permissions: { include: { permission: true } },
+            },
+          },
+        },
       });
 
       if (user?.role?.name === 'admin') {
         canOverride = true;
-      } else if (user?.role?.permissions.some(p => p.permission.name === 'leave-application.update')) {
-        // canOverride = true; // Uncomment if we want to allow anyone with update permission to override
-        // For now, let's stick to Admin or explicit approver
       }
 
       if (effectiveLevel === 1) {
@@ -683,31 +731,31 @@ export class LeaveApplicationService {
             message: 'No approver configured for level 1',
           };
         }
-        
+
         // Strict check: Must be the assigned approver OR be an Admin overriding it
         if (existing.approval1 !== ctx.userId && !canOverride) {
-          return { status: false, message: 'Forbidden: You are not the assigned approver' };
+          return {
+            status: false,
+            message: 'Forbidden: You are not the assigned approver',
+          };
         }
 
         const nextStatus = existing.approval2 ? 'pending' : 'approved';
 
-        const updated = await (this.prisma as any).leaveApplication.update({
+        const updated = await this.prisma.leaveApplication.update({
           where: { id },
           data: {
-            status: nextStatus,
+            status: nextStatus as any,
             approval1Status: 'approved',
             approval1Date: new Date() as any,
             updatedById: ctx.userId,
           },
-          include: {
-            employee: {
-              select: {
-                id: true,
-                employeeName: true,
-              },
-            },
-            leaveType: true,
-          },
+        });
+
+        // Fetch labels for activity log and notifications
+        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+          where: { id: existing.leaveTypeId },
+          select: { name: true },
         });
 
         await this.activityLogs.log({
@@ -716,7 +764,7 @@ export class LeaveApplicationService {
           module: 'leave-applications',
           entity: 'LeaveApplication',
           entityId: id,
-          description: `Approved leave application (Level 1) for ${updated.employee.employeeName}`,
+          description: `Approved leave application (Level 1) for ${employee.employeeName}`,
           oldValues: JSON.stringify({
             status: existing.status,
             approval1Status: existing.approval1Status,
@@ -749,7 +797,7 @@ export class LeaveApplicationService {
           await this.notifications.create({
             userId: existing.approval2,
             title: 'Leave application awaiting approval',
-            message: `${updated.employee.employeeName} is awaiting Level 2 approval`,
+            message: `${employee.employeeName} is awaiting Level 2 approval`,
             category: 'leave-application',
             priority: 'high',
             actionType: 'leave-application.pending-approval',
@@ -769,8 +817,8 @@ export class LeaveApplicationService {
                 : 'Leave application partially approved',
             message:
               nextStatus === 'approved'
-                ? `${updated.leaveType.name} approved`
-                : `${updated.leaveType.name} approved at Level 1`,
+                ? `${masterLeaveType?.name || 'Leave'} approved`
+                : `${masterLeaveType?.name || 'Leave'} approved at Level 1`,
             category: 'leave-application',
             priority: nextStatus === 'approved' ? 'normal' : 'low',
             actionType: 'leave-application.view',
@@ -781,7 +829,10 @@ export class LeaveApplicationService {
           });
         }
 
-        return { status: true, data: updated };
+        return {
+          status: true,
+          data: { ...updated, employee, leaveType: masterLeaveType },
+        };
       }
 
       if (effectiveLevel === 2) {
@@ -798,10 +849,13 @@ export class LeaveApplicationService {
           };
         }
         if (existing.approval2 !== ctx.userId && !canOverride) {
-          return { status: false, message: 'Forbidden: You are not the assigned approver' };
+          return {
+            status: false,
+            message: 'Forbidden: You are not the assigned approver',
+          };
         }
 
-        const updated = await (this.prisma as any).leaveApplication.update({
+        const updated = await this.prisma.leaveApplication.update({
           where: { id },
           data: {
             status: 'approved',
@@ -809,15 +863,12 @@ export class LeaveApplicationService {
             approval2Date: new Date() as any,
             updatedById: ctx.userId,
           },
-          include: {
-            employee: {
-              select: {
-                id: true,
-                employeeName: true,
-              },
-            },
-            leaveType: true,
-          },
+        });
+
+        // Fetch labels
+        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+          where: { id: existing.leaveTypeId },
+          select: { name: true },
         });
 
         await this.activityLogs.log({
@@ -826,7 +877,7 @@ export class LeaveApplicationService {
           module: 'leave-applications',
           entity: 'LeaveApplication',
           entityId: id,
-          description: `Approved leave application (Level 2) for ${updated.employee.employeeName}`,
+          description: `Approved leave application (Level 2) for ${employee.employeeName}`,
           oldValues: JSON.stringify({
             status: existing.status,
             approval2Status: existing.approval2Status,
@@ -859,7 +910,7 @@ export class LeaveApplicationService {
           await this.notifications.create({
             userId: requesterUserId,
             title: 'Leave application approved',
-            message: `${updated.leaveType.name} approved at Level 2`,
+            message: `${masterLeaveType?.name || 'Leave'} approved at Level 2`,
             category: 'leave-application',
             priority: 'normal',
             actionType: 'leave-application.view',
@@ -870,7 +921,10 @@ export class LeaveApplicationService {
           });
         }
 
-        return { status: true, data: updated };
+        return {
+          status: true,
+          data: { ...updated, employee, leaveType: masterLeaveType },
+        };
       }
 
       return { status: false, message: 'Invalid approval level' };
@@ -913,17 +967,8 @@ export class LeaveApplicationService {
         return { status: false, message: 'Unauthorized' };
       }
 
-      const existing = await (this.prisma as any).leaveApplication.findUnique({
+      const existing = await this.prisma.leaveApplication.findUnique({
         where: { id },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeName: true,
-            },
-          },
-          leaveType: true,
-        },
       });
 
       if (!existing) {
@@ -938,6 +983,15 @@ export class LeaveApplicationService {
         return { status: false, message: 'Leave application already rejected' };
       }
 
+      // Fetch employee
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: existing.employeeId },
+      });
+
+      if (!employee) {
+        return { status: false, message: 'Employee not found' };
+      }
+
       const effectiveLevel = level || this.getPendingApprovalLevel(existing);
       if (!effectiveLevel) {
         return { status: false, message: 'No pending approval found' };
@@ -945,9 +999,15 @@ export class LeaveApplicationService {
 
       // Check for Admin Override
       let canOverride = false;
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prismaMaster.user.findUnique({
         where: { id: ctx.userId },
-        include: { role: { include: { permissions: { include: { permission: true } } } } }
+        include: {
+          role: {
+            include: {
+              permissions: { include: { permission: true } },
+            },
+          },
+        },
       });
 
       if (user?.role?.name === 'admin') {
@@ -965,7 +1025,7 @@ export class LeaveApplicationService {
           return { status: false, message: 'Forbidden' };
         }
 
-        const updated = await (this.prisma as any).leaveApplication.update({
+        const updated = await this.prisma.leaveApplication.update({
           where: { id },
           data: {
             status: 'rejected',
@@ -974,15 +1034,12 @@ export class LeaveApplicationService {
             remarks: remarks || existing.remarks,
             updatedById: ctx.userId,
           },
-          include: {
-            employee: {
-              select: {
-                id: true,
-                employeeName: true,
-              },
-            },
-            leaveType: true,
-          },
+        });
+
+        // Fetch labels
+        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+          where: { id: existing.leaveTypeId },
+          select: { name: true },
         });
 
         await this.activityLogs.log({
@@ -991,7 +1048,7 @@ export class LeaveApplicationService {
           module: 'leave-applications',
           entity: 'LeaveApplication',
           entityId: id,
-          description: `Rejected leave application (Level 1) for ${updated.employee.employeeName}`,
+          description: `Rejected leave application (Level 1) for ${employee.employeeName}`,
           oldValues: JSON.stringify({
             status: existing.status,
             approval1Status: existing.approval1Status,
@@ -1026,7 +1083,7 @@ export class LeaveApplicationService {
           await this.notifications.create({
             userId: requesterUserId,
             title: 'Leave application rejected',
-            message: `${updated.leaveType.name} rejected at Level 1${remarks ? `: ${remarks}` : ''}`,
+            message: `${masterLeaveType?.name || 'Leave'} rejected at Level 1${remarks ? `: ${remarks}` : ''}`,
             category: 'leave-application',
             priority: 'normal',
             actionType: 'leave-application.view',
@@ -1037,7 +1094,10 @@ export class LeaveApplicationService {
           });
         }
 
-        return { status: true, data: updated };
+        return {
+          status: true,
+          data: { ...updated, employee, leaveType: masterLeaveType },
+        };
       }
 
       if (effectiveLevel === 2) {
@@ -1057,7 +1117,7 @@ export class LeaveApplicationService {
           return { status: false, message: 'Forbidden' };
         }
 
-        const updated = await (this.prisma as any).leaveApplication.update({
+        const updated = await this.prisma.leaveApplication.update({
           where: { id },
           data: {
             status: 'rejected',
@@ -1066,15 +1126,12 @@ export class LeaveApplicationService {
             remarks: remarks || existing.remarks,
             updatedById: ctx.userId,
           },
-          include: {
-            employee: {
-              select: {
-                id: true,
-                employeeName: true,
-              },
-            },
-            leaveType: true,
-          },
+        });
+
+        // Fetch labels
+        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+          where: { id: existing.leaveTypeId },
+          select: { name: true },
         });
 
         await this.activityLogs.log({
@@ -1083,7 +1140,7 @@ export class LeaveApplicationService {
           module: 'leave-applications',
           entity: 'LeaveApplication',
           entityId: id,
-          description: `Rejected leave application (Level 2) for ${updated.employee.employeeName}`,
+          description: `Rejected leave application (Level 2) for ${employee.employeeName}`,
           oldValues: JSON.stringify({
             status: existing.status,
             approval2Status: existing.approval2Status,
@@ -1118,7 +1175,7 @@ export class LeaveApplicationService {
           await this.notifications.create({
             userId: requesterUserId,
             title: 'Leave application rejected',
-            message: `${updated.leaveType.name} rejected at Level 2${remarks ? `: ${remarks}` : ''}`,
+            message: `${masterLeaveType?.name || 'Leave'} rejected at Level 2${remarks ? `: ${remarks}` : ''}`,
             category: 'leave-application',
             priority: 'normal',
             actionType: 'leave-application.view',
@@ -1129,7 +1186,10 @@ export class LeaveApplicationService {
           });
         }
 
-        return { status: true, data: updated };
+        return {
+          status: true,
+          data: { ...updated, employee, leaveType: masterLeaveType },
+        };
       }
 
       return { status: false, message: 'Invalid approval level' };

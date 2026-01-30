@@ -8,7 +8,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller('api/permissions')
 export class PermissionController {
-  constructor(private readonly permissionService: PermissionService) {}
+  constructor(private readonly permissionService: PermissionService) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all permissions' })

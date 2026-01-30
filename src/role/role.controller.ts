@@ -26,7 +26,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/roles')
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {}
+  constructor(private readonly roleService: RoleService) { }
 
   @Post()
   @Permissions('role.create')

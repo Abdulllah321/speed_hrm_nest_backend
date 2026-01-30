@@ -3,16 +3,16 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class RoleService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prismaMaster: PrismaMasterService) {}
 
   async create(createRoleDto: CreateRoleDto) {
-    const existing = await this.prisma.role.findUnique({
+    const existing = await this.prismaMaster.role.findUnique({
       where: { name: createRoleDto.name },
     });
 
@@ -22,7 +22,7 @@ export class RoleService {
 
     const { permissionIds, ...data } = createRoleDto;
 
-    return this.prisma.role.create({
+    return this.prismaMaster.role.create({
       data: {
         ...data,
         permissions: permissionIds?.length
@@ -44,7 +44,7 @@ export class RoleService {
   }
 
   async findAll() {
-    return this.prisma.role.findMany({
+    return this.prismaMaster.role.findMany({
       include: {
         permissions: {
           include: {
@@ -60,7 +60,7 @@ export class RoleService {
   }
 
   async findOne(id: string) {
-    const role = await this.prisma.role.findUnique({
+    const role = await this.prismaMaster.role.findUnique({
       where: { id },
       include: {
         permissions: {
@@ -79,7 +79,7 @@ export class RoleService {
   }
 
   async update(id: string, updateRoleDto: UpdateRoleDto) {
-    const role = await this.prisma.role.findUnique({ where: { id } });
+    const role = await this.prismaMaster.role.findUnique({ where: { id } });
     if (!role) {
       throw new NotFoundException('Role not found');
     }
@@ -89,12 +89,12 @@ export class RoleService {
     // If permissions are being updated
     if (permissionIds) {
       // First delete existing permissions
-      await this.prisma.rolePermission.deleteMany({
+      await this.prismaMaster.rolePermission.deleteMany({
         where: { roleId: id },
       });
     }
 
-    return this.prisma.role.update({
+    return this.prismaMaster.role.update({
       where: { id },
       data: {
         ...data,
@@ -117,7 +117,7 @@ export class RoleService {
   }
 
   async remove(id: string) {
-    const role = await this.prisma.role.findUnique({
+    const role = await this.prismaMaster.role.findUnique({
       where: { id },
       include: { _count: { select: { users: true } } },
     });
@@ -134,7 +134,7 @@ export class RoleService {
       throw new ConflictException('Cannot delete role assigned to users');
     }
 
-    return this.prisma.role.delete({
+    return this.prismaMaster.role.delete({
       where: { id },
     });
   }

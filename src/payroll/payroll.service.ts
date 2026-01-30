@@ -3,8 +3,12 @@ import {
   BadRequestException,
   Logger,
   InternalServerErrorException,
+  Inject,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { Prisma } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { Decimal } from '@prisma/client/runtime/client';
@@ -15,8 +19,10 @@ export class PayrollService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly prismaMaster: PrismaMasterService,
     private readonly activityLogsService: ActivityLogsService,
-  ) {}
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -25,105 +31,42 @@ export class PayrollService {
     const normalizedMonth = String(Number(month)).padStart(2, '0');
     const normalizedYear = String(year);
 
-    // 1. Fetch active employees
-    const whereClause: Prisma.EmployeeWhereInput = { status: 'active' };
-    if (employeeIds && employeeIds.length > 0) {
-      whereClause.id = { in: employeeIds };
-    }
+    // 1. Fetch active employees (Try Redis Cache first)
+    const cacheKey = 'employees_list';
+    const cachedData: any = await this.cacheManager.get(cacheKey);
 
-    const employees = await this.prisma.employee.findMany({
-      where: whereClause,
-      include: {
-        workingHoursPolicy: true,
-        leavesPolicy: true,
-        socialSecurityInstitution: {
-          select: { id: true, name: true, contributionRate: true } as any,
+    let employees: any[] = [];
+    if (!employeeIds?.length && cachedData) {
+      employees = cachedData.filter((e: any) => e.status === 'active');
+    } else {
+      const where: Prisma.EmployeeWhereInput = { status: 'active' };
+      if (employeeIds && employeeIds.length > 0) {
+        where.id = { in: employeeIds };
+      }
+      // Fetch minimal employee data needed
+      employees = await this.prisma.employee.findMany({
+        where,
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          departmentId: true,
+          subDepartmentId: true,
+          designationId: true,
+          employeeGradeId: true,
+          workingHoursPolicyId: true,
+          leavesPolicyId: true,
+          socialSecurityInstitutionId: true,
+          providentFund: true,
+          eobi: true,
+          status: true,
+          joiningDate: true,
+          probationExpiryDate: true,
+          employeeSalary: true,
+          overtimeApplicable: true,
         },
-        socialSecurityRegistrations: {
-          where: { status: 'active' },
-          include: {
-            institution: {
-              select: { id: true, name: true, contributionRate: true } as any,
-            },
-          },
-          orderBy: { registrationDate: 'desc' },
-        },
-        allowances: {
-          where: {
-            status: 'active',
-            month: normalizedMonth,
-            year: normalizedYear,
-          },
-          include: { allowanceHead: { select: { id: true, name: true } } },
-        },
-        deductions: {
-          where: {
-            status: 'active',
-            month: normalizedMonth,
-            year: normalizedYear,
-          },
-          include: { deductionHead: { select: { id: true, name: true } } },
-        },
-        loanRequests: {
-          where: {
-            OR: [{ approvalStatus: 'approved' }, { status: 'approved' }],
-          },
-        },
-        advanceSalaries: {
-          where: {
-            approvalStatus: 'approved',
-            status: 'active',
-          },
-        },
-        leaveEncashments: {
-          where: {
-            approvalStatus: 'approved',
-            status: 'active',
-            paymentMonth: normalizedMonth,
-            paymentYear: normalizedYear,
-          },
-        },
-        bonuses: {
-          where: {
-            bonusMonth: normalizedMonth,
-            bonusYear: normalizedYear,
-            status: 'active',
-          },
-          include: { bonusType: { select: { id: true, name: true } } },
-        },
-        rebates: {
-          where: {
-            monthYear: `${normalizedYear}-${normalizedMonth}`,
-            status: 'approved',
-          },
-          include: { rebateNature: true },
-        },
-        leaveApplications: {
-          where: {
-            status: 'approved',
-            OR: [
-              {
-                fromDate: { lte: new Date(Number(year), Number(month), 0) },
-                toDate: { gte: new Date(`${year}-${month}-01`) },
-              },
-            ],
-          },
-          select: {
-            id: true,
-            fromDate: true,
-            toDate: true,
-            status: true,
-          },
-        },
-        increments: {
-          where: {
-            status: 'active',
-            promotionDate: { lte: new Date(Number(year), Number(month), 0) }, // Increments effective on or before the end of payroll month
-          },
-          orderBy: { promotionDate: 'asc' },
-        },
-      },
-    } as any);
+      });
+    }
 
     if (employees.length === 0) {
       throw new BadRequestException(
@@ -131,13 +74,196 @@ export class PayrollService {
       );
     }
 
-    const salaryBreakups = await this.prisma.salaryBreakup.findMany({
-      where: { status: 'active' },
-    });
+    const ids = employees.map((e) => e.id);
+    const monthEndDate = new Date(Number(year), Number(month), 0);
+    const monthStartDate = new Date(`${normalizedYear}-${normalizedMonth}-01`);
+
+    // 2. Fetch all transactional and Master data in parallel
+    const [
+      salaryBreakups,
+      allowances,
+      deductions,
+      loanRequests,
+      advanceSalaries,
+      leaveEncashments,
+      bonuses,
+      rebates,
+      leaveApplications,
+      increments,
+      ssRegistrations,
+      workingHoursPolicies,
+      leavesPolicies,
+      allowanceHeads,
+      deductionHeads,
+      bonusTypes,
+      rebateNatures,
+      allHolidays,
+      allTaxSlabs,
+    ] = await Promise.all([
+      this.prismaMaster.salaryBreakup.findMany({ where: { status: 'active' } }),
+      this.prisma.allowance.findMany({
+        where: {
+          employeeId: { in: ids },
+          status: 'active',
+          month: normalizedMonth,
+          year: normalizedYear,
+        },
+      }),
+      this.prisma.deduction.findMany({
+        where: {
+          employeeId: { in: ids },
+          status: 'active',
+          month: normalizedMonth,
+          year: normalizedYear,
+        },
+      }),
+      this.prisma.loanRequest.findMany({
+        where: {
+          employeeId: { in: ids },
+          OR: [{ approvalStatus: 'approved' }, { status: 'approved' }],
+        },
+      }),
+      this.prisma.advanceSalary.findMany({
+        where: {
+          employeeId: { in: ids },
+          approvalStatus: 'approved',
+          status: 'active',
+        },
+      }),
+      this.prisma.leaveEncashment.findMany({
+        where: {
+          employeeId: { in: ids },
+          approvalStatus: 'approved',
+          status: 'active',
+          paymentMonth: normalizedMonth,
+          paymentYear: normalizedYear,
+        },
+      }),
+      this.prisma.bonus.findMany({
+        where: {
+          employeeId: { in: ids },
+          bonusMonth: normalizedMonth,
+          bonusYear: normalizedYear,
+          status: 'active',
+        },
+      }),
+      this.prisma.rebate.findMany({
+        where: {
+          employeeId: { in: ids },
+          monthYear: `${normalizedYear}-${normalizedMonth}`,
+          status: 'approved',
+        },
+      }),
+      this.prisma.leaveApplication.findMany({
+        where: {
+          employeeId: { in: ids },
+          status: 'approved',
+          OR: [
+            {
+              fromDate: { lte: monthEndDate },
+              toDate: { gte: monthStartDate },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          fromDate: true,
+          toDate: true,
+          status: true,
+          employeeId: true,
+        },
+      }),
+      this.prisma.increment.findMany({
+        where: {
+          employeeId: { in: ids },
+          status: 'active',
+          promotionDate: { lte: monthEndDate },
+        },
+        orderBy: { promotionDate: 'asc' },
+      }),
+      this.prismaMaster.socialSecurityEmployeeRegistration.findMany({
+        where: { employeeId: { in: ids }, status: 'active' },
+        include: {
+          institution: {
+            select: { id: true, name: true, contributionRate: true },
+          },
+        },
+        orderBy: { registrationDate: 'desc' },
+      }),
+      this.prismaMaster.workingHoursPolicy.findMany({
+        where: { status: 'active' },
+      }),
+      this.prismaMaster.leavesPolicy.findMany({
+        where: { status: 'active' },
+        include: { leaveTypes: true },
+      }),
+      this.prismaMaster.allowanceHead.findMany({
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.deductionHead.findMany({
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.bonusType.findMany({
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.rebateNature.findMany(),
+      this.prismaMaster.holiday.findMany({ where: { status: 'active' } }),
+      this.prismaMaster.taxSlab.findMany({ where: { status: 'active' } }),
+    ]);
+
+    // Create maps for Master data types
+    const workingHoursPolicyMap = new Map(
+      workingHoursPolicies.map((p) => [p.id, p]),
+    );
+    const leavesPolicyMap = new Map(leavesPolicies.map((p) => [p.id, p]));
+    const allowanceHeadMap = new Map(allowanceHeads.map((h) => [h.id, h]));
+    const deductionHeadMap = new Map(deductionHeads.map((h) => [h.id, h]));
+    const bonusTypeMap = new Map(bonusTypes.map((t) => [t.id, t]));
+    const rebateNatureMap = new Map(rebateNatures.map((n) => [n.id, n]));
+
+    // 3. Map relations to employees to create enriched employee objects
+    const enrichedEmployees = employees.map((emp) => ({
+      ...emp,
+      workingHoursPolicy: workingHoursPolicyMap.get(emp.workingHoursPolicyId),
+      leavesPolicy: leavesPolicyMap.get(emp.leavesPolicyId),
+      socialSecurityRegistrations: ssRegistrations.filter(
+        (r) => r.employeeId === emp.id,
+      ),
+      allowances: allowances
+        .filter((a) => a.employeeId === emp.id)
+        .map((a) => ({
+          ...a,
+          allowanceHead: allowanceHeadMap.get(a.allowanceHeadId),
+        })),
+      deductions: deductions
+        .filter((d) => d.employeeId === emp.id)
+        .map((d) => ({
+          ...d,
+          deductionHead: deductionHeadMap.get(d.deductionHeadId),
+        })),
+      loanRequests: loanRequests.filter((l) => l.employeeId === emp.id),
+      advanceSalaries: advanceSalaries.filter((as) => as.employeeId === emp.id),
+      leaveEncashments: leaveEncashments.filter(
+        (le) => le.employeeId === emp.id,
+      ),
+      bonuses: bonuses
+        .filter((b) => b.employeeId === emp.id)
+        .map((b) => ({ ...b, bonusType: bonusTypeMap.get(b.bonusTypeId) })),
+      rebates: rebates
+        .filter((r) => r.employeeId === emp.id)
+        .map((r) => ({
+          ...r,
+          rebateNature: rebateNatureMap.get(r.rebateNatureId),
+        })),
+      leaveApplications: leaveApplications.filter(
+        (la) => la.employeeId === emp.id,
+      ),
+      increments: increments.filter((inc) => inc.employeeId === emp.id),
+    }));
 
     const previewData: any[] = []; // Explicitly type as any[] or define an interface
 
-    for (const employee of employees) {
+    for (const employee of enrichedEmployees) {
       // Type cast to any to handle Prisma relations that may not be in generated types yet
       const emp = employee as any;
       const monthStartDate = new Date(
@@ -333,6 +459,7 @@ export class PayrollService {
         calculatedBasicSalary,
         monthStartDate,
         monthEndDate,
+        allHolidays,
       );
 
       // C. Calculate Attendance Deductions (Lates/Absents) (using total package amount, not just basic salary)
@@ -399,6 +526,7 @@ export class PayrollService {
         allTaxableComponents,
         emp.rebates || [],
         packageAmount,
+        allTaxSlabs,
       );
 
       // G. Calculate EOBI & PF
@@ -513,9 +641,7 @@ export class PayrollService {
             year,
             totalAmount: 0,
             status: 'confirmed',
-            generatedBy: generatedBy
-              ? { connect: { id: generatedBy } }
-              : undefined,
+            generatedById: generatedBy,
           },
         });
       }
@@ -658,29 +784,19 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-            departmentId: filters.departmentId,
-          }),
+          departmentId: filters.departmentId,
+        }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-            subDepartmentId: filters.subDepartmentId,
-          }),
+          subDepartmentId: filters.subDepartmentId,
+        }),
       };
     }
 
-    return this.prisma.payrollDetail.findMany({
+    const payrollDetails = await this.prisma.payrollDetail.findMany({
       where,
       include: {
-        employee: {
-          include: {
-            department: true,
-            subDepartment: true,
-            designation: true,
-            country: true,
-            state: true,
-            city: true,
-            location: true,
-          },
-        },
+        employee: true,
         payroll: true,
       },
       orderBy: {
@@ -689,6 +805,111 @@ export class PayrollService {
         },
       },
     });
+
+    // Fetch Master data for all employees in parallel
+    const deptIds = [
+      ...new Set(
+        payrollDetails.map((d: any) => d.employee.departmentId).filter(Boolean),
+      ),
+    ];
+    const subDeptIds = [
+      ...new Set(
+        payrollDetails
+          .map((d: any) => d.employee.subDepartmentId)
+          .filter(Boolean),
+      ),
+    ];
+    const desIds = [
+      ...new Set(
+        payrollDetails
+          .map((d: any) => d.employee.designationId)
+          .filter(Boolean),
+      ),
+    ];
+    const cityIds = [
+      ...new Set(
+        payrollDetails.map((d: any) => d.employee.cityId).filter(Boolean),
+      ),
+    ];
+    const stateIds = [
+      ...new Set(
+        payrollDetails.map((d: any) => d.employee.stateId).filter(Boolean),
+      ),
+    ];
+    const countryIds = [
+      ...new Set(
+        payrollDetails.map((d: any) => d.employee.countryId).filter(Boolean),
+      ),
+    ];
+    const locIds = [
+      ...new Set(
+        payrollDetails.map((d: any) => d.employee.locationId).filter(Boolean),
+      ),
+    ];
+
+    const [
+      departments,
+      subDepartments,
+      designations,
+      cities,
+      states,
+      countries,
+      locations,
+    ] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: deptIds as string[] } },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: subDeptIds as string[] } },
+      }),
+      this.prismaMaster.designation.findMany({
+        where: { id: { in: desIds as string[] } },
+      }),
+      this.prismaMaster.city.findMany({
+        where: { id: { in: cityIds as string[] } },
+      }),
+      this.prismaMaster.state.findMany({
+        where: { id: { in: stateIds as string[] } },
+      }),
+      this.prismaMaster.country.findMany({
+        where: { id: { in: countryIds as string[] } },
+      }),
+      this.prismaMaster.location.findMany({
+        where: { id: { in: locIds as string[] } },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
+    const desMap = new Map(designations.map((d) => [d.id, d]));
+    const cityMap = new Map(cities.map((c) => [c.id, c]));
+    const stateMap = new Map(states.map((s) => [s.id, s]));
+    const countryMap = new Map(countries.map((c) => [c.id, c]));
+    const locMap = new Map(locations.map((l) => [l.id, l]));
+
+    return payrollDetails.map((detail: any) => ({
+      ...detail,
+      employee: {
+        ...detail.employee,
+        department: deptMap.get(detail.employee.departmentId),
+        subDepartment: detail.employee.subDepartmentId
+          ? subDeptMap.get(detail.employee.subDepartmentId)
+          : null,
+        designation: desMap.get(detail.employee.designationId),
+        city: detail.employee.cityId
+          ? cityMap.get(detail.employee.cityId)
+          : null,
+        state: detail.employee.stateId
+          ? stateMap.get(detail.employee.stateId)
+          : null,
+        country: detail.employee.countryId
+          ? countryMap.get(detail.employee.countryId)
+          : null,
+        location: detail.employee.locationId
+          ? locMap.get(detail.employee.locationId)
+          : null,
+      },
+    }));
   }
 
   async getBankReport(filters: {
@@ -754,25 +975,26 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-            departmentId: filters.departmentId,
-          }),
+          departmentId: filters.departmentId,
+        }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-            subDepartmentId: filters.subDepartmentId,
-          }),
+          subDepartmentId: filters.subDepartmentId,
+        }),
       };
     }
 
-    return this.prisma.payrollDetail.findMany({
+    const payrollDetails = await this.prisma.payrollDetail.findMany({
       where,
       include: {
         employee: {
           select: {
+            id: true,
             employeeId: true,
             employeeName: true,
             officialEmail: true,
-            department: { select: { name: true } },
-            subDepartment: { select: { name: true } },
+            departmentId: true,
+            subDepartmentId: true,
           },
         },
         payroll: true,
@@ -783,20 +1005,53 @@ export class PayrollService {
         },
       },
     });
+
+    const deptIds = [
+      ...new Set(
+        payrollDetails.map((d: any) => d.employee.departmentId).filter(Boolean),
+      ),
+    ];
+    const subDeptIds = [
+      ...new Set(
+        payrollDetails
+          .map((d: any) => d.employee.subDepartmentId)
+          .filter(Boolean),
+      ),
+    ];
+
+    const [departments, subDepartments] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: deptIds as string[] } },
+        select: { id: true, name: true },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: subDeptIds as string[] } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
+
+    return payrollDetails.map((detail: any) => ({
+      ...detail,
+      employee: {
+        ...detail.employee,
+        department: detail.employee.departmentId
+          ? deptMap.get(detail.employee.departmentId)
+          : null,
+        subDepartment: detail.employee.subDepartmentId
+          ? subDeptMap.get(detail.employee.subDepartmentId)
+          : null,
+      },
+    }));
   }
 
   async getPayslipDetail(detailId: string) {
-    const detail = await this.prisma.payrollDetail.findUnique({
+    const detail: any = await this.prisma.payrollDetail.findUnique({
       where: { id: detailId },
       include: {
-        employee: {
-          include: {
-            department: true,
-            subDepartment: true,
-            designation: true,
-            employeeGrade: true,
-          },
-        },
+        employee: true,
         payroll: true,
       },
     });
@@ -804,6 +1059,35 @@ export class PayrollService {
     if (!detail) {
       throw new BadRequestException('Payslip not found');
     }
+
+    // Fetch Master data for the employee
+    const [dept, subDept, des, grade] = await Promise.all([
+      detail.employee.departmentId
+        ? this.prismaMaster.department.findUnique({
+          where: { id: detail.employee.departmentId },
+        })
+        : null,
+      detail.employee.subDepartmentId
+        ? this.prismaMaster.subDepartment.findUnique({
+          where: { id: detail.employee.subDepartmentId },
+        })
+        : null,
+      detail.employee.designationId
+        ? this.prismaMaster.designation.findUnique({
+          where: { id: detail.employee.designationId },
+        })
+        : null,
+      detail.employee.employeeGradeId
+        ? this.prismaMaster.employeeGrade.findUnique({
+          where: { id: detail.employee.employeeGradeId },
+        })
+        : null,
+    ]);
+
+    detail.employee.department = dept;
+    detail.employee.subDepartment = subDept;
+    detail.employee.designation = des;
+    detail.employee.employeeGrade = grade;
 
     // 1. Calculate PF Balances
     const allPreviousDetails = await this.prisma.payrollDetail.findMany({
@@ -953,7 +1237,7 @@ export class PayrollService {
         const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
 
         // Fetch EOBI record for the payroll month/year
-        const eobiRecord = await this.prisma.eOBI.findFirst({
+        const eobiRecord = await this.prismaMaster.eOBI.findFirst({
           where: {
             OR: [{ yearMonth: yearMonth }, { yearMonth: yearMonthAlt }],
             status: 'active',
@@ -981,7 +1265,7 @@ export class PayrollService {
     if (employee.providentFund) {
       try {
         // Fetch active ProvidentFund record from master table
-        const pfRecord = await this.prisma.providentFund.findFirst({
+        const pfRecord = await this.prismaMaster.providentFund.findFirst({
           where: {
             status: 'active',
           },
@@ -1056,7 +1340,7 @@ export class PayrollService {
         const matchesMonth =
           advance.deductionMonth === normalizedMonthForComparison ||
           String(Number(advance.deductionMonth)).padStart(2, '0') ===
-            normalizedMonthForComparison;
+          normalizedMonthForComparison;
         const matchesYear =
           advance.deductionYear === normalizedYearForComparison ||
           String(advance.deductionYear) === normalizedYearForComparison;
@@ -1170,7 +1454,7 @@ export class PayrollService {
           0,
           Math.floor(
             (incrementDate.getTime() - lastDate.getTime()) /
-              (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
           ),
         );
 
@@ -1210,7 +1494,7 @@ export class PayrollService {
         0,
         Math.floor(
           (monthEnd.getTime() - lastDate.getTime() + 1000 * 60 * 60 * 24) /
-            (1000 * 60 * 60 * 24),
+          (1000 * 60 * 60 * 24),
         ),
       );
       if (daysAfterLastIncrement > 0) {
@@ -1466,6 +1750,7 @@ export class PayrollService {
     basicSalary: Decimal,
     monthStartDate: Date,
     monthEndDate: Date,
+    allHolidays: any[],
   ): Promise<{ overtimeAmount: Decimal; overtimeBreakup: any[] }> {
     // Fetch approved OvertimeRequests for this month
     const startDate = new Date(`${year}-${month}-01`);
@@ -1539,11 +1824,6 @@ export class PayrollService {
         checkOut: { not: null },
       },
       orderBy: { date: 'asc' },
-    });
-
-    // Fetch all active holidays for date checking
-    const allHolidays = await this.prisma.holiday.findMany({
-      where: { status: 'active' },
     });
 
     // Helper to check if a date is a holiday
@@ -1708,6 +1988,7 @@ export class PayrollService {
     }>,
     rebates: any[],
     packageAmount: Decimal,
+    allTaxSlabs: any[],
   ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
     // Calculate taxable income from salary breakup components only (not gross salary)
     // Include ALL salary components (Basic Salary, House Rent, Utility, etc.) in taxable income
@@ -1787,14 +2068,16 @@ export class PayrollService {
 
     // Apply tax slab to taxable income
     if (taxableIncome.gt(0)) {
-      const slab = await this.prisma.taxSlab.findFirst({
-        where: {
-          minAmount: { lte: taxableIncome },
-          maxAmount: { gte: taxableIncome },
-          status: 'active',
-        },
-        orderBy: { minAmount: 'desc' },
-      });
+      // Find the slab in memory from pre-fetched allTaxSlabs
+      const slab = allTaxSlabs
+        .filter((s) => s.status === 'active')
+        .sort((a, b) => Number(b.minAmount) - Number(a.minAmount))
+        .find(
+          (s) =>
+            new Decimal(taxableIncome).gte(new Decimal(s.minAmount)) &&
+            (s.maxAmount === null ||
+              new Decimal(taxableIncome).lte(new Decimal(s.maxAmount))),
+        );
 
       if (slab) {
         taxSlabUsed = {
@@ -1804,7 +2087,6 @@ export class PayrollService {
         };
 
         // Calculate tax: Fixed amount from previous slabs + percentage on excess
-        // Note: fixedAmount might not exist in Prisma type yet, using type assertion
         const slabFixedAmount = (slab as any).fixedAmount;
         fixedAmountTax = slabFixedAmount
           ? new Decimal(slabFixedAmount)

@@ -37,7 +37,10 @@ export class CreateChartOfAccountDto {
   @IsOptional()
   isGroup?: boolean;
 
-  @ApiPropertyOptional({ example: 'parent-uuid', description: 'Parent account ID' })
+  @ApiPropertyOptional({
+    example: 'parent-uuid',
+    description: 'Parent account ID',
+  })
   @IsString()
   @IsOptional()
   parentId?: string;

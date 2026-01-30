@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable, Optional } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import authConfig from '../config/auth.config';
+import { PrismaMasterService } from '../database/prisma-master.service';
+import { PrismaService } from '../database/prisma.service';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(\d+)([smhd])$/);
@@ -21,7 +22,10 @@ function parseExpiryToMs(expiry: string) {
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prismaMaster: PrismaMasterService,
+    @Optional() private prismaTenant: PrismaService,
+  ) { }
 
   async login(
     email: string,
@@ -29,7 +33,7 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaMaster.user.findUnique({
       where: { email },
       include: {
         role: { include: { permissions: { include: { permission: true } } } },
@@ -39,10 +43,8 @@ export class AuthService {
     if (user.status !== 'active')
       return { status: false, message: 'Account is not active' };
     const ok = await bcrypt.compare(password, user.password);
-    // If password match fails, check if it's the first password (default might be needed logic, but here assume bcrypt matches)
     if (!ok) return { status: false, message: 'Invalid credentials' };
 
-    // Create new session and refresh token (does NOT invalidate existing sessions - allows multiple devices)
     const accessOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.accessExpiresIn as any,
       issuer: authConfig.jwt.issuer,
@@ -52,7 +54,7 @@ export class AuthService {
       authConfig.jwt.accessSecret,
       accessOpts,
     );
-    const family = crypto.randomUUID(); // Each login gets a new family (new device)
+    const family = crypto.randomUUID();
     const refreshOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.refreshExpiresIn as any,
       issuer: authConfig.jwt.issuer,
@@ -66,8 +68,7 @@ export class AuthService {
       authConfig.jwt.refreshExpiresIn,
     );
 
-    // Create refresh token for this device
-    await this.prisma.refreshToken.create({
+    await this.prismaMaster.refreshToken.create({
       data: {
         userId: user.id,
         token: refreshToken,
@@ -76,8 +77,7 @@ export class AuthService {
       },
     });
 
-    // Create new session for this device (doesn't affect other devices)
-    await this.prisma.session.create({
+    await this.prismaMaster.session.create({
       data: {
         userId: user.id,
         token: accessToken,
@@ -89,8 +89,7 @@ export class AuthService {
       },
     });
 
-    // Record login history
-    await this.prisma.loginHistory.create({
+    await this.prismaMaster.loginHistory.create({
       data: {
         userId: user.id,
         ipAddress: ipAddress || 'Unknown',
@@ -109,7 +108,9 @@ export class AuthService {
           lastName: user.lastName,
           role: user.role?.name || null,
           permissions:
-            user.role?.permissions.map((p) => p.permission.name) || [],
+            user.role?.permissions
+              .filter((p) => p.permission) // Filter out null permissions
+              .map((p) => p.permission.name) || [],
         },
         accessToken,
         refreshToken,
@@ -120,23 +121,20 @@ export class AuthService {
   async refresh(token: string) {
     try {
       const decoded = jwt.verify(token, authConfig.jwt.refreshSecret) as any;
-      const stored = await this.prisma.refreshToken.findUnique({
+      const stored = await this.prismaMaster.refreshToken.findUnique({
         where: { token },
       });
       if (!stored) {
-        console.error('Refresh Token Error: Token not found in DB');
         return { status: false, message: 'Invalid refresh token (not found)' };
       }
       if (stored.isRevoked) {
-        console.error(`Refresh Token Error: Token revoked. Family: ${stored.family}`);
         return { status: false, message: 'Invalid refresh token (revoked)' };
       }
       if (new Date() > stored.expiresAt) {
-        console.error('Refresh Token Error: Token expired');
         return { status: false, message: 'Invalid refresh token (expired)' };
       }
 
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prismaMaster.user.findUnique({
         where: { id: decoded.userId },
       });
       if (!user || user.status !== 'active')
@@ -165,15 +163,12 @@ export class AuthService {
         refreshOpts,
       );
 
-      // Use transaction to ensure atomicity
-      await this.prisma.$transaction(async (tx) => {
-        // Revoke old refresh token (token rotation for security)
+      await this.prismaMaster.$transaction(async (tx) => {
         await tx.refreshToken.update({
           where: { id: stored.id },
           data: { isRevoked: true },
         });
 
-        // Create new refresh token with same family (same device)
         await tx.refreshToken.create({
           data: {
             userId: user.id,
@@ -183,14 +178,12 @@ export class AuthService {
           },
         });
 
-        // Update or create session with new access token
         const existingSession = await tx.session.findFirst({
           where: { userId: user.id, isActive: true },
           orderBy: { lastActivityAt: 'desc' },
         });
 
         if (existingSession) {
-          // Update existing session with new token and extend expiry
           await tx.session.update({
             where: { id: existingSession.id },
             data: {
@@ -202,7 +195,6 @@ export class AuthService {
             },
           });
         } else {
-          // Create new session if none exists
           await tx.session.create({
             data: {
               userId: user.id,
@@ -224,13 +216,12 @@ export class AuthService {
         data: { accessToken, refreshToken: newRefreshToken },
       };
     } catch (error) {
-      console.error('Refresh Token Error:', error);
       return { status: false, message: 'Invalid refresh token' };
     }
   }
 
   async me(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = (await this.prismaMaster.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -244,19 +235,10 @@ export class AuthService {
         roleId: true,
         createdAt: true,
         updatedAt: true,
-
         isFirstPassword: true,
         role: {
           include: {
             permissions: { include: { permission: true } },
-          },
-        },
-        employee: {
-          select: {
-            id: true,
-            employeeId: true,
-            designation: { select: { name: true } },
-            department: { select: { name: true } },
           },
         },
         preferences: {
@@ -269,34 +251,67 @@ export class AuthService {
           },
         },
       },
-    });
+    })) as any;
+
     if (!user) return { status: false, message: 'User not found' };
+
+    // Resolve employee details if prismaTenant is available
+    if (this.prismaTenant) {
+      try {
+
+        const employee = await this.prismaTenant.employee.findUnique({
+          where: { userId },
+          select: {
+            id: true,
+            employeeId: true,
+            departmentId: true,
+            designationId: true,
+            employeeName: true,
+          },
+        });
+
+        if (employee) {
+          // Fetch Master data for department and designation
+          const [dept, desg] = await Promise.all([
+            this.prismaMaster.department.findUnique({
+              where: { id: employee.departmentId || '' },
+            }),
+            this.prismaMaster.designation.findUnique({
+              where: { id: employee.designationId || '' },
+            }),
+          ]);
+
+          user.employee = {
+            ...employee,
+            department: dept,
+            designation: desg,
+          };
+        }
+      } catch (err) {
+        // Silently fail if tenant context not available or connection fails
+      }
+    }
+
     return { status: true, data: user };
   }
 
   async logout(userId: string, accessToken?: string) {
-    // If accessToken is provided, only invalidate that specific session (single device logout)
     if (accessToken) {
-      const session = await this.prisma.session.findFirst({
+      const session = await this.prismaMaster.session.findFirst({
         where: { userId, token: accessToken, isActive: true },
       });
       if (session) {
-        // Invalidate only this session
-        await this.prisma.session.update({
+        await this.prismaMaster.session.update({
           where: { id: session.id },
           data: { isActive: false },
         });
-        // Note: We don't revoke refresh tokens here to allow token refresh to work
-        // Refresh tokens will naturally expire, and users can manage sessions separately
       }
     } else {
-      // No token provided - invalidate all sessions (backward compatibility or admin action)
-      // This should rarely be used - prefer device-specific logout
-      await this.prisma.session.updateMany({
+      await this.prismaMaster.session.updateMany({
         where: { userId, isActive: true },
         data: { isActive: false },
       });
-      await this.prisma.refreshToken.updateMany({
+      await this.prismaMaster.refreshToken.updateMany({
         where: { userId, isRevoked: false },
         data: { isRevoked: true },
       });
@@ -305,7 +320,9 @@ export class AuthService {
   }
 
   async checkSession(userId: string, accessToken?: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prismaMaster.user.findUnique({
+      where: { id: userId },
+    });
     if (!user)
       return {
         status: false,
@@ -321,14 +338,12 @@ export class AuthService {
         resetCookies: true,
       };
 
-    // Check session validity if token is provided
     if (accessToken) {
-      const session = await this.prisma.session.findFirst({
+      const session = await this.prismaMaster.session.findFirst({
         where: { userId, token: accessToken, isActive: true },
       });
 
       if (!session) {
-        // No valid session found - session expired or invalid
         return {
           status: false,
           message: 'Session not found or expired',
@@ -337,11 +352,9 @@ export class AuthService {
         };
       }
 
-      // Check if session has expired
       const now = new Date();
       if (session.expiresAt < now) {
-        // Session has expired - deactivate it and request cookie reset
-        await this.prisma.session.update({
+        await this.prismaMaster.session.update({
           where: { id: session.id },
           data: { isActive: false },
         });
@@ -353,8 +366,7 @@ export class AuthService {
         };
       }
 
-      // Session is valid - update last activity and extend session expiry
-      await this.prisma.session.update({
+      await this.prismaMaster.session.update({
         where: { id: session.id },
         data: {
           lastActivityAt: new Date(),
@@ -362,8 +374,7 @@ export class AuthService {
         },
       });
     } else {
-      // No access token provided - check if user has any valid sessions
-      const validSession = await this.prisma.session.findFirst({
+      const validSession = await this.prismaMaster.session.findFirst({
         where: {
           userId,
           isActive: true,
@@ -372,7 +383,6 @@ export class AuthService {
       });
 
       if (!validSession) {
-        // No valid session exists
         return {
           status: false,
           message: 'No valid session found',
@@ -394,7 +404,9 @@ export class AuthService {
     oldPassword: string,
     newPassword: string,
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prismaMaster.user.findUnique({
+      where: { id: userId },
+    });
     if (!user) return { status: false, message: 'User not found' };
     const ok = await bcrypt.compare(oldPassword, user.password);
     if (!ok) return { status: false, message: 'Invalid current password' };
@@ -407,7 +419,7 @@ export class AuthService {
       newPassword,
       authConfig.password.saltRounds,
     );
-    await this.prisma.user.update({
+    await this.prismaMaster.user.update({
       where: { id: userId },
       data: { password: hashed, isFirstPassword: false },
     });
@@ -418,7 +430,6 @@ export class AuthService {
     const allowedFields = ['firstName', 'lastName', 'phone', 'avatar'];
     const updateData: any = {};
 
-    // Filter out restricted fields
     for (const key of Object.keys(data)) {
       if (allowedFields.includes(key)) {
         updateData[key] = data[key];
@@ -429,27 +440,55 @@ export class AuthService {
       return { status: false, message: 'No valid fields to update' };
     }
 
-    const user = await this.prisma.user.update({
+    const user = (await this.prismaMaster.user.update({
       where: { id: userId },
       data: updateData,
       include: {
-        employee: {
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
+    })) as any;
+
+    // Resolve employee details if prismaTenant is available
+    if (this.prismaTenant) {
+      try {
+
+        const employee = await this.prismaTenant.employee.findUnique({
+          where: { userId },
           select: {
             id: true,
             employeeId: true,
-            designation: { select: { name: true } },
-            department: { select: { name: true } },
+            departmentId: true,
+            designationId: true,
+            employeeName: true,
           },
-        },
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
-    });
+        });
+
+        if (employee) {
+          const [dept, desg] = await Promise.all([
+            this.prismaMaster.department.findUnique({
+              where: { id: employee.departmentId || '' },
+            }),
+            this.prismaMaster.designation.findUnique({
+              where: { id: employee.designationId || '' },
+            }),
+          ]);
+
+          user.employee = {
+            ...employee,
+            department: dept,
+            designation: desg,
+          };
+        }
+      } catch (err) {
+        // Silently fail
+      }
+    }
 
     return { status: true, data: user, message: 'Profile updated' };
   }
 
   async getActiveSessions(userId: string, currentAccessToken?: string) {
-    const sessions = await this.prisma.session.findMany({
+    const sessions = await this.prismaMaster.session.findMany({
       where: { userId, isActive: true },
       orderBy: { lastActivityAt: 'desc' },
     });
@@ -463,19 +502,21 @@ export class AuthService {
       lastActivityAt: session.lastActivityAt,
       expiresAt: session.expiresAt,
       createdAt: session.createdAt,
-      isCurrent: currentAccessToken ? session.token === currentAccessToken : false,
+      isCurrent: currentAccessToken
+        ? session.token === currentAccessToken
+        : false,
     }));
 
     return { status: true, data };
   }
 
   async terminateSession(userId: string, sessionId: string) {
-    const session = await this.prisma.session.findUnique({
+    const session = await this.prismaMaster.session.findUnique({
       where: { id: sessionId },
     });
     if (!session || session.userId !== userId)
       return { status: false, message: 'Session not found' };
-    await this.prisma.session.update({
+    await this.prismaMaster.session.update({
       where: { id: sessionId },
       data: { isActive: false },
     });
@@ -483,7 +524,7 @@ export class AuthService {
   }
 
   async getLoginHistory(userId: string) {
-    const logs = await this.prisma.loginHistory.findMany({
+    const logs = await this.prismaMaster.loginHistory.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: 20,
@@ -492,50 +533,105 @@ export class AuthService {
   }
 
   async getAllUsers() {
-    const users = await this.prisma.user.findMany({
+    const users = (await this.prismaMaster.user.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         role: true,
-        employee: {
+      },
+    })) as any[];
+
+    // If tenant is connected, map employees to users
+    if (this.prismaTenant) {
+      try {
+
+        const userIds = users.map((u) => u.id);
+        const employees = await this.prismaTenant.employee.findMany({
+          where: { userId: { in: userIds } },
           select: {
+            userId: true,
             id: true,
             employeeName: true,
-            department: { select: { name: true } },
-            designation: { select: { name: true } },
+            departmentId: true,
+            designationId: true,
           },
-        },
+        });
+
+        const employeeMap = new Map(employees.map((e) => [e.userId, e]));
+
+        // Fetch Master data for departments and designations
+        const deptIds = [
+          ...new Set(
+            employees.map((e) => e.departmentId).filter(Boolean) as string[],
+          ),
+        ];
+        const desgIds = [
+          ...new Set(
+            employees.map((e) => e.designationId).filter(Boolean) as string[],
+          ),
+        ];
+
+        const [departments, designations] = await Promise.all([
+          this.prismaMaster.department.findMany({
+            where: { id: { in: deptIds } },
+          }),
+          this.prismaMaster.designation.findMany({
+            where: { id: { in: desgIds } },
+          }),
+        ]);
+
+        const deptMap = new Map(departments.map((d) => [d.id, d.name]));
+        const desgMap = new Map(designations.map((d) => [d.id, d.name]));
+
+        for (const user of users) {
+          const emp = employeeMap.get(user.id) as any;
+          if (emp) {
+            (user as any).employee = {
+              ...emp,
+              department: emp.departmentId
+                ? { name: deptMap.get(emp.departmentId) }
+                : null,
+              designation: emp.designationId
+                ? { name: desgMap.get(emp.designationId) }
+                : null,
+            };
+          }
+        }
+      } catch (err) {
+        // Silently fail if tenant context not available
       }
-    });
+    }
+
     return { status: true, data: users };
   }
 
   async createUser(data: any) {
-    const existingUser = await this.prisma.user.findUnique({
+    const existingUser = await this.prismaMaster.user.findUnique({
       where: { email: data.email },
     });
 
     if (existingUser) {
-      // If user exists, we allow updating the password if it's being created by an admin (implied by the flow)
-      // This handles the case where Employee creation auto-created a user with a random password
       if (data.password) {
         const hashedPassword = await bcrypt.hash(
           data.password,
           authConfig.password.saltRounds,
         );
 
-        const updatedUser = await this.prisma.user.update({
+        const updatedUser = await this.prismaMaster.user.update({
           where: { email: data.email },
           data: {
             password: hashedPassword,
-            // Update other fields if provided and needed, e.g. linking employee if not linked
             ...(data.employeeId ? { employeeId: data.employeeId } : {}),
             ...(data.roleId ? { roleId: data.roleId } : {}),
             ...(data.firstName ? { firstName: data.firstName } : {}),
             ...(data.lastName ? { lastName: data.lastName } : {}),
           },
         });
-        
-        return { status: true, data: updatedUser, message: 'User account updated successfully' };
+
+        return {
+          status: true,
+          data: updatedUser,
+          message: 'User account updated successfully',
+        };
       }
 
       return { status: false, message: 'User with this email already exists' };
@@ -546,11 +642,11 @@ export class AuthService {
       authConfig.password.saltRounds,
     );
 
-    const user = await this.prisma.user.create({
+    const user = await this.prismaMaster.user.create({
       data: {
         ...data,
         password: hashedPassword,
-        isFirstPassword: true, // Default to true for new users
+        isFirstPassword: true,
       },
     });
 
@@ -558,12 +654,12 @@ export class AuthService {
   }
 
   async updateUser(id: string, data: any) {
-    const user = await this.prisma.user.update({ where: { id }, data });
+    const user = await this.prismaMaster.user.update({ where: { id }, data });
     return { status: true, data: user };
   }
 
   async getRoles() {
-    const roles = await this.prisma.role.findMany({
+    const roles = await this.prismaMaster.role.findMany({
       orderBy: { name: 'asc' },
       include: { permissions: { include: { permission: true } } },
     });
@@ -571,31 +667,25 @@ export class AuthService {
   }
 
   async getPermissions() {
-    const permissions = await this.prisma.permission.findMany({
+    const permissions = await this.prismaMaster.permission.findMany({
       orderBy: [{ module: 'asc' }, { action: 'asc' }],
     });
     return { status: true, data: permissions };
   }
 
   async getAllActivityLogs() {
-    const logs = await this.prisma.activityLog.findMany({
+    const logs = await this.prismaMaster.activityLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
     return { status: true, data: logs };
   }
 
-  /**
-   * Check if a user has a specific permission
-   * @param userId - User ID
-   * @param permissionName - Permission name (e.g., 'employees.create')
-   * @returns true if user has the permission, false otherwise
-   */
   async hasPermission(
     userId: string,
     permissionName: string,
   ): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaMaster.user.findUnique({
       where: { id: userId },
       include: {
         role: {
@@ -619,13 +709,8 @@ export class AuthService {
     );
   }
 
-  /**
-   * Get all permissions for a user
-   * @param userId - User ID
-   * @returns Array of permission names
-   */
   async getUserPermissions(userId: string): Promise<string[]> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaMaster.user.findUnique({
       where: { id: userId },
       include: {
         role: {
@@ -647,12 +732,6 @@ export class AuthService {
     return user.role.permissions.map((rp) => rp.permission.name);
   }
 
-  /**
-   * Check if a user has any of the specified permissions
-   * @param userId - User ID
-   * @param permissionNames - Array of permission names
-   * @returns true if user has at least one of the permissions
-   */
   async hasAnyPermission(
     userId: string,
     permissionNames: string[],
@@ -663,12 +742,6 @@ export class AuthService {
     );
   }
 
-  /**
-   * Check if a user has all of the specified permissions
-   * @param userId - User ID
-   * @param permissionNames - Array of permission names
-   * @returns true if user has all of the permissions
-   */
   async hasAllPermissions(
     userId: string,
     permissionNames: string[],

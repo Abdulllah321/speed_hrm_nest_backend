@@ -582,7 +582,7 @@ export const PERMISSIONS = [
   },
 
   // --- Profile & Settings ---
-  
+
   // User Preference
   {
     name: 'user-preference.read',

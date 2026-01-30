@@ -1,9 +1,6 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { CreateRebateDto, UpdateRebateDto } from './dto/create-rebate.dto';
 
@@ -11,8 +8,9 @@ import { CreateRebateDto, UpdateRebateDto } from './dto/create-rebate.dto';
 export class RebateService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(params?: {
     employeeId?: string;
@@ -41,52 +39,89 @@ export class RebateService {
 
       const rebates = await this.prisma.rebate.findMany({
         where,
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              bankName: true,
-              accountNumber: true,
-              accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          rebateNature: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              category: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-        },
         orderBy: {
           createdAt: 'desc',
         },
       });
 
-      return { status: true, data: rebates };
+      // Collect IDs for manual fetching
+      const employeeIds = [...new Set(rebates.map((r) => r.employeeId))];
+      const rebateNatureIds = [
+        ...new Set(rebates.map((r) => r.rebateNatureId)),
+      ];
+      const createdByUserIds = [
+        ...new Set(rebates.map((r) => r.createdById).filter(Boolean)),
+      ] as string[];
+
+      // Fetch in parallel
+      const [employees, rebateNatures, users] = await Promise.all([
+        this.prisma.employee.findMany({
+          where: { id: { in: employeeIds } },
+          select: {
+            id: true,
+            employeeId: true,
+            employeeName: true,
+            bankName: true,
+            accountNumber: true,
+            accountTitle: true,
+            departmentId: true,
+            subDepartmentId: true,
+          },
+        }),
+        this.prismaMaster.rebateNature.findMany({
+          where: { id: { in: rebateNatureIds } },
+          select: { id: true, name: true, type: true, category: true },
+        }),
+        this.prismaMaster.user.findMany({
+          where: { id: { in: createdByUserIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }),
+      ]);
+
+      // Fetch Dept/SubDept labels for employees
+      const deptIds = [
+        ...new Set(employees.map((e) => e.departmentId).filter(Boolean)),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(employees.map((e) => e.subDepartmentId).filter(Boolean)),
+      ] as string[];
+
+      const [departments, subDepartments] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const employeeMap = new Map(
+        employees.map((e) => [
+          e.id,
+          {
+            ...e,
+            department: e.departmentId ? deptMap.get(e.departmentId) : null,
+            subDepartment: e.subDepartmentId
+              ? subDeptMap.get(e.subDepartmentId)
+              : null,
+          },
+        ]),
+      );
+      const natureMap = new Map(rebateNatures.map((rn) => [rn.id, rn]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const mapped = rebates.map((r) => ({
+        ...r,
+        employee: employeeMap.get(r.employeeId) || null,
+        rebateNature: natureMap.get(r.rebateNatureId) || null,
+        createdBy: r.createdById ? userMap.get(r.createdById) : null,
+      }));
+
+      return { status: true, data: mapped };
     } catch (error) {
       console.error('Error listing rebates:', error);
       return {
@@ -101,57 +136,85 @@ export class RebateService {
     try {
       const rebate = await this.prisma.rebate.findUnique({
         where: { id },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              bankName: true,
-              accountNumber: true,
-              accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          rebateNature: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              category: true,
-              maxInvestmentPercentage: true,
-              maxInvestmentAmount: true,
-              details: true,
-              underSection: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-        },
       });
 
       if (!rebate) {
         return { status: false, message: 'Rebate not found' };
       }
 
-      return { status: true, data: rebate };
+      // Fetch related data
+      const [employee, rebateNature, createdBy] = await Promise.all([
+        this.prisma.employee.findUnique({
+          where: { id: rebate.employeeId },
+          select: {
+            id: true,
+            employeeId: true,
+            employeeName: true,
+            bankName: true,
+            accountNumber: true,
+            accountTitle: true,
+            departmentId: true,
+            subDepartmentId: true,
+          },
+        }),
+        this.prismaMaster.rebateNature.findUnique({
+          where: { id: rebate.rebateNatureId },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            category: true,
+            maxInvestmentPercentage: true,
+            maxInvestmentAmount: true,
+            details: true,
+            underSection: true,
+          },
+        }),
+        rebate.createdById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: rebate.createdById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : Promise.resolve(null),
+      ]);
+
+      let employeeWithLabels: any = null;
+      if (employee) {
+        const [dept, subDept] = await Promise.all([
+          employee.departmentId
+            ? this.prismaMaster.department.findUnique({
+              where: { id: employee.departmentId },
+              select: { id: true, name: true },
+            })
+            : Promise.resolve(null),
+          employee.subDepartmentId
+            ? this.prismaMaster.subDepartment.findUnique({
+              where: { id: employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
+            : Promise.resolve(null),
+        ]);
+        employeeWithLabels = {
+          ...employee,
+          department: dept,
+          subDepartment: subDept,
+        };
+      }
+
+      return {
+        status: true,
+        data: {
+          ...rebate,
+          employee: employeeWithLabels,
+          rebateNature,
+          createdBy,
+        },
+      };
     } catch (error) {
       console.error('Error getting rebate:', error);
       return {
@@ -176,8 +239,8 @@ export class RebateService {
         return { status: false, message: 'Employee not found' };
       }
 
-      // Validate rebate nature exists
-      const rebateNature = await this.prisma.rebateNature.findUnique({
+      // Validate rebate nature exists (in Master DB)
+      const rebateNature = await this.prismaMaster.rebateNature.findUnique({
         where: { id: body.rebateNatureId },
       });
 
@@ -212,7 +275,7 @@ export class RebateService {
         };
       }
 
-      // Create rebate (attachment is already a string path from the frontend)
+      // Create rebate
       const rebate = await this.prisma.rebate.create({
         data: {
           employeeId: body.employeeId,
@@ -224,36 +287,38 @@ export class RebateService {
           status: 'pending',
           createdById: ctx.userId,
         },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          rebateNature: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              category: true,
-            },
-          },
-        },
       });
+
+      // Map relation data for response
+      const [dept, subDept] = await Promise.all([
+        employee.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : Promise.resolve(null),
+        employee.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : Promise.resolve(null),
+      ]);
+
+      const mappedRebate = {
+        ...rebate,
+        employee: {
+          ...employee,
+          department: dept,
+          subDepartment: subDept,
+        },
+        rebateNature: {
+          id: rebateNature.id,
+          name: rebateNature.name,
+          type: rebateNature.type,
+          category: rebateNature.category,
+        },
+      };
 
       // Log activity
       if (ctx.userId) {
@@ -273,7 +338,7 @@ export class RebateService {
 
       return {
         status: true,
-        data: rebate,
+        data: mappedRebate,
         message: 'Rebate created successfully',
       };
     } catch (error) {
@@ -301,23 +366,33 @@ export class RebateService {
       }
 
       // Validate employee if provided
+      let employee: any = null;
       if (body.employeeId) {
-        const employee = await this.prisma.employee.findUnique({
+        employee = await this.prisma.employee.findUnique({
           where: { id: body.employeeId },
         });
         if (!employee) {
           return { status: false, message: 'Employee not found' };
         }
+      } else {
+        employee = await this.prisma.employee.findUnique({
+          where: { id: existing.employeeId },
+        });
       }
 
-      // Validate rebate nature if provided
+      // Validate rebate nature if provided (in Master DB)
+      let rebateNature: any = null;
       if (body.rebateNatureId) {
-        const rebateNature = await this.prisma.rebateNature.findUnique({
+        rebateNature = await this.prismaMaster.rebateNature.findUnique({
           where: { id: body.rebateNatureId },
         });
         if (!rebateNature) {
           return { status: false, message: 'Rebate nature not found' };
         }
+      } else {
+        rebateNature = await this.prismaMaster.rebateNature.findUnique({
+          where: { id: existing.rebateNatureId },
+        });
       }
 
       // Validate monthYear format if provided
@@ -353,7 +428,7 @@ export class RebateService {
         }
       }
 
-      // Prepare update data (attachment is already a string path from the frontend)
+      // Prepare update data
       const updateData: any = {};
       if (body.employeeId) updateData.employeeId = body.employeeId;
       if (body.rebateNatureId) updateData.rebateNatureId = body.rebateNatureId;
@@ -368,36 +443,42 @@ export class RebateService {
       const updated = await this.prisma.rebate.update({
         where: { id },
         data: updateData,
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          rebateNature: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              category: true,
-            },
-          },
-        },
       });
+
+      // Map relation data for response
+      const [dept, subDept] = await Promise.all([
+        employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : Promise.resolve(null),
+        employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : Promise.resolve(null),
+      ]);
+
+      const mappedUpdated = {
+        ...updated,
+        employee: employee
+          ? {
+            ...employee,
+            department: dept,
+            subDepartment: subDept,
+          }
+          : null,
+        rebateNature: rebateNature
+          ? {
+            id: rebateNature.id,
+            name: rebateNature.name,
+            type: rebateNature.type,
+            category: rebateNature.category,
+          }
+          : null,
+      };
 
       // Log activity
       if (ctx.userId) {
@@ -417,7 +498,7 @@ export class RebateService {
 
       return {
         status: true,
-        data: updated,
+        data: mappedUpdated,
         message: 'Rebate updated successfully',
       };
     } catch (error) {

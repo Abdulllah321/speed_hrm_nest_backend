@@ -6,29 +6,29 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { EmployeeModule } from './employee/employee.module';
-import { CityModule } from './city/city.module';
-import { DepartmentModule } from './department/department.module';
-import { DesignationModule } from './designation/designation.module';
-import { EmployeeGradeModule } from './employee-grade/employee-grade.module';
-import { EmployeeStatusModule } from './employee-status/employee-status.module';
-import { LocationModule } from './location/location.module';
+import { CityModule } from './master/city/city.module';
+import { DepartmentModule } from './master/department/department.module';
+import { DesignationModule } from './master/designation/designation.module';
+import { EmployeeGradeModule } from './master/employee-grade/employee-grade.module';
+import { EmployeeStatusModule } from './master/employee-status/employee-status.module';
+import { LocationModule } from './master/location/location.module';
 import { EquipmentModule } from './equipment/equipment.module';
 import { WorkingHoursPolicyModule } from './working-hours-policy/working-hours-policy.module';
 import { JobTypeModule } from './job-type/job-type.module';
-import { InstituteModule } from './institute/institute.module';
-import { QualificationModule } from './qualification/qualification.module';
-import { ProvidentFundModule } from './provident-fund/provident-fund.module';
-import { TaxSlabModule } from './tax-slab/tax-slab.module';
-import { MaritalStatusModule } from './marital-status/marital-status.module';
-import { LeaveTypeModule } from './leave-type/leave-type.module';
-import { LeavesPolicyModule } from './leaves-policy/leaves-policy.module';
-import { LoanTypeModule } from './loan-type/loan-type.module';
-import { EobiModule } from './eobi/eobi.module';
+import { InstituteModule } from './master/institute/institute.module';
+import { QualificationModule } from './master/qualification/qualification.module';
+import { ProvidentFundModule } from './master/provident-fund/provident-fund.module';
+import { TaxSlabModule } from './master/tax-slab/tax-slab.module';
+import { MaritalStatusModule } from './master/marital-status/marital-status.module';
+import { LeaveTypeModule } from './master/leave-type/leave-type.module';
+import { LeavesPolicyModule } from './master/leaves-policy/leaves-policy.module';
+import { LoanTypeModule } from './master/loan-type/loan-type.module';
+import { EobiModule } from './master/eobi/eobi.module';
 import { UploadModule } from './upload/upload.module';
-import { BonusTypeModule } from './bonus-type/bonus-type.module';
-import { SalaryBreakupModule } from './salary-breakup/salary-breakup.module';
+import { BonusTypeModule } from './master/bonus-type/bonus-type.module';
+import { SalaryBreakupModule } from './master/salary-breakup/salary-breakup.module';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
-import { HolidayModule } from './holiday/holiday.module';
+import { HolidayModule } from './master/holiday/holiday.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ExitClearanceModule } from './exit-clearance/exit-clearance.module';
 import { AttendanceRequestQueryModule } from './attendance-request-query/attendance-request-query.module';
@@ -37,20 +37,20 @@ import { LeaveApplicationModule } from './leave-application/leave-application.mo
 import { RequestForwardingModule } from './request-forwarding/request-forwarding.module';
 import { AllowanceModule } from './allowance/allowance.module';
 import { DeductionModule } from './deduction/deduction.module';
-import { AdvanceSalaryModule } from './advance-salary/advance-salary.module';
+import { AdvanceSalaryModule } from './master/advance-salary/advance-salary.module';
 import { LeaveEncashmentModule } from './leave-encashment/leave-encashment.module';
 import { LoanRequestModule } from './loan-request/loan-request.module';
-import { AllowanceHeadModule } from './allowance-head/allowance-head.module';
-import { DeductionHeadModule } from './deduction-head/deduction-head.module';
+import { AllowanceHeadModule } from './master/allowance-head/allowance-head.module';
+import { DeductionHeadModule } from './master/deduction-head/deduction-head.module';
 import { OvertimeRequestModule } from './overtime-request/overtime-request.module';
 import { IncrementModule } from './increment/increment.module';
 import { BonusModule } from './bonus/bonus.module';
-import { BankModule } from './bank/bank.module';
-import { RebateNatureModule } from './rebate-nature/rebate-nature.module';
+import { BankModule } from './master/bank/bank.module';
+import { RebateNatureModule } from './master/rebate-nature/rebate-nature.module';
 import { RebateModule } from './rebate/rebate.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
-import { SocialSecurityModule } from './social-security/social-security.module';
+import { SocialSecurityModule } from './master/social-security/social-security.module';
 import { AllocationModule } from './allocation/allocation.module';
 import { PFModule } from './pf/pf.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -60,6 +60,8 @@ import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
 import { TransferModule } from './employee/transfer/transfer.module';
+import { DatabaseModule } from './database/database.module';
+import { CompanyModule } from './admin/company/company.module';
 
 @Module({
   imports: [
@@ -74,6 +76,7 @@ import { TransferModule } from './employee/transfer/transfer.module';
         }),
       }),
     }),
+    DatabaseModule,
     PrismaModule,
     AuthModule, // added swagger
     EmployeeModule, // added swagger
@@ -130,6 +133,7 @@ import { TransferModule } from './employee/transfer/transfer.module';
     PermissionModule,
     ChartOfAccountModule,
     TransferModule,
+    CompanyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

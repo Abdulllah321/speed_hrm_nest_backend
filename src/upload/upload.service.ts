@@ -3,13 +3,13 @@ import type { MultipartFile } from '@fastify/multipart';
 import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class UploadService {
   private readonly uploadRoot = path.join(process.cwd(), 'public', 'uploads');
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly prismaMaster: PrismaMasterService) {
     if (!fs.existsSync(this.uploadRoot)) {
       fs.mkdirSync(this.uploadRoot, { recursive: true });
     }
@@ -46,7 +46,7 @@ export class UploadService {
     // Write the (possibly processed) buffer to disk
     fs.writeFileSync(fullPath, finalBuffer);
 
-    const record = await this.prisma.fileUpload.create({
+    const record = await this.prismaMaster.fileUpload.create({
       data: {
         filename: file.filename,
         mimetype: file.mimetype,
@@ -91,7 +91,7 @@ export class UploadService {
   }
 
   async listUploads() {
-    return this.prisma.fileUpload.findMany({
+    return this.prismaMaster.fileUpload.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -105,11 +105,13 @@ export class UploadService {
   }
 
   async getUpload(id: string) {
-    return this.prisma.fileUpload.findUnique({ where: { id } });
+    return this.prismaMaster.fileUpload.findUnique({ where: { id } });
   }
 
   async downloadUpload(id: string) {
-    const item = await this.prisma.fileUpload.findUnique({ where: { id } });
+    const item = await this.prismaMaster.fileUpload.findUnique({
+      where: { id },
+    });
     if (!item || !item.path) throw new NotFoundException('File not found');
 
     const absPath = path.join(this.uploadRoot, path.basename(item.path));
@@ -120,7 +122,9 @@ export class UploadService {
   }
 
   async deleteUpload(id: string) {
-    const item = await this.prisma.fileUpload.findUnique({ where: { id } });
+    const item = await this.prismaMaster.fileUpload.findUnique({
+      where: { id },
+    });
     if (!item) throw new NotFoundException('File not found');
 
     if (item.path) {
@@ -133,7 +137,7 @@ export class UploadService {
         }
       }
     }
-    await this.prisma.fileUpload.delete({ where: { id } });
+    await this.prismaMaster.fileUpload.delete({ where: { id } });
     return { status: true, message: 'File deleted successfully' };
   }
 }

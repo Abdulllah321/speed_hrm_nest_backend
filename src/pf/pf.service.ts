@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { Decimal } from '@prisma/client/runtime/client';
 
 @Injectable()
 export class PFService {
   private readonly logger = new Logger(PFService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prismaMaster: PrismaMasterService,
+  ) { }
 
   async getPFEmployees() {
     try {
@@ -20,29 +24,44 @@ export class PFService {
           id: true,
           employeeId: true,
           employeeName: true,
-          department: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          subDepartment: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          designation: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
+          departmentId: true,
+          subDepartmentId: true,
+          designationId: true,
         },
         orderBy: {
           employeeName: 'asc',
         },
       });
+
+      // Fetch Master data for all employees
+      const deptIds = [
+        ...new Set(employees.map((e) => e.departmentId).filter(Boolean)),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(employees.map((e) => e.subDepartmentId).filter(Boolean)),
+      ] as string[];
+      const desgIds = [
+        ...new Set(employees.map((e) => e.designationId).filter(Boolean)),
+      ] as string[];
+
+      const [departments, subDepartments, designations] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.designation.findMany({
+          where: { id: { in: desgIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const desgMap = new Map(designations.map((d) => [d.id, d]));
 
       // Calculate PF balances for each employee
       const pfData = await Promise.all(
@@ -90,9 +109,18 @@ export class PFService {
             id: employee.id,
             employeeId: employee.employeeId,
             employeeName: employee.employeeName,
-            department: employee.department?.name || 'N/A',
-            subDepartment: employee.subDepartment?.name || 'N/A',
-            designation: employee.designation?.name || 'N/A',
+            department:
+              (employee.departmentId
+                ? deptMap.get(employee.departmentId)?.name
+                : null) || 'N/A',
+            subDepartment:
+              (employee.subDepartmentId
+                ? subDeptMap.get(employee.subDepartmentId)?.name
+                : null) || 'N/A',
+            designation:
+              (employee.designationId
+                ? desgMap.get(employee.designationId)?.name
+                : null) || 'N/A',
             employeeContribution: totalEmployeeContribution.toNumber(),
             employerContribution: totalEmployerContribution.toNumber(),
             totalPFBalance: totalPFBalance.toNumber(),
@@ -172,24 +200,38 @@ export class PFService {
           createdById,
           withdrawalDate: new Date(),
         },
-        include: {
-          employee: {
-            select: {
-              employeeId: true,
-              employeeName: true,
-              department: {
-                select: {
-                  name: true,
-                },
-              },
-            },
-          },
-        },
       });
+
+      // Map relation data for response
+      const dept = employeeId
+        ? await this.prisma.employee
+          .findUnique({
+            where: { id: employeeId },
+            select: { departmentId: true },
+          })
+          .then(async (e) => {
+            if (e?.departmentId) {
+              return this.prismaMaster.department.findUnique({
+                where: { id: e.departmentId },
+                select: { name: true },
+              });
+            }
+            return null;
+          })
+        : null;
+
+      const mappedWithdrawal = {
+        ...withdrawal,
+        employee: {
+          employeeId: employee.employeeId,
+          employeeName: employee.employeeName,
+          department: dept,
+        },
+      };
 
       return {
         status: true,
-        data: withdrawal,
+        data: mappedWithdrawal,
         message: 'PF withdrawal created successfully',
       };
     } catch (error) {
@@ -238,45 +280,78 @@ export class PFService {
 
       const withdrawals = await this.prisma.pFWithdrawal.findMany({
         where,
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          createdBy: {
-            select: {
-              firstName: true,
-              lastName: true,
-            },
-          },
-          approvedBy: {
-            select: {
-              firstName: true,
-              lastName: true,
-            },
-          },
-        },
         orderBy: [{ year: 'desc' }, { month: 'desc' }, { createdAt: 'desc' }],
       });
 
+      // Collect IDs for manual fetching
+      const employeeIds = [...new Set(withdrawals.map((w) => w.employeeId))];
+      const userIds = new Set<string>();
+      withdrawals.forEach((w) => {
+        if (w.createdById) userIds.add(w.createdById);
+        if (w.approvedById) userIds.add(w.approvedById);
+      });
+
+      const [employees, users] = await Promise.all([
+        this.prisma.employee.findMany({
+          where: { id: { in: employeeIds } },
+          select: {
+            id: true,
+            employeeId: true,
+            employeeName: true,
+            departmentId: true,
+            subDepartmentId: true,
+          },
+        }),
+        this.prismaMaster.user.findMany({
+          where: { id: { in: Array.from(userIds) } },
+          select: { id: true, firstName: true, lastName: true },
+        }),
+      ]);
+
+      const deptIds = [
+        ...new Set(employees.map((e) => e.departmentId).filter(Boolean)),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(employees.map((e) => e.subDepartmentId).filter(Boolean)),
+      ] as string[];
+
+      const [departments, subDepartments] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const employeeMap = new Map(
+        employees.map((e) => [
+          e.id,
+          {
+            ...e,
+            department: e.departmentId ? deptMap.get(e.departmentId) : null,
+            subDepartment: e.subDepartmentId
+              ? subDeptMap.get(e.subDepartmentId)
+              : null,
+          },
+        ]),
+      );
+
+      const mappedWithdrawals = withdrawals.map((w) => ({
+        ...w,
+        employee: employeeMap.get(w.employeeId) || null,
+        createdBy: w.createdById ? userMap.get(w.createdById) : null,
+        approvedBy: w.approvedById ? userMap.get(w.approvedById) : null,
+      }));
+
       return {
         status: true,
-        data: withdrawals,
+        data: mappedWithdrawals,
       };
     } catch (error) {
       this.logger.error('Error fetching PF withdrawals:', error);

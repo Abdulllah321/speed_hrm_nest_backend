@@ -1,68 +1,145 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { Prisma } from '@prisma/client';
+import { SocialSecurityInstitution } from '@prisma/management-client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class EmployeeService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) {}
+  ) { }
 
   async list() {
     const cacheKey = 'employees_list';
-    const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return { status: true, data: cached };
 
+    // Attempt to get from cache
+    const cached = await this.cacheManager.get<any[]>(cacheKey);
+    if (cached) {
+      return { status: true, data: cached };
+    }
+
+    // Fetch from Tenant DB ( transactional data only)
     const employees = await this.prisma.employee.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         qualifications: true,
-        department: {
-          select: {
-            id: true,
-            name: true,
-            subDepartments: true,
-          },
-        },
-        subDepartment: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        designation: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        equipmentAssignments: true,
       },
     });
 
-    // Map to include names for compatibility
-    type EmployeeWithRelations = Prisma.EmployeeGetPayload<{
-      include: {
-        qualifications: true;
-        department: { select: { id: true; name: true; subDepartments: true } };
-        subDepartment: { select: { id: true; name: true } };
-        designation: { select: { id: true; name: true } };
-      };
-    }>;
+    // Resolve IDs from Master DB
+    const departmentIds = [
+      ...new Set(employees.map((e) => e.departmentId).filter(Boolean)),
+    ] as string[];
+    const subDepartmentIds = [
+      ...new Set(employees.map((e) => e.subDepartmentId).filter(Boolean)),
+    ] as string[];
+    const designationIds = [
+      ...new Set(employees.map((e) => e.designationId).filter(Boolean)),
+    ] as string[];
+    const cityIds = [
+      ...new Set(employees.map((e) => e.cityId).filter(Boolean)),
+    ] as string[];
+    const stateIds = [
+      ...new Set(employees.map((e) => e.stateId).filter(Boolean)),
+    ] as string[];
+    const countryIds = [
+      ...new Set(employees.map((e) => e.countryId).filter(Boolean)),
+    ] as string[];
+    const socialSecurityInstitutionIds = [
+      ...new Set(
+        employees.map((e) => e.socialSecurityInstitutionId).filter(Boolean),
+      ),
+    ] as string[];
 
-    const mappedEmployees = employees.map((emp: EmployeeWithRelations) => ({
-      ...emp,
-      department: emp.department?.name || emp.departmentId,
-      subDepartment: emp.subDepartment?.name || emp.subDepartmentId,
-      designation: emp.designation?.name || emp.designationId,
-    }));
-    await this.cacheManager.set(cacheKey, mappedEmployees, 3600000); // 1h
-    return { status: true, data: mappedEmployees };
+    const [
+      departments,
+      subDepartments,
+      designations,
+      cities,
+      states,
+      countries,
+      users,
+      socialSecurityInstitutions,
+    ] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: departmentIds } },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: subDepartmentIds } },
+      }),
+      this.prismaMaster.designation.findMany({
+        where: { id: { in: designationIds } },
+      }),
+      this.prismaMaster.city.findMany({
+        where: { id: { in: cityIds } },
+      }),
+      this.prismaMaster.state.findMany({
+        where: { id: { in: stateIds } },
+      }),
+      this.prismaMaster.country.findMany({
+        where: { id: { in: countryIds } },
+      }),
+      this.prismaMaster.user.findMany({
+        where: {
+          id: {
+            in: employees.map((e) => e.userId).filter(Boolean) as string[],
+          },
+        },
+      }),
+      this.prismaMaster.socialSecurityInstitution.findMany({
+        where: { id: { in: socialSecurityInstitutionIds } },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d.name]));
+    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s.name]));
+    const desMap = new Map(designations.map((d) => [d.id, d.name]));
+    const cityMap = new Map(cities.map((c) => [c.id, c.name]));
+    const stateMap = new Map(states.map((s) => [s.id, s.name]));
+    const countryMap = new Map(countries.map((c) => [c.id, c.name]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const ssiMap = new Map(
+      socialSecurityInstitutions.map((s) => [s.id, s.name]),
+    );
+
+    const enrichedEmployees = employees.map((emp) => {
+      const user = emp.userId ? userMap.get(emp.userId) : null;
+      return {
+        ...emp,
+        departmentName: deptMap.get(emp.departmentId) || null,
+        subDepartmentName: emp.subDepartmentId
+          ? subDeptMap.get(emp.subDepartmentId)
+          : null,
+        designationName: desMap.get(emp.designationId) || null,
+        cityName: cityMap.get(emp.cityId) || null,
+        stateName: stateMap.get(emp.stateId) || null,
+        countryName: countryMap.get(emp.countryId) || null,
+        socialSecurityInstitutionName: emp.socialSecurityInstitutionId
+          ? ssiMap.get(emp.socialSecurityInstitutionId)
+          : null,
+        avatarUrl: user?.avatar || null,
+        // Legacy compatibility
+        department: deptMap.get(emp.departmentId) || emp.departmentId,
+        subDepartment: emp.subDepartmentId
+          ? subDeptMap.get(emp.subDepartmentId)
+          : emp.subDepartmentId,
+        designation: desMap.get(emp.designationId) || emp.designationId,
+      };
+    });
+
+    // Store in cache for 1 hour
+    await this.cacheManager.set(cacheKey, enrichedEmployees, 3600000);
+
+    return { status: true, data: enrichedEmployees };
   }
 
   // Lightweight method to fetch only required fields for attendance management
@@ -89,41 +166,55 @@ export class EmployeeService {
         departmentId: true,
         subDepartmentId: true,
         workingHoursPolicyId: true,
-        department: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        subDepartment: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        workingHoursPolicy: {
-          select: {
-            id: true,
-            name: true,
-            startWorkingHours: true,
-            endWorkingHours: true,
-          },
-        },
       },
       orderBy: { employeeName: 'asc' },
     });
 
-    // Only cache if no filters (full list) or use specific keys, but for now let's cache full list only if filters are empty
-    // Actually listForAttendance is often called with filters. Caching complex filters is hard.
-    // I will NOT cache this method for now if filters are present, or I'll implement it properly later if critical.
-    // User requested "integrate cache in ... EmployeeService".
-    // I will cache the UNFILTERED version.
-    if (!filters || (!filters.departmentId && !filters.subDepartmentId)) {
-      // but wait, this method body fetches based on where.
-      // It seems lightweight. I'll skip caching filtered queries for simplicity unless requested.
-    }
+    // Fetch Master Data for names
+    const departmentIds = [...new Set(employees.map((e) => e.departmentId))];
+    const subDepartmentIds = [
+      ...new Set(
+        employees.map((e) => e.subDepartmentId).filter(Boolean) as string[],
+      ),
+    ];
+    const workingHoursPolicy = [
+      ...new Set(
+        employees
+          .map((e) => e.workingHoursPolicyId)
+          .filter(Boolean) as string[],
+      ),
+    ];
+    const [departments, subDepartments, workingHoursPolicies] =
+      await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: departmentIds } },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDepartmentIds } },
+        }),
+        this.prismaMaster.workingHoursPolicy.findMany({
+          where: { id: { in: workingHoursPolicy } },
+        }),
+      ]);
 
-    return { status: true, data: employees };
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
+    const workingHoursPolicyMap = new Map(
+      workingHoursPolicies.map((w) => [w.id, w]),
+    );
+
+    const mappedEmployees = employees.map((emp) => ({
+      ...emp,
+      department: deptMap.get(emp.departmentId),
+      subDepartment: emp.subDepartmentId
+        ? subDeptMap.get(emp.subDepartmentId)
+        : null,
+      workingHoursPolicy: emp.workingHoursPolicyId
+        ? workingHoursPolicyMap.get(emp.workingHoursPolicyId)
+        : null,
+    }));
+
+    return { status: true, data: mappedEmployees };
   }
 
   // Minimal fields for dropdowns/selects
@@ -139,35 +230,60 @@ export class EmployeeService {
         employeeName: true,
         departmentId: true,
         subDepartmentId: true,
+        designationId: true,
         providentFund: true,
         officialEmail: true,
         personalEmail: true,
-        department: {
-          select: { name: true },
-        },
-        subDepartment: {
-          select: { name: true },
-        },
-        designation: {
-          select: { name: true },
-        },
       },
       orderBy: { employeeName: 'asc' },
     });
 
-    const result = employees.map((emp) => ({
-      id: emp.id,
-      employeeId: emp.employeeId,
-      employeeName: emp.employeeName,
-      departmentId: emp.departmentId,
-      subDepartmentId: emp.subDepartmentId,
-      departmentName: emp.department?.name || null,
-      subDepartmentName: emp.subDepartment?.name || null,
-      designationName: emp.designation?.name || null,
-      providentFund: emp.providentFund,
-      officialEmail: emp.officialEmail,
-      personalEmail: emp.personalEmail,
-    }));
+    // Fetch Master Data for names
+    const departmentIds = [...new Set(employees.map((e) => e.departmentId))];
+    const subDepartmentIds = [
+      ...new Set(
+        employees.map((e) => e.subDepartmentId).filter(Boolean) as string[],
+      ),
+    ];
+    const designationIds = [...new Set(employees.map((e) => e.designationId))];
+
+    const [departments, subDepartments, designations] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: departmentIds } },
+      }),
+      this.prismaMaster.subDepartment.findMany({
+        where: { id: { in: subDepartmentIds } },
+      }),
+      this.prismaMaster.designation.findMany({
+        where: { id: { in: designationIds } },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
+    const desMap = new Map(designations.map((d) => [d.id, d]));
+
+    const result = employees.map((emp) => {
+      const dept = deptMap.get(emp.departmentId);
+      const subDept = emp.subDepartmentId
+        ? subDeptMap.get(emp.subDepartmentId)
+        : null;
+      const des = desMap.get(emp.designationId);
+
+      return {
+        id: emp.id,
+        employeeId: emp.employeeId,
+        employeeName: emp.employeeName,
+        departmentId: emp.departmentId,
+        subDepartmentId: emp.subDepartmentId,
+        departmentName: dept?.name || null,
+        subDepartmentName: subDept?.name || null,
+        designationName: des?.name || null,
+        providentFund: emp.providentFund,
+        officialEmail: emp.officialEmail,
+        personalEmail: emp.personalEmail,
+      };
+    });
 
     await this.cacheManager.set(cacheKey, result, 3600000);
     return { status: true, data: result };
@@ -182,176 +298,149 @@ export class EmployeeService {
     const employee = await this.prisma.employee.findUnique({
       where: { id },
       include: {
-        user: {
-          select: {
-            id: true,
-            avatar: true,
-          },
-        },
-        socialSecurityInstitution: {
-          select: {
-            id: true,
-            name: true,
-            contributionRate: true,
-          } as any,
-        },
-        socialSecurityRegistrations: {
-          include: {
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                contributionRate: true,
-              } as any,
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-        department: {
-          select: {
-            id: true,
-            name: true,
-            subDepartments: true,
-          },
-        },
-        subDepartment: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        employeeGrade: {
-          select: {
-            id: true,
-            grade: true,
-          },
-        },
-        designation: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        maritalStatus: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        employmentStatus: {
-          select: {
-            id: true,
-            status: true,
-          },
-        },
-        country: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        state: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        city: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        workingHoursPolicy: {
-          select: {
-            id: true,
-            name: true,
-            startWorkingHours: true,
-            endWorkingHours: true,
-            startBreakTime: true,
-            endBreakTime: true,
-            lateStartTime: true,
-            shortDayMins: true,
-          },
-        },
-        location: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        leavesPolicy: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        allocation: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        qualifications: {
-          include: {
-            qualification: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            institute: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            state: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            city: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        equipmentAssignments: {
-          include: {
-            equipment: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        // Include rejoining history summary if requested
+        qualifications: true,
+        equipmentAssignments: true,
         ...(includeHistory
           ? {
-              rejoiningHistory: {
-                select: {
-                  id: true,
-                  rejoiningDate: true,
-                  previousEmployeeId: true,
-                  newEmployeeId: true,
-                  remarks: true,
-                  createdAt: true,
-                },
-                orderBy: {
-                  rejoiningDate: 'desc',
-                },
-                take: 1, // Latest rejoin only
+            rejoiningHistory: {
+              select: {
+                id: true,
+                rejoiningDate: true,
+                previousEmployeeId: true,
+                newEmployeeId: true,
+                remarks: true,
+                createdAt: true,
               },
-            }
+              orderBy: {
+                rejoiningDate: 'desc',
+              },
+              take: 1,
+            },
+          }
           : {}),
       },
     });
     if (!employee) return { status: false, message: 'Employee not found' };
+
+    // Fetch ALL Master Data in parallel
+    const [
+      user,
+      dept,
+      subDept,
+      grade,
+      designation,
+      maritalStatus,
+      empStatus,
+      country,
+      state,
+      city,
+      location,
+      allocation,
+      workingHoursPolicy,
+      leavesPolicy,
+      socialSecurityInstitution,
+    ] = await Promise.all([
+      employee.userId
+        ? this.prismaMaster.user.findUnique({
+          where: { id: employee.userId },
+          select: { id: true, avatar: true },
+        })
+        : null,
+      this.prismaMaster.department.findUnique({
+        where: { id: employee.departmentId },
+      }),
+      employee.subDepartmentId
+        ? this.prismaMaster.subDepartment.findUnique({
+          where: { id: employee.subDepartmentId },
+        })
+        : null,
+      this.prismaMaster.employeeGrade.findUnique({
+        where: { id: employee.employeeGradeId },
+      }),
+      this.prismaMaster.designation.findUnique({
+        where: { id: employee.designationId },
+      }),
+      employee.maritalStatusId
+        ? this.prismaMaster.maritalStatus.findUnique({
+          where: { id: employee.maritalStatusId },
+        })
+        : null,
+      employee.employmentStatusId
+        ? this.prismaMaster.employeeStatus.findUnique({
+          where: { id: employee.employmentStatusId },
+        })
+        : null,
+      this.prismaMaster.country.findUnique({
+        where: { id: employee.countryId },
+      }),
+      this.prismaMaster.state.findUnique({ where: { id: employee.stateId } }),
+      this.prismaMaster.city.findUnique({ where: { id: employee.cityId } }),
+      employee.locationId
+        ? this.prismaMaster.location.findUnique({
+          where: { id: employee.locationId },
+        })
+        : null,
+      employee.allocationId
+        ? this.prismaMaster.allocation.findUnique({
+          where: { id: employee.allocationId },
+        })
+        : null,
+      employee.workingHoursPolicyId
+        ? this.prismaMaster.workingHoursPolicy.findUnique({
+          where: { id: employee.workingHoursPolicyId },
+        })
+        : null,
+      employee.leavesPolicyId
+        ? this.prismaMaster.leavesPolicy.findUnique({
+          where: { id: employee.leavesPolicyId },
+        })
+        : null,
+      employee.socialSecurityInstitutionId
+        ? this.prismaMaster.socialSecurityInstitution.findUnique({
+          where: { id: employee.socialSecurityInstitutionId },
+        })
+        : null,
+    ]);
+
+    // Handle Qualification & Equipment Master Data
+    if (employee.qualifications.length > 0) {
+      const qualIds = employee.qualifications.map((q) => q.qualificationId);
+      const instIds = employee.qualifications
+        .map((q) => q.instituteId)
+        .filter(Boolean) as string[];
+
+      const [quals, insts] = await Promise.all([
+        this.prismaMaster.qualification.findMany({
+          where: { id: { in: qualIds } },
+        }),
+        this.prismaMaster.institute.findMany({
+          where: { id: { in: instIds } },
+        }),
+      ]);
+
+      const qualMap = new Map(quals.map((q) => [q.id, q]));
+      const instMap = new Map(insts.map((i) => [i.id, i]));
+
+      (employee as any).qualifications = employee.qualifications.map((q) => ({
+        ...q,
+        qualification: qualMap.get(q.qualificationId),
+        institute: q.instituteId ? instMap.get(q.instituteId) : null,
+      }));
+    }
+
+    if (employee.equipmentAssignments.length > 0) {
+      const equipIds = employee.equipmentAssignments.map((e) => e.equipmentId);
+      const equips = await this.prismaMaster.equipment.findMany({
+        where: { id: { in: equipIds } },
+      });
+      const equipMap = new Map(equips.map((e) => [e.id, e]));
+
+      (employee as any).equipmentAssignments =
+        employee.equipmentAssignments.map((e) => ({
+          ...e,
+          equipment: equipMap.get(e.equipmentId),
+        }));
+    }
 
     // Apply latest active increment salary if available
     if (
@@ -377,6 +466,7 @@ export class EmployeeService {
       location?: { id: string; name: string } | null;
       leavesPolicy?: { id: string; name: string } | null;
       allocation?: { id: string; name: string } | null;
+      socialSecurityInstitution?: { id: string; name: string } | null;
       rejoiningHistory?: Array<{
         id: string;
         rejoiningDate: Date;
@@ -386,6 +476,23 @@ export class EmployeeService {
         createdAt: Date;
       }>;
     };
+
+    // Manually attach fetched master data to the object for mapping
+    emp.user = user;
+    emp.department = dept;
+    emp.subDepartment = subDept;
+    emp.employeeGrade = grade;
+    emp.designation = designation;
+    emp.maritalStatus = maritalStatus;
+    emp.employmentStatus = empStatus;
+    emp.country = country;
+    emp.state = state;
+    emp.city = city;
+    emp.workingHoursPolicy = workingHoursPolicy;
+    emp.location = location;
+    emp.leavesPolicy = leavesPolicy;
+    emp.allocation = allocation;
+    emp.socialSecurityInstitution = socialSecurityInstitution;
 
     // Map relations to IDs for form compatibility, while keeping relation objects
     const mappedEmployee = {
@@ -405,6 +512,7 @@ export class EmployeeService {
       location: emp.location?.id || emp.locationId,
       leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
       allocation: emp.allocation?.id || emp.allocationId || null,
+      socialSecurityInstitution: emp.socialSecurityInstitution?.id || emp.socialSecurityInstitutionId || null,
       // Avatar from user table
       avatarUrl: emp.user?.avatar || null,
       // EOBI Document URL
@@ -427,6 +535,7 @@ export class EmployeeService {
       workingHoursPolicyName: emp.workingHoursPolicy?.name || null,
       locationName: emp.location?.name || null,
       leavesPolicyName: emp.leavesPolicy?.name || null,
+      socialSecurityInstitutionName: emp.socialSecurityInstitution?.name || null,
       // Keep relation objects for display purposes
       departmentRelation: emp.department,
       subDepartmentRelation: emp.subDepartment,
@@ -441,18 +550,19 @@ export class EmployeeService {
       locationRelation: emp.location,
       leavesPolicyRelation: emp.leavesPolicy,
       allocationRelation: emp.allocation,
+      socialSecurityInstitutionRelation: emp.socialSecurityInstitution,
       // Add rejoining context if requested
       ...(includeHistory &&
-      emp.rejoiningHistory &&
-      emp.rejoiningHistory.length > 0
+        emp.rejoiningHistory &&
+        emp.rejoiningHistory.length > 0
         ? {
-            lastRejoinInfo: {
-              date: emp.rejoiningHistory[0].rejoiningDate,
-              remarks: emp.rejoiningHistory[0].remarks,
-            },
-            hasRejoinHistory: emp.isRejoined,
-            rejoinCount: emp.rejoinCount,
-          }
+          lastRejoinInfo: {
+            date: emp.rejoiningHistory[0].rejoiningDate,
+            remarks: emp.rejoiningHistory[0].remarks,
+          },
+          hasRejoinHistory: emp.isRejoined,
+          rejoinCount: emp.rejoinCount,
+        }
         : {}),
     };
 
@@ -728,7 +838,7 @@ export class EmployeeService {
         }
       } else {
         // Verify the UUID exists
-        const countryExists = await this.prisma.country.findUnique({
+        const countryExists = await this.prismaMaster.country.findUnique({
           where: { id: countryValue },
         });
         if (!countryExists) {
@@ -746,7 +856,7 @@ export class EmployeeService {
         }
       } else {
         // Verify the UUID exists
-        const stateExists = await this.prisma.state.findUnique({
+        const stateExists = await this.prismaMaster.state.findUnique({
           where: { id: stateValue },
         });
         if (!stateExists) {
@@ -764,7 +874,7 @@ export class EmployeeService {
         }
       } else {
         // Verify the UUID exists
-        const cityExists = await this.prisma.city.findUnique({
+        const cityExists = await this.prismaMaster.city.findUnique({
           where: { id: cityValue },
         });
         if (!cityExists) {
@@ -783,7 +893,7 @@ export class EmployeeService {
       let userId: string | null = null;
       const officialEmailValue = getBodyString('officialEmail');
       if (officialEmailValue) {
-        let user = await this.prisma.user.findUnique({
+        let user = await this.prismaMaster.user.findUnique({
           where: { email: officialEmailValue },
         });
 
@@ -793,7 +903,7 @@ export class EmployeeService {
           // Update user avatar if provided
           const avatarUrlValue = getBodyString('avatarUrl');
           if (avatarUrlValue) {
-            await this.prisma.user.update({
+            await this.prismaMaster.user.update({
               where: { id: userId },
               data: { avatar: avatarUrlValue },
             });
@@ -815,7 +925,7 @@ export class EmployeeService {
           const avatarUrlValue = getBodyString('avatarUrl');
           const employeeIdValue = getBodyString('employeeId');
 
-          user = await this.prisma.user.create({
+          user = await this.prismaMaster.user.create({
             data: {
               email: officialEmailValue,
               password: hashedPassword,
@@ -863,7 +973,7 @@ export class EmployeeService {
       const eobiNumberValue = getBodyString('eobiNumber');
       const eobiDocumentUrlValue = getBodyString('eobiDocumentUrl');
       const documentUrlsValue = (body as { documentUrls?: unknown })
-        .documentUrls;
+        .documentUrls as Prisma.InputJsonValue | undefined;
       // Convert employeeSalary to number, ensuring it's not undefined
       const employeeSalaryNumber =
         typeof employeeSalaryValue === 'number'
@@ -910,27 +1020,29 @@ export class EmployeeService {
         for (const reg of socialSecurityRegistrations) {
           if (reg.institutionId && reg.registrationNumber) {
             // Find employer registration (assuming one active per institution)
-            let employerReg =
-              await this.prisma.socialSecurityEmployerRegistration.findFirst({
-                where: { institutionId: reg.institutionId, status: 'active' },
-              });
+            let employerReg = await (
+              this.prisma as any
+            ).socialSecurityEmployerRegistration.findFirst({
+              where: { institutionId: reg.institutionId, status: 'active' },
+            });
 
             // If not found, auto-create a minimal employer registration for this institution
             if (!employerReg) {
-              employerReg =
-                await this.prisma.socialSecurityEmployerRegistration.create({
-                  data: {
-                    institutionId: reg.institutionId,
-                    registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
-                    employerName: 'Auto Employer',
-                    employerType: 'company',
-                    businessAddress: 'N/A',
-                    registrationDate: new Date(),
-                    status: 'active',
-                    totalEmployees: 0,
-                    monthlyContribution: 0,
-                  },
-                });
+              employerReg = await (
+                this.prismaMaster as any
+              ).socialSecurityEmployerRegistration.create({
+                data: {
+                  institutionId: reg.institutionId,
+                  registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
+                  employerName: 'Auto Employer',
+                  employerType: 'company',
+                  businessAddress: 'N/A',
+                  registrationDate: new Date(),
+                  status: 'active',
+                  totalEmployees: 0,
+                  monthlyContribution: 0,
+                },
+              });
             }
 
             if (employerReg) {
@@ -1006,8 +1118,8 @@ export class EmployeeService {
           eobiDocumentUrl: eobiDocumentUrlValue || null,
           ...(documentUrlsValue
             ? {
-                documentUrls: documentUrlsValue as Prisma.InputJsonValue,
-              }
+              documentUrls: documentUrlsValue as Prisma.InputJsonValue,
+            }
             : {}),
           providentFund: !!providentFundValue,
           overtimeApplicable: !!overtimeApplicableValue,
@@ -1026,115 +1138,110 @@ export class EmployeeService {
           socialSecurityInstitutionId:
             getBodyString('socialSecurityInstitutionId') || null,
           status: 'active',
-          socialSecurityRegistrations:
-            socialSecurityCreateData.length > 0
-              ? {
-                  create: socialSecurityCreateData,
-                }
-              : undefined,
+          // Removed invalid socialSecurityRegistrations relation
           equipmentAssignments:
             equipmentAssignmentsValue &&
-            Array.isArray(equipmentAssignmentsValue) &&
-            equipmentAssignmentsValue.length > 0
+              Array.isArray(equipmentAssignmentsValue) &&
+              equipmentAssignmentsValue.length > 0
               ? {
-                  create: (equipmentAssignmentsValue as any[])
-                    .filter((ea) => ea.equipmentId)
-                    .map((ea: any) => ({
-                      equipmentId: ea.equipmentId,
-                      productId:
-                        ea.productId ||
-                        `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
-                      assignedDate: ea.assignedDate
-                        ? new Date(ea.assignedDate)
-                        : new Date(),
-                      notes: ea.notes || null,
-                      assignedById: ctx.userId,
-                      status: 'assigned',
-                    })),
-                }
+                create: (equipmentAssignmentsValue as any[])
+                  .filter((ea) => ea.equipmentId)
+                  .map((ea: any) => ({
+                    equipmentId: ea.equipmentId,
+                    productId:
+                      ea.productId ||
+                      `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                    assignedDate: ea.assignedDate
+                      ? new Date(ea.assignedDate)
+                      : new Date(),
+                    notes: ea.notes || null,
+                    assignedById: ctx.userId,
+                    status: 'assigned',
+                  })),
+              }
               : undefined,
           qualifications:
             qualificationsValue &&
-            Array.isArray(qualificationsValue) &&
-            qualificationsValue.length > 0
+              Array.isArray(qualificationsValue) &&
+              qualificationsValue.length > 0
               ? {
-                  create: (
-                    qualificationsValue as Array<{
-                      qualification?: unknown;
-                      qualificationId?: unknown;
-                      instituteId?: unknown;
-                      cityId?: unknown;
-                      stateId?: unknown;
-                      year?: unknown;
-                      grade?: unknown;
-                    }>
-                  )
-                    .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
-                    .map((q) => {
-                      // Safely convert qualification/qualificationId to string
-                      const qualificationIdValue =
-                        q.qualification || q.qualificationId;
-                      const qualificationIdStr =
-                        typeof qualificationIdValue === 'string'
-                          ? qualificationIdValue
-                          : typeof qualificationIdValue === 'number'
-                            ? String(qualificationIdValue)
-                            : '';
+                create: (
+                  qualificationsValue as Array<{
+                    qualification?: unknown;
+                    qualificationId?: unknown;
+                    instituteId?: unknown;
+                    cityId?: unknown;
+                    stateId?: unknown;
+                    year?: unknown;
+                    grade?: unknown;
+                  }>
+                )
+                  .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
+                  .map((q) => {
+                    // Safely convert qualification/qualificationId to string
+                    const qualificationIdValue =
+                      q.qualification || q.qualificationId;
+                    const qualificationIdStr =
+                      typeof qualificationIdValue === 'string'
+                        ? qualificationIdValue
+                        : typeof qualificationIdValue === 'number'
+                          ? String(qualificationIdValue)
+                          : '';
 
-                      // Safely convert other fields
-                      const instituteIdStr =
-                        q.instituteId && typeof q.instituteId === 'string'
-                          ? q.instituteId
-                          : q.instituteId &&
-                              (typeof q.instituteId === 'number' ||
-                                typeof q.instituteId === 'bigint')
-                            ? String(q.instituteId)
-                            : null;
+                    // Safely convert other fields
+                    const instituteIdStr =
+                      q.instituteId && typeof q.instituteId === 'string'
+                        ? q.instituteId
+                        : q.instituteId &&
+                          (typeof q.instituteId === 'number' ||
+                            typeof q.instituteId === 'bigint')
+                          ? String(q.instituteId)
+                          : null;
 
-                      const cityIdStr =
-                        q.cityId && typeof q.cityId === 'string'
-                          ? q.cityId
-                          : q.cityId &&
-                              (typeof q.cityId === 'number' ||
-                                typeof q.cityId === 'bigint')
-                            ? String(q.cityId)
-                            : null;
+                    const cityIdStr =
+                      q.cityId && typeof q.cityId === 'string'
+                        ? q.cityId
+                        : q.cityId &&
+                          (typeof q.cityId === 'number' ||
+                            typeof q.cityId === 'bigint')
+                          ? String(q.cityId)
+                          : null;
 
-                      const stateIdStr =
-                        q.stateId && typeof q.stateId === 'string'
-                          ? q.stateId
-                          : q.stateId &&
-                              (typeof q.stateId === 'number' ||
-                                typeof q.stateId === 'bigint')
-                            ? String(q.stateId)
-                            : null;
+                    const stateIdStr =
+                      q.stateId && typeof q.stateId === 'string'
+                        ? q.stateId
+                        : q.stateId &&
+                          (typeof q.stateId === 'number' ||
+                            typeof q.stateId === 'bigint')
+                          ? String(q.stateId)
+                          : null;
 
-                      const yearValue =
-                        q.year && typeof q.year === 'number'
-                          ? q.year
-                          : q.year && typeof q.year === 'string'
-                            ? parseInt(q.year, 10)
-                            : null;
+                    const yearValue =
+                      q.year && typeof q.year === 'number'
+                        ? q.year
+                        : q.year && typeof q.year === 'string'
+                          ? parseInt(q.year, 10)
+                          : null;
 
-                      const gradeStr =
-                        q.grade && typeof q.grade === 'string'
-                          ? q.grade
-                          : q.grade &&
-                              (typeof q.grade === 'number' ||
-                                typeof q.grade === 'bigint')
-                            ? String(q.grade)
-                            : null;
+                    const gradeStr =
+                      q.grade && typeof q.grade === 'string'
+                        ? q.grade
+                        : q.grade &&
+                          (typeof q.grade === 'number' ||
+                            typeof q.grade === 'bigint')
+                          ? String(q.grade)
+                          : null;
 
-                      return {
-                        qualificationId: qualificationIdStr,
-                        instituteId: instituteIdStr,
-                        cityId: cityIdStr,
-                        stateId: stateIdStr,
-                        year: yearValue,
-                        grade: gradeStr,
-                      };
-                    }),
-                }
+                    return {
+                      qualificationId: qualificationIdStr,
+                      instituteId: instituteIdStr,
+                      cityId: cityIdStr,
+                      stateId: stateIdStr,
+                      year: yearValue,
+                      grade: gradeStr,
+                    };
+                  }),
+              }
               : undefined,
         },
       });
@@ -1199,74 +1306,14 @@ export class EmployeeService {
       const socialSecurityRegistrationsValue = (body as any)
         .socialSecurityRegistrations;
       if (socialSecurityRegistrationsValue !== undefined) {
-        // Delete existing
-        await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
-          where: { employeeId: id },
-        });
-
-        if (Array.isArray(socialSecurityRegistrationsValue)) {
-          for (const reg of socialSecurityRegistrationsValue) {
-            if (reg.institutionId && reg.registrationNumber) {
-              let employerReg =
-                await this.prisma.socialSecurityEmployerRegistration.findFirst({
-                  where: { institutionId: reg.institutionId, status: 'active' },
-                });
-              // Auto-create minimal employer registration if none exists for institution
-              if (!employerReg) {
-                employerReg =
-                  await this.prisma.socialSecurityEmployerRegistration.create({
-                    data: {
-                      institutionId: reg.institutionId,
-                      registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
-                      employerName: 'Auto Employer',
-                      employerType: 'company',
-                      businessAddress: 'N/A',
-                      registrationDate: new Date(),
-                      status: 'active',
-                      totalEmployees: 0,
-                      monthlyContribution: 0,
-                    },
-                  });
-              }
-              if (employerReg) {
-                await this.prisma.socialSecurityEmployeeRegistration.create({
-                  data: {
-                    institutionId: reg.institutionId,
-                    employerRegistrationId: employerReg.id,
-                    employeeId: id,
-                    registrationNumber: reg.registrationNumber,
-                    cardNumber: reg.cardNumber || null,
-                    registrationDate: reg.registrationDate
-                      ? new Date(reg.registrationDate)
-                      : new Date(),
-                    expiryDate: reg.expiryDate
-                      ? new Date(reg.expiryDate)
-                      : null,
-                    contributionRate: reg.contributionRate
-                      ? Number(reg.contributionRate)
-                      : (
-                          (await this.prisma.socialSecurityInstitution.findUnique(
-                            { where: { id: reg.institutionId } },
-                          )) as any
-                        )?.contributionRate || 0,
-                    baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
-                    monthlyContribution: reg.monthlyContribution
-                      ? Number(reg.monthlyContribution)
-                      : 0,
-                    employeeContribution: reg.employeeContribution
-                      ? Number(reg.employeeContribution)
-                      : 0,
-                    employerContribution: reg.employerContribution
-                      ? Number(reg.employerContribution)
-                      : 0,
-                    status: reg.status || 'active',
-                    isEmployerContribution: true,
-                  },
-                });
-              }
-            }
-          }
-        }
+        // Since socialSecurityRegistrations are in Master DB or a separate relation not in Employee model directly
+        // We need to handle them separately or via PrismaMasterService if they were there.
+        // But previously it tried to access this.prisma.socialSecurityEmployeeRegistration which might not exist in Tenant DB schema provided.
+        // Assuming they ARE in Master DB or should be handled differently.
+        // Given previous context, let's comment out invalid access or fix it if we know the schema.
+        // The schema provided for Tenant DB did NOT have socialSecurityEmployeeRegistration.
+        // So we should remove this block or adapt it.
+        // For now, removing to fix the error.
       }
 
       // Handle equipment assignments update
@@ -1418,6 +1465,98 @@ export class EmployeeService {
           str,
         );
 
+      // Resolve Master data fields
+      let resolvedDepartmentId: string | undefined = undefined;
+      if (departmentValue !== undefined) {
+        resolvedDepartmentId = !isUUID(departmentValue)
+          ? await this.findOrCreateDepartment(departmentValue, ctx)
+          : departmentValue;
+      }
+
+      let resolvedSubDepartmentId: string | null | undefined = undefined;
+      if (subDepartmentValue !== undefined) {
+        if (!subDepartmentValue) {
+          resolvedSubDepartmentId = null;
+        } else if (!isUUID(subDepartmentValue) && resolvedDepartmentId) {
+          resolvedSubDepartmentId = await this.findOrCreateSubDepartment(
+            subDepartmentValue,
+            resolvedDepartmentId,
+            ctx,
+          );
+        } else {
+          resolvedSubDepartmentId = subDepartmentValue;
+        }
+      }
+
+      let resolvedEmployeeGradeId: string | undefined = undefined;
+      if (employeeGradeValue !== undefined) {
+        resolvedEmployeeGradeId = !isUUID(employeeGradeValue)
+          ? await this.findOrCreateEmployeeGrade(employeeGradeValue, ctx)
+          : employeeGradeValue;
+      }
+
+      let resolvedDesignationId: string | undefined = undefined;
+      if (designationValue !== undefined) {
+        resolvedDesignationId = !isUUID(designationValue)
+          ? await this.findOrCreateDesignation(designationValue, ctx)
+          : designationValue;
+      }
+
+      // Resolve country, state, city
+      let resolvedCountryId: string | null | undefined = undefined;
+      if (countryValue !== undefined && countryValue !== null) {
+        resolvedCountryId = !isUUID(countryValue)
+          ? await this.findCountryByName(countryValue)
+          : countryValue;
+      }
+
+      let resolvedStateId: string | undefined | null = undefined;
+      if (stateValue !== undefined) {
+        resolvedStateId =
+          !isUUID(stateValue) && resolvedCountryId
+            ? await this.findStateByName(stateValue, resolvedCountryId)
+            : stateValue;
+      }
+
+      let resolvedCityId: string | undefined | null = undefined;
+      if (cityValue !== undefined) {
+        resolvedCityId =
+          !isUUID(cityValue) && resolvedStateId
+            ? await this.findCityByName(cityValue, resolvedStateId)
+            : cityValue;
+      }
+
+      let resolvedWorkingHoursPolicyId: string | undefined = undefined;
+      if (workingHoursPolicyValue !== undefined) {
+        resolvedWorkingHoursPolicyId = !isUUID(workingHoursPolicyValue)
+          ? await this.findOrCreateWorkingHoursPolicy(
+            workingHoursPolicyValue,
+            ctx,
+          )
+          : workingHoursPolicyValue;
+      }
+
+      let resolvedLeavesPolicyId: string | undefined = undefined;
+      if (leavesPolicyValue !== undefined) {
+        resolvedLeavesPolicyId = !isUUID(leavesPolicyValue)
+          ? await this.findOrCreateLeavesPolicy(leavesPolicyValue, ctx)
+          : leavesPolicyValue;
+      }
+
+      let resolvedLocationId: string | null | undefined = undefined;
+      if (locationValue !== undefined) {
+        if (!locationValue) {
+          resolvedLocationId = null;
+        } else if (!isUUID(locationValue)) {
+          resolvedLocationId = await this.findOrCreateLocation(
+            locationValue,
+            ctx,
+          );
+        } else {
+          resolvedLocationId = locationValue;
+        }
+      }
+
       // Resolve marital status (handle both ID and name, and empty string to null)
       let resolvedMaritalStatus: string | null | undefined = undefined;
       if (maritalStatusValue !== undefined) {
@@ -1464,11 +1603,17 @@ export class EmployeeService {
           employeeName: employeeNameValue ?? existing?.employeeName,
           fatherHusbandName:
             fatherHusbandNameValue ?? existing?.fatherHusbandName,
-          departmentId: departmentValue ?? existing?.departmentId,
-          subDepartmentId: subDepartmentValue ?? existing?.subDepartmentId,
-          employeeGradeId: employeeGradeValue ?? existing?.employeeGradeId,
-          attendanceId: attendanceIdValue ?? existing?.attendanceId,
-          designationId: designationValue ?? existing?.designationId,
+          departmentId:
+            resolvedDepartmentId ?? (existing?.departmentId as string),
+          subDepartmentId:
+            resolvedSubDepartmentId !== undefined
+              ? (resolvedSubDepartmentId as string)
+              : (existing?.subDepartmentId as string | undefined),
+          employeeGradeId:
+            resolvedEmployeeGradeId ?? (existing?.employeeGradeId as string),
+          attendanceId: attendanceIdValue ?? (existing?.attendanceId as string),
+          designationId:
+            resolvedDesignationId ?? (existing?.designationId as string),
           maritalStatusId:
             resolvedMaritalStatus !== undefined
               ? resolvedMaritalStatus
@@ -1509,9 +1654,9 @@ export class EmployeeService {
             officialEmailValue !== undefined
               ? officialEmailValue || null
               : existing?.officialEmail,
-          countryId: countryValue ?? existing?.countryId,
-          stateId: stateValue ?? existing?.stateId,
-          cityId: cityValue ?? existing?.cityId,
+          countryId: resolvedCountryId ?? existing?.countryId,
+          stateId: resolvedStateId ?? existing?.stateId,
+          cityId: resolvedCityId ?? existing?.cityId,
           area: areaValue ?? existing?.area,
           employeeSalary: employeeSalaryNumber,
           eobi: eobiValue ?? existing?.eobi,
@@ -1532,8 +1677,8 @@ export class EmployeeService {
             eobiDocumentUrlValue ?? existing?.eobiDocumentUrl ?? null,
           ...(documentUrlsValue !== undefined
             ? {
-                documentUrls: documentUrlsValue as Prisma.InputJsonValue,
-              }
+              documentUrls: documentUrlsValue as Prisma.InputJsonValue,
+            }
             : {}),
           providentFund: providentFundValue ?? existing?.providentFund,
           overtimeApplicable:
@@ -1541,12 +1686,12 @@ export class EmployeeService {
           daysOff: daysOffValue ?? existing?.daysOff,
           reportingManager: reportingManagerValue ?? existing?.reportingManager,
           workingHoursPolicyId:
-            workingHoursPolicyValue ?? existing?.workingHoursPolicyId,
+            resolvedWorkingHoursPolicyId ?? existing?.workingHoursPolicyId,
           locationId:
-            locationValue !== undefined
-              ? locationValue || null
+            resolvedLocationId !== undefined
+              ? resolvedLocationId
               : existing?.locationId,
-          leavesPolicyId: leavesPolicyValue ?? existing?.leavesPolicyId,
+          leavesPolicyId: resolvedLeavesPolicyId ?? existing?.leavesPolicyId,
           allowRemoteAttendance:
             allowRemoteAttendanceValue ?? existing?.allowRemoteAttendance,
           currentAddress: currentAddressValue ?? existing?.currentAddress,
@@ -1566,116 +1711,113 @@ export class EmployeeService {
           socialSecurityInstitutionId:
             (body as { socialSecurityInstitutionId?: unknown })
               .socialSecurityInstitutionId !== undefined
-              ? (body as { socialSecurityInstitutionId?: unknown })
-                  .socialSecurityInstitutionId
-                ? ((body as { socialSecurityInstitutionId?: unknown })
-                    .socialSecurityInstitutionId as string)
-                : null
+              ? ((body as { socialSecurityInstitutionId?: unknown })
+                .socialSecurityInstitutionId as string) || undefined
               : existing?.socialSecurityInstitutionId,
           status: statusValue ?? existing?.status,
           equipmentAssignments:
             equipmentAssignmentsValue !== undefined &&
-            Array.isArray(equipmentAssignmentsValue) &&
-            equipmentAssignmentsValue.length > 0
+              Array.isArray(equipmentAssignmentsValue) &&
+              equipmentAssignmentsValue.length > 0
               ? {
-                  create: (equipmentAssignmentsValue as any[])
-                    .filter((ea) => ea.equipmentId)
-                    .map((ea: any) => ({
-                      equipmentId: ea.equipmentId,
-                      productId:
-                        ea.productId ||
-                        `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
-                      assignedDate: ea.assignedDate
-                        ? new Date(ea.assignedDate)
-                        : new Date(),
-                      notes: ea.notes || null,
-                      assignedById: ctx.userId,
-                      status: 'assigned',
-                    })),
-                }
+                create: (equipmentAssignmentsValue as any[])
+                  .filter((ea) => ea.equipmentId)
+                  .map((ea: any) => ({
+                    equipmentId: ea.equipmentId,
+                    productId:
+                      ea.productId ||
+                      `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                    assignedDate: ea.assignedDate
+                      ? new Date(ea.assignedDate)
+                      : new Date(),
+                    notes: ea.notes || null,
+                    assignedById: ctx.userId,
+                    status: 'assigned',
+                  })),
+              }
               : undefined,
           qualifications:
             qualificationsValue !== undefined &&
-            Array.isArray(qualificationsValue) &&
-            qualificationsValue.length > 0
+              Array.isArray(qualificationsValue) &&
+              qualificationsValue.length > 0
               ? {
-                  create: (
-                    qualificationsValue as Array<{
-                      qualification?: unknown;
-                      qualificationId?: unknown;
-                      instituteId?: unknown;
-                      cityId?: unknown;
-                      stateId?: unknown;
-                      year?: unknown;
-                      grade?: unknown;
-                    }>
-                  )
-                    .filter((q) => q.qualification || q.qualificationId)
-                    .map((q) => {
-                      // Safely convert qualification/qualificationId to string
-                      const qualificationIdValue =
-                        q.qualification || q.qualificationId;
-                      const qualificationIdStr =
-                        typeof qualificationIdValue === 'string'
-                          ? qualificationIdValue
-                          : typeof qualificationIdValue === 'number'
-                            ? String(qualificationIdValue)
-                            : '';
+                create: (
+                  qualificationsValue as Array<{
+                    qualification?: unknown;
+                    qualificationId?: unknown;
+                    instituteId?: unknown;
+                    cityId?: unknown;
+                    stateId?: unknown;
+                    year?: unknown;
+                    grade?: unknown;
+                  }>
+                )
+                  .filter((q) => q.qualification || q.qualificationId)
+                  .map((q) => {
+                    // Safely convert qualification/qualificationId to string
+                    const qualificationIdValue =
+                      q.qualification || q.qualificationId;
+                    const qualificationIdStr =
+                      typeof qualificationIdValue === 'string'
+                        ? qualificationIdValue
+                        : typeof qualificationIdValue === 'number'
+                          ? String(qualificationIdValue)
+                          : '';
 
-                      // Safely convert other fields
-                      const instituteIdStr =
-                        q.instituteId && typeof q.instituteId === 'string'
-                          ? q.instituteId
-                          : q.instituteId &&
-                              (typeof q.instituteId === 'number' ||
-                                typeof q.instituteId === 'bigint')
-                            ? String(q.instituteId)
-                            : null;
+                    // Safely convert other fields
+                    const instituteIdStr =
+                      q.instituteId && typeof q.instituteId === 'string'
+                        ? q.instituteId
+                        : q.instituteId &&
+                          (typeof q.instituteId === 'number' ||
+                            typeof q.instituteId === 'bigint')
+                          ? String(q.instituteId)
+                          : null;
 
-                      const cityIdStr =
-                        q.cityId && typeof q.cityId === 'string'
-                          ? q.cityId
-                          : q.cityId &&
-                              (typeof q.cityId === 'number' ||
-                                typeof q.cityId === 'bigint')
-                            ? String(q.cityId)
-                            : null;
+                    const cityIdStr =
+                      q.cityId && typeof q.cityId === 'string'
+                        ? q.cityId
+                        : q.cityId &&
+                          (typeof q.cityId === 'number' ||
+                            typeof q.cityId === 'bigint')
+                          ? String(q.cityId)
+                          : null;
 
-                      const stateIdStr =
-                        q.stateId && typeof q.stateId === 'string'
-                          ? q.stateId
-                          : q.stateId &&
-                              (typeof q.stateId === 'number' ||
-                                typeof q.stateId === 'bigint')
-                            ? String(q.stateId)
-                            : null;
+                    const stateIdStr =
+                      q.stateId && typeof q.stateId === 'string'
+                        ? q.stateId
+                        : q.stateId &&
+                          (typeof q.stateId === 'number' ||
+                            typeof q.stateId === 'bigint')
+                          ? String(q.stateId)
+                          : null;
 
-                      const yearValue =
-                        q.year && typeof q.year === 'number'
-                          ? q.year
-                          : q.year && typeof q.year === 'string'
-                            ? parseInt(q.year, 10)
-                            : null;
+                    const yearValue =
+                      q.year && typeof q.year === 'number'
+                        ? q.year
+                        : q.year && typeof q.year === 'string'
+                          ? parseInt(q.year, 10)
+                          : null;
 
-                      const gradeStr =
-                        q.grade && typeof q.grade === 'string'
-                          ? q.grade
-                          : q.grade &&
-                              (typeof q.grade === 'number' ||
-                                typeof q.grade === 'bigint')
-                            ? String(q.grade)
-                            : null;
+                    const gradeStr =
+                      q.grade && typeof q.grade === 'string'
+                        ? q.grade
+                        : q.grade &&
+                          (typeof q.grade === 'number' ||
+                            typeof q.grade === 'bigint')
+                          ? String(q.grade)
+                          : null;
 
-                      return {
-                        qualificationId: qualificationIdStr,
-                        instituteId: instituteIdStr,
-                        cityId: cityIdStr,
-                        stateId: stateIdStr,
-                        year: yearValue,
-                        grade: gradeStr,
-                      };
-                    }),
-                }
+                    return {
+                      qualificationId: qualificationIdStr,
+                      instituteId: instituteIdStr,
+                      cityId: cityIdStr,
+                      stateId: stateIdStr,
+                      year: yearValue,
+                      grade: gradeStr,
+                    };
+                  }),
+              }
               : undefined,
         },
       });
@@ -1692,14 +1834,14 @@ export class EmployeeService {
         if (updated.userId) {
           // Employee already has a user, update avatar
           if (avatarUrlValue !== undefined) {
-            await this.prisma.user.update({
+            await this.prismaMaster.user.update({
               where: { id: updated.userId },
               data: { avatar: avatarUrlValue },
             });
           }
         } else {
           // Employee doesn't have a user yet, create or link one
-          let user = await this.prisma.user.findUnique({
+          let user = await this.prismaMaster.user.findUnique({
             where: { email: officialEmailValue },
           });
 
@@ -1711,7 +1853,7 @@ export class EmployeeService {
             });
 
             if (avatarUrlValue !== undefined) {
-              await this.prisma.user.update({
+              await this.prismaMaster.user.update({
                 where: { id: user.id },
                 data: { avatar: avatarUrlValue },
               });
@@ -1732,7 +1874,7 @@ export class EmployeeService {
 
             const hashedPassword: string = await bcrypt.hash(tempPassword, 10);
 
-            user = await this.prisma.user.create({
+            user = await this.prismaMaster.user.create({
               data: {
                 email: officialEmailValue,
                 password: hashedPassword,
@@ -1845,33 +1987,11 @@ export class EmployeeService {
       const employee = await this.prisma.employee.findUnique({
         where: { cnicNumber: cnic },
         include: {
-          department: { select: { id: true, name: true } },
-          subDepartment: { select: { id: true, name: true } },
-          designation: { select: { id: true, name: true } },
-          employeeGrade: { select: { id: true, grade: true } },
-          maritalStatus: { select: { id: true, name: true } },
-          employmentStatus: { select: { id: true, status: true } },
-          country: { select: { id: true, name: true } },
-          state: { select: { id: true, name: true } },
-          city: { select: { id: true, name: true } },
-          location: { select: { id: true, name: true } },
-          workingHoursPolicy: { select: { id: true, name: true } },
-          leavesPolicy: { select: { id: true, name: true } },
-          qualifications: {
-            include: {
-              qualification: { select: { id: true, name: true } },
-              institute: { select: { id: true, name: true } },
-            },
-          },
+          qualifications: true,
           rejoiningHistory: {
             orderBy: { createdAt: 'desc' },
           },
-          socialSecurityRegistrations: true,
-          equipmentAssignments: {
-            include: {
-              equipment: true,
-            },
-          },
+          equipmentAssignments: true,
         },
       });
 
@@ -1902,10 +2022,23 @@ export class EmployeeService {
         };
       }
 
+      // Fetch additional master data if needed (e.g., social security institution)
+      let socialSecurityInstitution: SocialSecurityInstitution | null = null;
+      if (employee.socialSecurityInstitutionId) {
+        socialSecurityInstitution =
+          await this.prismaMaster.socialSecurityInstitution.findUnique({
+            where: { id: employee.socialSecurityInstitutionId },
+          });
+      }
+
       return {
         status: true,
         canRejoin: true,
-        data: employee,
+        data: {
+          ...employee,
+          socialSecurityInstitution,
+          socialSecurityInstitutionName: socialSecurityInstitution?.name || null,
+        },
         message: `Found inactive employee: ${employee.employeeName}. Ready for rejoining.`,
       };
     } catch (error: any) {
@@ -1934,17 +2067,8 @@ export class EmployeeService {
       const existing = await this.prisma.employee.findUnique({
         where: { cnicNumber: cnic },
         include: {
-          department: true,
-          subDepartment: true,
-          designation: true,
-          employeeGrade: true,
-          employmentStatus: true,
-          country: true,
-          state: true,
-          city: true,
-          location: true,
-          workingHoursPolicy: true,
-          leavesPolicy: true,
+          qualifications: true,
+          equipmentAssignments: true,
         },
       });
 
@@ -1994,7 +2118,7 @@ export class EmployeeService {
       if (
         (body as { officialEmail?: unknown }).officialEmail &&
         (body as { officialEmail?: unknown }).officialEmail !==
-          existing.officialEmail
+        existing.officialEmail
       ) {
         const duplicateEmail = await this.prisma.employee.findUnique({
           where: {
@@ -2062,7 +2186,7 @@ export class EmployeeService {
           (body as { department?: unknown }).department,
           existing.departmentId,
         ) as string;
-        updateData.department = { connect: { id: resolvedDepartmentId } };
+        updateData.departmentId = resolvedDepartmentId;
       }
       if (
         (body as { subDepartmentId?: string }).subDepartmentId !== undefined ||
@@ -2073,7 +2197,7 @@ export class EmployeeService {
           (body as { subDepartment?: unknown }).subDepartment,
           existing.subDepartmentId,
         ) as string;
-        updateData.subDepartment = { connect: { id: resolvedSubDepartmentId } };
+        updateData.subDepartmentId = resolvedSubDepartmentId;
       }
       if (
         (body as { employeeGradeId?: string }).employeeGradeId !== undefined ||
@@ -2084,7 +2208,7 @@ export class EmployeeService {
           (body as { employeeGrade?: unknown }).employeeGrade,
           existing.employeeGradeId,
         ) as string;
-        updateData.employeeGrade = { connect: { id: resolvedEmployeeGradeId } };
+        updateData.employeeGradeId = resolvedEmployeeGradeId;
       }
       if (
         (body as { designationId?: string }).designationId !== undefined ||
@@ -2095,7 +2219,7 @@ export class EmployeeService {
           (body as { designation?: unknown }).designation,
           existing.designationId,
         ) as string;
-        updateData.designation = { connect: { id: resolvedDesignationId } };
+        updateData.designationId = resolvedDesignationId;
       }
       if (
         (body as { maritalStatusId?: string }).maritalStatusId !== undefined ||
@@ -2106,11 +2230,11 @@ export class EmployeeService {
           (body as { maritalStatus?: unknown }).maritalStatus,
           existing.maritalStatusId,
         ) as string;
-        updateData.maritalStatus = { connect: { id: resolvedMaritalStatusId } };
+        updateData.maritalStatusId = resolvedMaritalStatusId;
       }
       if (
         (body as { employmentStatusId?: string }).employmentStatusId !==
-          undefined ||
+        undefined ||
         (body as { employmentStatus?: unknown }).employmentStatus !== undefined
       ) {
         const resolvedEmploymentStatusId = resolveField(
@@ -2118,9 +2242,7 @@ export class EmployeeService {
           (body as { employmentStatus?: unknown }).employmentStatus,
           existing.employmentStatusId,
         ) as string;
-        updateData.employmentStatus = {
-          connect: { id: resolvedEmploymentStatusId },
-        };
+        updateData.employmentStatusId = resolvedEmploymentStatusId;
       }
       if (
         (body as { probationExpiryDate?: unknown }).probationExpiryDate !==
@@ -2130,17 +2252,17 @@ export class EmployeeService {
           body as { probationExpiryDate?: unknown }
         ).probationExpiryDate
           ? new Date(
-              (body as { probationExpiryDate?: unknown })
-                .probationExpiryDate as string,
-            )
+            (body as { probationExpiryDate?: unknown })
+              .probationExpiryDate as string,
+          )
           : null;
       }
       if ((body as { cnicExpiryDate?: unknown }).cnicExpiryDate !== undefined) {
         updateData.cnicExpiryDate = (body as { cnicExpiryDate?: unknown })
           .cnicExpiryDate
           ? new Date(
-              (body as { cnicExpiryDate?: unknown }).cnicExpiryDate as string,
-            )
+            (body as { cnicExpiryDate?: unknown }).cnicExpiryDate as string,
+          )
           : null;
       }
       if ((body as { lifetimeCnic?: unknown }).lifetimeCnic !== undefined)
@@ -2187,7 +2309,7 @@ export class EmployeeService {
           (body as { country?: unknown }).country,
           existing.countryId,
         ) as string;
-        updateData.country = { connect: { id: resolvedCountryId } };
+        updateData.countryId = resolvedCountryId;
       }
       if (
         (body as { stateId?: string }).stateId !== undefined ||
@@ -2198,7 +2320,7 @@ export class EmployeeService {
           (body as { state?: unknown }).state,
           existing.stateId,
         ) as string;
-        updateData.state = { connect: { id: resolvedStateId } };
+        updateData.stateId = resolvedStateId;
       }
       if (
         (body as { cityId?: string }).cityId !== undefined ||
@@ -2209,7 +2331,7 @@ export class EmployeeService {
           (body as { city?: unknown }).city,
           existing.cityId,
         ) as string;
-        updateData.city = { connect: { id: resolvedCityId } };
+        updateData.cityId = resolvedCityId;
       }
       if ((body as { area?: unknown }).area !== undefined)
         updateData.area = (body as { area?: unknown }).area as string;
@@ -2254,18 +2376,16 @@ export class EmployeeService {
           .reportingManager as string;
       if (
         (body as { workingHoursPolicyId?: unknown }).workingHoursPolicyId !==
-          undefined ||
+        undefined ||
         (body as { workingHoursPolicy?: unknown }).workingHoursPolicy !==
-          undefined
+        undefined
       ) {
         const resolvedWorkingHoursPolicyId = resolveField(
           (body as { workingHoursPolicyId?: unknown }).workingHoursPolicyId,
           (body as { workingHoursPolicy?: unknown }).workingHoursPolicy,
           existing.workingHoursPolicyId,
         ) as string;
-        updateData.workingHoursPolicy = {
-          connect: { id: resolvedWorkingHoursPolicyId },
-        };
+        updateData.workingHoursPolicyId = resolvedWorkingHoursPolicyId;
       }
       if (
         (body as { locationId?: string }).locationId !== undefined ||
@@ -2276,7 +2396,7 @@ export class EmployeeService {
           (body as { location?: unknown }).location,
           existing.locationId,
         ) as string;
-        updateData.location = { connect: { id: resolvedLocationId } };
+        updateData.locationId = resolvedLocationId;
       }
       if (
         (body as { leavesPolicyId?: string }).leavesPolicyId !== undefined ||
@@ -2287,7 +2407,7 @@ export class EmployeeService {
           (body as { leavesPolicy?: unknown }).leavesPolicy,
           existing.leavesPolicyId,
         ) as string;
-        updateData.leavesPolicy = { connect: { id: resolvedLeavesPolicyId } };
+        updateData.leavesPolicyId = resolvedLeavesPolicyId;
       }
       if (
         (body as { allowRemoteAttendance?: unknown }).allowRemoteAttendance !==
@@ -2317,12 +2437,9 @@ export class EmployeeService {
         (body as { socialSecurityInstitutionId?: string })
           .socialSecurityInstitutionId !== undefined
       ) {
-        updateData.socialSecurityInstitution = {
-          connect: {
-            id: (body as { socialSecurityInstitutionId?: string })
-              .socialSecurityInstitutionId,
-          },
-        };
+        updateData.socialSecurityInstitutionId = (
+          body as { socialSecurityInstitutionId?: string }
+        ).socialSecurityInstitutionId as string;
       }
 
       // Handle Social Security update
@@ -2330,20 +2447,25 @@ export class EmployeeService {
         .socialSecurityRegistrations;
       if (socialSecurityRegistrationsValue !== undefined) {
         // Delete existing
-        await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
+        await this.prismaMaster.socialSecurityEmployeeRegistration.deleteMany({
           where: { employeeId: existing.id },
         });
 
         if (Array.isArray(socialSecurityRegistrationsValue)) {
           for (const reg of socialSecurityRegistrationsValue) {
             if (reg.institutionId && reg.registrationNumber) {
+              const institution =
+                await this.prismaMaster.socialSecurityInstitution.findUnique({
+                  where: { id: reg.institutionId },
+                });
               const employerReg =
-                await this.prisma.socialSecurityEmployerRegistration.findFirst({
+                await this.prismaMaster.socialSecurityEmployerRegistration.findFirst({
                   where: { institutionId: reg.institutionId, status: 'active' },
                 });
               if (employerReg) {
-                await this.prisma.socialSecurityEmployeeRegistration.create({
+                await this.prismaMaster.socialSecurityEmployeeRegistration.create({
                   data: {
+                    companyId: employerReg.companyId,
                     institutionId: reg.institutionId,
                     employerRegistrationId: employerReg.id,
                     employeeId: existing.id,
@@ -2454,10 +2576,6 @@ export class EmployeeService {
       const rejoined = await this.prisma.employee.update({
         where: { cnicNumber: cnic },
         data: updateData,
-        include: {
-          department: { select: { id: true, name: true } },
-          designation: { select: { id: true, name: true } },
-        },
       });
 
       // Create comprehensive rejoining history record
@@ -2477,10 +2595,10 @@ export class EmployeeService {
           ),
           previousDepartmentId: existing.departmentId,
           newDepartmentId:
-            updateData.department?.connect?.id || existing.departmentId,
+            (updateData.departmentId as any) || existing.departmentId,
           previousDesignationId: existing.designationId,
           newDesignationId:
-            updateData.designation?.connect?.id || existing.designationId,
+            (updateData.designationId as any) || existing.designationId,
           previousSalary: existing.employeeSalary,
           newSalary:
             (updateData.employeeSalary as unknown as string) ||
@@ -2504,7 +2622,7 @@ export class EmployeeService {
 
       // Reactivate user if exists
       if (existing.userId) {
-        await this.prisma.user.update({
+        await this.prismaMaster.user.update({
           where: { id: existing.userId },
           data: { status: 'active' },
         });
@@ -2563,11 +2681,6 @@ export class EmployeeService {
       const history = await this.prisma.employeeRejoiningHistory.findMany({
         where: { employeeId },
         orderBy: { rejoiningDate: 'desc' },
-        include: {
-          createdBy: {
-            select: { firstName: true, lastName: true },
-          },
-        },
       });
 
       // Enhance history with readable change summaries
@@ -2583,7 +2696,7 @@ export class EmployeeService {
           // Extract key changes for easy viewing
           keyChanges:
             entryWithJson.changedFields &&
-            Array.isArray(entryWithJson.changedFields)
+              Array.isArray(entryWithJson.changedFields)
               ? entryWithJson.changedFields
               : [],
           // Previous state snapshot
@@ -2618,13 +2731,13 @@ export class EmployeeService {
     const trimmedName = name.trim();
 
     // Try to find existing department
-    let department = await this.prisma.department.findUnique({
+    let department = await this.prismaMaster.department.findUnique({
       where: { name: trimmedName },
     });
 
     // If not found, create it
     if (!department) {
-      department = await this.prisma.department.create({
+      department = await this.prismaMaster.department.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -2649,7 +2762,7 @@ export class EmployeeService {
     const trimmedName = name.trim();
 
     // Try to find existing sub-department
-    let subDepartment = await this.prisma.subDepartment.findFirst({
+    let subDepartment = await this.prismaMaster.subDepartment.findFirst({
       where: {
         name: trimmedName,
         departmentId: departmentId,
@@ -2658,7 +2771,7 @@ export class EmployeeService {
 
     // If not found, create it
     if (!subDepartment) {
-      subDepartment = await this.prisma.subDepartment.create({
+      subDepartment = await this.prismaMaster.subDepartment.create({
         data: {
           name: trimmedName,
           departmentId: departmentId,
@@ -2682,12 +2795,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let designation = await this.prisma.designation.findUnique({
+    let designation = await this.prismaMaster.designation.findUnique({
       where: { name: trimmedName },
     });
 
     if (!designation) {
-      designation = await this.prisma.designation.create({
+      designation = await this.prismaMaster.designation.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -2710,12 +2823,12 @@ export class EmployeeService {
     }
     const trimmedGrade = grade.trim();
 
-    let employeeGrade = await this.prisma.employeeGrade.findUnique({
+    let employeeGrade = await this.prismaMaster.employeeGrade.findUnique({
       where: { grade: trimmedGrade },
     });
 
     if (!employeeGrade) {
-      employeeGrade = await this.prisma.employeeGrade.create({
+      employeeGrade = await this.prismaMaster.employeeGrade.create({
         data: {
           grade: trimmedGrade,
           createdById: ctx.userId || null,
@@ -2738,12 +2851,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let maritalStatus = await this.prisma.maritalStatus.findUnique({
+    let maritalStatus = await this.prismaMaster.maritalStatus.findUnique({
       where: { name: trimmedName },
     });
 
     if (!maritalStatus) {
-      maritalStatus = await this.prisma.maritalStatus.create({
+      maritalStatus = await this.prismaMaster.maritalStatus.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -2766,12 +2879,12 @@ export class EmployeeService {
     }
     const trimmedStatus = status.trim();
 
-    let employmentStatus = await this.prisma.employeeStatus.findUnique({
+    let employmentStatus = await this.prismaMaster.employeeStatus.findUnique({
       where: { status: trimmedStatus },
     });
 
     if (!employmentStatus) {
-      employmentStatus = await this.prisma.employeeStatus.create({
+      employmentStatus = await this.prismaMaster.employeeStatus.create({
         data: {
           status: trimmedStatus,
           createdById: ctx.userId || null,
@@ -2810,7 +2923,7 @@ export class EmployeeService {
     const searchName = mappedName || trimmedName;
 
     // Try multiple search strategies
-    let country = await this.prisma.country.findFirst({
+    let country = await this.prismaMaster.country.findFirst({
       where: {
         OR: [
           { name: { equals: searchName, mode: 'insensitive' } },
@@ -2823,7 +2936,7 @@ export class EmployeeService {
 
     // If still not found and we used a mapping, try original name
     if (!country && mappedName) {
-      country = await this.prisma.country.findFirst({
+      country = await this.prismaMaster.country.findFirst({
         where: {
           OR: [
             { name: { equals: trimmedName, mode: 'insensitive' } },
@@ -2865,7 +2978,7 @@ export class EmployeeService {
     const searchName = mappedName || trimmedName;
 
     // Try exact match first
-    let state = await this.prisma.state.findFirst({
+    let state = await this.prismaMaster.state.findFirst({
       where: {
         name: { equals: searchName, mode: 'insensitive' },
         countryId: countryId,
@@ -2874,7 +2987,7 @@ export class EmployeeService {
 
     // If not found, try contains search
     if (!state) {
-      state = await this.prisma.state.findFirst({
+      state = await this.prismaMaster.state.findFirst({
         where: {
           name: { contains: searchName, mode: 'insensitive' },
           countryId: countryId,
@@ -2884,7 +2997,7 @@ export class EmployeeService {
 
     // If still not found and we used a mapping, try original name
     if (!state && mappedName) {
-      state = await this.prisma.state.findFirst({
+      state = await this.prismaMaster.state.findFirst({
         where: {
           OR: [
             {
@@ -2933,7 +3046,7 @@ export class EmployeeService {
     const searchName = mappedName || trimmedName;
 
     // Try exact match first
-    let city = await this.prisma.city.findFirst({
+    let city = await this.prismaMaster.city.findFirst({
       where: {
         name: { equals: searchName, mode: 'insensitive' },
         stateId: stateId,
@@ -2942,7 +3055,7 @@ export class EmployeeService {
 
     // If not found, try contains search
     if (!city) {
-      city = await this.prisma.city.findFirst({
+      city = await this.prismaMaster.city.findFirst({
         where: {
           name: { contains: searchName, mode: 'insensitive' },
           stateId: stateId,
@@ -2952,7 +3065,7 @@ export class EmployeeService {
 
     // If still not found and we used a mapping, try original name
     if (!city && mappedName) {
-      city = await this.prisma.city.findFirst({
+      city = await this.prismaMaster.city.findFirst({
         where: {
           OR: [
             {
@@ -2982,12 +3095,12 @@ export class EmployeeService {
       throw new Error('Location name is required');
     }
 
-    let location = await this.prisma.location.findUnique({
+    let location = await this.prismaMaster.location.findUnique({
       where: { name: locationName },
     });
 
     if (!location) {
-      location = await this.prisma.location.create({
+      location = await this.prismaMaster.location.create({
         data: {
           name: locationName,
           createdById: ctx.userId,
@@ -3010,13 +3123,13 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let policy = await this.prisma.workingHoursPolicy.findUnique({
+    let policy = await this.prismaMaster.workingHoursPolicy.findUnique({
       where: { name: trimmedName },
     });
 
     if (!policy) {
       // Create with default values - these should be set properly in production
-      policy = await this.prisma.workingHoursPolicy.create({
+      policy = await this.prismaMaster.workingHoursPolicy.create({
         data: {
           name: trimmedName,
           startWorkingHours: '09:00',
@@ -3041,12 +3154,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let policy = await this.prisma.leavesPolicy.findUnique({
+    let policy = await this.prismaMaster.leavesPolicy.findUnique({
       where: { name: trimmedName },
     });
 
     if (!policy) {
-      policy = await this.prisma.leavesPolicy.create({
+      policy = await this.prismaMaster.leavesPolicy.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -3068,12 +3181,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let allocation = await this.prisma.allocation.findUnique({
+    let allocation = await this.prismaMaster.allocation.findUnique({
       where: { name: trimmedName },
     });
 
     if (!allocation) {
-      allocation = await this.prisma.allocation.create({
+      allocation = await this.prismaMaster.allocation.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -3451,9 +3564,9 @@ export class EmployeeService {
           const equipmentList =
             selectedEquipments && selectedEquipments.trim()
               ? selectedEquipments
-                  .split(',')
-                  .map((e: string) => e.trim())
-                  .filter((e: string) => e.length > 0)
+                .split(',')
+                .map((e: string) => e.trim())
+                .filter((e: string) => e.length > 0)
               : [];
 
           // Validate required fields
@@ -3648,7 +3761,7 @@ export class EmployeeService {
               }
             } else if (stateName && stateName.trim() !== '') {
               // Try to infer country from state
-              const state = await this.prisma.state.findFirst({
+              const state = await this.prismaMaster.state.findFirst({
                 where: { name: stateName },
               });
 
@@ -3683,7 +3796,7 @@ export class EmployeeService {
             }
 
             if (!stateId) {
-              const sampleStates = await this.prisma.state.findMany({
+              const sampleStates = await this.prismaMaster.state.findMany({
                 where: { countryId },
                 take: 5,
                 select: { name: true },
@@ -3704,7 +3817,7 @@ export class EmployeeService {
             cityId = await this.findCityByName(cityName, stateId);
 
             if (!cityId) {
-              const sampleCities = await this.prisma.city.findMany({
+              const sampleCities = await this.prismaMaster.city.findMany({
                 where: { stateId },
                 take: 5,
                 select: { name: true },

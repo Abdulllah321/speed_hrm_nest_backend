@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import {
   CreateAllowanceDto,
@@ -11,8 +12,9 @@ import {
 export class AllowanceService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(params?: {
     employeeId?: string;
@@ -22,6 +24,7 @@ export class AllowanceService {
     status?: string;
   }) {
     try {
+
       const where: any = {};
 
       if (params?.employeeId) {
@@ -54,32 +57,8 @@ export class AllowanceService {
               employeeName: true,
               accountNumber: true,
               accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          allowanceHead: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -88,7 +67,83 @@ export class AllowanceService {
         },
       });
 
-      return { status: true, data: allowances };
+      if (allowances.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Collect IDs for Master Data fetching
+      const allowanceHeadIds = [
+        ...new Set(
+          allowances.map((a) => a.allowanceHeadId).filter(Boolean) as string[],
+        ),
+      ];
+      const createdByIds = [
+        ...new Set(
+          allowances.map((a) => a.createdById).filter(Boolean) as string[],
+        ),
+      ];
+      const deptIds = [
+        ...new Set(
+          allowances
+            .map((a) => a.employee?.departmentId)
+            .filter(Boolean) as string[],
+        ),
+      ];
+      const subDeptIds = [
+        ...new Set(
+          allowances
+            .map((a) => a.employee?.subDepartmentId)
+            .filter(Boolean) as string[],
+        ),
+      ];
+
+      const [allowanceHeads, users, departments, subDepartments] =
+        await Promise.all([
+          this.prismaMaster.allowanceHead.findMany({
+            where: { id: { in: allowanceHeadIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.user.findMany({
+            where: { id: { in: createdByIds } },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          }),
+          this.prismaMaster.department.findMany({
+            where: { id: { in: deptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.subDepartment.findMany({
+            where: { id: { in: subDeptIds } },
+            select: { id: true, name: true },
+          }),
+        ]);
+
+      const headMap = new Map(allowanceHeads.map((h) => [h.id, h]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
+
+      const mappedData = allowances.map((a) => {
+        const emp = a.employee
+          ? {
+            ...a.employee,
+            department: a.employee.departmentId
+              ? deptMap.get(a.employee.departmentId)
+              : null,
+            subDepartment: a.employee.subDepartmentId
+              ? subDeptMap.get(a.employee.subDepartmentId)
+              : null,
+          }
+          : null;
+
+        return {
+          ...a,
+          employee: emp,
+          allowanceHead: headMap.get(a.allowanceHeadId) || null,
+          createdBy: a.createdById ? userMap.get(a.createdById) : null,
+        };
+      });
+
+      return { status: true, data: mappedData };
     } catch (error) {
       console.error('Error listing allowances:', error);
       return {
@@ -101,6 +156,7 @@ export class AllowanceService {
 
   async get(id: string) {
     try {
+
       const allowance = await this.prisma.allowance.findUnique({
         where: { id },
         include: {
@@ -111,40 +167,8 @@ export class AllowanceService {
               employeeName: true,
               accountNumber: true,
               accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          allowanceHead: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -154,7 +178,66 @@ export class AllowanceService {
         return { status: false, message: 'Allowance not found' };
       }
 
-      return { status: true, data: allowance };
+      // Fetch Master Data
+      const [head, creator, updator, dept, subDept] = await Promise.all([
+        this.prismaMaster.allowanceHead.findUnique({
+          where: { id: allowance.allowanceHeadId },
+          select: { id: true, name: true },
+        }),
+        allowance.createdById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: allowance.createdById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        allowance.updatedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: allowance.updatedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        allowance.employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: allowance.employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        allowance.employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: allowance.employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+      ]);
+
+      const empMapped = allowance.employee
+        ? {
+          ...allowance.employee,
+          department: dept,
+          subDepartment: subDept,
+        }
+        : null;
+
+      return {
+        status: true,
+        data: {
+          ...allowance,
+          employee: empMapped,
+          allowanceHead: head,
+          createdBy: creator,
+          updatedBy: updator,
+        },
+      };
     } catch (error) {
       console.error('Error getting allowance:', error);
       return {
@@ -170,6 +253,7 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!body.allowances || body.allowances.length === 0) {
         return {
           status: false,
@@ -177,7 +261,7 @@ export class AllowanceService {
         };
       }
 
-      // Validate all employees exist
+      // Validate all employees exist (Tenant)
       const employeeIds = body.allowances.map((a) => a.employeeId);
       const employees = await this.prisma.employee.findMany({
         where: { id: { in: employeeIds } },
@@ -188,11 +272,11 @@ export class AllowanceService {
         return { status: false, message: 'One or more employees not found' };
       }
 
-      // Validate all allowance heads exist
+      // Validate all allowance heads exist (Master)
       const allowanceHeadIds = Array.from(
         new Set(body.allowances.map((a) => a.allowanceHeadId)),
       );
-      const allowanceHeads = await this.prisma.allowanceHead.findMany({
+      const allowanceHeads = await this.prismaMaster.allowanceHead.findMany({
         where: { id: { in: allowanceHeadIds }, status: 'active' },
         select: { id: true },
       });
@@ -211,11 +295,6 @@ export class AllowanceService {
         const createdAllowances: any[] = [];
 
         for (const allowanceItem of body.allowances) {
-          // Note: We removed the unique constraint check because the schema no longer has
-          // @@unique([employeeId, allowanceHeadId, month, year])
-          // This allows multiple allowances of the same type for the same employee in the same month
-
-          // Create new allowance
           const created = await tx.allowance.create({
             data: {
               employeeId: allowanceItem.employeeId,
@@ -287,6 +366,7 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.allowance.findUnique({
         where: { id },
       });
@@ -314,21 +394,6 @@ export class AllowanceService {
           ...(body.notes !== undefined && { notes: body.notes }),
           ...(body.status && { status: body.status }),
           updatedById: ctx.userId,
-        },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-            },
-          },
-          allowanceHead: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
         },
       });
 
@@ -368,6 +433,7 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.allowance.findUnique({
         where: { id },
       });
@@ -411,6 +477,7 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ids || ids.length === 0) {
         return {
           status: false,
@@ -460,7 +527,7 @@ export class AllowanceService {
         where.status = status;
       }
 
-      const allowanceHeads = await this.prisma.allowanceHead.findMany({
+      const allowanceHeads = await this.prismaMaster.allowanceHead.findMany({
         where,
         orderBy: { name: 'asc' },
       });
@@ -480,7 +547,7 @@ export class AllowanceService {
 
   async getAllowanceHead(id: string) {
     try {
-      const allowanceHead = await this.prisma.allowanceHead.findUnique({
+      const allowanceHead = await this.prismaMaster.allowanceHead.findUnique({
         where: { id },
       });
 

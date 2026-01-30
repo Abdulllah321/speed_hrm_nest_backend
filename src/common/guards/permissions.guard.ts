@@ -9,12 +9,14 @@ import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
@@ -52,7 +54,7 @@ export class PermissionsGuard implements CanActivate {
       return cached;
     }
 
-    const role = await this.prisma.role.findUnique({
+    const role = await this.prismaMaster.role.findUnique({
       where: { id: roleId },
       include: {
         permissions: {

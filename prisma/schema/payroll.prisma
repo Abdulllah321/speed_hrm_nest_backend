@@ -1,26 +1,24 @@
 model Allowance {
-  id               String        @id @default(uuid())
+  id               String   @id @default(uuid())
   employeeId       String
-  allowanceHeadId  String
-  amount           Decimal       @db.Decimal(10, 2)
+  allowanceHeadId  String // Refers to AllowanceHead in Master DB
+  amount           Decimal  @db.Decimal(10, 2)
   month            String
   year             String
   date             DateTime
-  type             String        @default("specific")
+  type             String   @default("specific")
   adjustmentMethod String?
-  paymentMethod    String        @default("with_salary")
-  isTaxable        Boolean       @default(false)
-  taxPercentage    Decimal?      @db.Decimal(5, 2)
+  paymentMethod    String   @default("with_salary")
+  isTaxable        Boolean  @default(false)
+  taxPercentage    Decimal? @db.Decimal(5, 2)
   notes            String?
-  status           String        @default("active")
-  createdById      String?
-  updatedById      String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  allowanceHead    AllowanceHead @relation(fields: [allowanceHeadId], references: [id])
-  createdBy        User?         @relation("AllowanceCreatedBy", fields: [createdById], references: [id])
-  employee         Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy        User?         @relation("AllowanceUpdatedBy", fields: [updatedById], references: [id])
+  status           String   @default("active")
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([allowanceHeadId])
@@ -30,25 +28,23 @@ model Allowance {
 }
 
 model Deduction {
-  id              String        @id @default(uuid())
+  id              String   @id @default(uuid())
   employeeId      String
-  deductionHeadId String
-  amount          Decimal       @db.Decimal(10, 2)
+  deductionHeadId String // Refers to DeductionHead in Master DB
+  amount          Decimal  @db.Decimal(10, 2)
   month           String
   year            String
   date            DateTime
-  isTaxable       Boolean       @default(false)
-  taxPercentage   Decimal?      @db.Decimal(5, 2)
+  isTaxable       Boolean  @default(false)
+  taxPercentage   Decimal? @db.Decimal(5, 2)
   notes           String?
-  status          String        @default("active")
-  createdById     String?
-  updatedById     String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  createdBy       User?         @relation("DeductionCreatedBy", fields: [createdById], references: [id])
-  deductionHead   DeductionHead @relation(fields: [deductionHeadId], references: [id])
-  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy       User?         @relation("DeductionUpdatedBy", fields: [updatedById], references: [id])
+  status          String   @default("active")
+  createdById     String? // User in Master DB
+  updatedById     String? // User in Master DB
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, deductionHeadId, month, year])
   @@index([employeeId])
@@ -66,26 +62,24 @@ model AdvanceSalary {
   deductionYear      String
   deductionMonthYear String
   reason             String
-  approval1          String?
+  approval1          String? // User.id in Master DB
   approval1Status    String?
   approval1Date      DateTime?
-  approval2          String?
+  approval2          String? // User.id in Master DB
   approval2Status    String?
   approval2Date      DateTime?
   remarks            String?
   approvalStatus     String    @default("pending")
-  approvedById       String?
+  approvedById       String? // User.id in Master DB
   approvedAt         DateTime?
   rejectionReason    String?
   status             String    @default("pending")
-  createdById        String?
-  updatedById        String?
+  createdById        String? // User.id in Master DB
+  updatedById        String? // User.id in Master DB
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-  approvedBy         User?     @relation("AdvanceSalaryApprovedBy", fields: [approvedById], references: [id])
-  createdBy          User?     @relation("AdvanceSalaryCreatedBy", fields: [createdById], references: [id])
-  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy          User?     @relation("AdvanceSalaryUpdatedBy", fields: [updatedById], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([deductionMonth, deductionYear])
@@ -96,29 +90,28 @@ model AdvanceSalary {
 }
 
 model OvertimeRequest {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   employeeId           String
   overtimeType         String
   title                String
   description          String?
   date                 DateTime
-  weekdayOvertimeHours Decimal  @default(0) @db.Decimal(5, 2)
-  holidayOvertimeHours Decimal  @default(0) @db.Decimal(5, 2)
-  status               String   @default("pending")
-  approval1            String?
+  weekdayOvertimeHours Decimal   @default(0) @db.Decimal(5, 2)
+  holidayOvertimeHours Decimal   @default(0) @db.Decimal(5, 2)
+  status               String    @default("pending")
+  approval1            String? // User.id in Master DB
   approval1Status      String?
   approval1Date        DateTime?
-  approval2            String?
+  approval2            String? // User.id in Master DB
   approval2Status      String?
   approval2Date        DateTime?
   remarks              String?
-  createdById          String?
-  updatedById          String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  createdBy            User?    @relation("OvertimeRequestCreatedBy", fields: [createdById], references: [id])
-  employee             Employee @relation("OvertimeRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy            User?    @relation("OvertimeRequestUpdatedBy", fields: [updatedById], references: [id])
+  createdById          String? // User.id in Master DB
+  updatedById          String? // User.id in Master DB
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  employee Employee @relation("OvertimeRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([overtimeType])
@@ -127,29 +120,26 @@ model OvertimeRequest {
 }
 
 model Increment {
-  id                  String         @id @default(uuid())
+  id                  String   @id @default(uuid())
   employeeId          String
-  employeeGradeId     String?
-  designationId       String?
+  employeeGradeId     String? // Refers to EmployeeGrade in Master DB
+  designationId       String? // Refers to Designation in Master DB
   incrementType       String
-  incrementAmount     Decimal?       @db.Decimal(10, 2)
-  incrementPercentage Decimal?       @db.Decimal(5, 2)
+  incrementAmount     Decimal? @db.Decimal(10, 2)
+  incrementPercentage Decimal? @db.Decimal(5, 2)
   incrementMethod     String
-  salary              Decimal        @db.Decimal(10, 2)
+  salary              Decimal  @db.Decimal(10, 2)
   promotionDate       DateTime
   currentMonth        String
   monthsOfIncrement   Int
   notes               String?
-  status              String         @default("active")
-  createdById         String?
-  updatedById         String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  createdBy           User?          @relation("IncrementCreatedBy", fields: [createdById], references: [id])
-  designation         Designation?   @relation("IncrementDesignation", fields: [designationId], references: [id])
-  employeeGrade       EmployeeGrade? @relation("IncrementEmployeeGrade", fields: [employeeGradeId], references: [id])
-  employee            Employee       @relation("IncrementEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy           User?          @relation("IncrementUpdatedBy", fields: [updatedById], references: [id])
+  status              String   @default("active")
+  createdById         String? // User in Master DB
+  updatedById         String? // User in Master DB
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  employee Employee @relation("IncrementEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([employeeGradeId])
@@ -160,29 +150,27 @@ model Increment {
 }
 
 model Bonus {
-  id               String    @id @default(uuid())
+  id               String   @id @default(uuid())
   employeeId       String
-  bonusTypeId      String
-  amount           Decimal   @db.Decimal(10, 2)
+  bonusTypeId      String // Refers to BonusType in Master DB
+  amount           Decimal  @db.Decimal(10, 2)
   calculationType  String
-  percentage       Decimal?  @db.Decimal(5, 2)
+  percentage       Decimal? @db.Decimal(5, 2)
   bonusMonth       String
   bonusYear        String
   bonusMonthYear   String
-  paymentMethod    String    @default("with_salary")
-  adjustmentMethod String    @default("distributed-remaining-months")
+  paymentMethod    String   @default("with_salary")
+  adjustmentMethod String   @default("distributed-remaining-months")
   notes            String?
-  isTaxable        Boolean   @default(false)
-  taxPercentage    Decimal?  @db.Decimal(5, 2)
-  status           String    @default("active")
-  createdById      String?
-  updatedById      String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  bonusType        BonusType @relation("BonusBonusType", fields: [bonusTypeId], references: [id])
-  createdBy        User?     @relation("BonusCreatedBy", fields: [createdById], references: [id])
-  employee         Employee  @relation("BonusEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy        User?     @relation("BonusUpdatedBy", fields: [updatedById], references: [id])
+  isTaxable        Boolean  @default(false)
+  taxPercentage    Decimal? @db.Decimal(5, 2)
+  status           String   @default("active")
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee Employee @relation("BonusEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, bonusTypeId, bonusMonthYear])
   @@index([employeeId])
@@ -205,26 +193,24 @@ model LeaveEncashment {
   grossSalary      Decimal?  @db.Decimal(10, 2)
   annualSalary     Decimal?  @db.Decimal(10, 2)
   perDayAmount     Decimal?  @db.Decimal(10, 2)
-  approval1        String?
+  approval1        String? // User.id in Master DB
   approval1Status  String?
   approval1Date    DateTime?
-  approval2        String?
+  approval2        String? // User.id in Master DB
   approval2Status  String?
   approval2Date    DateTime?
   remarks          String?
   approvalStatus   String    @default("pending")
-  approvedById     String?
+  approvedById     String? // User.id in Master DB
   approvedAt       DateTime?
   rejectionReason  String?
   status           String    @default("pending")
-  createdById      String?
-  updatedById      String?
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  approvedBy       User?     @relation("LeaveEncashmentApprovedBy", fields: [approvedById], references: [id])
-  createdBy        User?     @relation("LeaveEncashmentCreatedBy", fields: [createdById], references: [id])
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy        User?     @relation("LeaveEncashmentUpdatedBy", fields: [updatedById], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([paymentMonth, paymentYear])
@@ -241,48 +227,46 @@ model Payroll {
   totalAmount   Decimal         @db.Decimal(15, 2)
   status        String          @default("draft")
   generatedAt   DateTime        @default(now())
-  generatedById String?
-  generatedBy   User?           @relation("PayrollGeneratedBy", fields: [generatedById], references: [id])
+  generatedById String? // User in Master DB
   details       PayrollDetail[]
 
   @@unique([month, year])
 }
 
 model PayrollDetail {
-  id                               String                       @id @default(uuid())
+  id                               String    @id @default(uuid())
   payrollId                        String
   employeeId                       String
-  basicSalary                      Decimal                      @db.Decimal(10, 2)
-  totalAllowances                  Decimal                      @default(0) @db.Decimal(10, 2)
-  totalDeductions                  Decimal                      @default(0) @db.Decimal(10, 2)
-  attendanceDeduction              Decimal                      @default(0) @db.Decimal(10, 2)
-  loanDeduction                    Decimal                      @default(0) @db.Decimal(10, 2)
-  advanceSalaryDeduction           Decimal                      @default(0) @db.Decimal(10, 2)
-  eobiDeduction                    Decimal                      @default(0) @db.Decimal(10, 2)
-  providentFundDeduction           Decimal                      @default(0) @db.Decimal(10, 2)
-  taxDeduction                     Decimal                      @default(0) @db.Decimal(10, 2)
-  overtimeAmount                   Decimal                      @default(0) @db.Decimal(10, 2)
-  bonusAmount                      Decimal                      @default(0) @db.Decimal(10, 2)
-  leaveEncashmentAmount            Decimal                      @default(0) @db.Decimal(10, 2)
-  socialSecurityContributionAmount Decimal                      @default(0) @db.Decimal(10, 2)
-  grossSalary                      Decimal                      @db.Decimal(10, 2)
-  netSalary                        Decimal                      @db.Decimal(10, 2)
-  salaryBreakup                    Json?                        @default("[]")
-  allowanceBreakup                 Json?                        @default("[]")
-  deductionBreakup                 Json?                        @default("[]")
-  taxBreakup                       Json?                        @default("{}")
-  attendanceBreakup                Json?                        @default("{}")
-  overtimeBreakup                  Json?                        @default("[]")
-  bonusBreakup                     Json?                        @default("[]")
-  incrementBreakup                 Json?                        @default("[]")
+  basicSalary                      Decimal   @db.Decimal(10, 2)
+  totalAllowances                  Decimal   @default(0) @db.Decimal(10, 2)
+  totalDeductions                  Decimal   @default(0) @db.Decimal(10, 2)
+  attendanceDeduction              Decimal   @default(0) @db.Decimal(10, 2)
+  loanDeduction                    Decimal   @default(0) @db.Decimal(10, 2)
+  advanceSalaryDeduction           Decimal   @default(0) @db.Decimal(10, 2)
+  eobiDeduction                    Decimal   @default(0) @db.Decimal(10, 2)
+  providentFundDeduction           Decimal   @default(0) @db.Decimal(10, 2)
+  taxDeduction                     Decimal   @default(0) @db.Decimal(10, 2)
+  overtimeAmount                   Decimal   @default(0) @db.Decimal(10, 2)
+  bonusAmount                      Decimal   @default(0) @db.Decimal(10, 2)
+  leaveEncashmentAmount            Decimal   @default(0) @db.Decimal(10, 2)
+  socialSecurityContributionAmount Decimal   @default(0) @db.Decimal(10, 2)
+  grossSalary                      Decimal   @db.Decimal(10, 2)
+  netSalary                        Decimal   @db.Decimal(10, 2)
+  salaryBreakup                    Json?     @default("[]")
+  allowanceBreakup                 Json?     @default("[]")
+  deductionBreakup                 Json?     @default("[]")
+  taxBreakup                       Json?     @default("{}")
+  attendanceBreakup                Json?     @default("{}")
+  overtimeBreakup                  Json?     @default("[]")
+  bonusBreakup                     Json?     @default("[]")
+  incrementBreakup                 Json?     @default("[]")
   accountNumber                    String?
   bankName                         String?
-  paymentMode                      String?                      @default("Bank Transfer")
-  paymentStatus                    String                       @default("pending")
+  paymentMode                      String?   @default("Bank Transfer")
+  paymentStatus                    String    @default("pending")
   paymentDate                      DateTime?
-  employee                         Employee                     @relation(fields: [employeeId], references: [id])
-  payroll                          Payroll                      @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-  socialSecurityContributions      SocialSecurityContribution[]
+  employee                         Employee  @relation(fields: [employeeId], references: [id])
+  payroll                          Payroll   @relation(fields: [payrollId], references: [id], onDelete: Cascade)
 
   @@unique([payrollId, employeeId])
 }
@@ -297,18 +281,16 @@ model PFWithdrawal {
   monthYear        String
   reason           String?
   approvalStatus   String    @default("pending")
-  approvedById     String?
+  approvedById     String? // User in Master DB
   approvedAt       DateTime?
   rejectionReason  String?
   status           String    @default("pending")
-  createdById      String?
-  updatedById      String?
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  approvedBy       User?     @relation("PFWithdrawalApprovedBy", fields: [approvedById], references: [id])
-  createdBy        User?     @relation("PFWithdrawalCreatedBy", fields: [createdById], references: [id])
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy        User?     @relation("PFWithdrawalUpdatedBy", fields: [updatedById], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([month, year])
@@ -319,22 +301,20 @@ model PFWithdrawal {
 }
 
 model PayrollApprovalRequest {
-  id              String                 @id @default(uuid())
+  id              String                          @id @default(uuid())
   requestType     PayrollRequestType
   referenceId     String
   employeeId      String
   configurationId String?
   currentLevel    Int?
   maxLevel        Int?
-  status          PayrollApprovalStatus  @default(pending)
-  createdById     String?
-  updatedById     String?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  employee        Employee               @relation(fields: [employeeId], references: [id])
+  status          PayrollApprovalStatus           @default(pending)
+  createdById     String? // User in Master DB
+  updatedById     String? // User in Master DB
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+  employee        Employee                        @relation(fields: [employeeId], references: [id])
   configuration   RequestForwardingConfiguration? @relation(fields: [configurationId], references: [id], onDelete: SetNull)
-  createdBy       User?                  @relation("PayrollApprovalRequestCreatedBy", fields: [createdById], references: [id])
-  updatedBy       User?                  @relation("PayrollApprovalRequestUpdatedBy", fields: [updatedById], references: [id])
   levels          PayrollApprovalLevel[]
   histories       PayrollApprovalHistory[]
 
@@ -344,36 +324,33 @@ model PayrollApprovalRequest {
 }
 
 model PayrollApprovalLevel {
-  id                    String                 @id @default(uuid())
+  id                    String                @id @default(uuid())
   approvalRequestId     String
   level                 Int
   approverType          String
   departmentHeadMode    String?
-  thresholdAmount       Decimal?               @db.Decimal(10, 2)
-  thresholdPercentage   Decimal?               @db.Decimal(5, 2)
+  thresholdAmount       Decimal?              @db.Decimal(10, 2)
+  thresholdPercentage   Decimal?              @db.Decimal(5, 2)
   autoApprovalTrigger   AutoApprovalTrigger?
   autoApprovalCondition String?
-  status                PayrollApprovalStatus  @default(pending)
-  assignedApproverId    String?
-  assignedEmployeeId    String?
-  departmentId          String?
-  subDepartmentId       String?
-  approvedById          String?
+  status                PayrollApprovalStatus @default(pending)
+  assignedApproverId    String? // User in Master DB
+  assignedEmployeeId    String? // Employee in Tenant DB
+  departmentId          String? // Department in Master DB
+  subDepartmentId       String? // SubDepartment in Master DB
+  approvedById          String? // User in Master DB
   approvedAt            DateTime?
   rejectionReason       String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  approvalRequest       PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  assignedApprover      User?                  @relation("PayrollApprovalLevelAssignedApprover", fields: [assignedApproverId], references: [id])
-  assignedEmployee      Employee?              @relation("PayrollApprovalLevelAssignedEmployee", fields: [assignedEmployeeId], references: [id])
-  department            Department?            @relation(fields: [departmentId], references: [id])
-  subDepartment         SubDepartment?         @relation(fields: [subDepartmentId], references: [id])
-  approvedBy            User?                  @relation("PayrollApprovalLevelApprovedBy", fields: [approvedById], references: [id])
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
+  approvalRequest  PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  assignedEmployee Employee?              @relation("PayrollApprovalLevelAssignedEmployee", fields: [assignedEmployeeId], references: [id])
+
+  @@unique([approvalRequestId, level])
   @@index([approvalRequestId])
   @@index([level])
   @@index([status])
-  @@unique([approvalRequestId, level])
 }
 
 model PayrollApprovalHistory {
@@ -382,11 +359,11 @@ model PayrollApprovalHistory {
   level             Int
   status            PayrollApprovalStatus
   action            String
-  performedById     String?
-  performedAt       DateTime             @default(now())
+  performedById     String? // User in Master DB
+  performedAt       DateTime              @default(now())
   remarks           String?
-  approvalRequest   PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  performedBy       User?                @relation("PayrollApprovalHistoryPerformedBy", fields: [performedById], references: [id])
+
+  approvalRequest PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
 
   @@index([approvalRequestId])
   @@index([performedById])
@@ -419,4 +396,22 @@ enum AutoApprovalTrigger {
   amount_above_threshold
   time_based
   manual_override
+}
+
+model Rebate {
+  id             String   @id @default(uuid())
+  employeeId     String
+  rebateNatureId String // Refers to RebateNature in Master DB
+  rebateAmount   Decimal  @db.Decimal(12, 2)
+  monthYear      String
+  attachment     String?
+  status         String   @default("pending")
+  remarks        String?
+  createdById    String? // User in Master DB
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, rebateNatureId, monthYear])
 }

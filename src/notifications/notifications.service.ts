@@ -8,6 +8,7 @@ import {
   type NotificationPriority,
   type NotificationStatus,
 } from './notifications.types';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 const PRIORITY_ORDER: Record<NotificationPriority, number> = {
   low: 1,
@@ -38,7 +39,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private lastDeliveryRunAt: Date | null = null;
 
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private gateway: NotificationsGateway,
   ) {}
 
@@ -62,7 +63,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getPreferences(userId: string): Promise<NotificationPreferences> {
-    const rows = await this.prisma.userPreference.findMany({
+    const rows = await this.prismaMaster.userPreference.findMany({
       where: { userId, key: { startsWith: 'notifications.' } },
       select: { key: true, value: true },
     });
@@ -140,26 +141,28 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     if (args?.status) where.status = args.status;
 
     const [items, unreadCount] = await Promise.all([
-      this.prisma.notification.findMany({
+      this.prismaMaster.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         take: limit,
         skip: offset,
       }),
-      this.prisma.notification.count({ where: { userId, status: 'unread' } }),
+      this.prismaMaster.notification.count({
+        where: { userId, status: 'unread' },
+      }),
     ]);
 
     return { status: true, data: { items, unreadCount } };
   }
 
   async markRead(userId: string, id: string) {
-    const existing = await this.prisma.notification.findUnique({
+    const existing = await this.prismaMaster.notification.findUnique({
       where: { id },
     });
     if (!existing || existing.userId !== userId) {
       return { status: false, message: 'Notification not found' };
     }
-    const updated = await this.prisma.notification.update({
+    const updated = await this.prismaMaster.notification.update({
       where: { id },
       data: { status: 'read', readAt: new Date() },
     });
@@ -167,7 +170,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async markAllRead(userId: string) {
-    await this.prisma.notification.updateMany({
+    await this.prismaMaster.notification.updateMany({
       where: { userId, status: 'unread' },
       data: { status: 'read', readAt: new Date() },
     });
@@ -178,7 +181,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     args: { entityType: string; entityId: string },
   ) {
-    await this.prisma.notification.updateMany({
+    await this.prismaMaster.notification.updateMany({
       where: {
         userId,
         status: 'unread',
@@ -201,7 +204,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     const actionPayload = input.actionPayload
       ? JSON.stringify(input.actionPayload)
       : null;
-    const created = await this.prisma.notification.create({
+    const created = await this.prismaMaster.notification.create({
       data: {
         userId: input.userId,
         title: input.title,
@@ -221,7 +224,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
     const nonInApp = channels.filter((c) => c !== 'inApp');
     if (nonInApp.length > 0) {
-      await this.prisma.notificationDeliveryAttempt.createMany({
+      await this.prismaMaster.notificationDeliveryAttempt.createMany({
         data: nonInApp.map((channel) => ({
           notificationId: created.id,
           channel,
@@ -287,15 +290,16 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   async retryPendingDeliveries() {
     this.lastDeliveryRunAt = new Date();
     const now = new Date();
-    const attempts = await this.prisma.notificationDeliveryAttempt.findMany({
-      where: {
-        status: 'pending',
-        OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 25,
-      include: { notification: true },
-    });
+    const attempts =
+      await this.prismaMaster.notificationDeliveryAttempt.findMany({
+        where: {
+          status: 'pending',
+          OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 25,
+        include: { notification: true },
+      });
 
     for (const attempt of attempts) {
       await this.processAttempt(attempt.id).catch(() => undefined);
@@ -303,16 +307,17 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processAttempt(attemptId: string) {
-    const attempt = await this.prisma.notificationDeliveryAttempt.findUnique({
-      where: { id: attemptId },
-      include: { notification: true },
-    });
+    const attempt =
+      await this.prismaMaster.notificationDeliveryAttempt.findUnique({
+        where: { id: attemptId },
+        include: { notification: true },
+      });
     if (!attempt) return;
     if (attempt.status !== 'pending') return;
 
     const nextAttempt = attempt.attempt + 1;
     if (nextAttempt > 5) {
-      await this.prisma.notificationDeliveryAttempt.update({
+      await this.prismaMaster.notificationDeliveryAttempt.update({
         where: { id: attempt.id },
         data: {
           status: 'failed',
@@ -339,18 +344,18 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         throw new Error(`Unsupported channel: ${attempt.channel}`);
       }
 
-      await this.prisma.notificationDeliveryAttempt.update({
+      await this.prismaMaster.notificationDeliveryAttempt.update({
         where: { id: attempt.id },
         data: { status: 'sent', attempt: nextAttempt, errorMessage: null },
       });
 
-      await this.prisma.notification.update({
+      await this.prismaMaster.notification.update({
         where: { id: attempt.notificationId },
         data: { deliveredAt: attempt.notification.deliveredAt || new Date() },
       });
     } catch (e: any) {
       const backoffMs = this.computeBackoffMs(nextAttempt);
-      await this.prisma.notificationDeliveryAttempt.update({
+      await this.prismaMaster.notificationDeliveryAttempt.update({
         where: { id: attempt.id },
         data: {
           status: 'pending',

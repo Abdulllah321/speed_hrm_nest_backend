@@ -1,0 +1,203 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
+
+@Injectable()
+export class SalaryBreakupService {
+  constructor(
+    private prismaMaster: PrismaMasterService,
+    private activityLogs: ActivityLogsService,
+  ) { }
+
+  async list() {
+    const items = await this.prismaMaster.salaryBreakup.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: true, data: items };
+  }
+
+  async get(id: string) {
+    const item = await this.prismaMaster.salaryBreakup.findUnique({
+      where: { id },
+    });
+    if (!item) return { status: false, message: 'Salary breakup not found' };
+    return { status: true, data: item };
+  }
+
+  async create(
+    body: {
+      name: string;
+      percentage: number;
+      isTaxable?: boolean;
+      status?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const created = await this.prismaMaster.salaryBreakup.create({
+        data: {
+          name: body.name,
+          percentage: body.percentage,
+          details:
+            body.isTaxable !== undefined
+              ? JSON.stringify({ isTaxable: body.isTaxable })
+              : null,
+          status: body.status ?? 'active',
+          createdById: ctx.userId,
+        },
+      });
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'create',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: created.id,
+        description: `Created salary breakup ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      });
+      return { status: true, data: created };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'create',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        description: 'Failed to create salary breakup',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      });
+      return { status: false, message: 'Failed to create salary breakup' };
+    }
+  }
+
+  async update(
+    id: string,
+    body: {
+      name: string;
+      percentage: number;
+      isTaxable?: boolean;
+      status?: string;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prismaMaster.salaryBreakup.findUnique({
+        where: { id },
+      });
+
+      if (!existing) {
+        return { status: false, message: 'Salary breakup not found' };
+      }
+
+      const updated = await this.prismaMaster.salaryBreakup.update({
+        where: { id },
+        data: {
+          name: body.name,
+          percentage: body.percentage,
+          details:
+            body.isTaxable !== undefined
+              ? JSON.stringify({ isTaxable: body.isTaxable })
+              : existing.details,
+          status: body.status ?? existing.status,
+        },
+      });
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: updated.id,
+        description: `Updated salary breakup ${updated.name}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      });
+
+      return {
+        status: true,
+        data: updated,
+        message: 'Salary breakup updated successfully',
+      };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: id,
+        description: 'Failed to update salary breakup',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      });
+
+      return {
+        status: false,
+        message: error?.message || 'Failed to update salary breakup',
+      };
+    }
+  }
+
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prismaMaster.salaryBreakup.findUnique({
+        where: { id },
+      });
+
+      if (!existing) {
+        return { status: false, message: 'Salary breakup not found' };
+      }
+
+      await this.prismaMaster.salaryBreakup.delete({ where: { id } });
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: id,
+        description: `Deleted salary breakup ${existing.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      });
+
+      return { status: true, message: 'Salary breakup deleted successfully' };
+    } catch (error: any) {
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'salary-breakups',
+        entity: 'SalaryBreakup',
+        entityId: id,
+        description: 'Failed to delete salary breakup',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      });
+
+      return {
+        status: false,
+        message: error?.message || 'Failed to delete salary breakup',
+      };
+    }
+  }
+}

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class UserPreferencesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prismaMaster: PrismaMasterService) {}
 
   async get(userId: string, key: string) {
     try {
-      const preference = await this.prisma.userPreference.findUnique({
+      const preference = await this.prismaMaster.userPreference.findUnique({
         where: {
           userId_key: {
             userId,
@@ -28,7 +28,7 @@ export class UserPreferencesService {
 
   async upsert(userId: string, key: string, value: string) {
     try {
-      const preference = await this.prisma.userPreference.upsert({
+      const preference = await this.prismaMaster.userPreference.upsert({
         where: {
           userId_key: {
             userId,

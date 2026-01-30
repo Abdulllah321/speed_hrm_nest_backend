@@ -18,7 +18,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 @ApiTags('Provident Fund')
 @Controller('api/pf')
 export class PFController {
-  constructor(private readonly pfService: PFService) {}
+  constructor(private readonly pfService: PFService) { }
 
   @Get('employees')
   @ApiOperation({ summary: 'Get PF balances for all employees' })

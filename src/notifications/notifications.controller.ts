@@ -19,7 +19,7 @@ import {
 @ApiTags('Notifications')
 @Controller('api/notifications')
 export class NotificationsController {
-  constructor(private service: NotificationsService) {}
+  constructor(private service: NotificationsService) { }
 
   @Get()
   @UseGuards(JwtAuthGuard)
