@@ -54,7 +54,7 @@ async function main() {
 
     // 3. Assign Permissions to HR
     // HR gets ALL 'hr.*' and 'master.*' permissions
-    const hrRole = await prisma.role.findFirst({ where: { name: 'HR' } });
+    const hrRole = await prisma.role.findFirst({ where: { name: 'hr' } });
     if (hrRole) {
         // Fetch all relevant permissions
         const hrPerms = await prisma.permission.findMany({
@@ -92,7 +92,7 @@ async function main() {
 
     // 4. Assign Permissions to Employee
     // Employee gets specific self-service permissions
-    const employeeRole = await prisma.role.findFirst({ where: { name: 'Employee' } });
+    const employeeRole = await prisma.role.findFirst({ where: { name: 'employee' } });
     if (employeeRole) {
         console.log('Step 4: Assigning Self-Service permissions to Employee Role...');
         
