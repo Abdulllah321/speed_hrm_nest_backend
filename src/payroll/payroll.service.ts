@@ -11,6 +11,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { Prisma } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/client';
 
 @Injectable()
@@ -22,6 +23,8 @@ export class PayrollService {
     private readonly prismaMaster: PrismaMasterService,
     private readonly activityLogsService: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
@@ -736,6 +739,11 @@ export class PayrollService {
         userId: generatedBy,
       });
 
+      // Trigger Email Notifications (Async)
+      this.sendPayslipEmails(payroll.id).catch((err) =>
+        this.logger.error('Failed to trigger payslip emails', err),
+      );
+
       return payroll;
     } catch (error) {
       this.logger.error(
@@ -765,6 +773,185 @@ export class PayrollService {
       where: { id },
       include: { details: { include: { employee: true } } },
     });
+  }
+
+  private async sendPayslipEmails(payrollId: string) {
+    const payroll = await this.prisma.payroll.findUnique({
+      where: { id: payrollId },
+      include: {
+        details: {
+          include: {
+            employee: true,
+          },
+        },
+      },
+    });
+
+    if (!payroll) return;
+
+    // Collect IDs for Master Data fetching
+    const departmentIds = new Set<string>();
+    const designationIds = new Set<string>();
+    const employeeIds = new Set<string>();
+
+    payroll.details.forEach((d) => {
+      if (d.employee) {
+        if (d.employee.departmentId) departmentIds.add(d.employee.departmentId);
+        if (d.employee.designationId)
+          designationIds.add(d.employee.designationId);
+        if (d.employee.employeeId) employeeIds.add(d.employee.employeeId);
+      }
+    });
+
+    // Fetch Master Data
+    const [departments, designations, users] = await Promise.all([
+      this.prismaMaster.department.findMany({
+        where: { id: { in: Array.from(departmentIds) } },
+      }),
+      this.prismaMaster.designation.findMany({
+        where: { id: { in: Array.from(designationIds) } },
+      }),
+      this.prismaMaster.user.findMany({
+        where: { employeeId: { in: Array.from(employeeIds) }, status: 'active' },
+      }),
+    ]);
+
+    const deptMap = new Map(departments.map((d) => [d.id, d]));
+    const desMap = new Map(designations.map((d) => [d.id, d]));
+    const userMap = new Map(users.map((u) => [u.employeeId, u]));
+
+    for (const detail of payroll.details) {
+      if (!detail.employee) continue;
+
+      // Find mapped User by employeeId
+      const user = userMap.get(detail.employee.employeeId);
+
+      if (user) {
+        // Construct composite employee object for HTML generation
+        const compositeEmployee = {
+          ...detail.employee,
+          department: detail.employee.departmentId
+            ? deptMap.get(detail.employee.departmentId)
+            : null,
+          designation: detail.employee.designationId
+            ? desMap.get(detail.employee.designationId)
+            : null,
+          user: user, // Attach user if needed mostly for ID
+        };
+        const compositeDetail = { ...detail, employee: compositeEmployee };
+
+        // Generate simplified HTML for email body (mimicking the slip)
+        const htmlContent = this.generatePayslipHTML(
+          compositeDetail,
+          payroll.month,
+          payroll.year,
+        );
+
+        // Use NotificationsService to create a notification record (In-App only to avoid duplicate email)
+        await this.notificationsService.create({
+          userId: user.id,
+          title: `Payslip for ${payroll.month}/${payroll.year}`,
+          message: `Your payslip for ${payroll.month}/${payroll.year} is ready. Net Salary: ${detail.netSalary}`,
+          category: 'payroll',
+          priority: 'high',
+          channels: ['inApp'], // Only in-app here, we send custom email below
+          actionType: 'payroll.view',
+          entityType: 'PayrollDetail',
+          entityId: detail.id,
+        });
+
+        const emailSubject = `Payslip - ${payroll.month}/${payroll.year}`;
+        await this.notificationsService.sendEmail({
+          userId: user.id,
+          subject: emailSubject,
+          body: htmlContent,
+        });
+      }
+    }
+  }
+
+  private generatePayslipHTML(detail: any, month: string, year: string): string {
+    const emp = detail.employee;
+    const formatCurrency = (amount: any) =>
+      new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', minimumFractionDigits: 0 }).format(Number(amount));
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; line-height: 1.4; }
+          .container { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+          .company-name { font-size: 24px; font-weight: bold; }
+          .title { font-size: 18px; margin-top: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+          .label { font-weight: bold; color: #555; }
+          .section-title { background: #f4f4f4; padding: 5px; font-weight: bold; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; margin-top: 10px; }
+          .table-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee; }
+          .total-row { display: flex; justify-content: space-between; padding: 10px 0; font-weight: bold; border-top: 2px solid #333; margin-top: 10px; }
+          .net-salary { background: #e8f5e9; padding: 10px; text-align: center; font-size: 20px; font-weight: bold; margin-top: 20px; border: 1px solid #c8e6c9; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="company-name">Innovative Network Pvt Ltd</div>
+            <div class="title">Payslip for ${month}/${year}</div>
+          </div>
+
+          <div class="info-grid">
+            <div>
+              <div class="row"><span class="label">Employee Name:</span> <span>${emp.employeeName}</span></div>
+              <div class="row"><span class="label">Employee ID:</span> <span>${emp.employeeId}</span></div>
+              <div class="row"><span class="label">Designation:</span> <span>${emp.designation?.name || '-'}</span></div>
+            </div>
+            <div>
+              <div class="row"><span class="label">Department:</span> <span>${emp.department?.name || '-'}</span></div>
+              <div class="row"><span class="label">Date of Joining:</span> <span>${emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString() : '-'}</span></div>
+              <div class="row"><span class="label">Payment Mode:</span> <span>Bank Transfer</span></div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+              <div class="section-title">Earnings</div>
+              <div class="table-row"><span>Basic Salary</span> <span>${formatCurrency(detail.basicSalary)}</span></div>
+              ${(detail.allowanceBreakup || []).map((a: any) => `
+                <div class="table-row"><span>${a.name}</span> <span>${formatCurrency(a.amount)}</span></div>
+              `).join('')}
+              ${(detail.overtimeAmount > 0) ? `<div class="table-row"><span>Overtime</span> <span>${formatCurrency(detail.overtimeAmount)}</span></div>` : ''}
+              ${(detail.bonusAmount > 0) ? `<div class="table-row"><span>Bonus</span> <span>${formatCurrency(detail.bonusAmount)}</span></div>` : ''}
+              <div class="total-row"><span>Total Earnings</span> <span>${formatCurrency(Number(detail.basicSalary) + Number(detail.totalAllowances) + Number(detail.overtimeAmount) + Number(detail.bonusAmount))}</span></div>
+            </div>
+
+            <div style="flex: 1;">
+              <div class="section-title">Deductions</div>
+              ${(detail.deductionBreakup || []).map((d: any) => `
+                <div class="table-row"><span>${d.name}</span> <span>${formatCurrency(d.amount)}</span></div>
+              `).join('')}
+              ${(detail.taxDeduction > 0) ? `<div class="table-row"><span>Tax</span> <span>${formatCurrency(detail.taxDeduction)}</span></div>` : ''}
+              ${(detail.eobiDeduction > 0) ? `<div class="table-row"><span>EOBI</span> <span>${formatCurrency(detail.eobiDeduction)}</span></div>` : ''}
+              ${(detail.providentFundDeduction > 0) ? `<div class="table-row"><span>Provident Fund</span> <span>${formatCurrency(detail.providentFundDeduction)}</span></div>` : ''}
+              ${(detail.loanDeduction > 0) ? `<div class="table-row"><span>Loan</span> <span>${formatCurrency(detail.loanDeduction)}</span></div>` : ''}
+              ${(detail.advanceSalaryDeduction > 0) ? `<div class="table-row"><span>Advance Salary</span> <span>${formatCurrency(detail.advanceSalaryDeduction)}</span></div>` : ''}
+              ${(detail.attendanceDeduction > 0) ? `<div class="table-row"><span>Attendance/Late</span> <span>${formatCurrency(detail.attendanceDeduction)}</span></div>` : ''}
+              <div class="total-row"><span>Total Deductions</span> <span>${formatCurrency(detail.totalDeductions)}</span></div>
+            </div>
+          </div>
+
+          <div class="net-salary">
+            Net Salary: ${formatCurrency(detail.netSalary)}
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #777;">
+            This is a computer-generated document and does not require a signature.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
   }
 
   async getPayrollReport(filters: {

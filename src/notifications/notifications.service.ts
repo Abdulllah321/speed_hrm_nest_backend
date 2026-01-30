@@ -1,6 +1,7 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from './notifications.gateway';
+import * as nodemailer from 'nodemailer';
 import {
   type CreateNotificationInput,
   type NotificationChannel,
@@ -35,13 +36,53 @@ function parseBoolean(value: string | null | undefined, defaultValue: boolean) {
 
 @Injectable()
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(NotificationsService.name);
   private deliveryTimer: NodeJS.Timeout | null = null;
   private lastDeliveryRunAt: Date | null = null;
+  private transporter: nodemailer.Transporter;
 
   constructor(
     private prismaMaster: PrismaMasterService,
     private gateway: NotificationsGateway,
-  ) {}
+  ) {
+    // Initialize Nodemailer with Ethereal (Test Account)
+    // In production, replace this with actual SMTP credentials via environment variables
+    this.createTestAccount();
+  }
+
+  private async createTestAccount() {
+    try {
+      // Check if real SMTP is configured
+      if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+        this.transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT) || 587,
+          secure: process.env.SMTP_SECURE === 'true',
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+        this.logger.log('Configured with provided SMTP settings');
+      } else {
+        // Fallback to Ethereal for testing
+        const testAccount = await nodemailer.createTestAccount();
+        this.transporter = nodemailer.createTransport({
+          host: 'smtp.ethereal.email',
+          port: 587,
+          secure: false,
+          auth: {
+            user: testAccount.user,
+            pass: testAccount.pass,
+          },
+        });
+        this.logger.log(`Ethereal Email Configured. Preview URL will be logged.`);
+        this.logger.log(`User: ${testAccount.user}, Pass: ${testAccount.pass}`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to create email transporter', error);
+    }
+  }
 
   onModuleInit() {
     const enabled = parseBoolean(
@@ -252,20 +293,60 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async sendEmail(args: {
-    userId: string;
+  async sendEmail(args: {
+    userId?: string;
+    to?: string;
     subject: string;
-    body: string;
+    body: string; // HTML content
+    attachments?: any[];
   }) {
-    const webhook = process.env.EMAIL_WEBHOOK_URL;
-    if (!webhook) throw new Error('EMAIL_WEBHOOK_URL not configured');
-    const res = await fetch(webhook, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(args),
-    });
-    if (!res.ok)
-      throw new Error(`Email webhook failed with status ${res.status}`);
+    // If no explicit 'to' address, try to fetch user's email if userId provided
+    let recipientEmail = args.to;
+    
+    if (!recipientEmail && args.userId) {
+       // Try to find email from User or Employee record
+       const user = await this.prisma.user.findUnique({
+         where: { id: args.userId },
+         include: { employee: true }
+       });
+       
+       if (user) {
+         recipientEmail = user.email;
+         // Prefer official email from employee record if available? Usually user email is login email.
+         // Let's stick to user.email or employee.personalEmail if user.email is missing?
+         // For now, assume user.email is primary.
+       }
+    }
+
+    if (!recipientEmail) {
+      this.logger.warn(`Skipping email: No recipient found for userId ${args.userId}`);
+      return;
+    }
+
+    if (!this.transporter) {
+       this.logger.warn('Email transporter not ready, retrying initialization...');
+       await this.createTestAccount();
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: '"HR System" <noreply@hr-system.com>',
+        to: recipientEmail,
+        subject: args.subject,
+        html: args.body,
+        attachments: args.attachments,
+      });
+
+      this.logger.log(`Email sent: ${info.messageId}`);
+      // If using Ethereal, log the preview URL
+      const previewUrl = nodemailer.getTestMessageUrl(info);
+      if (previewUrl) {
+        this.logger.log(`Preview URL: ${previewUrl}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to send email to ${recipientEmail}`, error);
+      throw error; // Re-throw to trigger retry logic in processAttempt
+    }
   }
 
   private async sendSms(args: { userId: string; message: string }) {
