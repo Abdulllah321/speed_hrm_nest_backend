@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { EmployeeService } from './employee.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import type { FastifyRequest } from 'fastify';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -30,21 +32,21 @@ import {
 } from './dto/create-employee.dto';
 
 @ApiTags('Employee')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class EmployeeController {
   constructor(private service: EmployeeService) {}
 
   @Get('employees')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'List all employees' })
   async list() {
     return this.service.list();
   }
 
   @Get('employees/for-attendance')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'List employees for attendance' })
   async listForAttendance(
     @Query('departmentId') departmentId?: string,
@@ -54,16 +56,14 @@ export class EmployeeController {
   }
 
   @Get('employees/dropdown')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'List employees for dropdown' })
   async listForDropdown() {
     return this.service.listForDropdown();
   }
 
   @Get('employees/rejoin/search')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'Search employee for rejoin' })
   async searchForRejoin(@Query('cnic') cnic: string) {
     if (!cnic) {
@@ -73,8 +73,7 @@ export class EmployeeController {
   }
 
   @Post('employees/rejoin')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.create')
   @ApiOperation({ summary: 'Rejoin employee' })
   async rejoinEmployee(
     @Body() body: Record<string, unknown>,
@@ -92,16 +91,14 @@ export class EmployeeController {
   }
 
   @Get('employees/:id/rejoining-history')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'Get rejoining history' })
   async getRejoiningHistory(@Param('id') id: string) {
     return this.service.getRejoiningHistory(id);
   }
 
   @Get('employees/:id/historical-state')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'Get historical state' })
   async getHistoricalState(
     @Param('id') id: string,
@@ -112,8 +109,7 @@ export class EmployeeController {
   }
 
   @Get('employees/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'Get employee details' })
   async get(
     @Param('id') id: string,
@@ -124,8 +120,7 @@ export class EmployeeController {
   }
 
   @Post('employees')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.create')
   @ApiOperation({ summary: 'Create employee' })
   async create(@Body() body: CreateEmployeeDto, @Req() req: FastifyRequest) {
     return this.service.create(body, {
@@ -136,8 +131,7 @@ export class EmployeeController {
   }
 
   @Put('employees/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.update')
   @ApiOperation({ summary: 'Update employee' })
   async update(
     @Param('id') id: string,
@@ -152,8 +146,7 @@ export class EmployeeController {
   }
 
   @Delete('employees/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.delete')
   @ApiOperation({ summary: 'Delete employee' })
   async remove(@Param('id') id: string, @Req() req: FastifyRequest) {
     return this.service.remove(id, {
@@ -164,8 +157,7 @@ export class EmployeeController {
   }
 
   @Post('employees/import-csv')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.employee.create')
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { HolidayService } from './holiday.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -22,28 +24,27 @@ import { CreateHolidayDto, UpdateHolidayDto } from './dto/holiday.dto';
 
 @ApiTags('Holiday')
 @Controller('api')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
 export class HolidayController {
   constructor(private service: HolidayService) {}
 
   @Get('holidays')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.read')
   @ApiOperation({ summary: 'List all holidays' })
   async list() {
     return this.service.list();
   }
 
   @Get('holidays/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.read')
   @ApiOperation({ summary: 'Get holiday by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('holidays')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.create')
   @ApiOperation({ summary: 'Create holiday' })
   async create(@Body() body: CreateHolidayDto, @Req() req: any) {
     return this.service.create(body, {
@@ -54,8 +55,7 @@ export class HolidayController {
   }
 
   @Put('holidays/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.update')
   @ApiOperation({ summary: 'Update holiday' })
   async update(
     @Param('id') id: string,
@@ -70,8 +70,7 @@ export class HolidayController {
   }
 
   @Delete('holidays/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.delete')
   @ApiOperation({ summary: 'Delete holiday' })
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.service.remove(id, {
@@ -82,8 +81,7 @@ export class HolidayController {
   }
 
   @Post('holidays/bulk')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.create')
   @ApiOperation({ summary: 'Create holidays in bulk' })
   @ApiBody({ type: CreateHolidayDto, isArray: true })
   async createBulk(
@@ -98,8 +96,7 @@ export class HolidayController {
   }
 
   @Put('holidays/bulk')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.update')
   @ApiOperation({ summary: 'Update holidays in bulk' })
   @ApiBody({ type: UpdateHolidayDto, isArray: true })
   async updateBulk(
@@ -114,8 +111,7 @@ export class HolidayController {
   }
 
   @Delete('holidays/bulk')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.holiday.delete')
   @ApiOperation({ summary: 'Delete holidays in bulk' })
   @ApiBody({
     schema: {

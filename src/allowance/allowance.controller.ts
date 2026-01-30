@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { AllowanceService } from './allowance.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   CreateAllowanceDto,
   BulkCreateAllowanceDto,
@@ -32,7 +34,8 @@ export class AllowanceController {
   constructor(private service: AllowanceService) {}
 
   @Get('allowances')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List allowances' })
   @ApiQuery({ name: 'employeeId', required: false })
@@ -57,7 +60,8 @@ export class AllowanceController {
   }
 
   @Get('allowances/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get allowance by id' })
   async get(@Param('id') id: string) {
@@ -65,7 +69,8 @@ export class AllowanceController {
   }
 
   @Post('allowances')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allowance' })
   async create(@Body() body: CreateAllowanceDto, @Req() req) {
@@ -77,7 +82,8 @@ export class AllowanceController {
   }
 
   @Post('allowances/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allowances in bulk' })
   async bulkCreate(@Body() body: BulkCreateAllowanceDto, @Req() req) {
@@ -89,7 +95,8 @@ export class AllowanceController {
   }
 
   @Put('allowances/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allowance' })
   async update(
@@ -105,7 +112,8 @@ export class AllowanceController {
   }
 
   @Delete('allowances/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allowance' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -117,7 +125,8 @@ export class AllowanceController {
   }
 
   @Delete('allowances/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.allowance.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allowances in bulk' })
   @ApiBody({

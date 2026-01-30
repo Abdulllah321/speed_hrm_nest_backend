@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { DeductionService } from './deduction.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   CreateDeductionDto,
   BulkCreateDeductionDto,
@@ -32,7 +34,8 @@ export class DeductionController {
   constructor(private service: DeductionService) {}
 
   @Get('deductions')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List deductions' })
   @ApiQuery({ name: 'employeeId', required: false })
@@ -57,7 +60,8 @@ export class DeductionController {
   }
 
   @Get('deductions/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get deduction by id' })
   async get(@Param('id') id: string) {
@@ -65,7 +69,8 @@ export class DeductionController {
   }
 
   @Post('deductions')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create deduction' })
   async create(@Body() body: CreateDeductionDto, @Req() req) {
@@ -77,7 +82,8 @@ export class DeductionController {
   }
 
   @Post('deductions/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create deductions in bulk' })
   async bulkCreate(@Body() body: BulkCreateDeductionDto, @Req() req) {
@@ -89,7 +95,8 @@ export class DeductionController {
   }
 
   @Put('deductions/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update deduction' })
   async update(
@@ -105,7 +112,8 @@ export class DeductionController {
   }
 
   @Delete('deductions/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete deduction' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -117,7 +125,8 @@ export class DeductionController {
   }
 
   @Delete('deductions/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.deduction.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete deductions in bulk' })
   @ApiBody({

@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { RequestForwardingService } from './request-forwarding.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import { CreateRequestForwardingDto } from './dto/create-request-forwarding.dto';
 import { UpdateRequestForwardingDto } from './dto/update-request-forwarding.dto';
 import {
@@ -21,21 +23,21 @@ import {
 } from '@nestjs/swagger';
 
 @ApiTags('Request Forwarding')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class RequestForwardingController {
   constructor(private service: RequestForwardingService) {}
 
   @Get('request-forwarding')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.request-forwarding.view')
   @ApiOperation({ summary: 'List request forwarding configurations' })
   async list() {
     return this.service.list();
   }
 
   @Get('request-forwarding/:requestType')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.request-forwarding.view')
   @ApiOperation({
     summary: 'Get request forwarding configuration by request type',
   })
@@ -44,8 +46,7 @@ export class RequestForwardingController {
   }
 
   @Post('request-forwarding')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.request-forwarding.manage')
   @ApiOperation({ summary: 'Create request forwarding configuration' })
   async create(@Body() body: CreateRequestForwardingDto, @Req() req) {
     return this.service.create(body, {
@@ -56,8 +57,7 @@ export class RequestForwardingController {
   }
 
   @Put('request-forwarding/:requestType')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.request-forwarding.manage')
   @ApiOperation({ summary: 'Update request forwarding configuration' })
   async update(
     @Param('requestType') requestType: string,
@@ -72,8 +72,7 @@ export class RequestForwardingController {
   }
 
   @Delete('request-forwarding/:requestType')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.request-forwarding.manage')
   @ApiOperation({ summary: 'Delete request forwarding configuration' })
   async delete(@Param('requestType') requestType: string, @Req() req) {
     return this.service.delete(requestType, {

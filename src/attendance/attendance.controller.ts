@@ -15,6 +15,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { FastifyRequest } from 'fastify';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -29,13 +31,14 @@ import {
 } from './dto/create-attendance.dto';
 
 @ApiTags('Attendance')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class AttendanceController {
   constructor(private service: AttendanceService) {}
 
   @Get('attendances')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.view')
   @ApiOperation({ summary: 'List attendances' })
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'dateFrom', required: false })
@@ -56,8 +59,7 @@ export class AttendanceController {
   }
 
   @Get('attendances/summary')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.summary')
   @ApiOperation({ summary: 'Get attendance summary' })
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'departmentId', required: false })
@@ -81,16 +83,14 @@ export class AttendanceController {
   }
 
   @Get('attendances/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.view')
   @ApiOperation({ summary: 'Get attendance by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('attendances')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.create')
   @ApiOperation({ summary: 'Create attendance' })
   async create(@Body() body: CreateAttendanceDto, @Req() req: any) {
     return this.service.create(body, {
@@ -101,8 +101,7 @@ export class AttendanceController {
   }
 
   @Post('attendances/date-range')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.create')
   @ApiOperation({ summary: 'Create attendance for date range' })
   async createForDateRange(@Body() body: any, @Req() req: any) {
     return this.service.createForDateRange(body, {
@@ -113,8 +112,7 @@ export class AttendanceController {
   }
 
   @Put('attendances/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.update')
   @ApiOperation({ summary: 'Update attendance' })
   async update(
     @Param('id') id: string,
@@ -129,8 +127,7 @@ export class AttendanceController {
   }
 
   @Delete('attendances/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.delete')
   @ApiOperation({ summary: 'Delete attendance' })
   async delete(@Param('id') id: string, @Req() req: any) {
     return this.service.delete(id, {
@@ -141,8 +138,7 @@ export class AttendanceController {
   }
 
   @Post('attendances/bulk-upload')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.create')
   @ApiOperation({ summary: 'Bulk upload attendance from CSV' })
   async bulkUpload(@Req() request: FastifyRequest) {
     const data = await request.file();

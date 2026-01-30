@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { IncrementService } from './increment.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   BulkCreateIncrementDto,
   UpdateIncrementDto,
@@ -31,7 +33,8 @@ export class IncrementController {
   constructor(private service: IncrementService) {}
 
   @Get('increments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.increment.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List increments' })
   @ApiQuery({ name: 'employeeId', required: false })
@@ -50,7 +53,8 @@ export class IncrementController {
   }
 
   @Get('increments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.increment.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get increment by id' })
   async get(@Param('id') id: string) {
@@ -58,7 +62,8 @@ export class IncrementController {
   }
 
   @Post('increments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.increment.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create increments in bulk' })
   async bulkCreate(@Body() body: BulkCreateIncrementDto, @Req() req) {
@@ -70,7 +75,8 @@ export class IncrementController {
   }
 
   @Put('increments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.increment.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update increment' })
   async update(
@@ -86,7 +92,8 @@ export class IncrementController {
   }
 
   @Delete('increments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.increment.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete increment' })
   async remove(@Param('id') id: string, @Req() req) {

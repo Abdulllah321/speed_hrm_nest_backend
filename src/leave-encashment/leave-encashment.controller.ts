@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { LeaveEncashmentService } from './leave-encashment.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   CreateLeaveEncashmentDto,
   UpdateLeaveEncashmentDto,
@@ -27,13 +29,14 @@ import {
 } from '@nestjs/swagger';
 
 @ApiTags('Leave Encashment')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class LeaveEncashmentController {
   constructor(private service: LeaveEncashmentService) {}
 
   @Get('leave-encashments')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.read')
   @ApiOperation({ summary: 'List leave encashments' })
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'paymentMonth', required: false })
@@ -60,16 +63,14 @@ export class LeaveEncashmentController {
   }
 
   @Get('leave-encashments/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.read')
   @ApiOperation({ summary: 'Get leave encashment by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('leave-encashments')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.create')
   @ApiOperation({ summary: 'Create leave encashment request' })
   async create(@Body() body: CreateLeaveEncashmentDto, @Req() req) {
     // Extract userId from JWT token (could be 'sub', 'id', or 'userId')
@@ -84,8 +85,7 @@ export class LeaveEncashmentController {
   }
 
   @Put('leave-encashments/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.update')
   @ApiOperation({ summary: 'Update leave encashment request' })
   async update(
     @Param('id') id: string,
@@ -104,8 +104,7 @@ export class LeaveEncashmentController {
   }
 
   @Post('leave-encashments/:id/approve')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.approve')
   @ApiOperation({ summary: 'Approve leave encashment request' })
   async approve(
     @Param('id') id: string,
@@ -124,8 +123,7 @@ export class LeaveEncashmentController {
   }
 
   @Post('leave-encashments/:id/approve-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.approve')
   @ApiOperation({
     summary: 'Approve leave encashment request by approval level',
   })
@@ -147,8 +145,7 @@ export class LeaveEncashmentController {
   }
 
   @Post('leave-encashments/:id/reject')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.approve')
   @ApiOperation({ summary: 'Reject leave encashment request' })
   @ApiBody({
     schema: {
@@ -175,8 +172,7 @@ export class LeaveEncashmentController {
   }
 
   @Post('leave-encashments/:id/reject-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.approve')
   @ApiOperation({
     summary: 'Reject leave encashment request by approval level',
   })
@@ -206,8 +202,7 @@ export class LeaveEncashmentController {
   }
 
   @Delete('leave-encashments/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.leave-encashment.delete')
   @ApiOperation({ summary: 'Delete leave encashment request' })
   async remove(@Param('id') id: string, @Req() req) {
     // Extract userId from JWT token (could be 'sub', 'id', or 'userId')

@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { AdvanceSalaryService } from './advance-salary.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   CreateAdvanceSalaryDto,
   UpdateAdvanceSalaryDto,
@@ -32,7 +34,8 @@ export class AdvanceSalaryController {
   constructor(private service: AdvanceSalaryService) {}
 
   @Get('advance-salaries')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List advance salaries' })
   @ApiQuery({ name: 'employeeId', required: false })
@@ -60,7 +63,8 @@ export class AdvanceSalaryController {
   }
 
   @Get('advance-salaries/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get advance salary by id' })
   async get(@Param('id') id: string) {
@@ -68,7 +72,8 @@ export class AdvanceSalaryController {
   }
 
   @Post('advance-salaries')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create advance salary request' })
   async create(@Body() body: CreateAdvanceSalaryDto, @Req() req) {
@@ -80,7 +85,8 @@ export class AdvanceSalaryController {
   }
 
   @Put('advance-salaries/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update advance salary request' })
   async update(
@@ -96,7 +102,8 @@ export class AdvanceSalaryController {
   }
 
   @Post('advance-salaries/:id/approve')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.approve')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve advance salary request' })
   async approve(
@@ -112,7 +119,8 @@ export class AdvanceSalaryController {
   }
 
   @Post('advance-salaries/:id/reject')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.approve')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject advance salary request' })
   async reject(
@@ -128,7 +136,8 @@ export class AdvanceSalaryController {
   }
 
   @Delete('advance-salaries/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete advance salary request' })
   async remove(@Param('id') id: string, @Req() req) {

@@ -55,12 +55,28 @@ async function updatePermissions() {
     if (permissionsToCreate.length > 0) {
       console.log('Creating new permissions...');
       const createResult = await prisma.permission.createMany({
-        data: permissionsToCreate.map((p) => ({
-          name: p.name,
-          module: p.module,
-          action: p.action,
-          description: p.description,
-        })),
+        data: permissionsToCreate.map((p) => {
+          let { name, description } = p;
+          let module = (p as any).module;
+          let action = (p as any).action;
+
+          if (!module || !action) {
+            const parts = name.split('.');
+            if (parts.length >= 2) {
+              action = parts.pop()!;
+              module = parts.join('.');
+            } else {
+              action = 'manage';
+              module = name;
+            }
+          }
+          return {
+            name,
+            module: module!,
+            action: action!,
+            description,
+          };
+        }),
       });
       console.log(`Created ${createResult.count} permissions.`);
     }
@@ -72,12 +88,26 @@ async function updatePermissions() {
       // We have to loop or use a transaction. Loop is safer for reasonable amounts.
       let updatedCount = 0;
       for (const p of permissionsToUpdate) {
+        let { name, description } = p;
+        let module = (p as any).module;
+        let action = (p as any).action;
+
+        if (!module || !action) {
+          const parts = name.split('.');
+          if (parts.length >= 2) {
+             action = parts.pop()!;
+             module = parts.join('.');
+          } else {
+             action = 'manage';
+             module = name;
+          }
+        }
         await prisma.permission.update({
           where: { name: p.name },
           data: {
-            module: p.module,
-            action: p.action,
-            description: p.description,
+            module: module!,
+            action: action!,
+            description,
           },
         });
         updatedCount++;

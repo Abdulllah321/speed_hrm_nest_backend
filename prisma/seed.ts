@@ -110,6 +110,7 @@ async function executeBackupSql(pool: Pool): Promise<void> {
 }
 
 import { seedChartOfAccounts } from './seeds/chart-of-accounts';
+import { syncMasterPermissions } from './seeds/sync-master-permissions';
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -131,6 +132,7 @@ async function main() {
   try {
      console.log('🌱 Running specific seeds...');
      await seedChartOfAccounts(prisma);
+     await syncMasterPermissions(prisma);
   } catch(e) {
       console.error('Error running specific seeds:', e);
   }

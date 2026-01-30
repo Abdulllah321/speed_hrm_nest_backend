@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { AttendanceExemptionService } from './attendance-exemption.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import { CreateAttendanceExemptionDto } from './dto/create-attendance-exemption.dto';
 import { UpdateAttendanceExemptionDto } from './dto/update-attendance-exemption.dto';
 import {
@@ -22,29 +24,28 @@ import {
 } from '@nestjs/swagger';
 
 @ApiTags('Attendance Exemption')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class AttendanceExemptionController {
   constructor(private service: AttendanceExemptionService) {}
 
   @Get('attendance-exemptions')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions-list')
   @ApiOperation({ summary: 'List attendance exemptions' })
   async list() {
     return this.service.list();
   }
 
   @Get('attendance-exemptions/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions-list')
   @ApiOperation({ summary: 'Get attendance exemption by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('attendance-exemptions')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Create attendance exemption' })
   async create(@Body() body: CreateAttendanceExemptionDto, @Req() req: any) {
     return this.service.create(body, {
@@ -55,8 +56,7 @@ export class AttendanceExemptionController {
   }
 
   @Put('attendance-exemptions/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Update attendance exemption' })
   async update(
     @Param('id') id: string,
@@ -71,8 +71,7 @@ export class AttendanceExemptionController {
   }
 
   @Put('attendance-exemptions/:id/approve')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Approve attendance exemption' })
   async approve(@Param('id') id: string, @Req() req: any) {
     return this.service.approve(id, {
@@ -83,8 +82,7 @@ export class AttendanceExemptionController {
   }
 
   @Put('attendance-exemptions/:id/approve-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Approve attendance exemption by approval level' })
   async approveLevel(
     @Param('id') id: string,
@@ -100,8 +98,7 @@ export class AttendanceExemptionController {
   }
 
   @Put('attendance-exemptions/:id/reject')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Reject attendance exemption' })
   @ApiBody({
     schema: {
@@ -124,8 +121,7 @@ export class AttendanceExemptionController {
   }
 
   @Put('attendance-exemptions/:id/reject-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Reject attendance exemption by approval level' })
   @ApiBody({
     schema: {
@@ -150,8 +146,7 @@ export class AttendanceExemptionController {
   }
 
   @Delete('attendance-exemptions/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.attendance.exemptions')
   @ApiOperation({ summary: 'Delete attendance exemption' })
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.service.remove(id, {
