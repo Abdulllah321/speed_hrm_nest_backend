@@ -52,6 +52,8 @@ export class AuthService {
         userId: user.id,
         email: user.email,
         roleId: user.roleId,
+        permissions:
+          user.role?.permissions.map((p) => p.permission.name) || [],
         employeeId: user.employeeId,
         roleName: user.role?.name || null,
       },
@@ -280,7 +282,9 @@ export class AuthService {
 
       const user = await this.prisma.user.findUnique({
         where: { id: decoded.userId },
-        include: { role: true },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
       });
       if (!user || user.status !== 'active')
         return { status: false, message: 'User not found or inactive' };
@@ -298,6 +302,8 @@ export class AuthService {
           userId: user.id,
           email: user.email,
           roleId: user.roleId,
+          permissions:
+            user.role?.permissions.map((p) => p.permission.name) || [],
           employeeId: user.employeeId,
           roleName: user.role?.name || null,
         },
