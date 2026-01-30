@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 
 @Injectable()
 export class BonusTypeService {

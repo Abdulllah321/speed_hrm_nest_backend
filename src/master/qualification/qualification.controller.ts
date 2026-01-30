@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { QualificationService } from './qualification.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,7 @@ export class QualificationController {
   constructor(private service: QualificationService) { }
 
   @Get('qualifications')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all qualifications' })
   async list() {
@@ -33,7 +34,7 @@ export class QualificationController {
   }
 
   @Get('qualifications/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get qualification by id' })
   async get(@Param('id') id: string) {
@@ -41,7 +42,7 @@ export class QualificationController {
   }
 
   @Post('qualifications')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create qualification' })
   @ApiBody({
@@ -62,7 +63,7 @@ export class QualificationController {
   }
 
   @Post('qualifications/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create qualifications in bulk' })
   @ApiBody({
@@ -95,7 +96,7 @@ export class QualificationController {
   }
 
   @Put('qualifications/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update qualification' })
   @ApiBody({
@@ -120,7 +121,7 @@ export class QualificationController {
   }
 
   @Delete('qualifications/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete qualification' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -132,7 +133,7 @@ export class QualificationController {
   }
 
   @Delete('qualifications/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete qualifications in bulk' })
   @ApiBody({

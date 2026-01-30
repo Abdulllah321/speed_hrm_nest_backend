@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { LeaveTypeService } from './leave-type.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,7 @@ export class LeaveTypeController {
   constructor(private service: LeaveTypeService) { }
 
   @Get('leave-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all leave types' })
   async list() {
@@ -33,7 +34,7 @@ export class LeaveTypeController {
   }
 
   @Get('leave-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get leave type by id' })
   async get(@Param('id') id: string) {
@@ -41,7 +42,7 @@ export class LeaveTypeController {
   }
 
   @Post('leave-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create leave type' })
   @ApiBody({
@@ -62,7 +63,7 @@ export class LeaveTypeController {
   }
 
   @Put('leave-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update leave type' })
   @ApiBody({
@@ -87,7 +88,7 @@ export class LeaveTypeController {
   }
 
   @Delete('leave-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete leave type' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -99,7 +100,7 @@ export class LeaveTypeController {
   }
 
   @Post('leave-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create leave types in bulk' })
   @ApiBody({
@@ -132,7 +133,7 @@ export class LeaveTypeController {
   }
 
   @Put('leave-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update leave types in bulk' })
   @ApiBody({
@@ -166,7 +167,7 @@ export class LeaveTypeController {
   }
 
   @Delete('leave-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete leave types in bulk' })
   @ApiBody({

@@ -10,7 +10,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { EquipmentService } from './equipment.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,7 @@ export class EquipmentController {
   constructor(private service: EquipmentService) {}
 
   @Get('equipments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all equipment' })
   async list() {
@@ -33,7 +34,7 @@ export class EquipmentController {
   }
 
   @Get('equipments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get equipment by id' })
   async get(@Param('id') id: string) {
@@ -41,7 +42,7 @@ export class EquipmentController {
   }
 
   @Post('equipments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create equipment' })
   @ApiBody({
@@ -62,7 +63,7 @@ export class EquipmentController {
   }
 
   @Put('equipments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update equipment' })
   @ApiBody({
@@ -87,7 +88,7 @@ export class EquipmentController {
   }
 
   @Delete('equipments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete equipment' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -99,7 +100,7 @@ export class EquipmentController {
   }
 
   @Post('equipments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create equipment in bulk' })
   @ApiBody({
@@ -132,7 +133,7 @@ export class EquipmentController {
   }
 
   @Put('equipments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update equipment in bulk' })
   @ApiBody({
@@ -166,7 +167,7 @@ export class EquipmentController {
   }
 
   @Delete('equipments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete equipment in bulk' })
   @ApiBody({

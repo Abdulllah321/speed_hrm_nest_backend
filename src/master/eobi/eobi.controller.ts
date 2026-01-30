@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { EobiService } from './eobi.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -26,7 +27,7 @@ export class EobiController {
   constructor(private service: EobiService) { }
 
   @Get('eobis')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all EOBI records' })
   async list() {
@@ -34,7 +35,7 @@ export class EobiController {
   }
 
   @Get('eobis/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get EOBI record by id' })
   async get(@Param('id') id: string) {
@@ -42,7 +43,7 @@ export class EobiController {
   }
 
   @Post('eobis')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create EOBI record' })
   async create(@Body() body: CreateEobiDto, @Req() req: any) {
@@ -54,7 +55,7 @@ export class EobiController {
   }
 
   @Post('eobis/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create EOBI records in bulk' })
   @ApiBody({ type: CreateEobiDto, isArray: true })
@@ -67,7 +68,7 @@ export class EobiController {
   }
 
   @Put('eobis/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update EOBI record' })
   async update(
@@ -83,7 +84,7 @@ export class EobiController {
   }
 
   @Delete('eobis/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete EOBI record' })
   async remove(@Param('id') id: string, @Req() req: any) {
@@ -95,7 +96,7 @@ export class EobiController {
   }
 
   @Put('eobis/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update EOBI records in bulk' })
   @ApiBody({ type: UpdateEobiDto, isArray: true })
@@ -108,7 +109,7 @@ export class EobiController {
   }
 
   @Delete('eobis/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete EOBI records in bulk' })
   @ApiBody({

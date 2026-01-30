@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { EmployeeGradeService } from './employee-grade.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -23,7 +24,7 @@ export class EmployeeGradeController {
   constructor(private service: EmployeeGradeService) { }
 
   @Get('employee-grades')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employee grades' })
   async list() {
@@ -31,7 +32,7 @@ export class EmployeeGradeController {
   }
 
   @Get('employee-grades/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get employee grade by id' })
   async get(@Param('id') id: string) {
@@ -39,7 +40,7 @@ export class EmployeeGradeController {
   }
 
   @Post('employee-grades')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create employee grade' })
   async create(@Body() body: { grade: string; status?: string }) {
@@ -47,7 +48,7 @@ export class EmployeeGradeController {
   }
 
   @Put('employee-grades/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update employee grade' })
   async update(
@@ -58,7 +59,7 @@ export class EmployeeGradeController {
   }
 
   @Delete('employee-grades/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete employee grade' })
   async delete(@Param('id') id: string) {
@@ -66,7 +67,7 @@ export class EmployeeGradeController {
   }
 
   @Post('employee-grades/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Bulk create employee grades' })
   async bulkCreate(

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { SalaryBreakupService } from './salary-breakup.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -28,7 +29,7 @@ export class SalaryBreakupController {
   constructor(private service: SalaryBreakupService) { }
 
   @Get('salary-breakups')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all salary breakups' })
   async list() {
@@ -36,7 +37,7 @@ export class SalaryBreakupController {
   }
 
   @Get('salary-breakups/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get salary breakup by id' })
   async get(@Param('id') id: string) {
@@ -44,7 +45,7 @@ export class SalaryBreakupController {
   }
 
   @Post('salary-breakups')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create salary breakup' })
   async create(@Body() body: CreateSalaryBreakupDto, @Req() req: any) {
@@ -56,7 +57,7 @@ export class SalaryBreakupController {
   }
 
   @Put('salary-breakups/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update salary breakup' })
   async update(
@@ -72,7 +73,7 @@ export class SalaryBreakupController {
   }
 
   @Delete('salary-breakups/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete salary breakup' })
   async remove(@Param('id') id: string, @Req() req: any) {

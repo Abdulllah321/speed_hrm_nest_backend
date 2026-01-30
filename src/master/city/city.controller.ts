@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { CityService } from './city.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -26,37 +27,47 @@ export class CityController {
   constructor(private service: CityService) { }
 
   @Get('countries')
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List all countries' })
   async countries() {
     return this.service.getAllCountries();
   }
 
   @Get('states')
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List all states' })
   async states() {
     return this.service.getStates();
   }
 
   @Get('states/country/:countryId')
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List states by country' })
   async statesByCountry(@Param('countryId') countryId: string) {
     return this.service.getStatesByCountry(countryId);
   }
 
   @Get('cities/state/:stateId')
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List cities by state' })
   async citiesByState(@Param('stateId') stateId: string) {
     return this.service.getCitiesByState(stateId);
   }
 
   @Get('cities')
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List all cities' })
   async cities() {
     return this.service.getCities();
   }
 
   @Post('cities/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create cities in bulk' })
   @ApiBody({
@@ -98,7 +109,7 @@ export class CityController {
     });
   }
   @Post('cities')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create city' })
   @ApiBody({
@@ -125,7 +136,7 @@ export class CityController {
   }
 
   @Put('cities/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update city' })
   @ApiBody({
@@ -158,7 +169,7 @@ export class CityController {
   }
 
   @Delete('cities/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete cities in bulk' })
   @ApiBody({
@@ -182,7 +193,7 @@ export class CityController {
   }
 
   @Delete('cities/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete city' })
   async remove(@Param('id') id: string, @Req() req) {

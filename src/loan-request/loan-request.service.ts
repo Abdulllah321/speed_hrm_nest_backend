@@ -183,12 +183,18 @@ export class LoanRequestService {
     approvalStatus?: string;
     requestedDate?: string;
     repaymentStartMonthYear?: string;
-  }) {
+  }, user?: any) {
     try {
 
       const where: any = {};
 
-      if (params?.employeeId) {
+      // If user is not admin, they only see their own requests
+      const roleName = (user?.roleName || "").toLowerCase();
+      const isAdmin = ["admin", "super admin", "super_admin"].includes(roleName);
+
+      if (!isAdmin && user?.employeeId) {
+        where.employeeId = user.employeeId;
+      } else if (params?.employeeId) {
         where.employeeId = params.employeeId;
       }
 

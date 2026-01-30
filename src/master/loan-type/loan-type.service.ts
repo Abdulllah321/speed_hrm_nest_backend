@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { BulkUpdateLoanTypeItemDto } from './dto/loan-type.dto';
 import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 
 @Injectable()
 export class LoanTypeService {

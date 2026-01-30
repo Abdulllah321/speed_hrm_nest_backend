@@ -115,19 +115,24 @@ async function main() {
   console.log('🌱 Seeding database...');
   console.log('');
 
+  // 1. First run backup restore if enabled (this creates tables/initial data)
+  if (process.env.RUN_BACKUP_RESTORE === 'true') {
+     console.log('🌱 Seeding database from backup.sql...');
+     try {
+        await executeBackupSql(pool);
+     } catch (e) {
+        console.error('Error during backup restore:', e);
+     }
+  } else {
+     console.log('Skipping backup.sql restore (RUN_BACKUP_RESTORE not set)');
+  }
+
+  // 2. Then run specific JS/TS seeds (which might depend on tables from backup)
   try {
-     // Run specific seeds
+     console.log('🌱 Running specific seeds...');
      await seedChartOfAccounts(prisma);
   } catch(e) {
       console.error('Error running specific seeds:', e);
-  }
-
-  // Check if we should also run the backup restore
-  if (process.env.RUN_BACKUP_RESTORE === 'true') {
-     console.log('🌱 Seeding database from backup.sql...');
-     await executeBackupSql(pool);
-  } else {
-     console.log('Skipping backup.sql restore (RUN_BACKUP_RESTORE not set)');
   }
 
 

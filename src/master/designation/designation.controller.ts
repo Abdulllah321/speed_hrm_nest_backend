@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { DesignationService } from './designation.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,7 @@ export class DesignationController {
   constructor(private service: DesignationService) { }
 
   @Get('designations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all designations' })
   async list() {
@@ -33,7 +34,7 @@ export class DesignationController {
   }
 
   @Get('designations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get designation by id' })
   async get(@Param('id') id: string) {
@@ -41,7 +42,7 @@ export class DesignationController {
   }
 
   @Post('designations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create designation' })
   @ApiBody({
@@ -59,7 +60,7 @@ export class DesignationController {
   }
 
   @Post('designations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create designations in bulk' })
   @ApiBody({
@@ -83,7 +84,7 @@ export class DesignationController {
   }
 
   @Put('designations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update designation' })
   @ApiBody({
@@ -105,7 +106,7 @@ export class DesignationController {
   }
 
   @Put('designations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update designations in bulk' })
   @ApiBody({
@@ -135,7 +136,7 @@ export class DesignationController {
   }
 
   @Delete('designations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete designation' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -147,7 +148,7 @@ export class DesignationController {
   }
 
   @Delete('designations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete designations in bulk' })
   @ApiBody({

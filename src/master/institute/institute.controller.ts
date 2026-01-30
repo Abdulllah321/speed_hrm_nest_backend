@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { InstituteService } from './institute.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,7 @@ export class InstituteController {
   constructor(private service: InstituteService) { }
 
   @Get('institutes')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all institutes' })
   async list() {
@@ -33,7 +34,7 @@ export class InstituteController {
   }
 
   @Get('institutes/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get institute by id' })
   async get(@Param('id') id: string) {
@@ -41,7 +42,7 @@ export class InstituteController {
   }
 
   @Post('institutes')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create institute' })
   @ApiBody({
@@ -62,7 +63,7 @@ export class InstituteController {
   }
 
   @Put('institutes/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update institute' })
   @ApiBody({
@@ -87,7 +88,7 @@ export class InstituteController {
   }
 
   @Delete('institutes/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete institute' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -99,7 +100,7 @@ export class InstituteController {
   }
 
   @Post('institutes/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create institutes in bulk' })
   @ApiBody({
@@ -132,7 +133,7 @@ export class InstituteController {
   }
 
   @Post('institutes/seed')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Seed institutes' })
   async seed(@Req() req) {

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { LoanTypeService } from './loan-type.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -31,7 +32,7 @@ export class LoanTypeController {
   constructor(private service: LoanTypeService) { }
 
   @Get('loan-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all loan types' })
   async list() {
@@ -39,7 +40,7 @@ export class LoanTypeController {
   }
 
   @Get('loan-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get loan type by id' })
   async get(@Param('id') id: string) {
@@ -47,7 +48,7 @@ export class LoanTypeController {
   }
 
   @Post('loan-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create loan type' })
   async create(@Body() body: CreateLoanTypeDto, @Req() req) {
@@ -59,7 +60,7 @@ export class LoanTypeController {
   }
 
   @Put('loan-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update loan type' })
   async update(
@@ -75,7 +76,7 @@ export class LoanTypeController {
   }
 
   @Delete('loan-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete loan type' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -87,7 +88,7 @@ export class LoanTypeController {
   }
 
   @Post('loan-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create loan types in bulk' })
   @ApiBody({ type: CreateLoanTypeDto, isArray: true })
@@ -100,7 +101,7 @@ export class LoanTypeController {
   }
 
   @Put('loan-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update loan types in bulk' })
   @ApiBody({ type: BulkUpdateLoanTypeDto })
@@ -113,7 +114,7 @@ export class LoanTypeController {
   }
 
   @Delete('loan-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete loan types in bulk' })
   @ApiBody({

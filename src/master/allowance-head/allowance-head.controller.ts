@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { AllowanceHeadService } from './allowance-head.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -29,7 +30,7 @@ export class AllowanceHeadController {
   constructor(private service: AllowanceHeadService) { }
 
   @Get('allowance-heads')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all allowance heads' })
   async list() {
@@ -37,7 +38,7 @@ export class AllowanceHeadController {
   }
 
   @Get('allowance-heads/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get allowance head by id' })
   async get(@Param('id') id: string) {
@@ -45,7 +46,7 @@ export class AllowanceHeadController {
   }
 
   @Post('allowance-heads')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allowance head' })
   async create(@Body() body: CreateAllowanceHeadDto, @Req() req) {
@@ -57,7 +58,7 @@ export class AllowanceHeadController {
   }
 
   @Post('allowance-heads/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allowance heads in bulk' })
   @ApiBody({ type: CreateAllowanceHeadDto, isArray: true })
@@ -73,7 +74,7 @@ export class AllowanceHeadController {
   }
 
   @Put('allowance-heads/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allowance head' })
   async update(
@@ -89,7 +90,7 @@ export class AllowanceHeadController {
   }
 
   @Put('allowance-heads/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allowance heads in bulk' })
   @ApiBody({ type: UpdateAllowanceHeadDto, isArray: true })
@@ -105,7 +106,7 @@ export class AllowanceHeadController {
   }
 
   @Delete('allowance-heads/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allowance head' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -117,7 +118,7 @@ export class AllowanceHeadController {
   }
 
   @Delete('allowance-heads/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allowance heads in bulk' })
   @ApiBody({

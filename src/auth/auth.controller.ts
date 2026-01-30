@@ -155,6 +155,66 @@ export class AuthController {
     });
   }
 
+  @Post('impersonate-by-employee')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Impersonate a user by employeeId (admin only)' })
+  async impersonateByEmployee(
+    @Req() req: any,
+    @Res() res: any,
+    @Body('employeeId') employeeId: string,
+  ) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await this.service.impersonateByEmployee(
+      req.user.userId,
+      employeeId,
+      ipAddress,
+      userAgent,
+    );
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+
+      // Set access token
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      // Set refresh token
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user role
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user summary data
+      res.setCookie('user', JSON.stringify(result.data.user), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      return res.send({
+        status: true,
+        message: 'Impersonation successful',
+        data: { user: result.data.user },
+      });
+    }
+
+    return res.status(400).send({
+      status: false,
+      message: result.message || 'Failed to impersonate user',
+    });
+  }
+
   @Post('refresh-token')
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed' })

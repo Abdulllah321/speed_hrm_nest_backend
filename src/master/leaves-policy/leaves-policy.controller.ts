@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { LeavesPolicyService } from './leaves-policy.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -30,7 +31,7 @@ export class LeavesPolicyController {
   constructor(private service: LeavesPolicyService) { }
 
   @Get('leaves-policies')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all leaves policies' })
   async list() {
@@ -38,7 +39,7 @@ export class LeavesPolicyController {
   }
 
   @Get('leaves-policies/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get leaves policy by id' })
   async get(@Param('id') id: string) {
@@ -46,7 +47,7 @@ export class LeavesPolicyController {
   }
 
   @Post('leaves-policies')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create leaves policy' })
   async create(@Body() body: CreateLeavesPolicyDto, @Req() req: any) {
@@ -58,7 +59,7 @@ export class LeavesPolicyController {
   }
 
   @Post('leaves-policies/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create leaves policies in bulk' })
   @ApiBody({ type: CreateLeavesPolicyDto, isArray: true })
@@ -74,7 +75,7 @@ export class LeavesPolicyController {
   }
 
   @Put('leaves-policies/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update leaves policy' })
   async update(
@@ -90,7 +91,7 @@ export class LeavesPolicyController {
   }
 
   @Delete('leaves-policies/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete leaves policy' })
   async remove(@Param('id') id: string, @Req() req: any) {
@@ -102,7 +103,7 @@ export class LeavesPolicyController {
   }
 
   @Put('leaves-policies/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update leaves policies in bulk' })
   @ApiBody({ type: BulkUpdateLeavesPolicyDto })
@@ -115,7 +116,7 @@ export class LeavesPolicyController {
   }
 
   @Delete('leaves-policies/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete leaves policies in bulk' })
   @ApiBody({
@@ -139,7 +140,7 @@ export class LeavesPolicyController {
   }
 
   @Put('leaves-policies/:id/set-default')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Set leaves policy as default' })
   async setAsDefault(@Param('id') id: string, @Req() req: any) {

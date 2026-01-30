@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { MaritalStatusService } from './marital-status.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -29,7 +30,7 @@ export class MaritalStatusController {
   constructor(private service: MaritalStatusService) { }
 
   @Get('marital-statuses')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all marital statuses' })
   async list() {
@@ -37,7 +38,7 @@ export class MaritalStatusController {
   }
 
   @Get('marital-statuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get marital status by id' })
   async get(@Param('id') id: string) {
@@ -45,7 +46,7 @@ export class MaritalStatusController {
   }
 
   @Put('marital-statuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update marital status' })
   @ApiBody({
@@ -70,7 +71,7 @@ export class MaritalStatusController {
   }
 
   @Delete('marital-statuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete marital status' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -82,7 +83,7 @@ export class MaritalStatusController {
   }
 
   @Post('marital-statuses/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Bulk create marital statuses' })
   @ApiBody({
@@ -112,7 +113,7 @@ export class MaritalStatusController {
   }
 
   @Put('marital-statuses/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update marital statuses in bulk' })
   @ApiBody({ type: BulkUpdateMaritalStatusDto })
@@ -125,7 +126,7 @@ export class MaritalStatusController {
   }
 
   @Delete('marital-statuses/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete marital statuses in bulk' })
   @ApiBody({

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { TaxSlabService } from './tax-slab.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -26,7 +27,7 @@ export class TaxSlabController {
   constructor(private service: TaxSlabService) { }
 
   @Get('tax-slabs')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all tax slabs' })
   async list() {
@@ -34,7 +35,7 @@ export class TaxSlabController {
   }
 
   @Get('tax-slabs/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get tax slab by id' })
   async get(@Param('id') id: string) {
@@ -42,7 +43,7 @@ export class TaxSlabController {
   }
 
   @Post('tax-slabs')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create tax slab' })
   async create(@Body() body: CreateTaxSlabDto, @Req() req: any) {
@@ -54,7 +55,7 @@ export class TaxSlabController {
   }
 
   @Post('tax-slabs/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create tax slabs in bulk' })
   @ApiBody({ type: CreateTaxSlabDto, isArray: true })
@@ -70,7 +71,7 @@ export class TaxSlabController {
   }
 
   @Put('tax-slabs/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update tax slab' })
   async update(
@@ -86,7 +87,7 @@ export class TaxSlabController {
   }
 
   @Delete('tax-slabs/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete tax slab' })
   async remove(@Param('id') id: string, @Req() req: any) {
@@ -98,7 +99,7 @@ export class TaxSlabController {
   }
 
   @Put('tax-slabs/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update tax slabs in bulk' })
   @ApiBody({ type: UpdateTaxSlabDto, isArray: true })
@@ -114,7 +115,7 @@ export class TaxSlabController {
   }
 
   @Delete('tax-slabs/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete tax slabs in bulk' })
   @ApiBody({

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { LocationService } from './location.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -26,7 +27,7 @@ export class LocationController {
   constructor(private service: LocationService) { }
 
   @Get('locations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all locations' })
   async list() {
@@ -34,7 +35,7 @@ export class LocationController {
   }
 
   @Get('locations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get location by id' })
   async get(@Param('id') id: string) {
@@ -42,7 +43,7 @@ export class LocationController {
   }
 
   @Post('locations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create location' })
   async create(@Body() body: CreateLocationDto, @Req() req) {
@@ -54,7 +55,7 @@ export class LocationController {
   }
 
   @Put('locations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update location' })
   async update(
@@ -70,7 +71,7 @@ export class LocationController {
   }
 
   @Delete('locations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete location' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -82,7 +83,7 @@ export class LocationController {
   }
 
   @Post('locations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create locations in bulk' })
   @ApiBody({ type: CreateLocationDto, isArray: true })
@@ -99,7 +100,7 @@ export class LocationController {
   }
 
   @Put('locations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update locations in bulk' })
   @ApiBody({ type: UpdateLocationDto, isArray: true })
@@ -116,7 +117,7 @@ export class LocationController {
   }
 
   @Delete('locations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete locations in bulk' })
   @ApiBody({

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { BonusTypeService } from './bonus-type.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -32,7 +33,7 @@ export class BonusTypeController {
   constructor(private service: BonusTypeService) { }
 
   @Get('bonus-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all bonus types' })
   async list() {
@@ -40,7 +41,7 @@ export class BonusTypeController {
   }
 
   @Get('bonus-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get bonus type by id' })
   async get(@Param('id') id: string) {
@@ -48,7 +49,7 @@ export class BonusTypeController {
   }
 
   @Post('bonus-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create bonus type' })
   async create(
@@ -63,7 +64,7 @@ export class BonusTypeController {
   }
 
   @Post('bonus-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create bonus types in bulk' })
   @ApiBody({ type: CreateBonusTypeDto, isArray: true })
@@ -79,7 +80,7 @@ export class BonusTypeController {
   }
 
   @Put('bonus-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bonus type' })
   async update(
@@ -95,7 +96,7 @@ export class BonusTypeController {
   }
 
   @Delete('bonus-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete bonus type' })
   async remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
@@ -107,7 +108,7 @@ export class BonusTypeController {
   }
 
   @Put('bonus-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bonus types in bulk' })
   @ApiBody({ type: UpdateBonusTypeDto, isArray: true })
@@ -123,7 +124,7 @@ export class BonusTypeController {
   }
 
   @Delete('bonus-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete bonus types in bulk' })
   @ApiBody({

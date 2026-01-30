@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { BankService } from './bank.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -26,7 +27,7 @@ export class BankController {
   constructor(private service: BankService) { }
 
   @Get('banks')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all banks' })
   async list() {
@@ -34,7 +35,7 @@ export class BankController {
   }
 
   @Get('banks/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get bank by id' })
   async get(@Param('id') id: string) {
@@ -42,7 +43,7 @@ export class BankController {
   }
 
   @Post('banks')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create bank' })
   async create(@Body() body: CreateBankDto, @Req() req: any) {
@@ -54,7 +55,7 @@ export class BankController {
   }
 
   @Post('banks/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create banks in bulk' })
   @ApiBody({ type: CreateBankDto, isArray: true })
@@ -73,7 +74,7 @@ export class BankController {
   }
 
   @Put('banks/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update bank' })
   async update(
@@ -89,7 +90,7 @@ export class BankController {
   }
 
   @Delete('banks/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete bank' })
   async remove(@Param('id') id: string, @Req() req: any) {
@@ -101,7 +102,7 @@ export class BankController {
   }
 
   @Put('banks/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update banks in bulk' })
   @ApiBody({ type: UpdateBankDto, isArray: true })
@@ -120,7 +121,7 @@ export class BankController {
   }
 
   @Delete('banks/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete banks in bulk' })
   @ApiBody({

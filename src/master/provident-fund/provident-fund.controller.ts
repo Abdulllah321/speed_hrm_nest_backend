@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ProvidentFundService } from './provident-fund.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -29,7 +30,7 @@ export class ProvidentFundController {
   constructor(private service: ProvidentFundService) { }
 
   @Get('provident-funds')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all provident funds' })
   async list() {
@@ -37,7 +38,7 @@ export class ProvidentFundController {
   }
 
   @Get('provident-funds/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get provident fund by id' })
   async get(@Param('id') id: string) {
@@ -45,7 +46,7 @@ export class ProvidentFundController {
   }
 
   @Post('provident-funds')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create provident fund' })
   async create(@Body() body: CreateProvidentFundDto, @Req() req: any) {
@@ -57,7 +58,7 @@ export class ProvidentFundController {
   }
 
   @Post('provident-funds/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create provident funds in bulk' })
   @ApiBody({ type: CreateProvidentFundDto, isArray: true })
@@ -73,7 +74,7 @@ export class ProvidentFundController {
   }
 
   @Put('provident-funds/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update provident fund' })
   async update(
@@ -89,7 +90,7 @@ export class ProvidentFundController {
   }
 
   @Delete('provident-funds/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete provident fund' })
   async remove(@Param('id') id: string, @Req() req: any) {

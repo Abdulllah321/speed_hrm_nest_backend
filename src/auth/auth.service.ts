@@ -50,7 +50,15 @@ export class AuthService {
       issuer: authConfig.jwt.issuer,
     };
     const accessToken = jwt.sign(
-      { userId: user.id, email: user.email, roleId: user.roleId },
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        permissions:
+          user.role?.permissions.map((p) => p.permission.name) || [],
+        employeeId: user.employeeId,
+        roleName: user.role?.name || null,
+      },
       authConfig.jwt.accessSecret,
       accessOpts,
     );
@@ -118,6 +126,165 @@ export class AuthService {
     };
   }
 
+  /**
+   * Impersonate another user by employeeId (admin-only).
+   * Creates a new access/refresh token pair and session for the target user.
+   */
+  async impersonateByEmployee(
+    actingUserId: string,
+    employeeId: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    // Verify acting user is allowed (admin / super admin)
+    const actingUser = await this.prismaMaster.user.findUnique({
+      where: { id: actingUserId },
+      include: { role: true },
+    });
+
+    if (
+      !actingUser ||
+      !actingUser.role ||
+      !['admin', 'super_admin', 'super admin'].includes(
+        (actingUser.role.name || '').toLowerCase().trim(),
+      )
+    ) {
+      return { status: false, message: 'Not authorized to impersonate users' };
+    }
+
+    // Find target user by employeeId
+    const targetUser = await this.prismaMaster.user.findFirst({
+      where: { employeeId },
+      include: {
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
+    });
+
+    if (!targetUser) {
+      return { status: false, message: 'User account not found for employee' };
+    }
+
+    // Fetch employee details separately from Tenant DB if needed
+    // Assuming we want to return employee info in the response
+    const employeeDetails = await this.prismaTenant.employee.findUnique({
+      where: { employeeId },
+      select: {
+        id: true,
+        employeeId: true,
+        designationId: true,
+        departmentId: true,
+      },
+    });
+
+    // Fetch master data for designation and department
+    let designationName: string | null = null;
+    let departmentName: string | null = null;
+
+    if (employeeDetails) {
+      if (employeeDetails.designationId) {
+        const designation = await this.prismaMaster.designation.findUnique({
+          where: { id: employeeDetails.designationId },
+        });
+        designationName = designation?.name || null;
+      }
+      if (employeeDetails.departmentId) {
+        const department = await this.prismaMaster.department.findUnique({
+          where: { id: employeeDetails.departmentId },
+        });
+        departmentName = department?.name || null;
+      }
+    }
+
+    if (targetUser.status !== 'active') {
+      return { status: false, message: 'Target user account is not active' };
+    }
+
+    // Optional: require dashboard to be enabled
+    if (targetUser.isDashboardEnabled === false) {
+      return {
+        status: false,
+        message: 'Dashboard access is not enabled for this user',
+      };
+    }
+
+    // Create tokens similar to normal login
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.accessExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const accessToken = jwt.sign(
+      {
+        userId: targetUser.id,
+        email: targetUser.email,
+        roleId: targetUser.roleId,
+        employeeId: targetUser.employeeId,
+        roleName: targetUser.role?.name || null,
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    const family = crypto.randomUUID();
+    const refreshOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.refreshExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const refreshToken = jwt.sign(
+      { userId: targetUser.id, family },
+      authConfig.jwt.refreshSecret,
+      refreshOpts,
+    );
+    const refreshTokenExpiryMs = parseExpiryToMs(
+      authConfig.jwt.refreshExpiresIn,
+    );
+
+    await this.prismaMaster.refreshToken.create({
+      data: {
+        userId: targetUser.id,
+        token: refreshToken,
+        family,
+        expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
+      },
+    });
+
+    await this.prismaMaster.session.create({
+      data: {
+        userId: targetUser.id,
+        token: accessToken,
+        isActive: true,
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
+        lastActivityAt: new Date(),
+        expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout),
+      },
+    });
+
+    return {
+      status: true,
+      data: {
+        user: {
+          id: targetUser.id,
+          email: targetUser.email,
+          firstName: targetUser.firstName,
+          lastName: targetUser.lastName,
+          role: targetUser.role?.name || null,
+          permissions:
+            targetUser.role?.permissions.map((p) => p.permission.name) || [],
+          employee: employeeDetails
+            ? {
+              id: employeeDetails.id,
+              employeeId: employeeDetails.employeeId,
+              designation: designationName,
+              department: departmentName,
+            }
+            : null,
+        },
+        accessToken,
+        refreshToken,
+      },
+    };
+  }
+
   async refresh(token: string) {
     try {
       const decoded = jwt.verify(token, authConfig.jwt.refreshSecret) as any;
@@ -136,6 +303,9 @@ export class AuthService {
 
       const user = await this.prismaMaster.user.findUnique({
         where: { id: decoded.userId },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
       });
       if (!user || user.status !== 'active')
         return { status: false, message: 'User not found or inactive' };
@@ -149,7 +319,15 @@ export class AuthService {
         issuer: authConfig.jwt.issuer,
       };
       const accessToken = jwt.sign(
-        { userId: user.id, email: user.email, roleId: user.roleId },
+        {
+          userId: user.id,
+          email: user.email,
+          roleId: user.roleId,
+          permissions:
+            user.role?.permissions.map((p) => p.permission.name) || [],
+          employeeId: user.employeeId,
+          roleName: user.role?.name || null,
+        },
         authConfig.jwt.accessSecret,
         accessOpts,
       );

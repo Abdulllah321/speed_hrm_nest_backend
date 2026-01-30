@@ -10,7 +10,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JobTypeService } from './job-type.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,7 @@ export class JobTypeController {
   constructor(private service: JobTypeService) {}
 
   @Get('job-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all job types' })
   async list() {
@@ -33,7 +34,7 @@ export class JobTypeController {
   }
 
   @Get('job-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get job type by id' })
   async get(@Param('id') id: string) {
@@ -41,7 +42,7 @@ export class JobTypeController {
   }
 
   @Post('job-types')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create job type' })
   @ApiBody({
@@ -59,7 +60,7 @@ export class JobTypeController {
   }
 
   @Post('job-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create job types in bulk' })
   @ApiBody({
@@ -83,7 +84,7 @@ export class JobTypeController {
   }
 
   @Put('job-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update job type' })
   @ApiBody({
@@ -105,7 +106,7 @@ export class JobTypeController {
   }
 
   @Put('job-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update job types in bulk' })
   @ApiBody({
@@ -135,7 +136,7 @@ export class JobTypeController {
   }
 
   @Delete('job-types/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete job type' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -147,7 +148,7 @@ export class JobTypeController {
   }
 
   @Delete('job-types/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete job types in bulk' })
   @ApiBody({

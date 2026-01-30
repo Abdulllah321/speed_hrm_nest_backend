@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { EmployeeStatusService } from './employee-status.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -23,7 +24,7 @@ export class EmployeeStatusController {
   constructor(private service: EmployeeStatusService) { }
 
   @Get('employee-statuses')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employee statuses' })
   async list() {
@@ -31,7 +32,7 @@ export class EmployeeStatusController {
   }
 
   @Get('employee-statuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get employee status by id' })
   async get(@Param('id') id: string) {
@@ -39,7 +40,7 @@ export class EmployeeStatusController {
   }
 
   @Post('employee-statuses')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create employee status' })
   async create(@Body() body: { status: string; statusType?: string }) {
@@ -47,7 +48,7 @@ export class EmployeeStatusController {
   }
 
   @Put('employee-statuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update employee status' })
   async update(
@@ -58,7 +59,7 @@ export class EmployeeStatusController {
   }
 
   @Delete('employee-statuses/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete employee status' })
   async delete(@Param('id') id: string) {
@@ -66,7 +67,7 @@ export class EmployeeStatusController {
   }
 
   @Post('employee-statuses/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Bulk create employee statuses' })
   async bulkCreate(

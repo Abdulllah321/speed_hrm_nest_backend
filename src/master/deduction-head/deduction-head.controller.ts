@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { DeductionHeadService } from './deduction-head.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -29,7 +30,7 @@ export class DeductionHeadController {
   constructor(private service: DeductionHeadService) { }
 
   @Get('deduction-heads')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all deduction heads' })
   async list() {
@@ -37,7 +38,7 @@ export class DeductionHeadController {
   }
 
   @Get('deduction-heads/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get deduction head by id' })
   async get(@Param('id') id: string) {
@@ -45,7 +46,7 @@ export class DeductionHeadController {
   }
 
   @Post('deduction-heads')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create deduction head' })
   async create(@Body() body: CreateDeductionHeadDto, @Req() req) {
@@ -57,7 +58,7 @@ export class DeductionHeadController {
   }
 
   @Post('deduction-heads/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create deduction heads in bulk' })
   @ApiBody({ type: CreateDeductionHeadDto, isArray: true })
@@ -73,7 +74,7 @@ export class DeductionHeadController {
   }
 
   @Put('deduction-heads/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update deduction head' })
   async update(
@@ -89,7 +90,7 @@ export class DeductionHeadController {
   }
 
   @Put('deduction-heads/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update deduction heads in bulk' })
   @ApiBody({ type: UpdateDeductionHeadDto, isArray: true })
@@ -105,7 +106,7 @@ export class DeductionHeadController {
   }
 
   @Delete('deduction-heads/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete deduction head' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -117,7 +118,7 @@ export class DeductionHeadController {
   }
 
   @Delete('deduction-heads/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete deduction heads in bulk' })
   @ApiBody({

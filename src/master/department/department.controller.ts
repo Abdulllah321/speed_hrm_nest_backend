@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { DepartmentService } from './department.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import {
   UpdateDepartmentDto,
   UpdateSubDepartmentDto,
@@ -31,7 +32,7 @@ export class DepartmentController {
   constructor(private service: DepartmentService) { }
 
   @Get('departments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all departments' })
   async list() {
@@ -39,15 +40,15 @@ export class DepartmentController {
   }
 
   @Get('departments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get department by id' })
   async get(@Param('id') id: string) {
-    return this.service.getDepartmentById(id);
+    return this.service.getDepartmentById(id);  
   }
 
   @Post('departments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create departments in bulk' })
   @ApiBody({
@@ -77,7 +78,7 @@ export class DepartmentController {
   }
 
   @Put('departments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update department' })
   async update(
@@ -93,7 +94,7 @@ export class DepartmentController {
   }
 
   @Put('departments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update departments in bulk' })
   @ApiBody({ type: BulkUpdateDepartmentDto })
@@ -106,7 +107,7 @@ export class DepartmentController {
   }
 
   @Delete('departments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete department' })
   async delete(@Param('id') id: string, @Req() req) {
@@ -118,7 +119,7 @@ export class DepartmentController {
   }
 
   @Delete('departments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete departments in bulk' })
   @ApiBody({
@@ -142,7 +143,7 @@ export class DepartmentController {
   }
 
   @Get('sub-departments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all sub-departments' })
   async subDepartments() {
@@ -150,7 +151,7 @@ export class DepartmentController {
   }
 
   @Get('sub-departments/department/:departmentId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List sub-departments by department' })
   async subDepartmentsByDept(@Param('departmentId') departmentId: string) {
@@ -158,7 +159,7 @@ export class DepartmentController {
   }
 
   @Post('sub-departments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create sub-department' })
   @ApiBody({
@@ -189,7 +190,7 @@ export class DepartmentController {
   }
 
   @Post('sub-departments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create sub-departments in bulk' })
   @ApiBody({
@@ -229,7 +230,7 @@ export class DepartmentController {
   }
 
   @Put('sub-departments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update sub-department' })
   async updateSub(
@@ -245,7 +246,7 @@ export class DepartmentController {
   }
 
   @Put('sub-departments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update sub-departments in bulk' })
   @ApiBody({ type: UpdateSubDepartmentDto, isArray: true })
@@ -261,7 +262,7 @@ export class DepartmentController {
   }
 
   @Delete('sub-departments/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete sub-departments in bulk' })
   @ApiBody({
@@ -276,7 +277,7 @@ export class DepartmentController {
   }
 
   @Delete('sub-departments/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete sub-department' })
   async deleteSub(@Param('id') id: string, @Req() req) {

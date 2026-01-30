@@ -10,7 +10,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AllocationService } from './allocation.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 
 @ApiTags('Allocation')
@@ -19,7 +20,7 @@ export class AllocationController {
   constructor(private service: AllocationService) {}
 
   @Get('allocations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all allocations' })
   async list() {
@@ -27,7 +28,7 @@ export class AllocationController {
   }
 
   @Get('allocations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.read'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get allocation by id' })
   async get(@Param('id') id: string) {
@@ -35,7 +36,7 @@ export class AllocationController {
   }
 
   @Post('allocations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allocation' })
   @ApiBody({
@@ -53,7 +54,7 @@ export class AllocationController {
   }
 
   @Post('allocations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.create'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create allocations in bulk' })
   @ApiBody({
@@ -77,7 +78,7 @@ export class AllocationController {
   }
 
   @Put('allocations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allocation' })
   @ApiBody({
@@ -99,7 +100,7 @@ export class AllocationController {
   }
 
   @Put('allocations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update allocations in bulk' })
   @ApiBody({
@@ -129,7 +130,7 @@ export class AllocationController {
   }
 
   @Delete('allocations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allocation' })
   async remove(@Param('id') id: string, @Req() req) {
@@ -141,7 +142,7 @@ export class AllocationController {
   }
 
   @Delete('allocations/bulk')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.delete'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete allocations in bulk' })
   @ApiBody({
