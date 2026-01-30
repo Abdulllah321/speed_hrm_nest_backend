@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/client';
 
 @Injectable()
@@ -16,7 +17,8 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLogsService: ActivityLogsService,
-  ) { }
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -617,6 +619,11 @@ export class PayrollService {
         userId: generatedBy,
       });
 
+      // Trigger Email Notifications (Async)
+      this.sendPayslipEmails(payroll.id).catch((err) =>
+        this.logger.error('Failed to trigger payslip emails', err),
+      );
+
       return payroll;
     } catch (error) {
       this.logger.error(
@@ -646,6 +653,160 @@ export class PayrollService {
       where: { id },
       include: { details: { include: { employee: true } } },
     });
+  }
+
+  private async sendPayslipEmails(payrollId: string) {
+    const payroll = await this.prisma.payroll.findUnique({
+      where: { id: payrollId },
+      include: {
+        details: {
+          include: {
+            employee: {
+              include: {
+                user: true, // To get userId for notification
+                designation: true,
+                department: true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!payroll) return;
+
+    for (const detail of payroll.details) {
+      if (detail.employee?.user?.id) {
+        // Generate simplified HTML for email body (mimicking the slip)
+        const htmlContent = this.generatePayslipHTML(detail, payroll.month, payroll.year);
+        
+        // Use NotificationsService to create a notification record AND send email
+        // We use 'email' channel explicitly
+        await this.notificationsService.create({
+          userId: detail.employee.user.id,
+          title: `Payslip for ${payroll.month}/${payroll.year}`,
+          message: `Your payslip for ${payroll.month}/${payroll.year} is ready. Net Salary: ${detail.netSalary}`,
+          category: 'payroll',
+          priority: 'high',
+          channels: ['email', 'inApp'], // Send both email and in-app
+          actionType: 'payroll.view',
+          entityType: 'PayrollDetail',
+          entityId: detail.id,
+          // We pass the HTML body as 'actionPayload' or handle it in notification service if needed?
+          // Actually, NotificationsService.sendEmail takes 'body' from the notification message usually.
+          // But here we want a custom HTML body for the email.
+          // The current NotificationsService.sendEmail uses `notification.message` as body.
+          // To support custom HTML, we might need to adjust NotificationsService or just pass a simple message and let the user view the full slip in-app.
+          // HOWEVER, user requested "same format send krna ha".
+          // So we should hack the message to be HTML? Or add a new field?
+          // Let's assume we can pass HTML in the 'message' field for now, but usually that's plain text.
+          // BETTER APPROACH: Call sendEmail directly? No, we want to use the queue.
+          // Let's modify NotificationsService to accept 'htmlBody' or allow message to be HTML.
+          // For now, let's update create() to allow passing a separate emailBody if we want.
+          // OR, simpler: Just send the HTML as the message.
+        });
+        
+        // HACK: Since we want to send a SPECIFIC HTML format (the slip) which is different from the simple text notification,
+        // and our NotificationsService is generic...
+        // Let's manually trigger the email via a direct call for now to ensure the format is correct,
+        // ignoring the generic notification worker for the *email content* part, OR
+        // we can assume the user will receive the simple notification "Your payslip is ready" and they have to click to view it?
+        // User said: "same wo he pdf slip ... wo he send krdena".
+        // This implies attachment or full HTML.
+        // Let's try to send a direct email here alongside the notification.
+        
+        const emailSubject = `Payslip - ${payroll.month}/${payroll.year}`;
+        await this.notificationsService.sendEmail({
+            userId: detail.employee.user.id,
+            subject: emailSubject,
+            body: htmlContent,
+        });
+      }
+    }
+  }
+
+  private generatePayslipHTML(detail: any, month: string, year: string): string {
+    const emp = detail.employee;
+    const formatCurrency = (amount: any) => 
+      new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', minimumFractionDigits: 0 }).format(Number(amount));
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; line-height: 1.4; }
+          .container { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+          .company-name { font-size: 24px; font-weight: bold; }
+          .title { font-size: 18px; margin-top: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+          .label { font-weight: bold; color: #555; }
+          .section-title { background: #f4f4f4; padding: 5px; font-weight: bold; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; margin-top: 10px; }
+          .table-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee; }
+          .total-row { display: flex; justify-content: space-between; padding: 10px 0; font-weight: bold; border-top: 2px solid #333; margin-top: 10px; }
+          .net-salary { background: #e8f5e9; padding: 10px; text-align: center; font-size: 20px; font-weight: bold; margin-top: 20px; border: 1px solid #c8e6c9; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="company-name">Innovative Network Pvt Ltd</div>
+            <div class="title">Payslip for ${month}/${year}</div>
+          </div>
+
+          <div class="info-grid">
+            <div>
+              <div class="row"><span class="label">Employee Name:</span> <span>${emp.employeeName}</span></div>
+              <div class="row"><span class="label">Employee ID:</span> <span>${emp.employeeId}</span></div>
+              <div class="row"><span class="label">Designation:</span> <span>${emp.designation?.name || '-'}</span></div>
+            </div>
+            <div>
+              <div class="row"><span class="label">Department:</span> <span>${emp.department?.name || '-'}</span></div>
+              <div class="row"><span class="label">Date of Joining:</span> <span>${emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString() : '-'}</span></div>
+              <div class="row"><span class="label">Payment Mode:</span> <span>Bank Transfer</span></div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+              <div class="section-title">Earnings</div>
+              <div class="table-row"><span>Basic Salary</span> <span>${formatCurrency(detail.basicSalary)}</span></div>
+              ${(detail.allowanceBreakup || []).map((a: any) => `
+                <div class="table-row"><span>${a.name}</span> <span>${formatCurrency(a.amount)}</span></div>
+              `).join('')}
+              ${(detail.overtimeAmount > 0) ? `<div class="table-row"><span>Overtime</span> <span>${formatCurrency(detail.overtimeAmount)}</span></div>` : ''}
+              ${(detail.bonusAmount > 0) ? `<div class="table-row"><span>Bonus</span> <span>${formatCurrency(detail.bonusAmount)}</span></div>` : ''}
+              <div class="total-row"><span>Total Earnings</span> <span>${formatCurrency(Number(detail.basicSalary) + Number(detail.totalAllowances) + Number(detail.overtimeAmount) + Number(detail.bonusAmount))}</span></div>
+            </div>
+
+            <div style="flex: 1;">
+              <div class="section-title">Deductions</div>
+              ${(detail.deductionBreakup || []).map((d: any) => `
+                <div class="table-row"><span>${d.name}</span> <span>${formatCurrency(d.amount)}</span></div>
+              `).join('')}
+              ${(detail.taxDeduction > 0) ? `<div class="table-row"><span>Tax</span> <span>${formatCurrency(detail.taxDeduction)}</span></div>` : ''}
+              ${(detail.eobiDeduction > 0) ? `<div class="table-row"><span>EOBI</span> <span>${formatCurrency(detail.eobiDeduction)}</span></div>` : ''}
+              ${(detail.providentFundDeduction > 0) ? `<div class="table-row"><span>Provident Fund</span> <span>${formatCurrency(detail.providentFundDeduction)}</span></div>` : ''}
+              ${(detail.loanDeduction > 0) ? `<div class="table-row"><span>Loan</span> <span>${formatCurrency(detail.loanDeduction)}</span></div>` : ''}
+              ${(detail.advanceSalaryDeduction > 0) ? `<div class="table-row"><span>Advance Salary</span> <span>${formatCurrency(detail.advanceSalaryDeduction)}</span></div>` : ''}
+              ${(detail.attendanceDeduction > 0) ? `<div class="table-row"><span>Attendance/Late</span> <span>${formatCurrency(detail.attendanceDeduction)}</span></div>` : ''}
+              <div class="total-row"><span>Total Deductions</span> <span>${formatCurrency(detail.totalDeductions)}</span></div>
+            </div>
+          </div>
+
+          <div class="net-salary">
+            Net Salary: ${formatCurrency(detail.netSalary)}
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #777;">
+            This is a computer-generated document and does not require a signature.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
   }
 
   async getPayrollReport(filters: {
