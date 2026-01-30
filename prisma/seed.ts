@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaClient as ManagementClient } from '@prisma/management-client';
+import * as crypto from 'crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
@@ -157,6 +159,123 @@ async function pushTenantSchema(connectionString: string) {
   }
 }
 
+/**
+ * Decrypt password using AES-256-GCM
+ * (Logic copied from EncryptionService)
+ */
+function decrypt(encryptedText: string, masterKeyString: string): string {
+  if (!masterKeyString || masterKeyString.length < 32) {
+    throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
+  }
+  const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
+  const algorithm = 'aes-256-gcm';
+
+  const parts = encryptedText.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted text format: ' + encryptedText);
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+
+  const decipher = crypto.createDecipheriv(algorithm, masterKey, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
+
+/**
+ * Migrate all tenants found in the Master Database
+ */
+async function migrateViaMaster() {
+  console.log('🔄 Checking Master Database for tenants...');
+
+  if (!process.env.DATABASE_URL_MANAGEMENT) {
+    console.warn('   ⚠️ DATABASE_URL_MANAGEMENT not set. Skipping master-based migration.');
+    return;
+  }
+
+  const management = new ManagementClient({
+    datasources: { db: { url: process.env.DATABASE_URL_MANAGEMENT } }
+  });
+
+  try {
+    const companies = await management.company.findMany({
+      where: { status: 'active' }
+    });
+
+    if (companies.length === 0) {
+      console.log('   ℹ️  No companies found in Master DB.');
+      return;
+    }
+
+    console.log(`   found ${companies.length} companies. Processing...`);
+
+    const masterKey = process.env.MASTER_ENCRYPTION_KEY;
+    if (!masterKey) {
+      console.warn('   ⚠️  MASTER_ENCRYPTION_KEY is missing. Cannot decrypt tenant passwords.');
+      return;
+    }
+
+    for (const company of companies) {
+      console.log(`   👉 Processing company: ${company.name} (${company.code})`);
+
+      try {
+        let dbPassword = company.dbPassword;
+        // If password is encrypted, decrypt it
+        // Depending on your logic, dbPassword might be plain or null in some legacy cases, 
+        // but normally it is the encrypted one. 
+        // We'll check if we can decrypt it.
+
+        // Note: The schema has dbUrl set, but we usually construct it fresh to be sure 
+        // or just use the stored dbUrl if it includes the cleartext password?
+        // TenantDatabaseService.provisionTenantDatabase stores:
+        // dbPassword: clear (returned in object, but NOT in DB model based on schema? 
+        // Model has dbPassword String? and encryptionKey String?)
+        // Let's check schema again. Model Company: 
+        // dbPassword String? // Encrypted password
+        // dbUrl String? // Full connection string
+
+        // Usually dbUrl in DB should NOT have cleartext password if we are secure.
+        // But TenantDatabaseService stores dbUrl = generateDatabaseUrl(...) which DOES include it.
+        // Let's prioritize constructing it from parts if we have encrypted password.
+
+        let connectionString = company.dbUrl;
+
+        // If we have encrypted password, we should decrypt and reconstruct to be safe/correct
+        // assuming dbUrl might be stale or masked.
+        if (company.dbPassword) {
+          try {
+            const decryptedPass = decrypt(company.dbPassword, masterKey);
+            // Reconstruct URL: postgresql://user:pass@host:port/dbname?schema=public
+            connectionString = `postgresql://${company.dbUser}:${decryptedPass}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+          } catch (e) {
+            console.warn(`      Could not decrypt password for ${company.code}, trying stored dbUrl...`);
+          }
+        }
+
+        if (connectionString) {
+          await pushTenantSchema(connectionString);
+        } else {
+          console.warn(`      ❌ No dbUrl or dbPassword for ${company.code}`);
+        }
+
+      } catch (err: any) {
+        console.error(`      ❌ Failed to process ${company.code}: ${err.message}`);
+      }
+    }
+
+  } catch (error: any) {
+    console.error(`   ❌ Failed to query Master DB: ${error.message}`);
+  } finally {
+    await management.$disconnect();
+  }
+}
+
 async function main() {
   console.log('🌱 Seeding database...');
   console.log('');
@@ -248,6 +367,9 @@ async function main() {
   } else {
     console.log('no data restored from backup')
   }
+
+  // Always run Master-based migration check
+  await migrateViaMaster();
 
   console.log('');
   console.log('✅ Database seeding finished.');
