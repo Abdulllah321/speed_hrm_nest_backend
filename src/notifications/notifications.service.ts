@@ -43,6 +43,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private gateway: NotificationsGateway,
   ) {
     // Initialize Nodemailer with Ethereal (Test Account)
@@ -302,20 +303,23 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }) {
     // If no explicit 'to' address, try to fetch user's email if userId provided
     let recipientEmail = args.to;
-    
+
     if (!recipientEmail && args.userId) {
-       // Try to find email from User or Employee record
-       const user = await this.prisma.user.findUnique({
-         where: { id: args.userId },
-         include: { employee: true }
-       });
-       
-       if (user) {
-         recipientEmail = user.email;
-         // Prefer official email from employee record if available? Usually user email is login email.
-         // Let's stick to user.email or employee.personalEmail if user.email is missing?
-         // For now, assume user.email is primary.
-       }
+      // Try to find email from User record
+      const user = await this.prismaMaster.user.findUnique({
+        where: { id: args.userId },
+      });
+
+      if (user) {
+        recipientEmail = user.email;
+
+        // Note: If you need to fallback to Employee email (Tenant DB), use:
+        if (!recipientEmail && user.employeeId) {
+          const emp = await this.prisma.employee.findUnique({ where: { id: user.employeeId } });
+          if (emp) recipientEmail = emp.officialEmail || emp.personalEmail || undefined;
+        }
+
+      }
     }
 
     if (!recipientEmail) {
@@ -324,8 +328,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.transporter) {
-       this.logger.warn('Email transporter not ready, retrying initialization...');
-       await this.createTestAccount();
+      this.logger.warn('Email transporter not ready, retrying initialization...');
+      await this.createTestAccount();
     }
 
     try {
