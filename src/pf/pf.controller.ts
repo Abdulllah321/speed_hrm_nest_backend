@@ -8,7 +8,10 @@ import {
   Req,
 } from '@nestjs/common';
 import { PFService } from './pf.service';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 // Assuming JwtAuthGuard is available similarly to other controllers, usually standard practice
 // But PayrollController didn't show explicit UseGuards in the snippet I saw,
 // however usually it's globally applied or specific.
@@ -21,6 +24,9 @@ export class PFController {
   constructor(private readonly pfService: PFService) { }
 
   @Get('employees')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.provident-fund.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get PF balances for all employees' })
   @ApiResponse({
     status: 200,
@@ -31,6 +37,9 @@ export class PFController {
   }
 
   @Post('withdrawals')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.provident-fund.create')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create PF withdrawal' })
   @ApiResponse({
     status: 201,
@@ -55,6 +64,9 @@ export class PFController {
   }
 
   @Get('withdrawals')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.provident-fund.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all PF withdrawals' })
   @ApiResponse({ status: 200, description: 'Returns list of PF withdrawals' })
   async getPFWithdrawals(

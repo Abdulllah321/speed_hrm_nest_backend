@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from './notifications.gateway';
-import * as nodemailer from 'nodemailer';
+import nodemailer from  'nodemailer';
 import {
   type CreateNotificationInput,
   type NotificationChannel,

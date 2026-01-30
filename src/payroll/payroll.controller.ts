@@ -1,6 +1,9 @@
-import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { PayrollService } from './payroll.service';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 
 @ApiTags('Payroll')
 @Controller('api')
@@ -8,6 +11,9 @@ export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
 
   @Post('payroll/preview')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.create')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Preview payroll' })
   @ApiResponse({
     status: 200,
@@ -22,6 +28,9 @@ export class PayrollController {
   }
 
   @Post('payroll/confirm')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.create')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Confirm payroll' })
   @ApiResponse({ status: 200, description: 'Payroll confirmed successfully' })
   async confirmPayroll(
@@ -39,6 +48,9 @@ export class PayrollController {
   }
 
   @Get('payroll')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all payrolls' })
   @ApiResponse({ status: 200, description: 'Returns list of payrolls' })
   async getAllPayrolls(@Query('year') year?: string) {
@@ -46,6 +58,9 @@ export class PayrollController {
   }
 
   @Get('payroll/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get payroll by id' })
   @ApiResponse({ status: 200, description: 'Returns payroll details' })
   async getPayrollDetails(@Param('id') id: string) {
@@ -53,6 +68,9 @@ export class PayrollController {
   }
 
   @Get('payroll/report')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read', 'hr.salary-sheet.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get payroll report' })
   @ApiResponse({ status: 200, description: 'Returns payroll report data' })
   async getPayrollReport(
@@ -72,6 +90,9 @@ export class PayrollController {
   }
 
   @Get('payroll/bank-report')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read', 'hr.salary-sheet.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get bank salary transfer report' })
   @ApiResponse({ status: 200, description: 'Returns bank report data' })
   async getBankReport(
@@ -83,6 +104,9 @@ export class PayrollController {
   }
 
   @Get('payroll/payslips')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read', 'hr.salary-sheet.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get confirmed payrolls for payslips' })
   async getPayslips(
     @Query('month') month?: string,
@@ -101,6 +125,9 @@ export class PayrollController {
   }
 
   @Get('payroll/payslip/:detailId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get detailed payslip info' })
   async getPayslipDetail(@Param('detailId') detailId: string) {
     return this.payrollService.getPayslipDetail(detailId);

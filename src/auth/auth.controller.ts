@@ -91,13 +91,14 @@ export class AuthController {
       domain = undefined;
     }
 
-    return {
+    const options = {
       httpOnly: true,
       secure: cookieSecure,
       sameSite: 'lax' as const,
       domain,
       path: '/',
     };
+    return options;
   }
 
   @Post('login')

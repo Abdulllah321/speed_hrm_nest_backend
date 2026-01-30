@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { RebateService } from './rebate.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import { CreateRebateDto, UpdateRebateDto } from './dto/create-rebate.dto';
 import {
   ApiTags,
@@ -28,7 +30,8 @@ export class RebateController {
   constructor(private service: RebateService) {}
 
   @Get('rebates')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.rebate.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List rebates' })
   @ApiQuery({ name: 'employeeId', required: false })
@@ -61,7 +64,8 @@ export class RebateController {
   }
 
   @Get('rebates/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.rebate.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get rebate by id' })
   @ApiResponse({ status: 200, description: 'Returns rebate details' })
@@ -71,7 +75,8 @@ export class RebateController {
   }
 
   @Post('rebates')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.rebate.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create rebate' })
   @ApiResponse({ status: 201, description: 'Rebate created successfully' })
@@ -85,7 +90,8 @@ export class RebateController {
   }
 
   @Patch('rebates/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.rebate.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update rebate' })
   @ApiResponse({ status: 200, description: 'Rebate updated successfully' })
@@ -103,7 +109,8 @@ export class RebateController {
   }
 
   @Delete('rebates/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.rebate.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete rebate' })
   @ApiResponse({ status: 200, description: 'Rebate deleted successfully' })

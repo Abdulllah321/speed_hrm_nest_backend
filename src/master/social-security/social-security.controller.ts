@@ -12,7 +12,8 @@ import {
 } from '@nestjs/common';
 import { SocialSecurityService } from './social-security.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -38,7 +39,8 @@ export class SocialSecurityController {
 
   // ========== Institution Endpoints ==========
   @Get('social-security-institutions')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all social security institutions' })
   async listInstitutions() {
@@ -46,7 +48,8 @@ export class SocialSecurityController {
   }
 
   @Get('social-security-institutions/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get social security institution by id' })
   async getInstitution(@Param('id') id: string) {
@@ -54,7 +57,8 @@ export class SocialSecurityController {
   }
 
   @Post('social-security-institutions')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.create'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create social security institution' })
   async createInstitution(
@@ -69,7 +73,8 @@ export class SocialSecurityController {
   }
 
   @Put('social-security-institutions/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.update'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update social security institution' })
   async updateInstitution(
@@ -85,7 +90,8 @@ export class SocialSecurityController {
   }
 
   @Delete('social-security-institutions/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.delete'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete social security institution' })
   async removeInstitution(@Param('id') id: string, @Req() req: any) {
@@ -98,7 +104,8 @@ export class SocialSecurityController {
 
   // ========== Employer Registration Endpoints ==========
   @Get('social-security-employer-registrations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employer registrations' })
   @ApiQuery({
@@ -117,7 +124,8 @@ export class SocialSecurityController {
   }
 
   @Get('social-security-employer-registrations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get employer registration by id' })
   async getEmployerRegistration(@Param('id') id: string) {
@@ -125,7 +133,8 @@ export class SocialSecurityController {
   }
 
   @Post('social-security-employer-registrations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.create'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create employer registration' })
   async createEmployerRegistration(
@@ -140,7 +149,8 @@ export class SocialSecurityController {
   }
 
   @Put('social-security-employer-registrations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.update'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update employer registration' })
   async updateEmployerRegistration(
@@ -156,7 +166,8 @@ export class SocialSecurityController {
   }
 
   @Delete('social-security-employer-registrations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.delete'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete employer registration' })
   async removeEmployerRegistration(@Param('id') id: string, @Req() req: any) {
@@ -169,7 +180,8 @@ export class SocialSecurityController {
 
   // ========== Employee Registration Endpoints ==========
   @Get('social-security-employee-registrations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.social-security.read', 'master.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employee registrations' })
   @ApiQuery({
@@ -205,7 +217,8 @@ export class SocialSecurityController {
   }
 
   @Get('social-security-employee-registrations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.read', 'hr.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get employee registration by id' })
   async getEmployeeRegistration(@Param('id') id: string) {
@@ -213,7 +226,8 @@ export class SocialSecurityController {
   }
 
   @Post('social-security-employee-registrations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.create'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.create', 'hr.social-security.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create employee registration' })
   async createEmployeeRegistration(
@@ -228,7 +242,8 @@ export class SocialSecurityController {
   }
 
   @Put('social-security-employee-registrations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.update'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.update', 'hr.social-security.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update employee registration' })
   async updateEmployeeRegistration(
@@ -244,7 +259,8 @@ export class SocialSecurityController {
   }
 
   @Delete('social-security-employee-registrations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.delete'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.delete', 'hr.social-security.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete employee registration' })
   async removeEmployeeRegistration(@Param('id') id: string, @Req() req: any) {
@@ -257,7 +273,8 @@ export class SocialSecurityController {
 
   // ========== Contribution Endpoints ==========
   @Get('social-security-contributions')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.social-security.read', 'master.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all contributions' })
   @ApiQuery({
@@ -300,7 +317,8 @@ export class SocialSecurityController {
   }
 
   @Get('social-security-contributions/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.read'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.read', 'hr.social-security.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get contribution by id' })
   async getContribution(@Param('id') id: string) {
@@ -308,7 +326,8 @@ export class SocialSecurityController {
   }
 
   @Post('social-security-contributions')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.create'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.create', 'hr.social-security.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create contribution' })
   async createContribution(
@@ -323,7 +342,8 @@ export class SocialSecurityController {
   }
 
   @Put('social-security-contributions/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.update'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.update', 'hr.social-security.update')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update contribution' })
   async updateContribution(
@@ -339,7 +359,8 @@ export class SocialSecurityController {
   }
 
   @Delete('social-security-contributions/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.social-security.delete'))
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('master.social-security.delete', 'hr.social-security.delete')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete contribution' })
   async removeContribution(@Param('id') id: string, @Req() req: any) {

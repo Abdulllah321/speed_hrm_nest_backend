@@ -33,8 +33,12 @@
         "jsonwebtoken": "^9.0.3",
         "multer": "^2.0.2",
         "nodemailer": "^7.0.13",
+<<<<<<< HEAD
+        "pg": "^8.16.3",
+=======
         "path": "^0.12.7",
         "pg": "^8.17.2",
+>>>>>>> e8e3be3ac40c9fd3c3983fb1a8439c46bad60e9c
         "puppeteer": "^24.36.1",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.1",

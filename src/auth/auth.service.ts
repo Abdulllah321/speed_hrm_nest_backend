@@ -54,8 +54,7 @@ export class AuthService {
         userId: user.id,
         email: user.email,
         roleId: user.roleId,
-        permissions:
-          user.role?.permissions.map((p) => p.permission.name) || [],
+        // permissions removed to keep token size small - fetched in Guard
         employeeId: user.employeeId,
         roleName: user.role?.name || null,
       },
@@ -323,8 +322,7 @@ export class AuthService {
           userId: user.id,
           email: user.email,
           roleId: user.roleId,
-          permissions:
-            user.role?.permissions.map((p) => p.permission.name) || [],
+          // permissions removed to keep token size small - fetched in Guard
           employeeId: user.employeeId,
           roleName: user.role?.name || null,
         },
@@ -336,7 +334,11 @@ export class AuthService {
         issuer: authConfig.jwt.issuer,
       };
       const newRefreshToken = jwt.sign(
-        { userId: user.id, family },
+        { 
+          userId: user.id, 
+          family,
+          jti: crypto.randomUUID() 
+        },
         authConfig.jwt.refreshSecret,
         refreshOpts,
       );
