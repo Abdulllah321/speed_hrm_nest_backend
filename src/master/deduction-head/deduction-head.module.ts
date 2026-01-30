@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   controllers: [DeductionHeadController],
   providers: [DeductionHeadService],
 })
-export class DeductionHeadModule {}
+export class DeductionHeadModule { }

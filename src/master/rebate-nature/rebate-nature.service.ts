@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateRebateNatureDto } from './dto/create-rebate-nature.dto';
 import { UpdateRebateNatureDto } from './dto/update-rebate-nature.dto';
 
 @Injectable()
 export class RebateNatureService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaMasterService) { }
 
   async create(createRebateNatureDto: CreateRebateNatureDto, userId: string) {
     return this.prisma.rebateNature.create({
@@ -13,27 +13,11 @@ export class RebateNatureService {
         ...createRebateNatureDto,
         createdById: userId,
       },
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
     });
   }
 
   async findAll() {
     return this.prisma.rebateNature.findMany({
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
       orderBy: {
         createdAt: 'desc',
       },
@@ -71,14 +55,6 @@ export class RebateNatureService {
         type,
         status: 'active',
       },
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }
@@ -86,14 +62,6 @@ export class RebateNatureService {
   async findOne(id: string) {
     const rebateNature = await this.prisma.rebateNature.findUnique({
       where: { id },
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
     });
 
     if (!rebateNature) {
@@ -109,14 +77,6 @@ export class RebateNatureService {
     return this.prisma.rebateNature.update({
       where: { id },
       data: updateRebateNatureDto,
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
     });
   }
 

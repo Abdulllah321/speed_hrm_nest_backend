@@ -3,21 +3,22 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class CityService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) {}
+  ) { }
 
   async getAllCountries() {
     const cacheKey = 'countries_all';
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return { status: true, data: cached };
 
-    const countries = await this.prisma.country.findMany({
+    const countries = await this.prismaMaster.country.findMany({
       include: { cities: true },
       orderBy: { name: 'asc' },
     });
@@ -30,7 +31,7 @@ export class CityService {
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return { status: true, data: cached };
 
-    const states = await this.prisma.state.findMany({
+    const states = await this.prismaMaster.state.findMany({
       orderBy: { name: 'asc' },
     });
     await this.cacheManager.set(cacheKey, states, 86400000); // 24h TTL
@@ -42,7 +43,7 @@ export class CityService {
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return { status: true, data: cached };
 
-    const states = await this.prisma.state.findMany({
+    const states = await this.prismaMaster.state.findMany({
       where: { countryId },
       orderBy: { name: 'asc' },
     });
@@ -55,7 +56,7 @@ export class CityService {
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return { status: true, data: cached };
 
-    const cities = await this.prisma.city.findMany({
+    const cities = await this.prismaMaster.city.findMany({
       where: { stateId },
       orderBy: { name: 'asc' },
     });
@@ -68,7 +69,7 @@ export class CityService {
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return { status: true, data: cached };
 
-    const cities = await this.prisma.city.findMany({
+    const cities = await this.prismaMaster.city.findMany({
       include: { country: true, state: true },
       orderBy: { name: 'asc' },
     });
@@ -81,7 +82,7 @@ export class CityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.city.create({
+      const created = await this.prismaMaster.city.create({
         data: {
           name: body.name,
           countryId: body.countryId,
@@ -141,12 +142,14 @@ export class CityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.city.findUnique({ where: { id } });
+      const existing = await this.prismaMaster.city.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return { status: false, message: 'City not found' };
       }
 
-      const updated = await this.prisma.city.update({
+      const updated = await this.prismaMaster.city.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -205,12 +208,14 @@ export class CityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.city.findUnique({ where: { id } });
+      const existing = await this.prismaMaster.city.findUnique({
+        where: { id },
+      });
       if (!existing) {
         return { status: false, message: 'City not found' };
       }
 
-      const removed = await this.prisma.city.delete({ where: { id } });
+      const removed = await this.prismaMaster.city.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -250,10 +255,10 @@ export class CityService {
   ) {
     if (!ids?.length) return { status: false, message: 'No cities to delete' };
     try {
-      const existing = await this.prisma.city.findMany({
+      const existing = await this.prismaMaster.city.findMany({
         where: { id: { in: ids } },
       });
-      const result = await this.prisma.city.deleteMany({
+      const result = await this.prismaMaster.city.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -302,7 +307,7 @@ export class CityService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prisma.city.createMany({
+      const result = await this.prismaMaster.city.createMany({
         data: items.map((i) => ({
           name: i.name,
           countryId: i.countryId,

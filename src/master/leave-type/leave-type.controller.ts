@@ -23,7 +23,7 @@ import {
 @ApiTags('Leave Type')
 @Controller('api')
 export class LeaveTypeController {
-  constructor(private service: LeaveTypeService) {}
+  constructor(private service: LeaveTypeService) { }
 
   @Get('leave-types')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.read'))

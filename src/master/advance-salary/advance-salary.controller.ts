@@ -11,9 +11,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AdvanceSalaryService } from './advance-salary.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { Permissions } from '../common/decorators/permissions.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import {
   CreateAdvanceSalaryDto,
   UpdateAdvanceSalaryDto,
@@ -31,7 +31,7 @@ import {
 @ApiTags('Advance Salary')
 @Controller('api')
 export class AdvanceSalaryController {
-  constructor(private service: AdvanceSalaryService) {}
+  constructor(private service: AdvanceSalaryService) { }
 
   @Get('advance-salaries')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

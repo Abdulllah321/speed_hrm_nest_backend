@@ -1,20 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../../database/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class AllocationService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async create(
     name: string,
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.allocation.create({
+      const created = await this.prismaMaster.allocation.create({
         data: {
           name,
           createdById: ctx.userId,
@@ -64,7 +66,7 @@ export class AllocationService {
   ) {
     if (!names?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prisma.allocation.createMany({
+      const result = await this.prismaMaster.allocation.createMany({
         data: names.map((name) => ({
           name,
           createdById: ctx.userId,
@@ -109,38 +111,68 @@ export class AllocationService {
   }
 
   async list() {
-    const items = await this.prisma.allocation.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
-    return { status: true, data: items };
+    try {
+      const items = await this.prismaMaster.allocation.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (items.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Fetch users for createdBy manually since relation might not be in schema
+      const createdByIds = [
+        ...new Set(items.map((i) => i.createdById).filter(Boolean) as string[]),
+      ];
+      const users = await this.prismaMaster.user.findMany({
+        where: { id: { in: createdByIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const mappedData = items.map((item) => ({
+        ...item,
+        createdBy: item.createdById ? userMap.get(item.createdById) : null,
+      }));
+
+      return { status: true, data: mappedData };
+    } catch (error: any) {
+      return { status: false, message: 'Failed to list allocations', data: [] };
+    }
   }
 
   async get(id: string) {
-    const allocation = await this.prisma.allocation.findUnique({
-      where: { id },
-      include: {
-        createdBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
+    try {
+      const allocation = await this.prismaMaster.allocation.findUnique({
+        where: { id },
+      });
+
+      if (!allocation) {
+        return { status: false, message: `Allocation with ID ${id} not found` };
+      }
+
+      let createdBy: { firstName: string; lastName: string } | null = null;
+      if (allocation.createdById) {
+        createdBy = await this.prismaMaster.user.findUnique({
+          where: { id: allocation.createdById },
+          select: { firstName: true, lastName: true },
+        });
+      }
+
+      return {
+        status: true,
+        data: {
+          ...allocation,
+          createdBy,
         },
-      },
-    });
-
-    if (!allocation) {
-      return { status: false, message: `Allocation with ID ${id} not found` };
+      };
+    } catch (error: any) {
+      return {
+        status: false,
+        message: error?.message || 'Failed to get allocation',
+      };
     }
-
-    return { status: true, data: allocation };
   }
 
   async update(
@@ -149,12 +181,12 @@ export class AllocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.allocation.findUnique({
+      const existing = await this.prismaMaster.allocation.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Allocation not found' };
 
-      const updated = await this.prisma.allocation.update({
+      const updated = await this.prismaMaster.allocation.update({
         where: { id },
         data: { name },
       });
@@ -203,12 +235,12 @@ export class AllocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.allocation.findUnique({
+      const existing = await this.prismaMaster.allocation.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Allocation not found' };
 
-      const removed = await this.prisma.allocation.delete({
+      const removed = await this.prismaMaster.allocation.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -255,7 +287,7 @@ export class AllocationService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const result = await this.prisma.allocation.deleteMany({
+      const result = await this.prismaMaster.allocation.deleteMany({
         where: {
           id: { in: ids },
         },
@@ -304,7 +336,7 @@ export class AllocationService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        await this.prisma.allocation.update({
+        await this.prismaMaster.allocation.update({
           where: { id: item.id },
           data: { name: item.name },
         });

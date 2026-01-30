@@ -1,12 +1,22 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateChartOfAccountDto, UpdateChartOfAccountDto } from './dto/chart-of-account.dto';
+import {
+  CreateChartOfAccountDto,
+  UpdateChartOfAccountDto,
+} from './dto/chart-of-account.dto';
 
 @Injectable()
 export class ChartOfAccountService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createDto: CreateChartOfAccountDto, context: { userId?: string }) {
+  async create(
+    createDto: CreateChartOfAccountDto,
+    context: { userId?: string },
+  ) {
     const { code, parentId } = createDto;
 
     // Check for unique code
@@ -44,9 +54,9 @@ export class ChartOfAccountService {
       orderBy: { code: 'asc' },
       include: {
         parent: {
-          select: { id: true, name: true, code: true }
-        }
-      }
+          select: { id: true, name: true, code: true },
+        },
+      },
     });
   }
 
@@ -66,7 +76,11 @@ export class ChartOfAccountService {
     return account;
   }
 
-  async update(id: string, updateDto: UpdateChartOfAccountDto, context: { userId?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdateChartOfAccountDto,
+    context: { userId?: string },
+  ) {
     const account = await this.prisma.chartOfAccount.findUnique({
       where: { id },
     });
@@ -87,13 +101,16 @@ export class ChartOfAccountService {
 
     // Validate parent loop
     if (updateDto.parentId && updateDto.parentId !== account.parentId) {
-        if (updateDto.parentId === id) {
-             throw new BadRequestException('Account cannot be its own parent');
-        }
-        // Basic cycle check (only 1 level deep check for now, or recursive could be added)
-        const parent = await this.prisma.chartOfAccount.findUnique({ where: { id: updateDto.parentId }});
-        if (!parent) throw new NotFoundException('Parent account not found');
-        if (!parent.isGroup) throw new BadRequestException('Parent account must be a group');
+      if (updateDto.parentId === id) {
+        throw new BadRequestException('Account cannot be its own parent');
+      }
+      // Basic cycle check (only 1 level deep check for now, or recursive could be added)
+      const parent = await this.prisma.chartOfAccount.findUnique({
+        where: { id: updateDto.parentId },
+      });
+      if (!parent) throw new NotFoundException('Parent account not found');
+      if (!parent.isGroup)
+        throw new BadRequestException('Parent account must be a group');
     }
 
     return this.prisma.chartOfAccount.update({
@@ -116,7 +133,9 @@ export class ChartOfAccountService {
     }
 
     if (account.children && account.children.length > 0) {
-      throw new BadRequestException('Cannot delete account with children. Delete or move children first.');
+      throw new BadRequestException(
+        'Cannot delete account with children. Delete or move children first.',
+      );
     }
 
     return this.prisma.chartOfAccount.delete({

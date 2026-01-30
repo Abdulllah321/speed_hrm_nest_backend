@@ -1,27 +1,29 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import {
   UpdateMaritalStatusDto,
   BulkUpdateMaritalStatusItemDto,
 } from './dto/marital-status.dto';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class MaritalStatusService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.maritalStatus.findMany({
+    const items = await this.prismaMaster.maritalStatus.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.maritalStatus.findUnique({ where: { id } });
+    const item = await this.prismaMaster.maritalStatus.findUnique({
+      where: { id },
+    });
     if (!item) return { status: false, message: 'Marital status not found' };
     return { status: true, data: item };
   }
@@ -46,7 +48,7 @@ export class MaritalStatusService {
         return { status: false, message: 'No valid data provided' };
       }
 
-      const result = await this.prisma.maritalStatus.createMany({
+      const result = await this.prismaMaster.maritalStatus.createMany({
         data: validData,
         skipDuplicates: true,
       });
@@ -94,14 +96,14 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.maritalStatus.findUnique({
+      const existing = await this.prismaMaster.maritalStatus.findUnique({
         where: { id },
       });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
 
-      const updated = await this.prisma.maritalStatus.update({
+      const updated = await this.prismaMaster.maritalStatus.update({
         where: { id },
         data: {
           name: updateDto.name,
@@ -154,14 +156,16 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.maritalStatus.findUnique({
+      const existing = await this.prismaMaster.maritalStatus.findUnique({
         where: { id },
       });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
 
-      const removed = await this.prisma.maritalStatus.delete({ where: { id } });
+      const removed = await this.prismaMaster.maritalStatus.delete({
+        where: { id },
+      });
 
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -222,7 +226,7 @@ export class MaritalStatusService {
         if (!item.id) {
           continue;
         }
-        const updated = await this.prisma.maritalStatus.update({
+        const updated = await this.prismaMaster.maritalStatus.update({
           where: { id: item.id },
           data: {
             name: item.name,
@@ -278,7 +282,7 @@ export class MaritalStatusService {
         return { status: false, message: 'No IDs provided' };
       }
 
-      const result = await this.prisma.maritalStatus.deleteMany({
+      const result = await this.prismaMaster.maritalStatus.deleteMany({
         where: { id: { in: ids } },
       });
 

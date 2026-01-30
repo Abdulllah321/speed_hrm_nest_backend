@@ -3,17 +3,21 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
+  ) {}
 
   async create(createUserDto: CreateUserDto) {
-    const existing = await this.prisma.user.findUnique({
+    const existing = await this.prismaMaster.user.findUnique({
       where: { email: createUserDto.email },
     });
 
@@ -22,7 +26,7 @@ export class UserService {
     }
 
     if (createUserDto.employeeId) {
-      const existingEmployeeUser = await this.prisma.user.findUnique({
+      const existingEmployeeUser = await this.prismaMaster.user.findUnique({
         where: { employeeId: createUserDto.employeeId },
       });
       if (existingEmployeeUser) {
@@ -34,48 +38,123 @@ export class UserService {
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    return this.prisma.user.create({
+    const user = await this.prismaMaster.user.create({
       data: {
         ...createUserDto,
         password: hashedPassword,
       },
       include: {
         role: true,
-        employee: {
-          select: {
-            id: true,
-            employeeName: true,
-            designation: { select: { name: true } },
-            department: { select: { name: true } },
-          },
-        },
       },
     });
+
+    // Manually fetch employee data from Tenant DB if employeeId is present
+    let employeeData: any = null;
+    if (user.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: user.employeeId },
+        select: {
+          id: true,
+          employeeName: true,
+          departmentId: true,
+          designationId: true,
+        },
+      });
+
+      if (employee) {
+        // Fetch Master data for labels
+        const [dept, desg] = await Promise.all([
+          this.prismaMaster.department.findUnique({
+            where: { id: employee.departmentId },
+            select: { name: true },
+          }),
+          this.prismaMaster.designation.findUnique({
+            where: { id: employee.designationId },
+            select: { name: true },
+          }),
+        ]);
+        employeeData = {
+          ...employee,
+          department: dept,
+          designation: desg,
+        };
+      }
+    }
+
+    return {
+      ...user,
+      employee: employeeData,
+    };
   }
 
   async findAll() {
-    return this.prisma.user.findMany({
+    const users = await this.prismaMaster.user.findMany({
       include: {
         role: true,
-        employee: {
-          select: {
-            id: true,
-            employeeName: true,
-            designation: { select: { name: true } },
-            department: { select: { name: true } },
-          },
-        },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Collect all employee IDs to fetch from Tenant DB
+    const employeeIds = users
+      .map((u) => u.employeeId)
+      .filter(Boolean) as string[];
+
+    let employeeMap = new Map();
+    if (employeeIds.length > 0) {
+      const employees = await this.prisma.employee.findMany({
+        where: { id: { in: employeeIds } },
+        select: {
+          id: true,
+          employeeName: true,
+          departmentId: true,
+          designationId: true,
+        },
+      });
+
+      // Fetch all unique Dept/Desg IDs
+      const deptIds = [...new Set(employees.map((e) => e.departmentId))];
+      const desgIds = [...new Set(employees.map((e) => e.designationId))];
+
+      const [departments, designations] = await Promise.all([
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.designation.findMany({
+          where: { id: { in: desgIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const desgMap = new Map(designations.map((d) => [d.id, d]));
+
+      employeeMap = new Map(
+        employees.map((e) => [
+          e.id,
+          {
+            ...e,
+            department: deptMap.get(e.departmentId) || null,
+            designation: desgMap.get(e.designationId) || null,
+          },
+        ]),
+      );
+    }
+
+    return users.map((user) => ({
+      ...user,
+      employee: user.employeeId
+        ? employeeMap.get(user.employeeId) || null
+        : null,
+    }));
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaMaster.user.findUnique({
       where: { id },
       include: {
         role: true,
-        employee: true,
       },
     });
 
@@ -83,11 +162,45 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    let employeeData: any = null;
+    if (user.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: user.employeeId },
+        select: {
+          id: true,
+          employeeName: true,
+          departmentId: true,
+          designationId: true,
+        },
+      });
+
+      if (employee) {
+        const [dept, desg] = await Promise.all([
+          this.prismaMaster.department.findUnique({
+            where: { id: employee.departmentId },
+            select: { name: true },
+          }),
+          this.prismaMaster.designation.findUnique({
+            where: { id: employee.designationId },
+            select: { name: true },
+          }),
+        ]);
+        employeeData = {
+          ...employee,
+          department: dept,
+          designation: desg,
+        };
+      }
+    }
+
+    return {
+      ...user,
+      employee: employeeData,
+    };
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.prismaMaster.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -99,7 +212,7 @@ export class UserService {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
-    return this.prisma.user.update({
+    return this.prismaMaster.user.update({
       where: { id },
       data: updateData,
       include: {

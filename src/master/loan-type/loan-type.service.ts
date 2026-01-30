@@ -1,27 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { BulkUpdateLoanTypeItemDto } from './dto/loan-type.dto';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import {
-  UpdateLoanTypeDto,
-  BulkUpdateLoanTypeItemDto,
-} from './dto/loan-type.dto';
 
 @Injectable()
 export class LoanTypeService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.loanType.findMany({
+    const items = await this.prismaMaster.loanType.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.loanType.findUnique({ where: { id } });
+    const item = await this.prismaMaster.loanType.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'Loan type not found' };
     return { status: true, data: item };
   }
@@ -31,7 +28,7 @@ export class LoanTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prisma.loanType.create({
+      const created = await this.prismaMaster.loanType.create({
         data: {
           name: body.name,
           status: body.status ?? 'active',
@@ -78,8 +75,10 @@ export class LoanTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.loanType.findUnique({ where: { id } });
-      const updated = await this.prisma.loanType.update({
+      const existing = await this.prismaMaster.loanType.findUnique({
+        where: { id },
+      });
+      const updated = await this.prismaMaster.loanType.update({
         where: { id },
         data: {
           name: body.name ?? existing?.name,
@@ -131,8 +130,12 @@ export class LoanTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.loanType.findUnique({ where: { id } });
-      const removed = await this.prisma.loanType.delete({ where: { id } });
+      const existing = await this.prismaMaster.loanType.findUnique({
+        where: { id },
+      });
+      const removed = await this.prismaMaster.loanType.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -178,7 +181,7 @@ export class LoanTypeService {
     if (!items?.length)
       return { status: false, message: 'No loan types to create' };
     try {
-      const result = await this.prisma.loanType.createMany({
+      const result = await this.prismaMaster.loanType.createMany({
         data: items.map((i) => ({
           name: i.name,
           status: i.status ?? 'active',
@@ -241,10 +244,10 @@ export class LoanTypeService {
         if (!i.id) {
           continue;
         }
-        const existing = await this.prisma.loanType.findUnique({
+        const existing = await this.prismaMaster.loanType.findUnique({
           where: { id: i.id },
         });
-        const updated = await this.prisma.loanType.update({
+        const updated = await this.prismaMaster.loanType.update({
           where: { id: i.id },
           data: {
             name: i.name,
@@ -297,10 +300,10 @@ export class LoanTypeService {
     if (!ids?.length)
       return { status: false, message: 'No loan types to delete' };
     try {
-      const existing = await this.prisma.loanType.findMany({
+      const existing = await this.prismaMaster.loanType.findMany({
         where: { id: { in: ids } },
       });
-      const result = await this.prisma.loanType.deleteMany({
+      const result = await this.prismaMaster.loanType.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

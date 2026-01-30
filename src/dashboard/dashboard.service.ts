@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class DashboardService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
+  ) { }
 
   async getDashboardStats() {
+    this.prisma.ensureTenantContext();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -62,7 +67,7 @@ export class DashboardService {
 
     // Enrich department names (this might need a separate query or include if possible, but groupBy doesn't support include)
     // We'll fetch all departments to map names
-    const departments = await this.prisma.department.findMany({
+    const departments = await this.prismaMaster.department.findMany({
       select: { id: true, name: true },
     });
 
@@ -88,6 +93,7 @@ export class DashboardService {
   }
 
   async getEmployeeDashboardStats(userId: string) {
+    this.prisma.ensureTenantContext();
     console.log(`[Dashboard] Fetching stats for userId: ${userId}`);
 
     let employee = await this.prisma.employee.findUnique({
@@ -101,12 +107,14 @@ export class DashboardService {
       );
 
       try {
-        const user = await this.prisma.user.findUnique({
+        const user = await this.prismaMaster.user.findUnique({
           where: { id: userId },
         });
 
         if (user && user.email) {
-          console.log(`[Dashboard] Checking for employee with email: ${user.email}`);
+          console.log(
+            `[Dashboard] Checking for employee with email: ${user.email}`,
+          );
           const matchedEmployee = await this.prisma.employee.findFirst({
             where: {
               OR: [
@@ -137,11 +145,15 @@ export class DashboardService {
               );
             }
           } else {
-            console.log(`[Dashboard] No employee matched with email: ${user.email}`);
+            console.log(
+              `[Dashboard] No employee matched with email: ${user.email}`,
+            );
 
             // Fallback: Try matching by Phone Number
             if (user.phone) {
-              console.log(`[Dashboard] Email match failed. Checking by Phone: ${user.phone}`);
+              console.log(
+                `[Dashboard] Email match failed. Checking by Phone: ${user.phone}`,
+              );
               const matchedByPhone = await this.prisma.employee.findFirst({
                 where: {
                   contactNumber: user.phone,
@@ -149,7 +161,10 @@ export class DashboardService {
               });
 
               if (matchedByPhone) {
-                if (!matchedByPhone.userId || matchedByPhone.userId === userId) {
+                if (
+                  !matchedByPhone.userId ||
+                  matchedByPhone.userId === userId
+                ) {
                   console.log(
                     `[Dashboard] Found matching employee by Phone: ${matchedByPhone.employeeName}. Linking now...`,
                   );
@@ -158,10 +173,14 @@ export class DashboardService {
                     data: { userId: user.id },
                   });
                 } else {
-                  console.warn(`[Dashboard] Employee matched by phone (${matchedByPhone.employeeName}) is already linked to another user.`);
+                  console.warn(
+                    `[Dashboard] Employee matched by phone (${matchedByPhone.employeeName}) is already linked to another user.`,
+                  );
                 }
               } else {
-                console.log(`[Dashboard] No employee matched with phone: ${user.phone}`);
+                console.log(
+                  `[Dashboard] No employee matched with phone: ${user.phone}`,
+                );
               }
             } else {
               console.log(`[Dashboard] User has no phone number to match.`);
@@ -258,7 +277,7 @@ export class DashboardService {
       });
 
     // 3. Upcoming Holidays
-    const upcomingHoliday = await this.prisma.holiday.findFirst({
+    const upcomingHoliday = await this.prismaMaster.holiday.findFirst({
       where: {
         dateFrom: {
           gte: today,

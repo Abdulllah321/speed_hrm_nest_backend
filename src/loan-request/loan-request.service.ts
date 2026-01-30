@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import {
   CreateLoanRequestDto,
@@ -11,6 +12,7 @@ import {
 export class LoanRequestService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -54,7 +56,7 @@ export class LoanRequestService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
+      const department = await this.prismaMaster.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -72,7 +74,7 @@ export class LoanRequestService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
+      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -109,6 +111,71 @@ export class LoanRequestService {
     return null;
   }
 
+  private async enrichSingleLoanRequest(loanRequest: any) {
+    if (!loanRequest) return null;
+
+    const [
+      loanType,
+      department,
+      subDepartment,
+      approvedBy,
+      createdBy,
+      updatedBy,
+    ] = await Promise.all([
+      loanRequest.loanTypeId
+        ? this.prismaMaster.loanType.findUnique({
+          where: { id: loanRequest.loanTypeId },
+          select: { id: true, name: true },
+        })
+        : null,
+      loanRequest.employee?.departmentId
+        ? this.prismaMaster.department.findUnique({
+          where: { id: loanRequest.employee.departmentId },
+          select: { id: true, name: true },
+        })
+        : null,
+      loanRequest.employee?.subDepartmentId
+        ? this.prismaMaster.subDepartment.findUnique({
+          where: { id: loanRequest.employee.subDepartmentId },
+          select: { id: true, name: true },
+        })
+        : null,
+      loanRequest.approvedById
+        ? this.prismaMaster.user.findUnique({
+          where: { id: loanRequest.approvedById },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+        : null,
+      loanRequest.createdById
+        ? this.prismaMaster.user.findUnique({
+          where: { id: loanRequest.createdById },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+        : null,
+      loanRequest.updatedById
+        ? this.prismaMaster.user.findUnique({
+          where: { id: loanRequest.updatedById },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+        : null,
+    ]);
+
+    return {
+      ...loanRequest,
+      loanType,
+      employee: loanRequest.employee
+        ? {
+          ...loanRequest.employee,
+          department,
+          subDepartment,
+        }
+        : null,
+      approvedBy,
+      createdBy,
+      updatedBy,
+    };
+  }
+
   async list(params?: {
     employeeId?: string;
     loanTypeId?: string;
@@ -118,6 +185,7 @@ export class LoanRequestService {
     repaymentStartMonthYear?: string;
   }, user?: any) {
     try {
+
       const where: any = {};
 
       // If user is not admin, they only see their own requests
@@ -158,48 +226,8 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          loanType: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -208,32 +236,101 @@ export class LoanRequestService {
         },
       });
 
-      // Calculate paid amount for each loan request
-      const data = await Promise.all(
-        loanRequests.map(async (loan) => {
-          // Fetch total loan deductions for this employee from confirmed payrolls
-          const payrollDetails = await this.prisma.payrollDetail.aggregate({
+      if (loanRequests.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Collect all IDs for bulk fetching from Master DB
+      const loanTypeIds = [
+        ...new Set(loanRequests.map((lr) => lr.loanTypeId).filter(Boolean)),
+      ] as string[];
+      const deptIds = [
+        ...new Set(
+          loanRequests.map((lr) => lr.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(
+          loanRequests
+            .map((lr) => lr.employee?.subDepartmentId)
+            .filter(Boolean),
+        ),
+      ] as string[];
+      const userIds = [
+        ...new Set(
+          [
+            ...loanRequests.map((lr) => lr.approval1),
+            ...loanRequests.map((lr) => lr.approval2),
+            ...loanRequests.map((lr) => lr.approvedById),
+            ...loanRequests.map((lr) => lr.createdById),
+            ...loanRequests.map((lr) => lr.updatedById),
+          ].filter(Boolean),
+        ),
+      ] as string[];
+      const employeeIds = [...new Set(loanRequests.map((lr) => lr.employeeId))];
+
+      // Fetch all required data in parallel
+      const [loanTypes, departments, subDepartments, users, payrollAggregates] =
+        await Promise.all([
+          this.prismaMaster.loanType.findMany({
+            where: { id: { in: loanTypeIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.department.findMany({
+            where: { id: { in: deptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.subDepartment.findMany({
+            where: { id: { in: subDeptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.user.findMany({
+            where: { id: { in: userIds as string[] } },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          }),
+          this.prisma.payrollDetail.groupBy({
+            by: ['employeeId'],
             where: {
-              employeeId: loan.employeeId,
-              payroll: {
-                status: 'confirmed',
-              },
+              employeeId: { in: employeeIds },
+              payroll: { status: 'confirmed' },
             },
             _sum: {
               loanDeduction: true,
             },
-          });
+          }),
+        ]);
 
-          const paidAmount = payrollDetails._sum.loanDeduction
-            ? Number(payrollDetails._sum.loanDeduction.toString())
-            : 0;
-
-          return {
-            ...loan,
-            paidAmount,
-          };
-        }),
+      // Create maps for efficient lookups
+      const loanTypeMap = new Map(loanTypes.map((t) => [t.id, t]));
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const paidAmountMap = new Map(
+        payrollAggregates.map((pa) => [
+          pa.employeeId,
+          Number(pa._sum.loanDeduction || 0),
+        ]),
       );
+
+      const data = loanRequests.map((loan) => {
+        const lr = loan as any;
+        return {
+          ...lr,
+          loanType: loanTypeMap.get(lr.loanTypeId) || null,
+          employee: lr.employee
+            ? {
+              ...lr.employee,
+              department: deptMap.get(lr.employee.departmentId) || null,
+              subDepartment:
+                subDeptMap.get(lr.employee.subDepartmentId) || null,
+            }
+            : null,
+          approvedBy: userMap.get(lr.approvedById) || null,
+          createdBy: userMap.get(lr.createdById) || null,
+          updatedBy: userMap.get(lr.updatedById) || null,
+          paidAmount: paidAmountMap.get(lr.employeeId) || 0,
+        };
+      });
 
       return { status: true, data };
     } catch (error) {
@@ -250,6 +347,7 @@ export class LoanRequestService {
 
   async get(id: string) {
     try {
+
       const loanRequest = await this.prisma.loanRequest.findUnique({
         where: { id },
         include: {
@@ -258,48 +356,8 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          loanType: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -309,7 +367,84 @@ export class LoanRequestService {
         return { status: false, message: 'Loan request not found' };
       }
 
-      return { status: true, data: loanRequest };
+      // Fetch Master data
+      const [
+        loanType,
+        department,
+        subDepartment,
+        approvedBy,
+        createdBy,
+        updatedBy,
+      ] = await Promise.all([
+        loanRequest.loanTypeId
+          ? this.prismaMaster.loanType.findUnique({
+            where: { id: loanRequest.loanTypeId },
+            select: { id: true, name: true },
+          })
+          : null,
+        loanRequest.employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: loanRequest.employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        loanRequest.employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: loanRequest.employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        loanRequest.approvedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: loanRequest.approvedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        loanRequest.createdById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: loanRequest.createdById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        loanRequest.updatedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: loanRequest.updatedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+      ]);
+
+      const enriched = {
+        ...loanRequest,
+        loanType,
+        employee: loanRequest.employee
+          ? {
+            ...loanRequest.employee,
+            department,
+            subDepartment,
+          }
+          : null,
+        approvedBy,
+        createdBy,
+        updatedBy,
+      };
+
+      return { status: true, data: enriched };
     } catch (error) {
       console.error('Error getting loan request:', error);
       return {
@@ -325,6 +460,7 @@ export class LoanRequestService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!body.loanRequests || body.loanRequests.length === 0) {
         return {
           status: false,
@@ -359,9 +495,9 @@ export class LoanRequestService {
       const employeeById = new Map(employees.map((e) => [e.id, e]));
 
       const loanTypeIds = body.loanRequests.map((l) => l.loanTypeId);
-      const loanTypes = await this.prisma.loanType.findMany({
+      const loanTypes = await this.prismaMaster.loanType.findMany({
         where: { id: { in: loanTypeIds }, status: 'active' },
-        select: { id: true },
+        select: { id: true, name: true },
       });
 
       if (loanTypes.length !== loanTypeIds.length) {
@@ -370,6 +506,7 @@ export class LoanRequestService {
           message: 'One or more loan types not found or inactive',
         };
       }
+      const loanTypeMap = new Map(loanTypes.map((lt) => [lt.id, lt]));
 
       const forwarding =
         await this.prisma.requestForwardingConfiguration.findUnique({
@@ -481,32 +618,8 @@ export class LoanRequestService {
                   id: true,
                   employeeId: true,
                   employeeName: true,
-                  department: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                  subDepartment: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                },
-              },
-              loanType: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              createdBy: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
+                  departmentId: true,
+                  subDepartmentId: true,
                 },
               },
             },
@@ -516,6 +629,50 @@ export class LoanRequestService {
 
         return createdLoanRequests;
       });
+
+      // Enrich result with Master data
+      const enrichedResult = await Promise.all(
+        result.map(async (lr) => {
+          const [department, subDepartment, createdBy] = await Promise.all([
+            lr.employee?.departmentId
+              ? this.prismaMaster.department.findUnique({
+                where: { id: lr.employee.departmentId },
+                select: { id: true, name: true },
+              })
+              : null,
+            lr.employee?.subDepartmentId
+              ? this.prismaMaster.subDepartment.findUnique({
+                where: { id: lr.employee.subDepartmentId },
+                select: { id: true, name: true },
+              })
+              : null,
+            lr.createdById
+              ? this.prismaMaster.user.findUnique({
+                where: { id: lr.createdById },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              })
+              : null,
+          ]);
+
+          return {
+            ...lr,
+            loanType: loanTypeMap.get(lr.loanTypeId) || null,
+            employee: lr.employee
+              ? {
+                ...lr.employee,
+                department,
+                subDepartment,
+              }
+              : null,
+            createdBy,
+          };
+        }),
+      );
 
       // Log activity
       if (Array.isArray(result) && result.length > 0 && ctx.userId) {
@@ -534,7 +691,7 @@ export class LoanRequestService {
 
       return {
         status: true,
-        data: result.length === 1 ? result[0] : result,
+        data: enrichedResult.length === 1 ? enrichedResult[0] : enrichedResult,
         message: 'Loan request created successfully',
       };
     } catch (error) {
@@ -555,6 +712,7 @@ export class LoanRequestService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.loanRequest.findUnique({
         where: { id },
       });
@@ -569,7 +727,7 @@ export class LoanRequestService {
 
       if (body.loanTypeId !== undefined) {
         // Validate loan type exists
-        const loanType = await this.prisma.loanType.findUnique({
+        const loanType = await this.prismaMaster.loanType.findUnique({
           where: { id: body.loanTypeId },
         });
         if (!loanType || loanType.status !== 'active') {
@@ -624,52 +782,89 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          loanType: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          approvedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
       });
+
+      // Fetch Master data for enrichment
+      const [
+        loanType,
+        department,
+        subDepartment,
+        approvedBy,
+        createdBy,
+        updatedBy,
+      ] = await Promise.all([
+        updated.loanTypeId
+          ? this.prismaMaster.loanType.findUnique({
+            where: { id: updated.loanTypeId },
+            select: { id: true, name: true },
+          })
+          : null,
+        updated.employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+            where: { id: updated.employee.departmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        updated.employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+            where: { id: updated.employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
+          : null,
+        updated.approvedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: updated.approvedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        updated.createdById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: updated.createdById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+        updated.updatedById
+          ? this.prismaMaster.user.findUnique({
+            where: { id: updated.updatedById },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          })
+          : null,
+      ]);
+
+      const enriched = {
+        ...updated,
+        loanType,
+        employee: updated.employee
+          ? {
+            ...updated.employee,
+            department,
+            subDepartment,
+          }
+          : null,
+        approvedBy,
+        createdBy,
+        updatedBy,
+      };
 
       // Log activity
       if (ctx.userId) {
@@ -688,7 +883,7 @@ export class LoanRequestService {
 
       return {
         status: true,
-        data: updated,
+        data: enriched,
         message: 'Loan request updated successfully',
       };
     } catch (error) {
@@ -726,6 +921,7 @@ export class LoanRequestService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -738,12 +934,9 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-            },
-          },
-          loanType: {
-            select: {
-              id: true,
-              name: true,
+              departmentId: true,
+              subDepartmentId: true,
+              reportingManager: true,
             },
           },
         },
@@ -800,32 +993,8 @@ export class LoanRequestService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
-                department: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                subDepartment: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-            loanType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            approvedBy: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -843,9 +1012,11 @@ export class LoanRequestService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLoanRequest(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Loan request approved successfully',
         };
       }
@@ -889,32 +1060,8 @@ export class LoanRequestService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
-                department: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                subDepartment: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-            loanType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            approvedBy: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -932,9 +1079,11 @@ export class LoanRequestService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLoanRequest(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Loan request approved successfully',
         };
       }
@@ -959,6 +1108,7 @@ export class LoanRequestService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -971,12 +1121,6 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
-            },
-          },
-          loanType: {
-            select: {
-              id: true,
-              name: true,
             },
           },
         },
@@ -1028,32 +1172,8 @@ export class LoanRequestService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
-                department: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                subDepartment: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-            loanType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            approvedBy: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -1071,9 +1191,11 @@ export class LoanRequestService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLoanRequest(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Loan request rejected successfully',
         };
       }
@@ -1118,32 +1240,8 @@ export class LoanRequestService {
                 id: true,
                 employeeId: true,
                 employeeName: true,
-                department: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                subDepartment: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-            loanType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            approvedBy: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
+                departmentId: true,
+                subDepartmentId: true,
               },
             },
           },
@@ -1161,9 +1259,11 @@ export class LoanRequestService {
           status: 'success',
         });
 
+        const enriched = await this.enrichSingleLoanRequest(updated);
+
         return {
           status: true,
-          data: updated,
+          data: enriched,
           message: 'Loan request rejected successfully',
         };
       }

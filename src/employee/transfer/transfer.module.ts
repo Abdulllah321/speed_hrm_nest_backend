@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TransferService } from './transfer.service';
 import { TransferController } from './transfer.controller';
-import { PrismaModule } from '../../prisma/prisma.module';
+import { DatabaseModule } from '../../database/database.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [TransferController],
-    providers: [TransferService],
+  imports: [DatabaseModule],
+  controllers: [TransferController],
+  providers: [TransferService],
 })
-export class TransferModule { }
+export class TransferModule {}

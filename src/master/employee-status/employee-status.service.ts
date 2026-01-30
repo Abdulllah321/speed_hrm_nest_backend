@@ -1,19 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class EmployeeStatusService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prismaMaster: PrismaMasterService) {}
 
   async list() {
-    const items = await this.prisma.employeeStatus.findMany({
+    const items = await this.prismaMaster.employeeStatus.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.employeeStatus.findUnique({ where: { id } });
+    const item = await this.prismaMaster.employeeStatus.findUnique({
+      where: { id },
+    });
     if (!item) return { status: false, message: 'Status not found' };
     return { status: true, data: item };
   }
@@ -23,7 +25,7 @@ export class EmployeeStatusService {
       if (!data.status) {
         return { status: false, message: 'Status name is required' };
       }
-      const item = await this.prisma.employeeStatus.create({
+      const item = await this.prismaMaster.employeeStatus.create({
         data: {
           status: data.status,
           statusType: data.statusType || 'Active',
@@ -45,7 +47,7 @@ export class EmployeeStatusService {
 
   async update(id: string, data: { status?: string; statusType?: string }) {
     try {
-      const item = await this.prisma.employeeStatus.update({
+      const item = await this.prismaMaster.employeeStatus.update({
         where: { id },
         data,
       });
@@ -65,7 +67,7 @@ export class EmployeeStatusService {
 
   async delete(id: string) {
     try {
-      await this.prisma.employeeStatus.delete({ where: { id } });
+      await this.prismaMaster.employeeStatus.delete({ where: { id } });
       return { status: true, message: 'Employee status deleted successfully' };
     } catch (error) {
       return {
@@ -89,7 +91,7 @@ export class EmployeeStatusService {
         return { status: false, message: 'No valid data provided' };
       }
 
-      await this.prisma.employeeStatus.createMany({
+      await this.prismaMaster.employeeStatus.createMany({
         data: validData,
         skipDuplicates: true,
       });

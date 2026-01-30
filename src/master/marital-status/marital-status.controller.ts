@@ -27,7 +27,7 @@ import {
 @ApiTags('Marital Status')
 @Controller('api')
 export class MaritalStatusController {
-  constructor(private service: MaritalStatusService) {}
+  constructor(private service: MaritalStatusService) { }
 
   @Get('marital-statuses')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.read'))

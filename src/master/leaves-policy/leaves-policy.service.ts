@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class LeavesPolicyService {
   constructor(
-    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
-    const items = await this.prisma.leavesPolicy.findMany({
+    const items = await this.prismaMaster.leavesPolicy.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         leaveTypes: {
@@ -33,7 +33,7 @@ export class LeavesPolicyService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.leavesPolicy.findUnique({
+    const item = await this.prismaMaster.leavesPolicy.findUnique({
       where: { id },
       include: {
         leaveTypes: {
@@ -74,13 +74,13 @@ export class LeavesPolicyService {
     try {
       // If setting as default, unset all other policies first
       if (body.isDefault) {
-        await this.prisma.leavesPolicy.updateMany({
+        await this.prismaMaster.leavesPolicy.updateMany({
           where: { isDefault: true },
           data: { isDefault: false },
         });
       }
 
-      const created = await this.prisma.leavesPolicy.create({
+      const created = await this.prismaMaster.leavesPolicy.create({
         data: {
           name: body.name,
           details: body.details ?? null,
@@ -99,7 +99,7 @@ export class LeavesPolicyService {
         },
       });
       if (body.leaveTypes?.length) {
-        await this.prisma.leavesPolicyLeaveType.createMany({
+        await this.prismaMaster.leavesPolicyLeaveType.createMany({
           data: body.leaveTypes.map((lt) => ({
             leavesPolicyId: created.id,
             leaveTypeId: lt.leaveTypeId,
@@ -109,16 +109,17 @@ export class LeavesPolicyService {
         });
       }
       // Fetch the created record with leaveTypes included
-      const createdWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
-        where: { id: created.id },
-        include: {
-          leaveTypes: {
-            include: {
-              leaveType: true,
+      const createdWithLeaveTypes =
+        await this.prismaMaster.leavesPolicy.findUnique({
+          where: { id: created.id },
+          include: {
+            leaveTypes: {
+              include: {
+                leaveType: true,
+              },
             },
           },
-        },
-      });
+        });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -136,13 +137,13 @@ export class LeavesPolicyService {
       // Transform the data to include leaveTypeName
       const transformedItem = createdWithLeaveTypes
         ? {
-            ...createdWithLeaveTypes,
-            leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
-              leaveTypeId: lt.leaveTypeId,
-              leaveTypeName: lt.leaveType.name,
-              numberOfLeaves: lt.numberOfLeaves,
-            })),
-          }
+          ...createdWithLeaveTypes,
+          leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
+            leaveTypeId: lt.leaveTypeId,
+            leaveTypeName: lt.leaveType.name,
+            numberOfLeaves: lt.numberOfLeaves,
+          })),
+        }
         : created;
 
       return {
@@ -177,7 +178,7 @@ export class LeavesPolicyService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const res = await this.prisma.leavesPolicy.createMany({
+      const res = await this.prismaMaster.leavesPolicy.createMany({
         data: items.map((i) => ({
           name: i.name,
           details: i.details ?? null,
@@ -240,7 +241,7 @@ export class LeavesPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
+      const existing = await this.prismaMaster.leavesPolicy.findUnique({
         where: { id },
         include: { leaveTypes: true },
       });
@@ -249,13 +250,13 @@ export class LeavesPolicyService {
 
       // If setting as default, unset all other policies first
       if (body.isDefault === true && !existing.isDefault) {
-        await this.prisma.leavesPolicy.updateMany({
+        await this.prismaMaster.leavesPolicy.updateMany({
           where: { isDefault: true },
           data: { isDefault: false },
         });
       }
 
-      const updated = await this.prisma.leavesPolicy.update({
+      const updated = await this.prismaMaster.leavesPolicy.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -278,11 +279,11 @@ export class LeavesPolicyService {
         },
       });
       if (body.leaveTypes) {
-        await this.prisma.leavesPolicyLeaveType.deleteMany({
+        await this.prismaMaster.leavesPolicyLeaveType.deleteMany({
           where: { leavesPolicyId: id },
         });
         if (body.leaveTypes.length) {
-          await this.prisma.leavesPolicyLeaveType.createMany({
+          await this.prismaMaster.leavesPolicyLeaveType.createMany({
             data: body.leaveTypes.map((lt) => ({
               leavesPolicyId: id,
               leaveTypeId: lt.leaveTypeId,
@@ -293,16 +294,17 @@ export class LeavesPolicyService {
         }
       }
       // Fetch the updated record with leaveTypes included
-      const updatedWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
-        where: { id },
-        include: {
-          leaveTypes: {
-            include: {
-              leaveType: true,
+      const updatedWithLeaveTypes =
+        await this.prismaMaster.leavesPolicy.findUnique({
+          where: { id },
+          include: {
+            leaveTypes: {
+              include: {
+                leaveType: true,
+              },
             },
           },
-        },
-      });
+        });
 
       await this.activityLogs.log({
         userId: ctx.userId,
@@ -321,13 +323,13 @@ export class LeavesPolicyService {
       // Transform the data to include leaveTypeName
       const transformedItem = updatedWithLeaveTypes
         ? {
-            ...updatedWithLeaveTypes,
-            leaveTypes: updatedWithLeaveTypes.leaveTypes.map((lt) => ({
-              leaveTypeId: lt.leaveTypeId,
-              leaveTypeName: lt.leaveType.name,
-              numberOfLeaves: lt.numberOfLeaves,
-            })),
-          }
+          ...updatedWithLeaveTypes,
+          leaveTypes: updatedWithLeaveTypes.leaveTypes.map((lt) => ({
+            leaveTypeId: lt.leaveTypeId,
+            leaveTypeName: lt.leaveType.name,
+            numberOfLeaves: lt.numberOfLeaves,
+          })),
+        }
         : updated;
 
       return {
@@ -362,12 +364,12 @@ export class LeavesPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
+      const existing = await this.prismaMaster.leavesPolicy.findUnique({
         where: { id },
       });
       if (!existing)
         return { status: false, message: 'Leaves policy not found' };
-      await this.prisma.leavesPolicy.delete({ where: { id } });
+      await this.prismaMaster.leavesPolicy.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -412,7 +414,9 @@ export class LeavesPolicyService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.leavesPolicy.deleteMany({ where: { id: { in: ids } } });
+      await this.prismaMaster.leavesPolicy.deleteMany({
+        where: { id: { in: ids } },
+      });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -456,7 +460,7 @@ export class LeavesPolicyService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const i of items) {
-        await this.prisma.leavesPolicy.update({
+        await this.prismaMaster.leavesPolicy.update({
           where: { id: i.id },
           data: {
             name: i.name,
@@ -507,7 +511,7 @@ export class LeavesPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
+      const existing = await this.prismaMaster.leavesPolicy.findUnique({
         where: { id },
       });
       if (!existing) {
@@ -515,13 +519,13 @@ export class LeavesPolicyService {
       }
 
       // Unset all other policies as default
-      await this.prisma.leavesPolicy.updateMany({
+      await this.prismaMaster.leavesPolicy.updateMany({
         where: { isDefault: true },
         data: { isDefault: false },
       });
 
       // Set this policy as default
-      const updated = await this.prisma.leavesPolicy.update({
+      const updated = await this.prismaMaster.leavesPolicy.update({
         where: { id },
         data: { isDefault: true },
       });

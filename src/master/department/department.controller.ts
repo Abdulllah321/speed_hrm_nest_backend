@@ -29,7 +29,7 @@ import {
 @ApiTags('Department')
 @Controller('api')
 export class DepartmentController {
-  constructor(private service: DepartmentService) {}
+  constructor(private service: DepartmentService) { }
 
   @Get('departments')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.department.read'))

@@ -21,7 +21,7 @@ import {
 @ApiTags('Employee Grade')
 @Controller('api')
 export class EmployeeGradeController {
-  constructor(private service: EmployeeGradeService) {}
+  constructor(private service: EmployeeGradeService) { }
 
   @Get('employee-grades')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.read'))

@@ -213,6 +213,11 @@ export class CreateSocialSecurityEmployerRegistrationDto {
   @IsOptional()
   @IsObject()
   documentUrls?: any;
+
+  @ApiProperty({ example: 'company-uuid' })
+  @IsNotEmpty()
+  @IsString()
+  companyId: string;
 }
 
 export class UpdateSocialSecurityEmployerRegistrationDto {
@@ -309,6 +314,11 @@ export class UpdateSocialSecurityEmployerRegistrationDto {
   @IsOptional()
   @IsObject()
   documentUrls?: any;
+
+  @ApiPropertyOptional({ example: 'company-uuid' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
 }
 
 // ========== Employee Registration DTOs ==========
@@ -412,6 +422,11 @@ export class CreateSocialSecurityEmployeeRegistrationDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiProperty({ example: 'company-uuid' })
+  @IsNotEmpty()
+  @IsString()
+  companyId: string;
 }
 
 export class UpdateSocialSecurityEmployeeRegistrationDto {
@@ -504,6 +519,11 @@ export class UpdateSocialSecurityEmployeeRegistrationDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 'company-uuid' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
 }
 
 // ========== Contribution DTOs ==========
@@ -613,6 +633,11 @@ export class CreateSocialSecurityContributionDto {
   @IsOptional()
   @IsString()
   payrollDetailId?: string;
+
+  @ApiProperty({ example: 'company-uuid' })
+  @IsNotEmpty()
+  @IsString()
+  companyId: string;
 }
 
 export class UpdateSocialSecurityContributionDto {
@@ -691,4 +716,9 @@ export class UpdateSocialSecurityContributionDto {
   @IsOptional()
   @IsString()
   payrollDetailId?: string;
+
+  @ApiPropertyOptional({ example: 'company-uuid' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
 }

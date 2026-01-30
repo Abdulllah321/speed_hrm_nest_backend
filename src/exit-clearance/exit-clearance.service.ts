@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class ExitClearanceService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) {}
 
@@ -15,10 +17,10 @@ export class ExitClearanceService {
     });
 
     // Fetch all departments and designations for mapping
-    const departments = await this.prisma.department.findMany({
+    const departments = await this.prismaMaster.department.findMany({
       include: { subDepartments: true },
     });
-    const designations = await this.prisma.designation.findMany();
+    const designations = await this.prismaMaster.designation.findMany();
 
     // Map IDs to names
     const mappedClearances = clearances.map((clearance) => {
@@ -50,7 +52,7 @@ export class ExitClearanceService {
 
     // Fetch department and designation for mapping
     const department = clearance.department
-      ? await this.prisma.department.findUnique({
+      ? await this.prismaMaster.department.findUnique({
           where: { id: clearance.department },
           include: { subDepartments: true },
         })
@@ -64,7 +66,7 @@ export class ExitClearanceService {
         : null;
 
     const designation = clearance.designation
-      ? await this.prisma.designation.findUnique({
+      ? await this.prismaMaster.designation.findUnique({
           where: { id: clearance.designation },
         })
       : null;

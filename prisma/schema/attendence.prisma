@@ -15,15 +15,14 @@ model Attendance {
   earlyLeaveMinutes Int?
   breakDuration     Int?
   notes             String?
-  approvedBy        String?
+  approvedBy        String? // Conceptual link to User.id in Master DB
   approvedAt        DateTime?
-  createdById       String?
-  updatedById       String?
+  createdById       String? // User.id in Master DB
+  updatedById       String? // User.id in Master DB
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-  createdBy         User?     @relation("AttendanceCreatedBy", fields: [createdById], references: [id])
-  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy         User?     @relation("AttendanceUpdatedBy", fields: [updatedById], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, date])
 }
@@ -32,28 +31,29 @@ model AttendanceRequestQuery {
   id                  String    @id @default(uuid())
   employeeId          String?
   employeeName        String?
-  department          String?
-  subDepartment       String?
+  department          String? // Denormalized or label
+  subDepartment       String? // Denormalized or label
   attendanceDate      DateTime
   clockInTimeRequest  String?
   clockOutTimeRequest String?
   breakIn             String?
   breakOut            String?
   query               String
-  approval1           String?
+  approval1           String? // User.id in Master DB
   approval1Status     String?
   approval1Date       DateTime?
-  approval2           String?
+  approval2           String? // User.id in Master DB
   approval2Status     String?
   approval2Date       DateTime?
   remarks             String?
   approvalStatus      String    @default("pending")
-  approvedBy          String?
+  approvedBy          String? // User.id in Master DB
   approvedAt          DateTime?
   rejectionReason     String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
-  employee            Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([approvalStatus])
@@ -63,28 +63,26 @@ model AttendanceRequestQuery {
 model LeaveApplication {
   id                  String    @id @default(uuid())
   employeeId          String
-  leaveTypeId         String
+  leaveTypeId         String // Refers to LeaveType in Master DB
   dayType             String    @default("fullDay")
   fromDate            DateTime
   toDate              DateTime
   reasonForLeave      String
   addressWhileOnLeave String
   status              String    @default("pending")
-  approval1           String?
+  approval1           String? // User.id in Master DB
   approval1Status     String?
   approval1Date       DateTime?
-  approval2           String?
+  approval2           String? // User.id in Master DB
   approval2Status     String?
   approval2Date       DateTime?
   remarks             String?
-  createdById         String?
-  updatedById         String?
+  createdById         String? // User.id in Master DB
+  updatedById         String? // User.id in Master DB
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
-  createdBy           User?     @relation("LeaveApplicationCreatedBy", fields: [createdById], references: [id])
-  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  leaveType           LeaveType @relation(fields: [leaveTypeId], references: [id])
-  updatedBy           User?     @relation("LeaveApplicationUpdatedBy", fields: [updatedById], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([leaveTypeId])
@@ -103,24 +101,23 @@ model AttendanceExemption {
   flagType        String
   exemptionType   String
   reason          String
-  approval1       String?
+  approval1       String? // User.id in Master DB
   approval1Status String?
   approval1Date   DateTime?
-  approval2       String?
+  approval2       String? // User.id in Master DB
   approval2Status String?
   approval2Date   DateTime?
   remarks         String?
   approvalStatus  String    @default("pending")
-  approvedBy      String?
+  approvedBy      String? // User.id in Master DB
   approvedAt      DateTime?
   rejectionReason String?
-  createdById     String?
-  updatedById     String?
+  createdById     String? // User.id in Master DB
+  updatedById     String? // User.id in Master DB
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  createdBy       User?     @relation("AttendanceExemptionCreatedBy", fields: [createdById], references: [id])
-  employee        Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  updatedBy       User?     @relation("AttendanceExemptionUpdatedBy", fields: [updatedById], references: [id])
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([approvalStatus])
@@ -128,18 +125,17 @@ model AttendanceExemption {
 }
 
 model WorkingHoursPolicyAssignment {
-  id                   String             @id @default(uuid())
+  id                   String   @id @default(uuid())
   employeeId           String
-  workingHoursPolicyId String
+  workingHoursPolicyId String // Refers to WorkingHoursPolicy in Master DB
   startDate            DateTime
   endDate              DateTime
   notes                String?
-  createdById          String?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  createdBy            User?              @relation("PolicyAssignmentCreatedBy", fields: [createdById], references: [id])
-  employee             Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  workingHoursPolicy   WorkingHoursPolicy @relation(fields: [workingHoursPolicyId], references: [id])
+  createdById          String? // User.id in Master DB
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([workingHoursPolicyId])

@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { TransferService } from './transfer.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -11,7 +19,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class TransferController {
-    constructor(private readonly transferService: TransferService) { }
+  constructor(private readonly transferService: TransferService) {}
 
     @Post('employee-transfer')
     @Permissions('hr.employee.transfer')

@@ -9,14 +9,16 @@ import {
   UpdateSubDepartmentDto,
   BulkUpdateDepartmentItemDto,
 } from './dto/department-dto';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class DepartmentService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) {}
+  ) { }
 
   async getAllDepartments() {
     const cacheKey = 'departments_all';
@@ -25,50 +27,120 @@ export class DepartmentService {
       return { status: true, data: cachedData };
     }
 
-    const departments = await this.prisma.department.findMany({
+    const departments = await this.prismaMaster.department.findMany({
       include: {
         subDepartments: true,
-        createdBy: { select: { firstName: true, lastName: true } },
-        head: { select: { id: true, employeeId: true, employeeName: true } },
         allocation: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
-    const data = departments.map((dept) => ({
-      ...dept,
-      createdBy: dept.createdBy
-        ? `${dept.createdBy.firstName} ${dept.createdBy.lastName || ''}`.trim()
-        : null,
-      headName: dept.head
-        ? `${dept.head.employeeName} (${dept.head.employeeId})`
-        : null,
-      allocationName: dept.allocation ? dept.allocation.name : null,
-    }));
+    // Fetch Master Users and Tenant Employees manually
+    const userIds = [
+      ...new Set(departments.map((d) => d.createdById).filter(Boolean)),
+    ];
+    const headIds = [
+      ...new Set([
+        ...departments.map((d) => d.headId).filter(Boolean),
+        ...departments
+          .flatMap((d) => d.subDepartments.map((sd) => sd.headId))
+          .filter(Boolean),
+      ]),
+    ];
+
+    this.prisma.ensureTenantContext();
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds as string[] } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const data = departments.map((dept) => {
+      const creator = dept.createdById ? userMap.get(dept.createdById) : null;
+      const head = dept.headId ? headMap.get(dept.headId) : null;
+
+      return {
+        ...dept,
+        createdBy: creator
+          ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+          : null,
+        headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+        allocationName: dept.allocation ? dept.allocation.name : null,
+        subDepartments: dept.subDepartments.map((sd) => {
+          const sdHead = sd.headId ? headMap.get(sd.headId) : null;
+          return {
+            ...sd,
+            headName: sdHead
+              ? `${sdHead.employeeName} (${sdHead.employeeId})`
+              : null,
+          };
+        }),
+      };
+    });
 
     await this.cacheManager.set(cacheKey, data, 3600000); // 1 hour TTL
     return { status: true, data };
   }
 
   async getDepartmentById(id: string) {
-    const department = await this.prisma.department.findUnique({
+    const department: any = await this.prismaMaster.department.findUnique({
       where: { id },
       include: {
         subDepartments: true,
-        createdBy: { select: { firstName: true, lastName: true } },
-        head: { select: { id: true, employeeId: true, employeeName: true } },
         allocation: { select: { id: true, name: true } },
       },
     });
     if (!department) return { status: false, message: 'Department not found' };
+
+    const userIds = [department.createdById].filter(Boolean) as string[];
+    const headIds = [
+      department.headId,
+      ...department.subDepartments.map((sd: any) => sd.headId),
+    ].filter(Boolean) as string[];
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const creator = department.createdById
+      ? userMap.get(department.createdById)
+      : null;
+    const head = department.headId ? headMap.get(department.headId) : null;
+
     const data = {
       ...department,
-      createdBy: department.createdBy
-        ? `${department.createdBy.firstName} ${department.createdBy.lastName || ''}`.trim()
+      createdBy: creator
+        ? `${creator.firstName} ${creator.lastName || ''}`.trim()
         : null,
-      headName: department.head
-        ? `${department.head.employeeName} (${department.head.employeeId})`
-        : null,
+      headName: head ? `${head.employeeName} (${head.employeeId})` : null,
       allocationName: department.allocation ? department.allocation.name : null,
+      subDepartments: department.subDepartments.map((sd: any) => {
+        const sdHead = sd.headId ? headMap.get(sd.headId) : null;
+        return {
+          ...sd,
+          headName: sdHead
+            ? `${sdHead.employeeName} (${sdHead.employeeId})`
+            : null,
+        };
+      }),
     };
     return { status: true, data };
   }
@@ -82,7 +154,7 @@ export class DepartmentService {
       // But for bulk insert efficiency createMany is better. However, createMany cannot set relations if they are not foreign keys directly.
       // Fortunately allocationId and headId are FKs on Department.
 
-      const departments = await this.prisma.department.createMany({
+      const departments = await this.prismaMaster.department.createMany({
         data: items.map((item) => ({
           name: item.name,
           allocationId: item.allocationId || null,
@@ -132,10 +204,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.department.findUnique({
+      const existing = await this.prismaMaster.department.findUnique({
         where: { id },
       });
-      const department = await this.prisma.department.update({
+      const department = await this.prismaMaster.department.update({
         where: { id },
         data: {
           name: updateDepartmentDto.name,
@@ -202,7 +274,7 @@ export class DepartmentService {
         if (!dto.id) {
           continue; // Skip items without ID (shouldn't happen due to filter, but defensive check)
         }
-        const department = await this.prisma.department.update({
+        const department = await this.prismaMaster.department.update({
           where: { id: dto.id },
           data: {
             name: dto.name,
@@ -255,7 +327,7 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const departments = await this.prisma.department.deleteMany({
+      const departments = await this.prismaMaster.department.deleteMany({
         where: { id: { in: departmentIds } },
       });
       await this.activityLogs.log({
@@ -301,10 +373,12 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.department.findUnique({
+      const existing = await this.prismaMaster.department.findUnique({
         where: { id },
       });
-      const department = await this.prisma.department.delete({ where: { id } });
+      const department = await this.prismaMaster.department.delete({
+        where: { id },
+      });
       await this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
@@ -355,24 +429,47 @@ export class DepartmentService {
       };
     }
 
-    const subDepartments = await this.prisma.subDepartment.findMany({
+    const subDepartments = await this.prismaMaster.subDepartment.findMany({
       include: {
         department: true,
-        createdBy: { select: { firstName: true, lastName: true } },
-        head: { select: { id: true, employeeId: true, employeeName: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
-    const data = subDepartments.map((sd) => ({
-      ...sd,
-      departmentName: sd.department.name,
-      createdBy: sd.createdBy
-        ? `${sd.createdBy.firstName} ${sd.createdBy.lastName || ''}`.trim()
-        : null,
-      headName: sd.head
-        ? `${sd.head.employeeName} (${sd.head.employeeId})`
-        : null,
-    }));
+
+    const userIds = [
+      ...new Set(subDepartments.map((sd) => sd.createdById).filter(Boolean)),
+    ];
+    const headIds = [
+      ...new Set(subDepartments.map((sd) => sd.headId).filter(Boolean)),
+    ];
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds as string[] } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const data = subDepartments.map((sd) => {
+      const creator = sd.createdById ? userMap.get(sd.createdById) : null;
+      const head = sd.headId ? headMap.get(sd.headId) : null;
+
+      return {
+        ...sd,
+        departmentName: sd.department.name,
+        createdBy: creator
+          ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+          : null,
+        headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+      };
+    });
 
     await this.cacheManager.set(cacheKey, data, 3600000);
     return {
@@ -383,25 +480,48 @@ export class DepartmentService {
   }
 
   async getSubDepartmentsByDepartment(departmentId: string) {
-    const subDepartments = await this.prisma.subDepartment.findMany({
+    const subDepartments = await this.prismaMaster.subDepartment.findMany({
       where: { departmentId },
       include: {
         department: true,
-        createdBy: { select: { firstName: true, lastName: true } },
-        head: { select: { id: true, employeeId: true, employeeName: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
-    const data = subDepartments.map((sd) => ({
-      ...sd,
-      departmentName: sd.department.name,
-      createdBy: sd.createdBy
-        ? `${sd.createdBy.firstName} ${sd.createdBy.lastName || ''}`.trim()
-        : null,
-      headName: sd.head
-        ? `${sd.head.employeeName} (${sd.head.employeeId})`
-        : null,
-    }));
+
+    const userIds = [
+      ...new Set(subDepartments.map((sd) => sd.createdById).filter(Boolean)),
+    ];
+    const headIds = [
+      ...new Set(subDepartments.map((sd) => sd.headId).filter(Boolean)),
+    ];
+
+    const [users, heads] = await Promise.all([
+      this.prismaMaster.user.findMany({
+        where: { id: { in: userIds as string[] } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: { id: { in: headIds as string[] } },
+        select: { id: true, employeeId: true, employeeName: true },
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const headMap = new Map(heads.map((h) => [h.id, h]));
+
+    const data = subDepartments.map((sd) => {
+      const creator = sd.createdById ? userMap.get(sd.createdById) : null;
+      const head = sd.headId ? headMap.get(sd.headId) : null;
+
+      return {
+        ...sd,
+        departmentName: sd.department.name,
+        createdBy: creator
+          ? `${creator.firstName} ${creator.lastName || ''}`.trim()
+          : null,
+        headName: head ? `${head.employeeName} (${head.employeeId})` : null,
+      };
+    });
     return {
       status: true,
       data,
@@ -414,7 +534,7 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const subDepartments = await this.prisma.subDepartment.createMany({
+      const subDepartments = await this.prismaMaster.subDepartment.createMany({
         data: createSubDepartmentDto.map((dto) => ({
           name: dto.name,
           departmentId: dto.departmentId,
@@ -484,7 +604,7 @@ export class DepartmentService {
         if (!dto.id) {
           continue; // Skip items without ID (shouldn't happen due to filter, but defensive check)
         }
-        const subDepartment = await this.prisma.subDepartment.update({
+        const subDepartment = await this.prismaMaster.subDepartment.update({
           where: { id: dto.id },
           data: {
             name: dto.name,
@@ -538,10 +658,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.subDepartment.findUnique({
+      const existing = await this.prismaMaster.subDepartment.findUnique({
         where: { id },
       });
-      const subDepartment = await this.prisma.subDepartment.update({
+      const subDepartment = await this.prismaMaster.subDepartment.update({
         where: { id },
         data: {
           name: updateSubDepartmentDto.name,
@@ -595,7 +715,7 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const subDepartments = await this.prisma.subDepartment.deleteMany({
+      const subDepartments = await this.prismaMaster.subDepartment.deleteMany({
         where: { id: { in: subDepartmentIds } },
       });
       await this.activityLogs.log({
@@ -642,10 +762,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.subDepartment.findUnique({
+      const existing = await this.prismaMaster.subDepartment.findUnique({
         where: { id },
       });
-      const subDepartment = await this.prisma.subDepartment.delete({
+      const subDepartment = await this.prismaMaster.subDepartment.delete({
         where: { id },
       });
       await this.activityLogs.log({

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import {
   BulkCreateIncrementDto,
@@ -10,11 +11,85 @@ import {
 export class IncrementService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
+
+  private async enrichSingleIncrement(increment: any) {
+    if (!increment) return null;
+
+    const [
+      grade,
+      designation,
+      department,
+      subDepartment,
+      createdBy,
+      updatedBy,
+    ] = await Promise.all([
+      increment.employeeGradeId
+        ? this.prismaMaster.employeeGrade.findUnique({
+          where: { id: increment.employeeGradeId },
+          select: { id: true, grade: true },
+        })
+        : null,
+      increment.designationId
+        ? this.prismaMaster.designation.findUnique({
+          where: { id: increment.designationId },
+          select: { id: true, name: true },
+        })
+        : null,
+      increment.employee?.departmentId
+        ? this.prismaMaster.department.findUnique({
+          where: { id: increment.employee.departmentId },
+          select: { id: true, name: true },
+        })
+        : null,
+      increment.employee?.subDepartmentId
+        ? this.prismaMaster.subDepartment.findUnique({
+          where: { id: increment.employee.subDepartmentId },
+          select: { id: true, name: true },
+        })
+        : null,
+      increment.createdById
+        ? this.prismaMaster.user.findUnique({
+          where: { id: increment.createdById },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+        : null,
+      increment.updatedById
+        ? this.prismaMaster.user.findUnique({
+          where: { id: increment.updatedById },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+        : null,
+    ]);
+
+    return {
+      ...increment,
+      employeeName: increment.employee?.employeeName,
+      employeeCode: increment.employee?.employeeId,
+      employeeGradeName: grade?.grade,
+      designationName: designation?.name,
+      department: department?.name,
+      subDepartment: subDepartment?.name,
+      incrementAmount: increment.incrementAmount
+        ? Number(increment.incrementAmount)
+        : undefined,
+      incrementPercentage: increment.incrementPercentage
+        ? Number(increment.incrementPercentage)
+        : undefined,
+      salary: Number(increment.salary),
+      promotionDate: increment.promotionDate.toISOString(),
+      createdAt: increment.createdAt.toISOString(),
+      updatedAt: increment.updatedAt.toISOString(),
+      createdBy,
+      updatedBy,
+    };
+  }
 
   async list(params?: { employeeId?: string; month?: string; year?: string }) {
     try {
+
       const where: any = {};
 
       if (params?.employeeId) {
@@ -43,38 +118,8 @@ export class IncrementService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          employeeGrade: {
-            select: {
-              id: true,
-              grade: true,
-            },
-          },
-          designation: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -83,36 +128,116 @@ export class IncrementService {
         },
       });
 
+      if (increments.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Collect IDs for Master DB fetching
+      const employeeGradeIds = [
+        ...new Set(increments.map((i) => i.employeeGradeId).filter(Boolean)),
+      ] as string[];
+      const designationIds = [
+        ...new Set(increments.map((i) => i.designationId).filter(Boolean)),
+      ] as string[];
+      const departmentIds = [
+        ...new Set(
+          increments.map((i) => i.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const subDepartmentIds = [
+        ...new Set(
+          increments.map((i) => i.employee?.subDepartmentId).filter(Boolean),
+        ),
+      ] as string[];
+
+      // Fetch from Master DB
+      const [grades, designations, departments, subDepartments] =
+        await Promise.all([
+          employeeGradeIds.length
+            ? this.prismaMaster.employeeGrade.findMany({
+              where: { id: { in: employeeGradeIds } },
+              select: { id: true, grade: true },
+            })
+            : [],
+          designationIds.length
+            ? this.prismaMaster.designation.findMany({
+              where: { id: { in: designationIds } },
+              select: { id: true, name: true },
+            })
+            : [],
+          departmentIds.length
+            ? this.prismaMaster.department.findMany({
+              where: { id: { in: departmentIds } },
+              select: { id: true, name: true },
+            })
+            : [],
+          subDepartmentIds.length
+            ? this.prismaMaster.subDepartment.findMany({
+              where: { id: { in: subDepartmentIds } },
+              select: { id: true, name: true },
+            })
+            : [],
+        ]);
+
+      // Create lookup maps
+      const gradeMap = new Map<string, any>(
+        grades.map((g) => [g.id, g] as [string, any]),
+      );
+      const designationMap = new Map<string, any>(
+        designations.map((d) => [d.id, d] as [string, any]),
+      );
+      const departmentMap = new Map<string, any>(
+        departments.map((d) => [d.id, d] as [string, any]),
+      );
+      const subDepartmentMap = new Map<string, any>(
+        subDepartments.map((d) => [d.id, d] as [string, any]),
+      );
+
       // Transform data to match frontend expectations
-      const transformedData = increments.map((increment) => ({
-        id: increment.id,
-        employeeId: increment.employeeId,
-        employeeName: increment.employee.employeeName,
-        employeeCode: increment.employee.employeeId,
-        employeeGradeId: increment.employeeGradeId,
-        employeeGradeName: increment.employeeGrade?.grade,
-        designationId: increment.designationId,
-        designationName: increment.designation?.name,
-        department: increment.employee.department?.name,
-        subDepartment: increment.employee.subDepartment?.name,
-        incrementType: increment.incrementType,
-        incrementAmount: increment.incrementAmount
-          ? Number(increment.incrementAmount)
-          : undefined,
-        incrementPercentage: increment.incrementPercentage
-          ? Number(increment.incrementPercentage)
-          : undefined,
-        incrementMethod: increment.incrementMethod,
-        salary: Number(increment.salary),
-        promotionDate: increment.promotionDate.toISOString(),
-        currentMonth: increment.currentMonth,
-        monthsOfIncrement: increment.monthsOfIncrement,
-        notes: increment.notes,
-        status: increment.status,
-        createdById: increment.createdById,
-        createdAt: increment.createdAt.toISOString(),
-        updatedAt: increment.updatedAt.toISOString(),
-      }));
+      const transformedData = increments.map((increment) => {
+        const grade = increment.employeeGradeId
+          ? gradeMap.get(increment.employeeGradeId)
+          : null;
+        const designation = increment.designationId
+          ? designationMap.get(increment.designationId)
+          : null;
+        const dept = increment.employee?.departmentId
+          ? departmentMap.get(increment.employee.departmentId)
+          : null;
+        const subDept = increment.employee?.subDepartmentId
+          ? subDepartmentMap.get(increment.employee.subDepartmentId)
+          : null;
+
+        return {
+          id: increment.id,
+          employeeId: increment.employeeId,
+          employeeName: increment.employee?.employeeName,
+          employeeCode: increment.employee?.employeeId,
+          employeeGradeId: increment.employeeGradeId,
+          employeeGradeName: grade?.grade,
+          designationId: increment.designationId,
+          designationName: designation?.name,
+          department: dept?.name,
+          subDepartment: subDept?.name,
+          incrementType: increment.incrementType,
+          incrementAmount: increment.incrementAmount
+            ? Number(increment.incrementAmount)
+            : undefined,
+          incrementPercentage: increment.incrementPercentage
+            ? Number(increment.incrementPercentage)
+            : undefined,
+          incrementMethod: increment.incrementMethod,
+          salary: Number(increment.salary),
+          promotionDate: increment.promotionDate.toISOString(),
+          currentMonth: increment.currentMonth,
+          monthsOfIncrement: increment.monthsOfIncrement,
+          notes: increment.notes,
+          status: increment.status,
+          createdById: increment.createdById,
+          createdAt: increment.createdAt.toISOString(),
+          updatedAt: increment.updatedAt.toISOString(),
+        };
+      });
 
       return { status: true, data: transformedData };
     } catch (error) {
@@ -127,6 +252,7 @@ export class IncrementService {
 
   async get(id: string) {
     try {
+
       const increment = await this.prisma.increment.findUnique({
         where: { id },
         include: {
@@ -135,46 +261,8 @@ export class IncrementService {
               id: true,
               employeeId: true,
               employeeName: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          employeeGrade: {
-            select: {
-              id: true,
-              grade: true,
-            },
-          },
-          designation: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -184,35 +272,9 @@ export class IncrementService {
         return { status: false, message: 'Increment not found' };
       }
 
-      // Transform data to match frontend expectations
-      const transformedData = {
-        id: increment.id,
-        employeeId: increment.employeeId,
-        employeeName: increment.employee.employeeName,
-        employeeGradeId: increment.employeeGradeId,
-        employeeGradeName: increment.employeeGrade?.grade,
-        designationId: increment.designationId,
-        designationName: increment.designation?.name,
-        incrementType: increment.incrementType,
-        incrementAmount: increment.incrementAmount
-          ? Number(increment.incrementAmount)
-          : undefined,
-        incrementPercentage: increment.incrementPercentage
-          ? Number(increment.incrementPercentage)
-          : undefined,
-        incrementMethod: increment.incrementMethod,
-        salary: Number(increment.salary),
-        promotionDate: increment.promotionDate.toISOString(),
-        currentMonth: increment.currentMonth,
-        monthsOfIncrement: increment.monthsOfIncrement,
-        notes: increment.notes,
-        status: increment.status,
-        createdById: increment.createdById,
-        createdAt: increment.createdAt.toISOString(),
-        updatedAt: increment.updatedAt.toISOString(),
-      };
+      const enriched = await this.enrichSingleIncrement(increment);
 
-      return { status: true, data: transformedData };
+      return { status: true, data: enriched };
     } catch (error) {
       console.error('Error getting increment:', error);
       return {
@@ -228,6 +290,7 @@ export class IncrementService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       if (!body.increments || body.increments.length === 0) {
         return {
           status: false,
@@ -251,12 +314,13 @@ export class IncrementService {
         .map((i) => i.employeeGradeId)
         .filter((id): id is string => !!id);
       if (employeeGradeIds.length > 0) {
-        const employeeGrades = await this.prisma.employeeGrade.findMany({
-          where: { id: { in: employeeGradeIds }, status: 'active' },
+        const uniqueGradeIds = [...new Set(employeeGradeIds)];
+        const employeeGrades = await this.prismaMaster.employeeGrade.findMany({
+          where: { id: { in: uniqueGradeIds }, status: 'active' },
           select: { id: true },
         });
 
-        if (employeeGrades.length !== employeeGradeIds.length) {
+        if (employeeGrades.length !== uniqueGradeIds.length) {
           return {
             status: false,
             message: 'One or more employee grades not found or inactive',
@@ -269,12 +333,13 @@ export class IncrementService {
         .map((i) => i.designationId)
         .filter((id): id is string => !!id);
       if (designationIds.length > 0) {
-        const designations = await this.prisma.designation.findMany({
-          where: { id: { in: designationIds }, status: 'active' },
+        const uniqueDesignationIds = [...new Set(designationIds)];
+        const designations = await this.prismaMaster.designation.findMany({
+          where: { id: { in: uniqueDesignationIds }, status: 'active' },
           select: { id: true },
         });
 
-        if (designations.length !== designationIds.length) {
+        if (designations.length !== uniqueDesignationIds.length) {
           return {
             status: false,
             message: 'One or more designations not found or inactive',
@@ -310,12 +375,28 @@ export class IncrementService {
               status: 'active',
               createdById: ctx.userId,
             },
+            include: {
+              employee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  employeeName: true,
+                  departmentId: true,
+                  subDepartmentId: true,
+                },
+              },
+            },
           });
           createdIncrements.push(created);
         }
 
         return createdIncrements;
       });
+
+      // Enrich result with Master data
+      const enrichedResult = await Promise.all(
+        result.map((i) => this.enrichSingleIncrement(i)),
+      );
 
       // Log activity
       if (result.length > 0 && ctx.userId) {
@@ -333,34 +414,9 @@ export class IncrementService {
         });
       }
 
-      // Transform data
-      const transformedData = result.map((increment) => ({
-        id: increment.id,
-        employeeId: increment.employeeId,
-        employeeGradeId: increment.employeeGradeId,
-        designationId: increment.designationId,
-        incrementType: increment.incrementType,
-        incrementAmount: increment.incrementAmount
-          ? Number(increment.incrementAmount)
-          : undefined,
-        incrementPercentage: increment.incrementPercentage
-          ? Number(increment.incrementPercentage)
-          : undefined,
-        incrementMethod: increment.incrementMethod,
-        salary: Number(increment.salary),
-        promotionDate: increment.promotionDate.toISOString(),
-        currentMonth: increment.currentMonth,
-        monthsOfIncrement: increment.monthsOfIncrement,
-        notes: increment.notes,
-        status: increment.status,
-        createdById: increment.createdById,
-        createdAt: increment.createdAt.toISOString(),
-        updatedAt: increment.updatedAt.toISOString(),
-      }));
-
       return {
         status: true,
-        data: transformedData,
+        data: enrichedResult,
         message: `Successfully created ${result.length} increment(s)`,
       };
     } catch (error) {
@@ -381,6 +437,7 @@ export class IncrementService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.increment.findUnique({
         where: { id },
       });
@@ -394,7 +451,7 @@ export class IncrementService {
         body.employeeGradeId &&
         body.employeeGradeId !== existing.employeeGradeId
       ) {
-        const employeeGrade = await this.prisma.employeeGrade.findUnique({
+        const employeeGrade = await this.prismaMaster.employeeGrade.findUnique({
           where: { id: body.employeeGradeId },
           select: { id: true, status: true },
         });
@@ -409,7 +466,7 @@ export class IncrementService {
 
       // Validate designation if being updated
       if (body.designationId && body.designationId !== existing.designationId) {
-        const designation = await this.prisma.designation.findUnique({
+        const designation = await this.prismaMaster.designation.findUnique({
           where: { id: body.designationId },
           select: { id: true, status: true },
         });
@@ -453,18 +510,8 @@ export class IncrementService {
               id: true,
               employeeId: true,
               employeeName: true,
-            },
-          },
-          employeeGrade: {
-            select: {
-              id: true,
-              grade: true,
-            },
-          },
-          designation: {
-            select: {
-              id: true,
-              name: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -486,37 +533,11 @@ export class IncrementService {
         });
       }
 
-      // Transform data
-      const transformedData = {
-        id: updated.id,
-        employeeId: updated.employeeId,
-        employeeName: updated.employee.employeeName,
-        employeeGradeId: updated.employeeGradeId,
-        employeeGradeName: updated.employeeGrade?.grade,
-        designationId: updated.designationId,
-        designationName: updated.designation?.name,
-        incrementType: updated.incrementType,
-        incrementAmount: updated.incrementAmount
-          ? Number(updated.incrementAmount)
-          : undefined,
-        incrementPercentage: updated.incrementPercentage
-          ? Number(updated.incrementPercentage)
-          : undefined,
-        incrementMethod: updated.incrementMethod,
-        salary: Number(updated.salary),
-        promotionDate: updated.promotionDate.toISOString(),
-        currentMonth: updated.currentMonth,
-        monthsOfIncrement: updated.monthsOfIncrement,
-        notes: updated.notes,
-        status: updated.status,
-        createdById: updated.createdById,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-      };
+      const enriched = await this.enrichSingleIncrement(updated);
 
       return {
         status: true,
-        data: transformedData,
+        data: enriched,
         message: 'Increment updated successfully',
       };
     } catch (error) {
@@ -534,6 +555,7 @@ export class IncrementService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+
       const existing = await this.prisma.increment.findUnique({
         where: { id },
       });

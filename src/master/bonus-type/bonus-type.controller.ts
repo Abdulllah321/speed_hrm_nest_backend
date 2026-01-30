@@ -30,7 +30,7 @@ interface AuthenticatedRequest {
 @ApiTags('Bonus Type')
 @Controller('api')
 export class BonusTypeController {
-  constructor(private service: BonusTypeService) {}
+  constructor(private service: BonusTypeService) { }
 
   @Get('bonus-types')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.read'))

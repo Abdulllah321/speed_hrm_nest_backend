@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import {
   CreateBonusDto,
@@ -11,8 +12,71 @@ import {
 export class BonusService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) {}
+
+  private async enrichSingleBonus(bonus: any) {
+    if (!bonus) return null;
+
+    const [bonusType, department, subDepartment, createdBy, updatedBy] =
+      await Promise.all([
+        bonus.bonusTypeId
+          ? this.prismaMaster.bonusType.findUnique({
+              where: { id: bonus.bonusTypeId },
+              select: { id: true, name: true, calculationType: true },
+            })
+          : null,
+        bonus.employee?.departmentId
+          ? this.prismaMaster.department.findUnique({
+              where: { id: bonus.employee.departmentId },
+              select: { id: true, name: true },
+            })
+          : null,
+        bonus.employee?.subDepartmentId
+          ? this.prismaMaster.subDepartment.findUnique({
+              where: { id: bonus.employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
+          : null,
+        bonus.createdById
+          ? this.prismaMaster.user.findUnique({
+              where: { id: bonus.createdById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
+          : null,
+        bonus.updatedById
+          ? this.prismaMaster.user.findUnique({
+              where: { id: bonus.updatedById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
+          : null,
+      ]);
+
+    return {
+      ...bonus,
+      employee: bonus.employee
+        ? {
+            ...bonus.employee,
+            department,
+            subDepartment,
+          }
+        : null,
+      bonusType,
+      createdBy,
+      updatedBy,
+    };
+  }
 
   async list(params?: {
     employeeId?: string;
@@ -23,6 +87,7 @@ export class BonusService {
     status?: string;
   }) {
     try {
+      
       const where: any = {};
 
       if (params?.employeeId) {
@@ -60,33 +125,8 @@ export class BonusService {
               bankName: true,
               accountNumber: true,
               accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          bonusType: {
-            select: {
-              id: true,
-              name: true,
-              calculationType: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -95,7 +135,77 @@ export class BonusService {
         },
       });
 
-      return { status: true, data: bonuses };
+      if (bonuses.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // Collect Master IDs
+      const bonusTypeIds = [
+        ...new Set(bonuses.map((b) => b.bonusTypeId).filter(Boolean)),
+      ] as string[];
+      const deptIds = [
+        ...new Set(
+          bonuses.map((b) => b.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(
+          bonuses.map((b) => b.employee?.subDepartmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const userIds = [
+        ...new Set(
+          [
+            ...bonuses.map((b) => b.createdById),
+            ...bonuses.map((b) => b.updatedById),
+          ].filter(Boolean),
+        ),
+      ] as string[];
+
+      const [bonusTypes, departments, subDepartments, users] =
+        await Promise.all([
+          this.prismaMaster.bonusType.findMany({
+            where: { id: { in: bonusTypeIds } },
+            select: { id: true, name: true, calculationType: true },
+          }),
+          this.prismaMaster.department.findMany({
+            where: { id: { in: deptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.subDepartment.findMany({
+            where: { id: { in: subDeptIds } },
+            select: { id: true, name: true },
+          }),
+          this.prismaMaster.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          }),
+        ]);
+
+      const bonusTypeMap = new Map(bonusTypes.map((bt) => [bt.id, bt]));
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      const enriched = bonuses.map((b) => {
+        const bonus = b as any;
+        return {
+          ...bonus,
+          employee: bonus.employee
+            ? {
+                ...bonus.employee,
+                department: deptMap.get(bonus.employee.departmentId) || null,
+                subDepartment:
+                  subDeptMap.get(bonus.employee.subDepartmentId) || null,
+              }
+            : null,
+          bonusType: bonusTypeMap.get(bonus.bonusTypeId) || null,
+          createdBy: userMap.get(bonus.createdById) || null,
+          updatedBy: userMap.get(bonus.updatedById) || null,
+        };
+      });
+
+      return { status: true, data: enriched };
     } catch (error) {
       console.error('Error listing bonuses:', error);
       return {
@@ -108,6 +218,7 @@ export class BonusService {
 
   async get(id: string) {
     try {
+      
       const bonus = await this.prisma.bonus.findUnique({
         where: { id },
         include: {
@@ -119,41 +230,8 @@ export class BonusService {
               bankName: true,
               accountNumber: true,
               accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          bonusType: {
-            select: {
-              id: true,
-              name: true,
-              calculationType: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -163,7 +241,9 @@ export class BonusService {
         return { status: false, message: 'Bonus not found' };
       }
 
-      return { status: true, data: bonus };
+      const enriched = await this.enrichSingleBonus(bonus);
+
+      return { status: true, data: enriched };
     } catch (error) {
       console.error('Error getting bonus:', error);
       return {
@@ -178,6 +258,7 @@ export class BonusService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      
       if (!body.bonuses || body.bonuses.length === 0) {
         return {
           status: false,
@@ -196,8 +277,8 @@ export class BonusService {
         return { status: false, message: 'One or more employees not found' };
       }
 
-      // Validate bonus type exists
-      const bonusType = await this.prisma.bonusType.findUnique({
+      // Validate bonus type exists (IN MASTER DB)
+      const bonusType = await this.prismaMaster.bonusType.findUnique({
         where: { id: body.bonusTypeId },
       });
 
@@ -293,6 +374,17 @@ export class BonusService {
                 taxPercentage: bonusItem.taxPercentage ?? null,
                 updatedById: ctx.userId,
               },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    employeeId: true,
+                    employeeName: true,
+                    departmentId: true,
+                    subDepartmentId: true,
+                  },
+                },
+              },
             });
             createdBonuses.push(updated);
           } else {
@@ -317,6 +409,17 @@ export class BonusService {
                 status: 'active',
                 createdById: ctx.userId,
               },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    employeeId: true,
+                    employeeName: true,
+                    departmentId: true,
+                    subDepartmentId: true,
+                  },
+                },
+              },
             });
             createdBonuses.push(created);
           }
@@ -324,6 +427,11 @@ export class BonusService {
 
         return createdBonuses;
       });
+
+      // Enrich results with Master data
+      const enrichedResults = await Promise.all(
+        result.map((b) => this.enrichSingleBonus(b)),
+      );
 
       // Log activity
       if (result.length > 0 && ctx.userId) {
@@ -343,7 +451,7 @@ export class BonusService {
 
       return {
         status: true,
-        data: result,
+        data: enrichedResults,
         message: `Successfully created ${result.length} bonus(es)`,
       };
     } catch (error) {
@@ -369,6 +477,7 @@ export class BonusService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      
       const existing = await this.prisma.bonus.findUnique({
         where: { id },
       });
@@ -423,12 +532,8 @@ export class BonusService {
               id: true,
               employeeId: true,
               employeeName: true,
-            },
-          },
-          bonusType: {
-            select: {
-              id: true,
-              name: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -450,9 +555,11 @@ export class BonusService {
         });
       }
 
+      const enriched = await this.enrichSingleBonus(updated);
+
       return {
         status: true,
-        data: updated,
+        data: enriched,
         message: 'Bonus updated successfully',
       };
     } catch (error) {
@@ -470,6 +577,7 @@ export class BonusService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      
       const existing = await this.prisma.bonus.findUnique({
         where: { id },
       });
@@ -514,6 +622,7 @@ export class BonusService {
     bonusTypeId?: string;
   }) {
     try {
+      
       const where: any = {
         employeeId: { in: params.employeeIds },
       };
@@ -537,25 +646,8 @@ export class BonusService {
               bankName: true,
               accountNumber: true,
               accountTitle: true,
-              department: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              subDepartment: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          bonusType: {
-            select: {
-              id: true,
-              name: true,
-              calculationType: true,
+              departmentId: true,
+              subDepartmentId: true,
             },
           },
         },
@@ -564,13 +656,65 @@ export class BonusService {
         },
       });
 
-      // Group by employee
+      if (bonuses.length === 0) {
+        return { status: true, data: {} };
+      }
+
+      // Collect Master IDs
+      const bonusTypeIds = [
+        ...new Set(bonuses.map((b) => b.bonusTypeId).filter(Boolean)),
+      ] as string[];
+      const deptIds = [
+        ...new Set(
+          bonuses.map((b) => b.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(
+          bonuses.map((b) => b.employee?.subDepartmentId).filter(Boolean),
+        ),
+      ] as string[];
+
+      const [bonusTypes, departments, subDepartments] = await Promise.all([
+        this.prismaMaster.bonusType.findMany({
+          where: { id: { in: bonusTypeIds } },
+          select: { id: true, name: true, calculationType: true },
+        }),
+        this.prismaMaster.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
+        this.prismaMaster.subDepartment.findMany({
+          where: { id: { in: subDeptIds } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
+      const bonusTypeMap = new Map(bonusTypes.map((bt) => [bt.id, bt]));
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+
+      // Group by employee and enrich
       const groupedByEmployee: { [key: string]: any[] } = {};
-      bonuses.forEach((bonus) => {
+      bonuses.forEach((b) => {
+        const bonus = b as any;
+        const enriched = {
+          ...bonus,
+          employee: bonus.employee
+            ? {
+                ...bonus.employee,
+                department: deptMap.get(bonus.employee.departmentId) || null,
+                subDepartment:
+                  subDeptMap.get(bonus.employee.subDepartmentId) || null,
+              }
+            : null,
+          bonusType: bonusTypeMap.get(bonus.bonusTypeId) || null,
+        };
+
         if (!groupedByEmployee[bonus.employeeId]) {
           groupedByEmployee[bonus.employeeId] = [];
         }
-        groupedByEmployee[bonus.employeeId].push(bonus);
+        groupedByEmployee[bonus.employeeId].push(enriched);
       });
 
       return { status: true, data: groupedByEmployee };
