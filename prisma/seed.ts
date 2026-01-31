@@ -1,3 +1,4 @@
+// @ts-nocheck
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaClient as ManagementClient } from '@prisma/management-client';

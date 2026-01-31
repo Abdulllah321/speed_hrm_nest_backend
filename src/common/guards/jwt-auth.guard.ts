@@ -6,11 +6,11 @@ import {
 } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import authConfig from '../../config/auth.config';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaMasterService } from 'src/database/prisma-master.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prismaMaster: PrismaMasterService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
@@ -35,7 +35,7 @@ export class JwtAuthGuard implements CanActivate {
 
       // Fetch fresh permissions from DB
       // This solves the cookie size limit issue by keeping the JWT small
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prismaMaster.user.findUnique({
         where: { id: decoded.userId },
         select: {
           status: true,
