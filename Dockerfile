@@ -17,7 +17,7 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 RUN bun install
 
 # Generate Prisma client
-RUN bun x prisma generate --schema prisma/master/schema.prisma && npx prisma db push --schema prisma/master/schema.prisma --accept-data-loss --config prisma.master.config.ts
+RUN bunx prisma generate --schema prisma/master/schema.prisma && npx prisma db push --schema prisma/master/schema.prisma --accept-data-loss --config prisma.master.config.ts
 
 # Copy source code and build
 COPY . .
