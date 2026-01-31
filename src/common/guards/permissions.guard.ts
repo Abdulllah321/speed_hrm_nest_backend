@@ -9,7 +9,7 @@ import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {

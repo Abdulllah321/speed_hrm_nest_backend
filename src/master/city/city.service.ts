@@ -3,7 +3,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class CityService {

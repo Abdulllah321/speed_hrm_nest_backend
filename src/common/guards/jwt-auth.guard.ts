@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import authConfig from '../../config/auth.config';
-import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
