@@ -17,7 +17,7 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 RUN bun install
 
 # Generate Prisma client
-RUN bun run prisma:master:push
+RUN bun run prisma:master:generate
 
 # Copy source code and build
 COPY . .
