@@ -9,7 +9,7 @@ import {
   UpdateSubDepartmentDto,
   BulkUpdateDepartmentItemDto,
 } from './dto/department-dto';
-import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class DepartmentService {
