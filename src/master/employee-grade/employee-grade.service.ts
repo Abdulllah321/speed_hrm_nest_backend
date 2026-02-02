@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class EmployeeGradeService {
-  constructor(private prismaMaster: PrismaMasterService) {}
+  constructor(private prismaMaster: PrismaMasterService) { }
 
   async list() {
     const items = await this.prismaMaster.employeeGrade.findMany({

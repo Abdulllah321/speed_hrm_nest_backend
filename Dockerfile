@@ -9,6 +9,7 @@ COPY package.json bun.lock* ./
 # Copy prisma files and config
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
+COPY prisma.master.config.ts ./
 
 # Set dummy DATABASE_URL for build time (required by prisma.config.ts)
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
@@ -16,7 +17,7 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 RUN bun install
 
 # Generate Prisma client
-RUN bun run prisma:generate
+RUN bun run prisma:master:generate
 
 # Copy source code and build
 COPY . .
@@ -38,6 +39,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/prisma.master.config.ts ./
 COPY --from=builder /app/docker-entrypoint.sh ./
 
 # Other necessary# Other files

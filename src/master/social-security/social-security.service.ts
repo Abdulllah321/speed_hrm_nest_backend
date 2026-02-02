@@ -11,7 +11,7 @@ import {
   CreateSocialSecurityContributionDto,
   UpdateSocialSecurityContributionDto,
 } from './dto/social-security.dto';
-import { PrismaMasterService } from 'src/database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class SocialSecurityService {
