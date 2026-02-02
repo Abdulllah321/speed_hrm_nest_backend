@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { OvertimeRequestService } from './overtime-request.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import {
   CreateOvertimeRequestDto,
   UpdateOvertimeRequestDto,
@@ -26,13 +28,14 @@ import {
 } from '@nestjs/swagger';
 
 @ApiTags('Overtime Request')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class OvertimeRequestController {
   constructor(private service: OvertimeRequestService) {}
 
   @Get('overtime-requests')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.read')
   @ApiOperation({ summary: 'List overtime requests' })
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'overtimeType', required: false })
@@ -56,16 +59,14 @@ export class OvertimeRequestController {
   }
 
   @Get('overtime-requests/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.read')
   @ApiOperation({ summary: 'Get overtime request by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('overtime-requests')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.create')
   @ApiOperation({ summary: 'Create overtime request' })
   async create(@Body() body: CreateOvertimeRequestDto, @Req() req) {
     return this.service.create(body, {
@@ -76,8 +77,7 @@ export class OvertimeRequestController {
   }
 
   @Put('overtime-requests/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.update')
   @ApiOperation({ summary: 'Update overtime request' })
   async update(
     @Param('id') id: string,
@@ -92,8 +92,7 @@ export class OvertimeRequestController {
   }
 
   @Delete('overtime-requests/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.delete')
   @ApiOperation({ summary: 'Delete overtime request' })
   async remove(@Param('id') id: string, @Req() req) {
     return this.service.remove(id, {
@@ -104,8 +103,7 @@ export class OvertimeRequestController {
   }
 
   @Put('overtime-requests/:id/approve')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.approve')
   @ApiOperation({ summary: 'Approve overtime request' })
   async approve(@Param('id') id: string, @Req() req: any) {
     return this.service.approve(id, {
@@ -116,8 +114,7 @@ export class OvertimeRequestController {
   }
 
   @Put('overtime-requests/:id/approve-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.approve')
   @ApiOperation({ summary: 'Approve overtime request by approval level' })
   async approveLevel(
     @Param('id') id: string,
@@ -133,8 +130,7 @@ export class OvertimeRequestController {
   }
 
   @Put('overtime-requests/:id/reject')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.approve')
   @ApiOperation({ summary: 'Reject overtime request' })
   @ApiBody({
     schema: { type: 'object', properties: { remarks: { type: 'string' } } },
@@ -152,8 +148,7 @@ export class OvertimeRequestController {
   }
 
   @Put('overtime-requests/:id/reject-level/:level')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Permissions('hr.overtime-request.approve')
   @ApiOperation({ summary: 'Reject overtime request by approval level' })
   @ApiBody({
     schema: { type: 'object', properties: { remarks: { type: 'string' } } },
