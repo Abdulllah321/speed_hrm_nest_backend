@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaMasterService } from 'src/database/prisma-master.service';
@@ -15,7 +14,6 @@ import { PrismaMasterService } from 'src/database/prisma-master.service';
 export class PermissionsGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
-    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
