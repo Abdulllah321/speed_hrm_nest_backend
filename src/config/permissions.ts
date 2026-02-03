@@ -1,3 +1,5 @@
+import { hrtime } from "process";
+
 export const PERMISSIONS = [
   // ---- Master Module ----
   // Department
@@ -593,6 +595,7 @@ export const PERMISSIONS = [
     name:'hr.employee.user-account',
     description:'User Account'
   },
+ 
   {
     name:'hr.employee.update',
     description:'Update Employee'
@@ -646,6 +649,39 @@ export const PERMISSIONS = [
   {
     name:'hr.attendance.request-list',
     description:'Attendance Request List'
+  },
+  {
+    name:'hr.attendance.request-update',
+    description:'Update Attendance Request'
+  },
+  {
+    name:'hr.attendance.request-delete',
+    description:'Delete Attendance Request'
+  },
+  {
+    name: 'hr.attendance.request-approve',
+    description: 'Approve Attendance Request'
+  },
+  // Overtime Request
+  {
+    name: 'hr.overtime-request.read',
+    description: 'Read Overtime Request'
+  },
+  {
+    name: 'hr.overtime-request.create',
+    description: 'Create Overtime Request'
+  },
+  {
+    name: 'hr.overtime-request.update',
+    description: 'Update Overtime Request'
+  },
+  {
+    name: 'hr.overtime-request.delete',
+    description: 'Delete Overtime Request'
+  },
+  {
+    name: 'hr.overtime-request.approve',
+    description: 'Approve Overtime Request'
   },
   {
     name:'hr.attendance.exemptions',
@@ -757,27 +793,7 @@ export const PERMISSIONS = [
     name: 'hr.leave-encashment.approve',
     description: 'Approve Leave Encashment'
   },
-  // Attendance Request Query
-  {
-    name: 'hr.attendance-request-query.read',
-    description: 'Read Attendance Request Query'
-  },
-  {
-    name: 'hr.attendance-request-query.create',
-    description: 'Create Attendance Request Query'
-  },
-  {
-    name: 'hr.attendance-request-query.update',
-    description: 'Update Attendance Request Query'
-  },
-  {
-    name: 'hr.attendance-request-query.delete',
-    description: 'Delete Attendance Request Query'
-  },
-  {
-    name: 'hr.attendance-request-query.approve',
-    description: 'Approve Attendance Request Query'
-  },
+
   // Advance Salary
   {
     name: 'hr.advance-salary.read',
@@ -1013,5 +1029,127 @@ export const PERMISSIONS = [
   {
     name: 'hr.social-security.delete',
     description: 'Delete Employee Social Security'
+  },
+  // ---- ERP Finance & Accounts Module ----
+  // Chart of Account
+  {
+    name: 'erp.finance.chart-of-account.create',
+    module: 'erp.finance.chart-of-account',
+    action: 'create',
+    description: 'Create Chart of Account',
+  },
+  {
+    name: 'erp.finance.chart-of-account.read',
+    module: 'erp.finance.chart-of-account',
+    action: 'read',
+    description: 'Read Chart of Account',
+  },
+  {
+    name: 'erp.finance.chart-of-account.update',
+    module: 'erp.finance.chart-of-account',
+    action: 'update',
+    description: 'Update Chart of Account',
+  },
+  {
+    name: 'erp.finance.chart-of-account.delete',
+    module: 'erp.finance.chart-of-account',
+    action: 'delete',
+    description: 'Delete Chart of Account',
+  },
+
+  // Journal Voucher
+  {
+    name: 'erp.finance.journal-voucher.create',
+    module: 'erp.finance.journal-voucher',
+    action: 'create',
+    description: 'Create Journal Voucher',
+  },
+  {
+    name: 'erp.finance.journal-voucher.read',
+    module: 'erp.finance.journal-voucher',
+    action: 'read',
+    description: 'Read Journal Voucher',
+  },
+  {
+    name: 'erp.finance.journal-voucher.update',
+    module: 'erp.finance.journal-voucher',
+    action: 'update',
+    description: 'Update Journal Voucher',
+  },
+  {
+    name: 'erp.finance.journal-voucher.delete',
+    module: 'erp.finance.journal-voucher',
+    action: 'delete',
+    description: 'Delete Journal Voucher',
+  },
+  {
+    name: 'erp.finance.journal-voucher.approve',
+    module: 'erp.finance.journal-voucher',
+    action: 'approve',
+    description: 'Approve Journal Voucher',
+  },
+
+  // Payment Voucher
+  {
+    name: 'erp.finance.payment-voucher.create',
+    module: 'erp.finance.payment-voucher',
+    action: 'create',
+    description: 'Create Payment Voucher',
+  },
+  {
+    name: 'erp.finance.payment-voucher.read',
+    module: 'erp.finance.payment-voucher',
+    action: 'read',
+    description: 'Read Payment Voucher',
+  },
+  {
+    name: 'erp.finance.payment-voucher.update',
+    module: 'erp.finance.payment-voucher',
+    action: 'update',
+    description: 'Update Payment Voucher',
+  },
+  {
+    name: 'erp.finance.payment-voucher.delete',
+    module: 'erp.finance.payment-voucher',
+    action: 'delete',
+    description: 'Delete Payment Voucher',
+  },
+  {
+    name: 'erp.finance.payment-voucher.approve',
+    module: 'erp.finance.payment-voucher',
+    action: 'approve',
+    description: 'Approve Payment Voucher',
+  },
+
+  // Receipt Voucher
+  {
+    name: 'erp.finance.receipt-voucher.create',
+    module: 'erp.finance.receipt-voucher',
+    action: 'create',
+    description: 'Create Receipt Voucher',
+  },
+  {
+    name: 'erp.finance.receipt-voucher.read',
+    module: 'erp.finance.receipt-voucher',
+    action: 'read',
+    description: 'Read Receipt Voucher',
+  },
+  {
+    name: 'erp.finance.receipt-voucher.update',
+    module: 'erp.finance.receipt-voucher',
+    action: 'update',
+    description: 'Update Receipt Voucher',
+  },
+  {
+    name: 'erp.finance.receipt-voucher.delete',
+    module: 'erp.finance.receipt-voucher',
+    action: 'delete',
+    description: 'Delete Receipt Voucher',
+  },
+  {
+    name: 'erp.finance.receipt-voucher.approve',
+    module: 'erp.finance.receipt-voucher',
+    action: 'approve',
+    description: 'Approve Receipt Voucher',
   },
 ]

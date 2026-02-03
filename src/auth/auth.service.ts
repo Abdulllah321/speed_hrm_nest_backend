@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
@@ -22,10 +22,12 @@ function parseExpiryToMs(expiry: string) {
 
 @Injectable()
 export class AuthService {
-  constructor(
+
+constructor(
     private prismaMaster: PrismaMasterService,
     @Optional() private prismaTenant: PrismaService,
   ) { }
+
 
   async login(
     email: string,
@@ -334,10 +336,10 @@ export class AuthService {
         issuer: authConfig.jwt.issuer,
       };
       const newRefreshToken = jwt.sign(
-        { 
-          userId: user.id, 
+        {
+          userId: user.id,
           family,
-          jti: crypto.randomUUID() 
+          jti: crypto.randomUUID()
         },
         authConfig.jwt.refreshSecret,
         refreshOpts,

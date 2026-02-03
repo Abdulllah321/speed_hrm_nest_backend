@@ -60,10 +60,20 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('User not found or inactive');
       }
 
+      const permissions = user.role?.permissions.map((p) => p.permission.name) || [];
+      const roleName = user.role?.name?.toLowerCase();
+
+      // Super Admin and Admin bypass
+      if (roleName === 'super_admin' || roleName === 'admin') {
+        if (!permissions.includes('*')) {
+          permissions.push('*');
+        }
+      }
+
       req.user = {
         ...decoded,
         roleName: user.role?.name,
-        permissions: user.role?.permissions.map((p) => p.permission.name) || [],
+        permissions: permissions,
       };
       
       return true;

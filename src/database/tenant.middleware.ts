@@ -1,7 +1,7 @@
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { PrismaMasterService } from './prisma-master.service';
 import { PrismaService } from './prisma.service';
-import { Request, Response, NextFunction } from 'express';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import type { Company, Tenant } from '@prisma/management-client';
 
 interface TenantCacheEntry {
@@ -14,6 +14,15 @@ interface TenantCacheEntry {
 
 type CompanyWithTenant = Company & { tenant: Tenant };
 
+// Extend FastifyRequest to include tenant properties
+interface TenantRequest extends FastifyRequest {
+  tenantId?: string;
+  companyId?: string;
+  tenantDbName?: string;
+  tenantDbUrl?: string;
+  user?: any;
+}
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantMiddleware.name);
@@ -22,7 +31,7 @@ export class TenantMiddleware implements NestMiddleware {
 
   constructor(private readonly prismaMaster: PrismaMasterService) { }
 
-  async use(req: Request & any, res: Response, next: NextFunction) {
+  async use(req: TenantRequest, res: FastifyReply, next: () => void) {
     try {
       const tenantIdentifier = this.extractTenantIdentifier(req);
       const companyIdentifier = this.extractCompanyIdentifier(req);
@@ -141,7 +150,7 @@ export class TenantMiddleware implements NestMiddleware {
   /**
    * Attach tenant context to request object
    */
-  private attachTenantContext(req: any, context: TenantCacheEntry): void {
+  private attachTenantContext(req: TenantRequest, context: TenantCacheEntry): void {
     req.tenantId = context.tenantId;
     req.companyId = context.companyId;
     req.tenantDbName = context.dbName;
@@ -151,7 +160,7 @@ export class TenantMiddleware implements NestMiddleware {
   /**
    * Extract tenant identifier from request
    */
-  private extractTenantIdentifier(req: Request & any): string | null {
+  private extractTenantIdentifier(req: TenantRequest): string | null {
     // 1. Check header
     const headerTenantId = req.headers['x-tenant-id'] as string | undefined;
     if (headerTenantId) {
@@ -193,7 +202,7 @@ export class TenantMiddleware implements NestMiddleware {
   /**
    * Extract company identifier from request
    */
-  private extractCompanyIdentifier(req: Request & any): string | null {
+  private extractCompanyIdentifier(req: TenantRequest): string | null {
     // 1. Check header
     const headerCompanyId = req.headers['x-company-id'] as string | undefined;
     if (headerCompanyId) {
@@ -224,15 +233,15 @@ export class TenantMiddleware implements NestMiddleware {
   }
 
   /**
-   * Helper to get cookie value from request, handling both parsed and unparsed cookies
+   * Helper to get cookie value from Fastify request
    */
-  private getCookieValue(req: any, name: string): string | null {
-    // 1. Try pre-parsed cookies (works in route handlers)
+  private getCookieValue(req: TenantRequest, name: string): string | null {
+    // Fastify cookie parsing - check if @fastify/cookie is installed
     if (req.cookies && req.cookies[name]) {
       return req.cookies[name];
     }
 
-    // 2. Manual parse from header (reliable in middleware)
+    // Manual parse from header as fallback
     const cookieHeader = req.headers.cookie;
     if (cookieHeader) {
       const cookies = cookieHeader.split(';').reduce((acc, c) => {

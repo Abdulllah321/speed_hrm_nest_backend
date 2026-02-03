@@ -30,21 +30,21 @@ export class AttendanceRequestQueryController {
   constructor(private service: AttendanceRequestQueryService) {}
 
   @Get('attendance-request-queries')
-  @Permissions('hr.attendance-request-query.read')
+  @Permissions('hr.attendance.request-list')
   @ApiOperation({ summary: 'List attendance request queries' })
   async list() {
     return this.service.list();
   }
 
   @Get('attendance-request-queries/:id')
-  @Permissions('hr.attendance-request-query.read')
+  @Permissions('hr.attendance.request-list')
   @ApiOperation({ summary: 'Get attendance request query by id' })
   async get(@Param('id') id: string) {
     return this.service.get(id);
   }
 
   @Post('attendance-request-queries')
-  @Permissions('hr.attendance-request-query.create')
+  @Permissions('hr.attendance.request')
   @ApiOperation({ summary: 'Create attendance request query' })
   async create(@Body() body: CreateAttendanceRequestQueryDto, @Req() req: any) {
     return this.service.create(body, {
@@ -55,7 +55,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id')
-  @Permissions('hr.attendance-request-query.update')
+  @Permissions('hr.attendance.request-update')
   @ApiOperation({ summary: 'Update attendance request query' })
   async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     return this.service.update(id, body, {
@@ -66,7 +66,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/approve')
-  @Permissions('hr.attendance-request-query.approve')
+  @Permissions('hr.attendance.request-approve')
   @ApiOperation({ summary: 'Approve attendance request query' })
   async approve(@Param('id') id: string, @Req() req: any) {
     return this.service.approve(id, {
@@ -77,7 +77,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/approve-level/:level')
-  @Permissions('hr.attendance-request-query.approve')
+  @Permissions('hr.attendance.request-approve')
   @ApiOperation({
     summary: 'Approve attendance request query by approval level',
   })
@@ -95,7 +95,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/reject')
-  @Permissions('hr.attendance-request-query.approve')
+  @Permissions('hr.attendance.request-approve')
   @ApiOperation({ summary: 'Reject attendance request query' })
   @ApiBody({
     schema: {
@@ -118,7 +118,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Put('attendance-request-queries/:id/reject-level/:level')
-  @Permissions('hr.attendance-request-query.approve')
+  @Permissions('hr.attendance.request-approve')
   @ApiOperation({
     summary: 'Reject attendance request query by approval level',
   })
@@ -145,7 +145,7 @@ export class AttendanceRequestQueryController {
   }
 
   @Delete('attendance-request-queries/:id')
-  @Permissions('hr.attendance-request-query.delete')
+  @Permissions('hr.attendance.request-delete')
   @ApiOperation({ summary: 'Delete attendance request query' })
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.service.remove(id, {

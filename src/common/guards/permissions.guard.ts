@@ -68,7 +68,8 @@ export class PermissionsGuard implements CanActivate {
     }
 
     // Super Admin and Admin bypass
-    if (role.name === 'super_admin' || role.name === 'admin') {
+    const name = role.name.toLowerCase();
+    if (name === 'super_admin' || name === 'admin') {
       const allPermissions = ['*'];
       await this.cacheManager.set(cacheKey, allPermissions, 3600000);
       return allPermissions;
