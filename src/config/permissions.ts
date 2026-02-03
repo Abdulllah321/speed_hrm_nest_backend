@@ -751,6 +751,10 @@ export const PERMISSIONS = [
     name:'hr.leave.delete',
     description:'Delete Leave'
   },
+  {
+    name:'hr.leave.selectEmployee',
+    description:'Select Employee for Leave'
+  },
   // Loan Request
   {
     name: 'hr.loan-request.read',
