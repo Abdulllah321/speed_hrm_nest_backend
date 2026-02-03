@@ -1,34 +1,24 @@
---
--- PostgreSQL database cluster dump
---
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'speedlimit') THEN
+    CREATE ROLE speedlimit;
+  END IF;
+END
+$$;
+
+ALTER ROLE speedlimit
+  WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS
+  PASSWORD 'SCRAM-SHA-256$4096:0OrXNQGVLfOcRl6Y74Vylw==$zhE0bScjUDyPrvlFalpz6apVTaPKzM6nmkNxjamlJe0=:AeDj7du1O3JNGDNFhdA5en9l2/4DyBDwfNl66hfvfXY=';
 
 
-SET default_transaction_read_only = off;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'user_speed_sport_mkzblxzh') THEN
+    CREATE ROLE user_speed_sport_mkzblxzh;
+  END IF;
+END
+$$;
 
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-
---
--- Roles
---
-
-CREATE ROLE IF NOT EXISTS speedlimit;
-ALTER ROLE speedlimit WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:0OrXNQGVLfOcRl6Y74Vylw==$zhE0bScjUDyPrvlFalpz6apVTaPKzM6nmkNxjamlJe0=:AeDj7du1O3JNGDNFhdA5en9l2/4DyBDwfNl66hfvfXY=';
-CREATE ROLE IF NOT EXISTS user_speed_sport_mkzblxzh;
-ALTER ROLE user_speed_sport_mkzblxzh WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:kd/STQT50ZAsFwQqHnmJ0A==$cOrBuB6J1XDabnk0l1N/cbCREmlZydFcx7FhB5vCOrI=:XOI2/0wYANkvoQWvua4Cx857Bj8TW/mD2fXDZvMMufA=';
-
---
--- User Configurations
---
-
-
-
-
-
-
-\unrestrict ojlYljZFIg1dEjcI4fxeWcwAFkccbYsqfgEhkQQyUFf3ScGFKFFl1LnjKcdOrvU
-
---
--- PostgreSQL database cluster dump complete
---
-
+ALTER ROLE user_speed_sport_mkzblxzh
+  WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS
+  PASSWORD 'SCRAM-SHA-256$4096:kd/STQT50ZAsFwQqHnmJ0A==$cOrBuB6J1XDabnk0l1N/cbCREmlZydFcx7FhB5vCOrI=:XOI2/0wYANkvoQWvua4Cx857Bj8TW/mD2fXDZvMMufA=';
