@@ -18,9 +18,22 @@ interface TenantRequest extends Request {
 
 const poolCache = new Map<string, Pool>();
 const adapterCache = new Map<string, PrismaPg>();
-let staticDummyPool: Pool | null = null;
-let staticDummyAdapter: PrismaPg | null = null;
+let noop: PrismaPg | null = null; // Reusable no-op adapter
 const logger = new Logger('PrismaPoolCache');
+
+/**
+ * Create a no-op adapter that will error if actually used
+ * This allows PrismaClient to initialize without throwing during construction
+ */
+function createNoOpAdapter(): PrismaPg {
+  // Create a pool that cannot actually connect
+  // We'll only use this for initialization, not for actual queries
+  const noOpPool = new Pool({
+    max: 0, // No connections allowed
+  });
+
+  return new PrismaPg(noOpPool);
+}
 
 @Injectable({ scope: Scope.REQUEST })
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
@@ -35,20 +48,16 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
     const tenantDbUrl = request.tenantDbUrl || rawReq.tenantDbUrl;
     const tenantId = request.tenantId || rawReq.tenantId;
 
-    // If no tenant context, create/use a minimal dummy instance
-    // This happens during routes like /auth/login which don't have tenant context
+    // If no tenant context, create with a no-op adapter
+    // Any attempt to query will fail with a clear error message
     if (!tenantDbUrl || !tenantId) {
-      if (!staticDummyPool) {
-        logger.debug('Creating persistent dummy pool for context-less requests');
-        staticDummyPool = new Pool({
-          connectionString: 'postgresql://invalid:invalid@localhost:5432/invalid',
-          max: 1,
-        });
-        staticDummyAdapter = new PrismaPg(staticDummyPool);
+      if (!noop) {
+        noop = createNoOpAdapter();
       }
-
-      super({ adapter: staticDummyAdapter } as any);
+      
+      super({ adapter: noop } as any);
       this.isInitialized = false;
+      this.logger.debug('PrismaService created without tenant context - calls will fail with ensureTenantContext() check');
       return;
     }
 
@@ -121,7 +130,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   }
 
   static async cleanupAllPools(): Promise<void> {
-    logger.log(`Cleaning up ${poolCache.size} tenant connection pools and static resources...`);
+    logger.log(`Cleaning up ${poolCache.size} tenant connection pools...`);
 
     // Cleanup adapters first
     adapterCache.clear();
@@ -137,22 +146,22 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       }
     );
 
-    if (staticDummyPool) {
+    // Cleanup no-op pool if it exists
+    if (noop) {
       cleanupPromises.push((async () => {
         try {
-          await staticDummyPool!.end();
-          staticDummyPool = null;
-          staticDummyAdapter = null;
-          logger.debug('Closed static dummy pool');
+          // The no-op pool has max: 0, so there's nothing to clean
+          noop = null;
+          logger.debug('Cleaned up no-op adapter');
         } catch (error) {
-          logger.error('Error closing static dummy pool:', error);
+          logger.error('Error cleaning no-op adapter:', error);
         }
       })());
     }
 
     await Promise.all(cleanupPromises);
     poolCache.clear();
-    logger.log('All tenant pools and static resources cleaned up');
+    logger.log('All tenant pools and adapters cleaned up');
   }
 
   static getPoolStats(): { tenantId: string; totalCount: number; idleCount: number; waitingCount: number }[] {
