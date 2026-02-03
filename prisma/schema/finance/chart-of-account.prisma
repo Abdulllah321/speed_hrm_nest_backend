@@ -14,6 +14,12 @@ model ChartOfAccount {
   parent   ChartOfAccount?  @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
   children ChartOfAccount[] @relation("ChartOfAccountHierarchy")
 
+  journalVoucherDetails JournalVoucherDetail[]
+  paymentVoucherCredit  PaymentVoucher[]       @relation("CreditAccountRelation")
+  paymentVoucherDebit   PaymentVoucherDetail[]
+  receiptVoucherDebit   ReceiptVoucher[]       @relation("DebitAccountRelation")
+  receiptVoucherCredit  ReceiptVoucherDetail[]
+
   @@index([parentId])
   @@index([type])
 }

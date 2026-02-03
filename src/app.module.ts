@@ -59,6 +59,9 @@ import { PermissionModule } from './permission/permission.module';
 import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
+import { JournalVoucherModule } from './finance/journal-voucher/journal-voucher.module';
+import { PaymentVoucherModule } from './finance/payment-voucher/payment-voucher.module';
+import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.module';
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
@@ -132,6 +135,9 @@ import { CompanyModule } from './admin/company/company.module';
     RoleModule,
     PermissionModule,
     ChartOfAccountModule,
+    JournalVoucherModule,
+    PaymentVoucherModule,
+    ReceiptVoucherModule,
     TransferModule,
     CompanyModule,
   ],
