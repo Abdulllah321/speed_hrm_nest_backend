@@ -65,6 +65,12 @@ import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
+import { CompanyGroupModule } from './master/company-group/company-group.module';
+import { SalePoolModule } from './master/sale-pool/sale-pool.module';
+import { SaleTypeModule } from './master/sale-type/sale-type.module';
+import { SalesmanModule } from './master/salesman/salesman.module';
+import { StorageDimensionModule } from './master/storage-dimension/storage-dimension.module';
+import { MachineModule } from './master/machine/machine.module';
 
 @Module({
   imports: [
@@ -140,6 +146,12 @@ import { CompanyModule } from './admin/company/company.module';
     ReceiptVoucherModule,
     TransferModule,
     CompanyModule,
+    CompanyGroupModule,
+    SalePoolModule,
+    SaleTypeModule,
+    SalesmanModule,
+    StorageDimensionModule,
+    MachineModule,
   ],
   controllers: [AppController],
   providers: [AppService],
