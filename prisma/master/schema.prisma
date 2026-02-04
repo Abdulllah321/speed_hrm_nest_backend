@@ -285,6 +285,27 @@ model Designation {
   updatedAt   DateTime @updatedAt
 }
 
+model Category {
+  id            String    @id @default(uuid())
+  name          String
+  parentId      String?
+  accountHeadId String?   // Linked to ChartOfAccount.id in Tenant DB
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  parent        Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children      Category[] @relation("CategoryHierarchy")
+
+  @@index([parentId])
+}
+
+model Uom {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Allocation {
   id          String       @id @default(uuid())
   name        String       @unique
