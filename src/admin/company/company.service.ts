@@ -86,7 +86,11 @@ export class CompanyService {
    * 2. Run migrations on the tenant database
    * 3. Store the company record in master database
    */
-  async createCompany(input: { name: string; code: string }): Promise<{
+  async createCompany(input: {
+    name: string;
+    code: string;
+    externalId?: string; // DriveSafe dealer_id
+  }): Promise<{
     status: boolean;
     data?: CompanyResponse;
     message?: string;
@@ -113,9 +117,21 @@ export class CompanyService {
 
       // 1) Ensure a Tenant exists for this organization
       // For now, we use the same code for the tenant or find an existing one
-      let tenant = await this.prismaMaster.tenant.findUnique({
-        where: { code: input.code.toLowerCase().trim() },
-      });
+      let tenant;
+
+      // If externalId provided, check by that first
+      if (input.externalId) {
+        tenant = await this.prismaMaster.tenant.findUnique({
+          where: { externalId: input.externalId },
+        });
+      }
+
+      // If not found by externalId, try by code
+      if (!tenant) {
+        tenant = await this.prismaMaster.tenant.findUnique({
+          where: { code: input.code.toLowerCase().trim() },
+        });
+      }
 
       if (!tenant) {
         this.logger.log(`Creating new tenant for organization: ${input.name}`);
@@ -123,8 +139,15 @@ export class CompanyService {
           data: {
             name: input.name.trim(),
             code: input.code.toLowerCase().trim(),
+            externalId: input.externalId, // Store DriveSafe ID
             isActive: true,
           },
+        });
+      } else if (input.externalId && !tenant.externalId) {
+        // Link existing tenant to DriveSafe if not already linked
+        await this.prismaMaster.tenant.update({
+          where: { id: tenant.id },
+          data: { externalId: input.externalId },
         });
       }
 

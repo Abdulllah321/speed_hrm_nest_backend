@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import authConfig from '../config/auth.config';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { PrismaService } from '../database/prisma.service';
+import { CompanyService } from '../admin/company/company.service';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(\d+)([smhd])$/);
@@ -23,8 +24,9 @@ function parseExpiryToMs(expiry: string) {
 @Injectable()
 export class AuthService {
 
-constructor(
+  constructor(
     private prismaMaster: PrismaMasterService,
+    private companyService: CompanyService,
     @Optional() private prismaTenant: PrismaService,
   ) { }
 
@@ -279,6 +281,252 @@ constructor(
               department: departmentName,
             }
             : null,
+        },
+        accessToken,
+        refreshToken,
+      },
+    };
+  }
+
+  /**
+   * SSO Login via DriveSafe JWT token.
+   * Implements Just-in-Time (JIT) provisioning for tenants and users.
+   */
+  async ssoLogin(
+    token: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const logger = new Logger('AuthService.ssoLogin');
+
+    // Get the DriveSafe SSO secret from environment
+    const ssoSecret = process.env.DRIVESAFE_SSO_SECRET;
+    if (!ssoSecret) {
+      logger.error('DRIVESAFE_SSO_SECRET not configured');
+      return { status: false, message: 'SSO not configured' };
+    }
+
+    // Verify the JWT token
+    let payload: any;
+    try {
+      payload = jwt.verify(token, ssoSecret);
+    } catch (err: any) {
+      logger.warn(`Invalid SSO token: ${err.message}`);
+      return { status: false, message: 'Invalid or expired SSO token' };
+    }
+
+    // Extract required fields from payload
+    const {
+      dealer_id,
+      dealer_name,
+      user_id,
+      name,
+      email,
+      role: roleName,
+      aud,
+    } = payload;
+
+    // Validate audience if configured
+    const expectedAudience = process.env.DRIVESAFE_SSO_AUDIENCE || 'hrm';
+    if (aud && aud !== expectedAudience) {
+      logger.warn(`Invalid SSO audience: ${aud}`);
+      return { status: false, message: 'Invalid token audience' };
+    }
+
+    // Validate required fields
+    if (!dealer_id || !user_id || !email) {
+      logger.warn('Missing required fields in SSO payload');
+      return { status: false, message: 'Invalid SSO payload' };
+    }
+
+    // --- JIT Provisioning: Tenant ---
+    let tenant = await this.prismaMaster.tenant.findUnique({
+      where: { externalId: dealer_id },
+    });
+
+    if (!tenant) {
+      // Create new tenant & company (JIT) via CompanyService
+      const code = (dealer_name || dealer_id)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .substring(0, 32);
+
+      logger.log(`JIT: Provisioning new company for dealer_id: ${dealer_id}`);
+
+      const createResult = await this.companyService.createCompany({
+        name: dealer_name || `Dealer ${dealer_id}`,
+        code: `${code}-${Date.now().toString(36)}`, // Ensure uniqueness
+        externalId: dealer_id,
+      });
+
+      if (!createResult.status) {
+        logger.error(`JIT Provisioning failed: ${createResult.message}`);
+        return { status: false, message: 'Failed to provision account' };
+      }
+
+      // Re-fetch created tenant
+      tenant = await this.prismaMaster.tenant.findUnique({
+        where: { externalId: dealer_id },
+      });
+    }
+
+    if (!tenant || !tenant.isActive) {
+      logger.warn(`Tenant is inactive or missing: ${dealer_id}`);
+      return { status: false, message: 'Dealer account is inactive' };
+    }
+
+    // --- JIT Provisioning: User ---
+    let user = await this.prismaMaster.user.findUnique({
+      where: { externalId: user_id },
+      include: {
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
+    });
+
+    // Parse name into first/last
+    const nameParts = (name || email.split('@')[0]).split(' ');
+    const firstName = nameParts[0] || 'User';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Resolve role if provided
+    let roleRecord: any = null;
+    if (roleName) {
+      roleRecord = await this.prismaMaster.role.findFirst({
+        where: { name: { equals: roleName, mode: 'insensitive' } },
+      });
+    }
+
+    if (!user) {
+      // Create new user (JIT)
+      logger.log(`JIT: Creating new user for user_id: ${user_id}`);
+      user = await this.prismaMaster.user.create({
+        data: {
+          externalId: user_id,
+          email,
+          firstName,
+          lastName,
+          password: null, // SSO users have no password
+          authProvider: 'drivesafe_sso',
+          tenantId: tenant.id,
+          status: 'active',
+          roleId: roleRecord?.id,
+          isDashboardEnabled: true,
+          isFirstPassword: false,
+          mustChangePassword: false,
+        },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
+      });
+    } else {
+      // Update user info on each login (sync)
+      user = await this.prismaMaster.user.update({
+        where: { externalId: user_id },
+        data: {
+          email,
+          firstName,
+          lastName,
+          tenantId: tenant.id,
+          roleId: roleRecord?.id || user.roleId,
+          lastLoginAt: new Date(),
+          lastLoginIp: ipAddress,
+        },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
+      });
+    }
+
+    if (user.status !== 'active') {
+      logger.warn(`User is inactive: ${user_id}`);
+      return { status: false, message: 'User account is inactive' };
+    }
+
+    // --- Create HRM Session ---
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.accessExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        employeeId: user.employeeId,
+        tenantId: tenant.id,
+        roleName: user.role?.name || null,
+        authProvider: 'drivesafe_sso',
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    const family = crypto.randomUUID();
+    const refreshOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.refreshExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const refreshToken = jwt.sign(
+      { userId: user.id, family },
+      authConfig.jwt.refreshSecret,
+      refreshOpts,
+    );
+    const refreshTokenExpiryMs = parseExpiryToMs(
+      authConfig.jwt.refreshExpiresIn,
+    );
+
+    await this.prismaMaster.refreshToken.create({
+      data: {
+        userId: user.id,
+        token: refreshToken,
+        family,
+        expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
+      },
+    });
+
+    await this.prismaMaster.session.create({
+      data: {
+        userId: user.id,
+        token: accessToken,
+        isActive: true,
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
+        lastActivityAt: new Date(),
+        expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout),
+      },
+    });
+
+    await this.prismaMaster.loginHistory.create({
+      data: {
+        userId: user.id,
+        ipAddress: ipAddress || 'Unknown',
+        userAgent: userAgent || null,
+        status: 'success',
+        deviceInfo: 'SSO:DriveSafe',
+      },
+    });
+
+    logger.log(`SSO login successful for user: ${user.email}`);
+
+    return {
+      status: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role?.name || null,
+          permissions:
+            user.role?.permissions
+              .filter((p) => p.permission)
+              .map((p) => p.permission.name) || [],
+        },
+        tenant: {
+          id: tenant.id,
+          code: tenant.code,
+          name: tenant.name,
         },
         accessToken,
         refreshToken,
