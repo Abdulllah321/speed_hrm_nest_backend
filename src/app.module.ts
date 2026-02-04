@@ -65,6 +65,7 @@ import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
+import { IntegrationModule } from './integration/integration.module';
 
 @Module({
   imports: [
@@ -140,6 +141,7 @@ import { CompanyModule } from './admin/company/company.module';
     ReceiptVoucherModule,
     TransferModule,
     CompanyModule,
+    IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
   ],
   controllers: [AppController],
   providers: [AppService],

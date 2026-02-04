@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -153,6 +154,83 @@ export class AuthController {
     return res.status(401).send({
       status: false,
       message: result.message || 'Login failed',
+    });
+  }
+
+  /**
+   * SSO endpoint for DriveSafe integration.
+   * Receives JWT token, validates it, provisions tenant/user if needed,
+   * creates session, and redirects to dashboard.
+   */
+  @Get('sso')
+  @ApiOperation({ summary: 'SSO login via DriveSafe JWT' })
+  @ApiResponse({ status: 302, description: 'Redirect to dashboard on success' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired token' })
+  async ssoLogin(
+    @Query('token') token: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    if (!token) {
+      return res.status(400).send({
+        status: false,
+        message: 'SSO token is required',
+      });
+    }
+
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await this.service.ssoLogin(token, ipAddress, userAgent);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+
+      // Set access token
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+      });
+
+      // Set refresh token
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+      });
+
+      // Set user role for middleware
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set tenant code for TenantMiddleware
+      res.setCookie('tenantCode', result.data.tenant.code, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user data (for client-side)
+      res.setCookie('user', JSON.stringify(result.data.user), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Redirect to dashboard (configurable via env)
+      const dashboardUrl = process.env.SSO_REDIRECT_URL || '/dashboard';
+      return res.redirect(302, dashboardUrl);
+    }
+
+    // SSO failed - redirect to error page or return error
+    const errorUrl = process.env.SSO_ERROR_URL;
+    if (errorUrl) {
+      return res.redirect(302, `${errorUrl}?error=${encodeURIComponent(result.message || 'SSO failed')}`);
+    }
+
+    return res.status(401).send({
+      status: false,
+      message: result.message || 'SSO login failed',
     });
   }
 
