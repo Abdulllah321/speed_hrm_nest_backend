@@ -68,6 +68,7 @@ import { CompanyModule } from './admin/company/company.module';
 import { CategoryModule } from './master/ERP/category/category.module';
 import { UomModule } from './master/ERP/uom/uom.module';
 
+import { IntegrationModule } from './integration/integration.module';
 
 @Module({
   imports: [
@@ -147,6 +148,7 @@ import { UomModule } from './master/ERP/uom/uom.module';
     CompanyModule,
     CategoryModule,
     UomModule,
+    IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
   ],
   controllers: [AppController],
   providers: [AppService],
