@@ -5,7 +5,7 @@ import { UpdateJournalVoucherDto } from './dto/update-journal-voucher.dto';
 import { ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Journal Voucher')
-@Controller('finance/journal-voucher')
+@Controller('api/finance/journal-voucher')
 export class JournalVoucherController {
     constructor(private readonly journalVoucherService: JournalVoucherService) { }
 

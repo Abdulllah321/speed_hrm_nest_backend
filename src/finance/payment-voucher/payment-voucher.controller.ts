@@ -5,7 +5,7 @@ import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Payment Voucher')
-@Controller('finance/payment-vouchers') // Plural to match existing pattern or singular? User used plural in action mock: payment-vouchers
+@Controller('api/finance/payment-vouchers') // Plural to match existing pattern or singular? User used plural in action mock: payment-vouchers
 export class PaymentVoucherController {
     constructor(private readonly paymentVoucherService: PaymentVoucherService) { }
 
