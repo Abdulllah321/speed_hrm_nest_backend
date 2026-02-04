@@ -5,22 +5,22 @@ import { UpdateUomDto } from './dto/update-uom.dto';
 
 @Injectable()
 export class UomService {
-  constructor(private readonly prisma: PrismaMasterService) {}
+  constructor(private readonly prismaMaster: PrismaMasterService) {}
 
   async create(createUomDto: CreateUomDto) {
-    return this.prisma.uom.create({
+    return this.prismaMaster.uom.create({
       data: createUomDto,
     });
   }
 
   async findAll() {
-    return this.prisma.uom.findMany({
+    return this.prismaMaster.uom.findMany({
       orderBy: { name: 'asc' },
     });
   }
 
   async findOne(id: string) {
-    const uom = await this.prisma.uom.findUnique({
+    const uom = await this.prismaMaster.uom.findUnique({
       where: { id },
     });
 
@@ -33,7 +33,7 @@ export class UomService {
 
   async update(id: string, updateUomDto: UpdateUomDto) {
     await this.findOne(id);
-    return this.prisma.uom.update({
+    return this.prismaMaster.uom.update({
       where: { id },
       data: updateUomDto,
     });
@@ -41,7 +41,7 @@ export class UomService {
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.uom.delete({
+    return this.prismaMaster.uom.delete({
       where: { id },
     });
   }

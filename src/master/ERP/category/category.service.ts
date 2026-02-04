@@ -5,11 +5,11 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Injectable()
 export class CategoryService {
-  constructor(private readonly prisma: PrismaMasterService) {}
+  constructor(private readonly prismaMaster: PrismaMasterService) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
     if (createCategoryDto.parentId) {
-      const parent = await this.prisma.category.findUnique({
+      const parent = await this.prismaMaster.category.findUnique({
         where: { id: createCategoryDto.parentId },
       });
       if (!parent) {
@@ -17,7 +17,7 @@ export class CategoryService {
       }
     }
 
-    return this.prisma.category.create({
+    return this.prismaMaster.category.create({
       data: createCategoryDto,
     });
   }
@@ -30,7 +30,7 @@ export class CategoryService {
       where.parentId = parentId || null;
     }
 
-    return this.prisma.category.findMany({
+    return this.prismaMaster.category.findMany({
       where,
       include: {
         parent: true,
@@ -43,7 +43,7 @@ export class CategoryService {
   }
 
   async findTree() {
-    return this.prisma.category.findMany({
+    return this.prismaMaster.category.findMany({
       where: { parentId: null },
       include: {
         children: {
@@ -57,7 +57,7 @@ export class CategoryService {
   }
 
   async findOne(id: string) {
-    const category = await this.prisma.category.findUnique({
+    const category = await this.prismaMaster.category.findUnique({
       where: { id },
       include: {
         parent: true,
@@ -79,14 +79,14 @@ export class CategoryService {
       throw new BadRequestException('A category cannot be its own parent');
     }
 
-    return this.prisma.category.update({
+    return this.prismaMaster.category.update({
       where: { id },
       data: updateCategoryDto,
     });
   }
 
   async remove(id: string) {
-    const category = await this.prisma.category.findUnique({
+    const category = await this.prismaMaster.category.findUnique({
       where: { id },
       include: { children: true },
     });
@@ -99,7 +99,7 @@ export class CategoryService {
       throw new BadRequestException('Cannot delete category with sub-categories');
     }
 
-    return this.prisma.category.delete({
+    return this.prismaMaster.category.delete({
       where: { id },
     });
   }
