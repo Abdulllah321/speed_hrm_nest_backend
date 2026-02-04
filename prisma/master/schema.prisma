@@ -8,16 +8,20 @@ datasource db {
 }
 
 /// Global tenant of the platform (SaaS customer / organization)
+/// For DriveSafe integration: externalId maps to DriveSafe dealer_id
 model Tenant {
-  id       String  @id @default(cuid())
-  name     String
-  code     String  @unique
-  isActive Boolean @default(true)
+  id         String  @id @default(cuid())
+  externalId String? @unique // DriveSafe dealer_id (for SSO integration)
+  name       String
+  code       String  @unique
+  isActive   Boolean @default(true)
 
   companies Company[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([externalId])
 }
 
 /// Company represents a single organization/business entity with its own database
@@ -64,16 +68,21 @@ model Company {
 
 // --- AUTHENTICATION & IDENTITY (Centralized) ---
 
+/// User model for authentication
+/// For DriveSafe SSO: externalId maps to DriveSafe user_id, password is optional
 model User {
   id                  String    @id @default(uuid())
+  externalId          String?   @unique // DriveSafe user_id (for SSO integration)
   email               String    @unique
-  password            String
+  password            String? // Optional: null for SSO-only users
   firstName           String
   lastName            String
   phone               String?
   avatar              String?
   employeeId          String?   @unique // Conceptual link to Tenant DB
+  tenantId            String? // Link to Tenant for SSO users
   status              String    @default("active")
+  authProvider        String    @default("local") // 'local' | 'drivesafe_sso'
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
   lastLoginAt         DateTime?
@@ -101,6 +110,10 @@ model User {
   socialSecurityEmployeeRegistrationsUpdated SocialSecurityEmployeeRegistration[] @relation("SocialSecurityEmployeeRegistrationUpdatedBy")
   socialSecurityContributionsCreated         SocialSecurityContribution[]         @relation("SocialSecurityContributionCreatedBy")
   socialSecurityContributionsUpdated         SocialSecurityContribution[]         @relation("SocialSecurityContributionUpdatedBy")
+
+  @@index([externalId])
+  @@index([tenantId])
+  @@index([authProvider])
 }
 
 model Role {
