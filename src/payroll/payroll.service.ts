@@ -102,6 +102,7 @@ export class PayrollService {
       rebateNatures,
       allHolidays,
       allTaxSlabs,
+      policyAssignments,
     ] = await Promise.all([
       this.prismaMaster.salaryBreakup.findMany({ where: { status: 'active' } }),
       this.prisma.allowance.findMany({
@@ -212,6 +213,19 @@ export class PayrollService {
       this.prismaMaster.rebateNature.findMany(),
       this.prismaMaster.holiday.findMany({ where: { status: 'active' } }),
       this.prismaMaster.taxSlab.findMany({ where: { status: 'active' } }),
+      this.prisma.workingHoursPolicyAssignment.findMany({
+        where: {
+          employeeId: { in: ids },
+          // Fetch assignments that overlap with the payroll month
+          OR: [
+            {
+              startDate: { lte: monthEndDate },
+              endDate: { gte: monthStartDate },
+            },
+          ],
+        },
+        orderBy: { startDate: 'asc' },
+      }),
     ]);
 
     // Create maps for Master data types
@@ -262,6 +276,12 @@ export class PayrollService {
         (la) => la.employeeId === emp.id,
       ),
       increments: increments.filter((inc) => inc.employeeId === emp.id),
+      policyAssignments: policyAssignments
+        .filter((pa) => pa.employeeId === emp.id)
+        .map((pa) => ({
+          ...pa,
+          workingHoursPolicy: workingHoursPolicyMap.get(pa.workingHoursPolicyId),
+        })),
     }));
 
     const previewData: any[] = []; // Explicitly type as any[] or define an interface
@@ -459,6 +479,7 @@ export class PayrollService {
         month,
         year,
         emp.workingHoursPolicy,
+        emp.policyAssignments, // Pass assignments
         calculatedBasicSalary,
         monthStartDate,
         monthEndDate,
@@ -472,6 +493,7 @@ export class PayrollService {
           month,
           year,
           emp.workingHoursPolicy,
+          emp.policyAssignments, // Pass assignments
           totalPackageAmount,
         );
 
@@ -579,6 +601,8 @@ export class PayrollService {
           city: emp.city?.name || null,
           branch: emp.location?.name || null,
         },
+        workingHoursPolicy: emp.workingHoursPolicy, // Default policy
+        policyAssignments: emp.policyAssignments, // Expose for UI timeline
         basicSalary: calculatedBasicSalary.toNumber(),
         salaryBreakup,
         allowanceBreakup,
@@ -1709,7 +1733,8 @@ export class PayrollService {
     employee: any,
     month: string,
     year: string,
-    policy: any,
+    defaultPolicy: any,
+    policyAssignments: any[],
     totalSalary: Decimal,
   ): Promise<{ attendanceDeduction: Decimal; attendanceBreakup: any }> {
     const startDate = new Date(`${year}-${month}-01`);
@@ -1725,16 +1750,12 @@ export class PayrollService {
       },
     });
 
-    let deduction = new Decimal(0);
-    let lateCount = 0;
-    let absentCount = 0;
-    let halfDayCount = 0;
-    let shortDayCount = 0;
+    let totalDeduction = new Decimal(0);
 
-    // Calculate per day salary (assuming 30 days) - using total salary (package amount), not just basic salary
+    // Calculate per day salary (assuming 30 days) - using total salary
     const perDaySalary = totalSalary.div(30);
 
-    // Helper function to check if date has approved leave
+    // Helper to check if date has approved leave
     const hasApprovedLeave = (date: Date): boolean => {
       if (
         !employee.leaveApplications ||
@@ -1758,193 +1779,223 @@ export class PayrollService {
       });
     };
 
-    // Count leave days
+    // Helper to resolve policy for a specific date
+    const getPolicyForDate = (date: Date) => {
+      const dateCheck = new Date(date);
+      dateCheck.setHours(0, 0, 0, 0);
+
+      // Check assignments (sorted by start date usually, but find is fine)
+      const assignment = policyAssignments?.find((pa) => {
+        const start = new Date(pa.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(pa.endDate);
+        end.setHours(23, 59, 59, 999); // End of day
+        return dateCheck >= start && dateCheck <= end;
+      });
+
+      return assignment?.workingHoursPolicy || defaultPolicy;
+    };
+
+    // Buckets to track counts per policy
+    // Key: policyId (or 'default'), Value: { policy, stats: { late, absent, halfDay, shortDay } }
+    const policyBuckets = new Map<
+      string,
+      {
+        policy: any;
+        stats: {
+          late: number;
+          absent: number;
+          halfDay: number;
+          shortDay: number;
+        };
+      }
+    >();
+
+    const getBucket = (policy: any) => {
+      if (!policy) return null;
+      if (!policyBuckets.has(policy.id)) {
+        policyBuckets.set(policy.id, {
+          policy,
+          stats: { late: 0, absent: 0, halfDay: 0, shortDay: 0 },
+        });
+      }
+      return policyBuckets.get(policy.id)!;
+    };
+
     let leaveDaysCount = 0;
-    const totalDaysInMonth = new Date(Number(year), Number(month), 0).getDate();
-    // Process attendances
-    for (const att of attendances) {
-      const attDate = new Date(att.date);
-      const hasLeave = hasApprovedLeave(attDate);
+    const totalDaysInMonth = endDate.getDate();
 
-      if (hasLeave) {
-        leaveDaysCount++;
-      }
+    // 1. Process existing attendance records
+    if (attendances.length > 0) {
+      for (const att of attendances) {
+        const attDate = new Date(att.date);
+        const hasLeave = hasApprovedLeave(attDate);
+        const policy = getPolicyForDate(attDate);
+        const bucket = getBucket(policy);
 
-      if (att.status === 'absent' && !hasLeave) {
-        absentCount++;
-      } else if (
-        att.status === 'late' ||
-        (att.lateMinutes && att.lateMinutes > 0)
-      ) {
-        lateCount++;
-      } else if (att.status === 'half-day' && !hasLeave) {
-        halfDayCount++;
-      } else if (att.status === 'short-day' && !hasLeave) {
-        shortDayCount++;
-      }
-    }
-
-    // Calculate total working days in month for absent deduction
-    // If no attendance records exist at all for the month, consider all days as absent (if no leave)
-    if (attendances.length === 0) {
-      // Check how many days have approved leave
-      for (let day = 1; day <= totalDaysInMonth; day++) {
-        const checkDate = new Date(Number(year), Number(month) - 1, day);
-        if (hasApprovedLeave(checkDate)) {
+        if (hasLeave) {
           leaveDaysCount++;
         }
-      }
-      absentCount = totalDaysInMonth - leaveDaysCount;
-    }
 
-    // Calculate individual deduction amounts
-    const absentDeductionAmount = perDaySalary.mul(absentCount);
-    let halfDayDeductionAmount = new Decimal(0);
-    let shortDayDeductionAmount = new Decimal(0);
-    let lateDeductionAmount = new Decimal(0);
-
-    // Absent Deduction - Full day salary per absent day
-    deduction = deduction.add(absentDeductionAmount);
-
-    // Half Day Deduction
-    if (
-      policy &&
-      policy.halfDayDeductionType &&
-      policy.halfDayDeductionAmount &&
-      halfDayCount > 0
-    ) {
-      if (
-        policy.applyDeductionAfterHalfDays &&
-        halfDayCount >= policy.applyDeductionAfterHalfDays
-      ) {
-        const chargeableHalfDays = Math.max(
-          0,
-          halfDayCount - (policy.applyDeductionAfterHalfDays || 0),
-        );
-        if (chargeableHalfDays > 0) {
-          if (policy.halfDayDeductionType === 'amount') {
-            halfDayDeductionAmount = new Decimal(
-              policy.halfDayDeductionAmount,
-            ).mul(chargeableHalfDays);
-            deduction = deduction.add(halfDayDeductionAmount);
-          } else if (policy.halfDayDeductionType === 'percentage') {
-            halfDayDeductionAmount = perDaySalary
-              .mul(new Decimal(policy.halfDayDeductionAmount || 0).div(100))
-              .mul(chargeableHalfDays);
-            deduction = deduction.add(halfDayDeductionAmount);
+        if (bucket) {
+          if (att.status === 'absent' && !hasLeave) {
+            bucket.stats.absent++;
+          } else if (
+            att.status === 'late' ||
+            (att.lateMinutes && att.lateMinutes > 0)
+          ) {
+            bucket.stats.late++;
+          } else if (att.status === 'half-day' && !hasLeave) {
+            bucket.stats.halfDay++;
+          } else if (att.status === 'short-day' && !hasLeave) {
+            bucket.stats.shortDay++;
           }
         }
-      } else if (!policy.applyDeductionAfterHalfDays) {
-        // If no threshold, deduct for all half days
-        if (policy.halfDayDeductionType === 'amount') {
-          halfDayDeductionAmount = new Decimal(
-            policy.halfDayDeductionAmount,
-          ).mul(halfDayCount);
-          deduction = deduction.add(halfDayDeductionAmount);
-        } else if (policy.halfDayDeductionType === 'percentage') {
-          halfDayDeductionAmount = perDaySalary
-            .mul(new Decimal(policy.halfDayDeductionAmount || 0).div(100))
-            .mul(halfDayCount);
-          deduction = deduction.add(halfDayDeductionAmount);
+      }
+    } else {
+      // 2. Handle case with NO attendance records (treat all days as absent/leave)
+      // Iterate all days, find policy for each day, add to absent count if no leave
+      for (let day = 1; day <= totalDaysInMonth; day++) {
+        const checkDate = new Date(Number(year), Number(month) - 1, day);
+        const hasLeave = hasApprovedLeave(checkDate);
+        const policy = getPolicyForDate(checkDate);
+        const bucket = getBucket(policy);
+
+        if (hasLeave) {
+          leaveDaysCount++;
+        } else if (bucket) {
+          bucket.stats.absent++;
         }
       }
     }
 
-    // Short Day Deduction
-    if (
-      policy &&
-      policy.shortDayDeductionType &&
-      policy.shortDayDeductionAmount &&
-      shortDayCount > 0
-    ) {
-      if (
-        policy.applyDeductionAfterShortDays &&
-        shortDayCount >= policy.applyDeductionAfterShortDays
-      ) {
-        const chargeableShortDays = Math.max(
-          0,
-          shortDayCount - (policy.applyDeductionAfterShortDays || 0),
-        );
-        if (chargeableShortDays > 0) {
-          if (policy.shortDayDeductionType === 'amount') {
-            shortDayDeductionAmount = new Decimal(
-              policy.shortDayDeductionAmount,
-            ).mul(chargeableShortDays);
-            deduction = deduction.add(shortDayDeductionAmount);
-          } else if (policy.shortDayDeductionType === 'percentage') {
-            shortDayDeductionAmount = perDaySalary
-              .mul(new Decimal(policy.shortDayDeductionAmount || 0).div(100))
-              .mul(chargeableShortDays);
-            deduction = deduction.add(shortDayDeductionAmount);
-          }
-        }
-      } else if (!policy.applyDeductionAfterShortDays) {
-        // If no threshold, deduct for all short days
-        if (policy.shortDayDeductionType === 'amount') {
-          shortDayDeductionAmount = new Decimal(
-            policy.shortDayDeductionAmount,
-          ).mul(shortDayCount);
-          deduction = deduction.add(shortDayDeductionAmount);
-        } else if (policy.shortDayDeductionType === 'percentage') {
-          shortDayDeductionAmount = perDaySalary
-            .mul(new Decimal(policy.shortDayDeductionAmount || 0).div(100))
-            .mul(shortDayCount);
-          deduction = deduction.add(shortDayDeductionAmount);
-        }
-      }
-    }
+    // 3. Calculate Deductions per Bucket
+    let totalAbsentCount = 0;
+    let totalLateCount = 0;
+    let totalHalfDayCount = 0;
+    let totalShortDayCount = 0;
 
-    // Late Deduction Logic
-    const chargeableLates =
-      policy && policy.applyDeductionAfterLates
-        ? Math.max(0, lateCount - policy.applyDeductionAfterLates)
-        : lateCount;
-    if (
-      policy &&
-      policy.lateDeductionType &&
-      chargeableLates > 0 &&
-      policy.lateDeductionPercent
-    ) {
-      const deductionPerLate = perDaySalary.mul(
-        new Decimal(policy.lateDeductionPercent).div(100),
+    let totalHalfDayDeductionAmount = new Decimal(0);
+    let totalShortDayDeductionAmount = new Decimal(0);
+    let totalLateDeductionAmount = new Decimal(0);
+
+    for (const { policy, stats } of policyBuckets.values()) {
+      totalAbsentCount += stats.absent;
+      totalLateCount += stats.late;
+      totalHalfDayCount += stats.halfDay;
+      totalShortDayCount += stats.shortDay;
+
+      // Absent Deduction
+      totalDeduction = totalDeduction.add(
+        perDaySalary.mul(stats.absent)
       );
-      lateDeductionAmount = deductionPerLate.mul(chargeableLates);
-      deduction = deduction.add(lateDeductionAmount);
+
+      // Half Day Deduction
+      if (
+        policy.halfDayDeductionType &&
+        policy.halfDayDeductionAmount &&
+        stats.halfDay > 0
+      ) {
+        let chargeableHalfDays = stats.halfDay;
+        if (policy.applyDeductionAfterHalfDays) {
+          chargeableHalfDays = Math.max(0, stats.halfDay - policy.applyDeductionAfterHalfDays);
+        }
+
+        if (chargeableHalfDays > 0) {
+          let amount = new Decimal(0);
+          if (policy.halfDayDeductionType === 'amount') {
+            amount = new Decimal(policy.halfDayDeductionAmount).mul(chargeableHalfDays);
+          } else if (policy.halfDayDeductionType === 'percentage') {
+            amount = perDaySalary
+              .mul(new Decimal(policy.halfDayDeductionAmount).div(100))
+              .mul(chargeableHalfDays);
+          }
+          totalHalfDayDeductionAmount = totalHalfDayDeductionAmount.add(amount);
+          totalDeduction = totalDeduction.add(amount);
+        }
+      }
+
+      // Short Day Deduction
+      if (
+        policy.shortDayDeductionType &&
+        policy.shortDayDeductionAmount &&
+        stats.shortDay > 0
+      ) {
+        let chargeableShortDays = stats.shortDay;
+        if (policy.applyDeductionAfterShortDays) {
+          chargeableShortDays = Math.max(0, stats.shortDay - policy.applyDeductionAfterShortDays);
+        }
+
+        if (chargeableShortDays > 0) {
+          let amount = new Decimal(0);
+          if (policy.shortDayDeductionType === 'amount') {
+            amount = new Decimal(policy.shortDayDeductionAmount).mul(chargeableShortDays);
+          } else if (policy.shortDayDeductionType === 'percentage') {
+            amount = perDaySalary
+              .mul(new Decimal(policy.shortDayDeductionAmount).div(100))
+              .mul(chargeableShortDays);
+          }
+          totalShortDayDeductionAmount = totalShortDayDeductionAmount.add(amount);
+          totalDeduction = totalDeduction.add(amount);
+        }
+      }
+
+      // Late Deduction
+      if (
+        policy.lateDeductionType &&
+        policy.lateDeductionPercent &&
+        stats.late > 0
+      ) {
+        let chargeableLates = stats.late;
+        if (policy.applyDeductionAfterLates) {
+          chargeableLates = Math.max(0, stats.late - policy.applyDeductionAfterLates);
+        }
+
+        if (chargeableLates > 0) {
+          const deductionPerLate = perDaySalary.mul(
+            new Decimal(policy.lateDeductionPercent).div(100)
+          );
+          const amount = deductionPerLate.mul(chargeableLates);
+          totalLateDeductionAmount = totalLateDeductionAmount.add(amount);
+          totalDeduction = totalDeduction.add(amount);
+        }
+      }
     }
 
-    // Create attendance breakdown
+    // Create attendance breakdown (Aggregate logic for simplicity in UI, though calculation was segmented)
     const attendanceBreakup = {
       absent: {
-        count: absentCount,
-        amount: absentDeductionAmount.toNumber(),
+        count: totalAbsentCount,
+        amount: perDaySalary.mul(totalAbsentCount).toNumber(),
       },
       late: {
-        count: lateCount,
-        chargeableCount: chargeableLates,
-        amount: lateDeductionAmount.toNumber(),
+        count: totalLateCount,
+        chargeableCount: totalLateCount, // Simplified for UI
+        amount: totalLateDeductionAmount.toNumber(),
       },
       halfDay: {
-        count: halfDayCount,
-        amount: halfDayDeductionAmount.toNumber(),
+        count: totalHalfDayCount,
+        amount: totalHalfDayDeductionAmount.toNumber(),
       },
       shortDay: {
-        count: shortDayCount,
-        amount: shortDayDeductionAmount.toNumber(),
+        count: totalShortDayCount,
+        amount: totalShortDayDeductionAmount.toNumber(),
       },
       leave: {
         count: leaveDaysCount,
-        amount: 0, // Leave doesn't cause deduction, just informational
+        amount: 0,
       },
     };
 
-    return { attendanceDeduction: deduction, attendanceBreakup };
+    return { attendanceDeduction: totalDeduction, attendanceBreakup };
   }
 
   private async calculateOvertime(
     employee: any,
     month: string,
     year: string,
-    policy: any,
+    defaultPolicy: any,
+    policyAssignments: any[],
     basicSalary: Decimal,
     monthStartDate: Date,
     monthEndDate: Date,
@@ -1969,23 +2020,43 @@ export class PayrollService {
     let amount = new Decimal(0);
     const overtimeBreakup: any[] = [];
 
-    if (!employee.overtimeApplicable || !policy) {
+    if (!employee.overtimeApplicable) {
       return { overtimeAmount: amount, overtimeBreakup };
     }
 
-    const hourlyRate = basicSalary.div(30).div(8); // Use calculated basic salary
-    let rateMultiplier = new Decimal(1);
-    if (policy.overtimeRate) {
-      rateMultiplier = new Decimal(policy.overtimeRate);
-    }
+    // Helper to resolve policy for a specific date
+    const getPolicyForDate = (date: Date) => {
+      const dateCheck = new Date(date);
+      dateCheck.setHours(0, 0, 0, 0);
 
-    let holidayMultiplier = rateMultiplier;
-    if (policy.gazzetedOvertimeRate) {
-      holidayMultiplier = new Decimal(policy.gazzetedOvertimeRate);
-    }
+      const assignment = policyAssignments?.find((pa) => {
+        const start = new Date(pa.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(pa.endDate);
+        end.setHours(23, 59, 59, 999);
+        return dateCheck >= start && dateCheck <= end;
+      });
+
+      return assignment?.workingHoursPolicy || defaultPolicy;
+    };
+
+    const hourlyRate = basicSalary.div(30).div(8); // Use calculated basic salary
 
     // Process overtime requests
     for (const ot of overtimes) {
+      const policy = getPolicyForDate(ot.date);
+      // If no policy found for date (and no default), skip?? Or assume 1?
+      // Fallback to 1 if no rates defined
+      let rateMultiplier = new Decimal(1);
+      if (policy && policy.overtimeRate) {
+        rateMultiplier = new Decimal(policy.overtimeRate);
+      }
+
+      let holidayMultiplier = rateMultiplier;
+      if (policy && policy.gazzetedOvertimeRate) {
+        holidayMultiplier = new Decimal(policy.gazzetedOvertimeRate);
+      }
+
       const weekdayHours = new Decimal(ot.weekdayOvertimeHours || 0);
       const holidayHours = new Decimal(ot.holidayOvertimeHours || 0);
 
@@ -2060,8 +2131,7 @@ export class PayrollService {
     };
 
     // Helper to check if a date is a weekly off day based on policy
-    // Weekends (Saturday/Sunday) are typically off days, but check policy overrides
-    const isWeeklyOff = (date: Date): boolean => {
+    const isWeeklyOff = (date: Date, policy: any): boolean => {
       const dayNames = [
         'sunday',
         'monday',
@@ -2104,9 +2174,11 @@ export class PayrollService {
     for (const attendance of attendances) {
       const attDate = new Date(attendance.date);
       const attDateString = attDate.toDateString();
+      const policy = getPolicyForDate(attDate);
+
       const isHolidayDate = isHoliday(attDate);
       const isWeekendDate = isWeekend(attDate);
-      const isOffDay = isWeeklyOff(attDate);
+      const isOffDay = isWeeklyOff(attDate, policy);
       const isOnHolidayOrOff = isHolidayDate || isOffDay;
 
       // Skip if already covered by overtime request (unless it's a holiday/off day - those always count)
@@ -2114,8 +2186,17 @@ export class PayrollService {
         continue;
       }
 
-      // Get overtimeHours from attendance record (already calculated by attendance service)
-      // Convert to Decimal if it's not already
+      // Get rates from policy
+      let rateMultiplier = new Decimal(1);
+      if (policy && policy.overtimeRate) {
+        rateMultiplier = new Decimal(policy.overtimeRate);
+      }
+      let holidayMultiplier = rateMultiplier;
+      if (policy && policy.gazzetedOvertimeRate) {
+        holidayMultiplier = new Decimal(policy.gazzetedOvertimeRate);
+      }
+
+      // Get overtimeHours from attendance record
       let otHours: Decimal | null = null;
       if (attendance.overtimeHours) {
         otHours =
