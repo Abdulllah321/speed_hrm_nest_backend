@@ -25,6 +25,7 @@
     "prisma:master:generate": "prisma generate --schema prisma/master/schema.prisma",
     "prisma:master:push": "npx prisma db push --schema prisma/master/schema.prisma --accept-data-loss --config prisma.master.config.ts",
     "prisma:tenant:push": "prisma generate --schema prisma/schema && prisma db push --schema prisma/schema --accept-data-loss --config prisma.config.ts",
+    "prisma:tenants:push-all": "bun scripts/push-tenants-schema.ts",
     "prisma:all:push": "npm run prisma:master:push && npm run prisma:tenant:push",
     "prisma:seed": "prisma db seed",
     "check-seed": "bun run check-seed.ts",
