@@ -65,6 +65,9 @@ import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
+import { CategoryModule } from './master/ERP/category/category.module';
+import { UomModule } from './master/ERP/uom/uom.module';
+
 
 @Module({
   imports: [
@@ -134,12 +137,16 @@ import { CompanyModule } from './admin/company/company.module';
     DashboardModule,
     RoleModule,
     PermissionModule,
+    UserModule,
+    NotificationsModule,
     ChartOfAccountModule,
     JournalVoucherModule,
     PaymentVoucherModule,
     ReceiptVoucherModule,
     TransferModule,
     CompanyModule,
+    CategoryModule,
+    UomModule,
   ],
   controllers: [AppController],
   providers: [AppService],
