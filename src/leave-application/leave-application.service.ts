@@ -113,14 +113,12 @@ export class LeaveApplicationService {
           leaveTypes: true, // Master relation
         },
       });
-
       if (!leavesPolicy) {
         return {
           status: false,
           message: 'Employee does not have a leave policy assigned',
         };
       }
-
       // Get all approved leave applications for this employee
       const leaveApplications = await this.prisma.leaveApplication.findMany({
         where: {
