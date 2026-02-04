@@ -5,7 +5,7 @@ import { UpdateReceiptVoucherDto } from './dto/update-receipt-voucher.dto';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Receipt Voucher')
-@Controller('finance/receipt-vouchers')
+@Controller('api/finance/receipt-vouchers')
 export class ReceiptVoucherController {
     constructor(private readonly receiptVoucherService: ReceiptVoucherService) { }
 

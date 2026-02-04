@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalVoucherDto } from './dto/create-journal-voucher.dto';
 import { UpdateJournalVoucherDto } from './dto/update-journal-voucher.dto';
+import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()
 export class JournalVoucherService {
@@ -10,6 +10,7 @@ export class JournalVoucherService {
     async create(createJournalVoucherDto: CreateJournalVoucherDto) {
         const { details, ...data } = createJournalVoucherDto;
 
+        console.log("dsadsadodsahunhb76tyugfctfc6th76t")
         // Validate that debit equals credit
         const totalDebit = details.reduce((sum, item) => sum + Number(item.debit), 0);
         const totalCredit = details.reduce((sum, item) => sum + Number(item.credit), 0);
