@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
@@ -26,6 +26,7 @@ export class AuthService {
 
   constructor(
     private prismaMaster: PrismaMasterService,
+    @Inject(forwardRef(() => CompanyService))
     private companyService: CompanyService,
     @Optional() private prismaTenant: PrismaService,
   ) { }
@@ -297,12 +298,10 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    const logger = new Logger('AuthService.ssoLogin');
-
     // Get the DriveSafe SSO secret from environment
     const ssoSecret = process.env.DRIVESAFE_SSO_SECRET;
     if (!ssoSecret) {
-      logger.error('DRIVESAFE_SSO_SECRET not configured');
+      console.error('DRIVESAFE_SSO_SECRET not configured');
       return { status: false, message: 'SSO not configured' };
     }
 
@@ -311,7 +310,7 @@ export class AuthService {
     try {
       payload = jwt.verify(token, ssoSecret);
     } catch (err: any) {
-      logger.warn(`Invalid SSO token: ${err.message}`);
+      console.warn(`Invalid SSO token: ${err.message}`);
       return { status: false, message: 'Invalid or expired SSO token' };
     }
 
@@ -329,13 +328,13 @@ export class AuthService {
     // Validate audience if configured
     const expectedAudience = process.env.DRIVESAFE_SSO_AUDIENCE || 'hrm';
     if (aud && aud !== expectedAudience) {
-      logger.warn(`Invalid SSO audience: ${aud}`);
+      console.warn(`Invalid SSO audience: ${aud}`);
       return { status: false, message: 'Invalid token audience' };
     }
 
     // Validate required fields
     if (!dealer_id || !user_id || !email) {
-      logger.warn('Missing required fields in SSO payload');
+      console.warn('Missing required fields in SSO payload');
       return { status: false, message: 'Invalid SSO payload' };
     }
 
@@ -352,7 +351,7 @@ export class AuthService {
         .replace(/^-|-$/g, '')
         .substring(0, 32);
 
-      logger.log(`JIT: Provisioning new company for dealer_id: ${dealer_id}`);
+      console.log(`JIT: Provisioning new company for dealer_id: ${dealer_id}`);
 
       const createResult = await this.companyService.createCompany({
         name: dealer_name || `Dealer ${dealer_id}`,
@@ -361,7 +360,7 @@ export class AuthService {
       });
 
       if (!createResult.status) {
-        logger.error(`JIT Provisioning failed: ${createResult.message}`);
+        console.error(`JIT Provisioning failed: ${createResult.message}`);
         return { status: false, message: 'Failed to provision account' };
       }
 
@@ -372,7 +371,7 @@ export class AuthService {
     }
 
     if (!tenant || !tenant.isActive) {
-      logger.warn(`Tenant is inactive or missing: ${dealer_id}`);
+      console.warn(`Tenant is inactive or missing: ${dealer_id}`);
       return { status: false, message: 'Dealer account is inactive' };
     }
 
@@ -391,6 +390,7 @@ export class AuthService {
 
     // Resolve role if provided
     let roleRecord: any = null;
+    console.log(`Role name: ${roleName}`);
     if (roleName) {
       roleRecord = await this.prismaMaster.role.findFirst({
         where: { name: { equals: roleName, mode: 'insensitive' } },
@@ -399,7 +399,7 @@ export class AuthService {
 
     if (!user) {
       // Create new user (JIT)
-      logger.log(`JIT: Creating new user for user_id: ${user_id}`);
+      console.log(`JIT: Creating new user for user_id: ${user_id}`);
       user = await this.prismaMaster.user.create({
         data: {
           externalId: user_id,
@@ -439,7 +439,7 @@ export class AuthService {
     }
 
     if (user.status !== 'active') {
-      logger.warn(`User is inactive: ${user_id}`);
+      console.warn(`User is inactive: ${user_id}`);
       return { status: false, message: 'User account is inactive' };
     }
 
@@ -485,6 +485,11 @@ export class AuthService {
       },
     });
 
+    // Delete any existing sessions for this user to avoid duplicate token errors
+    await this.prismaMaster.session.deleteMany({
+      where: { userId: user.id, isActive: true },
+    });
+
     await this.prismaMaster.session.create({
       data: {
         userId: user.id,
@@ -507,7 +512,7 @@ export class AuthService {
       },
     });
 
-    logger.log(`SSO login successful for user: ${user.email}`);
+    console.log(`SSO login successful for user: ${user.email}`);
 
     return {
       status: true,

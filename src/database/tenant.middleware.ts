@@ -58,12 +58,12 @@ export class TenantMiddleware implements NestMiddleware {
         this.logger.warn(
           `No active company found for tenant=${tenantIdentifier}, company=${companyIdentifier}`,
         );
-        return res.status(404).send({ message: 'Company not found or inactive' });
+        return (res as any).status(404).send({ message: 'Company not found or inactive' });
       }
 
       if (!company.tenant || !company.tenant.isActive) {
         this.logger.warn(`Tenant is inactive for company: ${company.id}`);
-        return res.status(403).send({ message: 'Tenant is inactive' });
+        return (res as any).status(403).send({ message: 'Tenant is inactive' });
       }
 
       // Use stored dbUrl (contains tenant-specific credentials)
@@ -71,7 +71,7 @@ export class TenantMiddleware implements NestMiddleware {
 
       if (!dbUrl) {
         this.logger.error(`Company ${company.id} has no database URL configured`);
-        return res.status(500).send({ message: 'Database configuration error' });
+        return (res as any).status(500).send({ message: 'Database configuration error' });
       }
 
       // Cache the tenant context
@@ -95,7 +95,17 @@ export class TenantMiddleware implements NestMiddleware {
       next();
     } catch (error) {
       this.logger.error(`Error in TenantMiddleware: ${error}`);
-      throw error;
+      // Don't throw - send error response instead to prevent server crash
+      try {
+        return (res as any).status(500).send({ 
+          status: false, 
+          message: 'Internal server error in tenant middleware' 
+        });
+      } catch (sendError) {
+        // If we can't send response, just log and call next to prevent crash
+        this.logger.error(`Failed to send error response: ${sendError}`);
+        next();
+      }
     }
   }
 
