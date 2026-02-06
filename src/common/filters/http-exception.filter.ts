@@ -74,7 +74,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         );
       }
 
-      return response.status(status).send(errorResponse);
+      return (response as any).status(status).send(errorResponse);
     }
 
     // Handle Prisma Errors
@@ -85,7 +85,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response
+      return (response as any)
         .status(errorResponse.statusCode || HttpStatus.BAD_REQUEST)
         .send(errorResponse);
     }
@@ -105,7 +105,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response.status(HttpStatus.BAD_REQUEST).send(errorResponse);
+      return (response as any).status(HttpStatus.BAD_REQUEST).send(errorResponse);
     }
 
     // Handle Prisma Client Initialization Errors
@@ -122,7 +122,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response
+      return (response as any)
         .status(HttpStatus.SERVICE_UNAVAILABLE)
         .send(errorResponse);
     }
@@ -141,7 +141,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response
+      return (response as any)
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .send(errorResponse);
     }
@@ -160,7 +160,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response
+      return (response as any)
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .send(errorResponse);
     }
@@ -179,7 +179,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return response
+      return (response as any)
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .send(errorResponse);
     }
@@ -191,7 +191,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       `${request.method} ${request.url}`,
     );
 
-    return response
+    return (response as any)
       .status(HttpStatus.INTERNAL_SERVER_ERROR)
       .send(errorResponse);
   }
