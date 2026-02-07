@@ -20,7 +20,7 @@ export class TenantDatabaseService implements OnModuleInit {
   constructor(
     private readonly prismaMaster: PrismaMasterService,
     private readonly encryptionService: EncryptionService,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
@@ -75,7 +75,7 @@ export class TenantDatabaseService implements OnModuleInit {
 
   private async createDatabaseUser(dbUser: string, dbPassword: string): Promise<void> {
     const pool = this.prismaMaster.getPool();
-    
+
     const exists = await this.userExists(dbUser);
     if (exists) {
       this.logger.warn(`Database user ${dbUser} already exists, skipping creation`);
@@ -105,7 +105,7 @@ export class TenantDatabaseService implements OnModuleInit {
   private async createDatabase(dbName: string, dbUser: string): Promise<void> {
     const pool = this.prismaMaster.getPool();
     const exists = await this.databaseExists(dbName);
-    
+
     if (exists) {
       this.logger.warn(`Database ${dbName} already exists, skipping creation`);
       return;
@@ -115,10 +115,10 @@ export class TenantDatabaseService implements OnModuleInit {
 
     try {
       const sanitizedDbName = dbName.replace(/[^a-zA-Z0-9_]/g, '');
-      
+
       // Create database owned by the tenant user
       await pool.query(`CREATE DATABASE "${sanitizedDbName}" OWNER ${dbUser}`);
-      
+
       this.logger.log(`Database ${dbName} created successfully`);
     } catch (error: any) {
       if (error.code === '42P04') { // duplicate_database
@@ -196,7 +196,7 @@ export class TenantDatabaseService implements OnModuleInit {
       this.logger.log(`Using schema from: prisma/schema`);
 
       const { stdout, stderr } = await execAsync(
-        `npx prisma db push --schema=prisma/schema --accept-data-loss`,
+        `bunx prisma db push --schema=prisma/schema --accept-data-loss`,
         { env },
       );
 
@@ -249,29 +249,29 @@ export class TenantDatabaseService implements OnModuleInit {
 
       this.logger.log(`Tenant database provisioned successfully: ${dbName}`);
 
-      return { 
-        dbName, 
-        dbUrl, 
-        dbUser, 
-        dbPassword, 
-        encryptedPassword 
+      return {
+        dbName,
+        dbUrl,
+        dbUser,
+        dbPassword,
+        encryptedPassword
       };
     } catch (error: any) {
       this.logger.error(`Failed to provision tenant database: ${error.message}`);
-      
+
       // Cleanup on failure
       await this.cleanupFailedProvisioning(dbName, dbUser);
-      
+
       throw error;
     }
   }
 
   private async cleanupFailedProvisioning(dbName: string, dbUser: string): Promise<void> {
     const pool = this.prismaMaster.getPool();
-    
+
     try {
       this.logger.log(`Cleaning up failed provisioning: ${dbName}, ${dbUser}`);
-      
+
       // Try to drop database
       try {
         await pool.query(`DROP DATABASE IF EXISTS "${dbName}"`);
