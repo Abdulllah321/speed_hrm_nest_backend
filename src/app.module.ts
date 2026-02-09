@@ -5,6 +5,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { BrandModule } from './master/brand/brand.module';
+import { GenderModule } from './master/gender/gender.module';
 import { EmployeeModule } from './employee/employee.module';
 import { CityModule } from './master/city/city.module';
 import { DepartmentModule } from './master/department/department.module';
@@ -56,6 +58,10 @@ import { PFModule } from './pf/pf.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { RoleModule } from './role/role.module';
 import { PermissionModule } from './permission/permission.module';
+import { SizeModule } from './master/size/size.module';
+import { SilhouetteModule } from './master/silhouette/silhouette.module';
+import { ChannelClassModule } from './master/channel-class/channel-class.module';
+import { ColorModule } from './master/color/color.module';
 import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
@@ -152,6 +158,12 @@ import { MachineModule } from './master/machine/machine.module';
     SalesmanModule,
     StorageDimensionModule,
     MachineModule,
+    BrandModule,
+    GenderModule,
+    SizeModule,
+    SilhouetteModule,
+    ChannelClassModule,
+    ColorModule,
   ],
   controllers: [AppController],
   providers: [AppService],
