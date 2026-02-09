@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaMasterService } from '../../../database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateUomDto } from './dto/create-uom.dto';
 import { UpdateUomDto } from './dto/update-uom.dto';
 
 @Injectable()
 export class UomService {
-  constructor(private readonly prismaMaster: PrismaMasterService) {}
+  constructor(private readonly prismaMaster: PrismaMasterService) { }
 
   async create(createUomDto: CreateUomDto) {
     return this.prismaMaster.uom.create({

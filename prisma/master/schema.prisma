@@ -299,15 +299,15 @@ model Designation {
 }
 
 model Category {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   name          String
   parentId      String?
-  accountHeadId String?   // Linked to ChartOfAccount.id in Tenant DB
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  accountHeadId String? // Linked to ChartOfAccount.id in Tenant DB
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  parent        Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  children      Category[] @relation("CategoryHierarchy")
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Category[] @relation("CategoryHierarchy")
 
   @@index([parentId])
 }
@@ -971,6 +971,47 @@ model ChannelClass {
 }
 
 model Color {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Segment {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ItemClass {
+  id          String         @id @default(uuid())
+  name        String         @unique
+  status      String         @default("active")
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  subclasses  ItemSubclass[]
+}
+
+model ItemSubclass {
+  id          String    @id @default(uuid())
+  name        String
+  itemClassId String
+  status      String    @default("active")
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  itemClass   ItemClass @relation(fields: [itemClassId], references: [id], onDelete: Cascade)
+
+  @@unique([name, itemClassId])
+}
+
+model Season {
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
