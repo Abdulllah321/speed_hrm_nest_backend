@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaMasterService } from '../../../database/prisma-master.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Injectable()
 export class CategoryService {
-  constructor(private readonly prismaMaster: PrismaMasterService) {}
+  constructor(private readonly prismaMaster: PrismaMasterService) { }
 
   async create(createCategoryDto: CreateCategoryDto) {
     if (createCategoryDto.parentId) {

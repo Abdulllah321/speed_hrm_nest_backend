@@ -77,8 +77,12 @@ import { SaleTypeModule } from './master/sale-type/sale-type.module';
 import { SalesmanModule } from './master/salesman/salesman.module';
 import { StorageDimensionModule } from './master/storage-dimension/storage-dimension.module';
 import { MachineModule } from './master/machine/machine.module';
-import { CategoryModule } from './master/ERP/category/category.module';
-import { UomModule } from './master/ERP/uom/uom.module';
+import { CategoryModule } from './master/category/category.module';
+import { UomModule } from './master/uom/uom.module';
+import { ItemClassModule } from './master/item-class/item-class.module';
+import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
+import { SeasonModule } from './master/season/season.module';
+import { SegmentModule } from './master/segment/segment.module';
 
 import { IntegrationModule } from './integration/integration.module';
 
@@ -172,6 +176,10 @@ import { IntegrationModule } from './integration/integration.module';
     ColorModule,
     CategoryModule,
     UomModule,
+    ItemClassModule,
+    ItemSubclassModule,
+    SeasonModule,
+    SegmentModule,
     IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
   ],
   controllers: [AppController],

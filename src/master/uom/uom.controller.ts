@@ -2,14 +2,14 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@n
 import { UomService } from './uom.service';
 import { CreateUomDto } from './dto/create-uom.dto';
 import { UpdateUomDto } from './dto/update-uom.dto';
-import { Permissions } from '../../../common/decorators/permissions.decorator';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
 
 @Controller('api/master/erp/uom')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class UomController {
-  constructor(private readonly uomService: UomService) {}
+  constructor(private readonly uomService: UomService) { }
 
   @Post()
   @Permissions('erp.uom.create')
