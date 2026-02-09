@@ -751,6 +751,10 @@ export const PERMISSIONS = [
     name:'hr.leave.delete',
     description:'Delete Leave'
   },
+  {
+    name:'hr.leave.selectEmployee',
+    description:'Select Employee for Leave'
+  },
   // Loan Request
   {
     name: 'hr.loan-request.read',
@@ -1151,5 +1155,81 @@ export const PERMISSIONS = [
     module: 'erp.finance.receipt-voucher',
     action: 'approve',
     description: 'Approve Receipt Voucher',
+  },
+  // ERP Category
+  {
+    name: 'erp.category.create',
+    module: 'erp.category',
+    action: 'create',
+    description: 'Create Category',
+  },
+  {
+    name: 'erp.category.read',
+    module: 'erp.category',
+    action: 'read',
+    description: 'Read Category',
+  },
+  {
+    name: 'erp.category.update',
+    module: 'erp.category',
+    action: 'update',
+    description: 'Update Category',
+  },
+  {
+    name: 'erp.category.delete',
+    module: 'erp.category',
+    action: 'delete',
+    description: 'Delete Category',
+  },
+
+  // ERP Sub-category
+  {
+    name: 'erp.sub-category.create',
+    module: 'erp.sub-category',
+    action: 'create',
+    description: 'Create Sub-category',
+  },
+  {
+    name: 'erp.sub-category.read',
+    module: 'erp.sub-category',
+    action: 'read',
+    description: 'Read Sub-category',
+  },
+  {
+    name: 'erp.sub-category.update',
+    module: 'erp.sub-category',
+    action: 'update',
+    description: 'Update Sub-category',
+  },
+  {
+    name: 'erp.sub-category.delete',
+    module: 'erp.sub-category',
+    action: 'delete',
+    description: 'Delete Sub-category',
+  },
+  // ERP UOM
+  {
+    name: 'erp.uom.create',
+    module: 'erp.uom',
+    action: 'create',
+    description: 'Create UOM',
+  },
+  {
+    name: 'erp.uom.read',
+    module: 'erp.uom',
+    action: 'read',
+    description: 'Read UOM',
+  },
+  {
+    name: 'erp.uom.update',
+    module: 'erp.uom',
+    action: 'update',
+    description: 'Update UOM',
+  },
+  {
+    name: 'erp.uom.delete',
+    module: 'erp.uom',
+    action: 'delete',
+    description: 'Delete UOM',
   },
 ]

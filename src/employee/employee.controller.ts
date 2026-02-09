@@ -39,7 +39,7 @@ export class EmployeeController {
   constructor(private service: EmployeeService) {}
 
   @Get('employees')
-  @Permissions('hr.employee.read')
+  @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
   @ApiOperation({ summary: 'List all employees' })
   async list() {
     return this.service.list();
@@ -56,7 +56,7 @@ export class EmployeeController {
   }
 
   @Get('employees/dropdown')
-  @Permissions('hr.employee.read')
+  @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
   @ApiOperation({ summary: 'List employees for dropdown' })
   async listForDropdown() {
     return this.service.listForDropdown();

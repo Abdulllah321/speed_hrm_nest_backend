@@ -217,20 +217,21 @@ export class AuthController {
         maxAge: 30 * 24 * 60 * 60,
       });
 
-      // Redirect to dashboard (configurable via env)
-      const dashboardUrl = process.env.SSO_REDIRECT_URL || '/dashboard';
-      return res.redirect(302, dashboardUrl);
+      // Return JSON response for frontend to handle
+      return res.send({
+        status: true,
+        message: 'SSO login successful',
+        data: {
+          user: result.data.user,
+          tenant: result.data.tenant,
+        },
+      });
     }
 
-    // SSO failed - redirect to error page or return error
-    const errorUrl = process.env.SSO_ERROR_URL;
-    if (errorUrl) {
-      return res.redirect(302, `${errorUrl}?error=${encodeURIComponent(result.message || 'SSO failed')}`);
-    }
-
-    return res.status(401).send({
+    // SSO failed - return error JSON
+    return (res as any).status(401).send({
       status: false,
-      message: result.message || 'SSO login failed',
+      message: result.message || 'SSO authentication failed',
     });
   }
 
