@@ -9,6 +9,7 @@ model PaymentVoucher {
     chequeDate DateTime?
 
     creditAccountId String
+    supplierId      String?
     creditAmount    Decimal @default(0.0) @db.Decimal(15, 2)
 
     isAdvance       Boolean @default(false)
@@ -19,6 +20,7 @@ model PaymentVoucher {
     details PaymentVoucherDetail[]
 
     creditAccount ChartOfAccount @relation("CreditAccountRelation", fields: [creditAccountId], references: [id])
+    supplier      Supplier?      @relation(fields: [supplierId], references: [id])
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
