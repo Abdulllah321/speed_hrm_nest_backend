@@ -83,6 +83,7 @@ import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
 import { SeasonModule } from './master/season/season.module';
 import { SegmentModule } from './master/segment/segment.module';
+import { ItemModule } from './master/erp/item/item.module';
 
 import { IntegrationModule } from './integration/integration.module';
 
@@ -180,6 +181,7 @@ import { IntegrationModule } from './integration/integration.module';
     ItemSubclassModule,
     SeasonModule,
     SegmentModule,
+    ItemModule,
     IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
   ],
   controllers: [AppController],
