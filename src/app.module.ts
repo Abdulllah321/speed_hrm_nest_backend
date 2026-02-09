@@ -77,6 +77,10 @@ import { SaleTypeModule } from './master/sale-type/sale-type.module';
 import { SalesmanModule } from './master/salesman/salesman.module';
 import { StorageDimensionModule } from './master/storage-dimension/storage-dimension.module';
 import { MachineModule } from './master/machine/machine.module';
+import { CategoryModule } from './master/ERP/category/category.module';
+import { UomModule } from './master/ERP/uom/uom.module';
+
+import { IntegrationModule } from './integration/integration.module';
 
 @Module({
   imports: [
@@ -146,6 +150,8 @@ import { MachineModule } from './master/machine/machine.module';
     DashboardModule,
     RoleModule,
     PermissionModule,
+    UserModule,
+    NotificationsModule,
     ChartOfAccountModule,
     JournalVoucherModule,
     PaymentVoucherModule,
@@ -164,6 +170,9 @@ import { MachineModule } from './master/machine/machine.module';
     SilhouetteModule,
     ChannelClassModule,
     ColorModule,
+    CategoryModule,
+    UomModule,
+    IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
   ],
   controllers: [AppController],
   providers: [AppService],
