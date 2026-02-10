@@ -563,11 +563,8 @@ export class AuthService {
       });
       if (!user || user.status !== 'active')
         return { status: false, message: 'User not found or inactive' };
-      const refreshTokenExpiryMs = parseExpiryToMs(
-        authConfig.jwt.refreshExpiresIn,
-      );
 
-      const family = decoded.family;
+      // Generate new access token
       const accessOpts: jwt.SignOptions = {
         expiresIn: authConfig.jwt.accessExpiresIn as any,
         issuer: authConfig.jwt.issuer,
@@ -577,42 +574,15 @@ export class AuthService {
           userId: user.id,
           email: user.email,
           roleId: user.roleId,
-          // permissions removed to keep token size small - fetched in Guard
           employeeId: user.employeeId,
           roleName: user.role?.name || null,
         },
         authConfig.jwt.accessSecret,
         accessOpts,
       );
-      const refreshOpts: jwt.SignOptions = {
-        expiresIn: authConfig.jwt.refreshExpiresIn as any,
-        issuer: authConfig.jwt.issuer,
-      };
-      const newRefreshToken = jwt.sign(
-        {
-          userId: user.id,
-          family,
-          jti: crypto.randomUUID()
-        },
-        authConfig.jwt.refreshSecret,
-        refreshOpts,
-      );
 
+      // Update session with new access token
       await this.prismaMaster.$transaction(async (tx) => {
-        await tx.refreshToken.update({
-          where: { id: stored.id },
-          data: { isRevoked: true },
-        });
-
-        await tx.refreshToken.create({
-          data: {
-            userId: user.id,
-            token: newRefreshToken,
-            family,
-            expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
-          },
-        });
-
         const existingSession = await tx.session.findFirst({
           where: { userId: user.id, isActive: true },
           orderBy: { lastActivityAt: 'desc' },
@@ -646,9 +616,10 @@ export class AuthService {
         }
       });
 
+      // Return the same refresh token (no rotation)
       return {
         status: true,
-        data: { accessToken, refreshToken: newRefreshToken },
+        data: { accessToken, refreshToken: token },
       };
     } catch (error) {
       return { status: false, message: 'Invalid refresh token' };
