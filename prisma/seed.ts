@@ -150,7 +150,7 @@ async function pushTenantSchema(connectionString: string) {
     const env = { ...process.env, DATABASE_URL: connectionString };
 
     // Using --skip-generate to speed it up, assuming client is already generated
-    execSync('npx prisma db push --schema prisma/schema --accept-data-loss --config prisma.config.ts', {
+    execSync('bunx prisma db push --schema prisma/schema --accept-data-loss --config prisma.config.ts', {
       env,
       stdio: 'ignore' // Hide output to reduce noise, or 'pipe' if we want to log errors
     });
