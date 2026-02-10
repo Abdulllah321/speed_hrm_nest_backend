@@ -723,7 +723,7 @@ export class LeaveApplicationService {
       }
 
       if (effectiveLevel === 1) {
-        if (!existing.approval1) {
+        if (!existing.approval1 && !canOverride) {
           return {
             status: false,
             message: 'No approver configured for level 1',
@@ -840,7 +840,7 @@ export class LeaveApplicationService {
             message: 'Approval level 1 must be approved first',
           };
         }
-        if (!existing.approval2) {
+        if (!existing.approval2 && !canOverride) {
           return {
             status: false,
             message: 'No approver configured for level 2',
@@ -1013,7 +1013,7 @@ export class LeaveApplicationService {
       }
 
       if (effectiveLevel === 1) {
-        if (!existing.approval1) {
+        if (!existing.approval1 && !canOverride) {
           return {
             status: false,
             message: 'No approver configured for level 1',
@@ -1105,7 +1105,7 @@ export class LeaveApplicationService {
             message: 'Approval level 1 must be approved first',
           };
         }
-        if (!existing.approval2) {
+        if (!existing.approval2 && !canOverride) {
           return {
             status: false,
             message: 'No approver configured for level 2',
