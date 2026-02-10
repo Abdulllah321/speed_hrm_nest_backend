@@ -196,7 +196,7 @@ export class TenantDatabaseService implements OnModuleInit {
       this.logger.log(`Using schema from: prisma/schema`);
 
       const { stdout, stderr } = await execAsync(
-        `bunx prisma db push --schema=prisma/schema --accept-data-loss`,
+        `npx prisma db push --schema=prisma/schema --accept-data-loss`,
         { env },
       );
 

@@ -1,0 +1,71 @@
+model TenantItemSetting {
+    id     String @id @default(uuid())
+    itemId String @unique // Link to Master DB Item.id
+
+    // Valuation & Costing
+    valuationMethod String   @default("WEIGHTED_AVG") // FIFO, LIFO, STANDARD, WEIGHTED_AVG
+    standardCost    Decimal? @db.Decimal(15, 4)
+    averageCost     Decimal? @db.Decimal(15, 4) // Dynamic weighted average
+
+    // Planning & Replenishment
+    minStock     Decimal? @db.Decimal(15, 4)
+    maxStock     Decimal? @db.Decimal(15, 4)
+    reorderPoint Decimal? @db.Decimal(15, 4)
+    safetyStock  Decimal? @db.Decimal(15, 4)
+    leadTimeDays Int?
+
+    preferredVendorId String? // Link to Supplier
+
+    // Tracking Configuration
+    isBatchActive  Boolean @default(false)
+    isSerialActive Boolean @default(false)
+    shelfLifeDays  Int?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([itemId])
+}
+
+model UomConversion {
+    id        String  @id @default(uuid())
+    fromUomId String
+    toUomId   String
+    factor    Decimal @db.Decimal(15, 6) // Multiplier: 1 Box = 12 Pcs
+    operation String  @default("MULTIPLY") // MULTIPLY, DIVIDE
+
+    isActive Boolean @default(true)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([fromUomId, toUomId])
+}
+
+model InventoryTransaction {
+    id              String   @id @default(uuid())
+    transactionDate DateTime @default(now())
+
+    itemId String
+
+    type         String // PURCHASE, SALE, ADJUSTMENT, TRANSFER, RETURN
+    documentType String? // PO, SO, GRN, DO
+    documentId   String?
+
+    quantity   Decimal @db.Decimal(15, 4)
+    unitCost   Decimal @db.Decimal(15, 4) // Cost at the time of transaction
+    totalValue Decimal @db.Decimal(15, 4)
+
+    // Running Balance Snapshot (Optional but helpful for fast reporting)
+    quantityBalance Decimal? @db.Decimal(15, 4)
+    valueBalance    Decimal? @db.Decimal(15, 4)
+
+    notes       String?
+    createdById String?
+
+    createdAt DateTime @default(now())
+
+    @@index([itemId])
+    @@index([transactionDate])
+    @@index([documentId])
+}

@@ -1,0 +1,60 @@
+model Warehouse {
+    id          String  @id @default(uuid())
+    code        String  @unique
+    name        String
+    address     String?
+    type        String  @default("GENERAL") // RAW_MATERIAL, FINISHED_GOODS, etc.
+    description String?
+    isActive    Boolean @default(true)
+    managerId   String? // Link to Employee
+
+    // Organization
+    companyId String? // If multi-company tenant
+
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    createdById String?
+    updatedById String?
+
+    locations WarehouseLocation[]
+
+    @@index([companyId])
+    @@index([type])
+}
+
+model WarehouseLocation {
+    id          String  @id @default(uuid())
+    warehouseId String
+    code        String // Hierarchical code e.g. A-01-02
+    name        String
+    type        String  @default("BIN") // ZONE, AISLE, RACK, SHELF, BIN
+    barcode     String? @unique
+
+    // Hierarchy
+    parentId String?
+    parent   WarehouseLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id])
+    children WarehouseLocation[] @relation("LocationHierarchy")
+
+    // Dimensions & Capacity
+    length    Decimal? @db.Decimal(10, 2)
+    width     Decimal? @db.Decimal(10, 2)
+    height    Decimal? @db.Decimal(10, 2)
+    maxWeight Decimal? @db.Decimal(10, 2)
+    volume    Decimal? @db.Decimal(10, 2)
+
+    isActive Boolean @default(true)
+
+    warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+    inventory InventoryItem[]
+
+    // Relations for movements
+    movementsFrom StockMovement[] @relation("MovementFrom")
+    movementsTo   StockMovement[] @relation("MovementTo")
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([warehouseId, code])
+    @@index([parentId])
+    @@index([barcode])
+}
