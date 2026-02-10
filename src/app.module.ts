@@ -91,6 +91,7 @@ import { WarehouseModule } from './warehouse/warehouse.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
 import { RfqModule } from './purchase/rfq/rfq.module';
+import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 
 @Module({
   imports: [
@@ -193,6 +194,7 @@ import { RfqModule } from './purchase/rfq/rfq.module';
     InventoryModule,
     PurchaseRequisitionModule,
     RfqModule,
+    VendorQuotationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

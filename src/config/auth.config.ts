@@ -6,8 +6,8 @@ export default {
     refreshSecret:
       process.env.JWT_REFRESH_SECRET ||
       'your-super-secret-refresh-key-change-in-production',
-    accessExpiresIn: '7d', // Short-lived for security
-    refreshExpiresIn: '30d', // 30 days - allows users to stay logged in for a month
+    accessExpiresIn: '7d', // 7 days - suitable for portal applications
+    refreshExpiresIn: '30d', // 30 days - backup for extended sessions
     issuer: 'speed-limit-app',
   },
   password: {
@@ -15,6 +15,6 @@ export default {
     saltRounds: 12,
   },
   security: {
-    sessionTimeout: 30 * 24 * 60 * 60 * 1000, // 30 days to match refresh token - sliding session
+    sessionTimeout: 7 * 24 * 60 * 60 * 1000, // 7 days to match access token - sliding session
   },
 };

@@ -47,8 +47,9 @@ model Supplier {
     updatedAt   DateTime @updatedAt
 
     // Relations
-    paymentVouchers PaymentVoucher[]
-    rfqVendors      RequestForQuotationVendor[]
+    paymentVouchers  PaymentVoucher[]
+    rfqVendors       RequestForQuotationVendor[]
+    vendorQuotations VendorQuotation[]
 
     @@index([chartOfAccountId])
     @@index([nature])
