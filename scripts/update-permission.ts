@@ -2,7 +2,7 @@
 import { PrismaClient } from '@prisma/management-client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PERMISSIONS } from 'src/config/permissions';
+import { PERMISSIONS } from '../src/config/permissions';
  
 const pool = new Pool({ connectionString: process.env.DATABASE_URL_MANAGEMENT });
 const adapter = new PrismaPg(pool);
