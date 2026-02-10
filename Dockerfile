@@ -53,6 +53,9 @@ COPY scripts/ ./scripts/
 # Copy backup folder
 COPY backup/ ./backup/
 
+# Copy update-permission.ts
+COPY src/config/permissions.ts ./src/config/permissions.ts
+
 RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
