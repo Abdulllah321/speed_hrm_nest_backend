@@ -1,0 +1,49 @@
+model InventoryItem {
+    id          String @id @default(uuid())
+    warehouseId String
+    locationId  String
+    itemId      String // Reference to Master DB Item.id
+
+    // Batch & Serial Tracking
+    batchNumber       String?
+    serialNumber      String?
+    expiryDate        DateTime?
+    manufacturingDate DateTime?
+
+    quantity Decimal @default(0) @db.Decimal(15, 4)
+
+    // Status
+    status String @default("AVAILABLE") // AVAILABLE, RESERVED, QC_PENDING, QUARANTINE, DAMAGED
+
+    location WarehouseLocation @relation(fields: [locationId], references: [id])
+    // We can't relation to Item directly as it is in Master DB.
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([locationId, itemId, batchNumber, serialNumber, status])
+    @@index([itemId])
+    @@index([warehouseId])
+    @@index([batchNumber])
+    @@index([expiryDate])
+}
+
+model StockReserve {
+    id          String  @id @default(uuid())
+    itemId      String
+    warehouseId String
+    quantity    Decimal @db.Decimal(15, 4)
+
+    referenceType String // SALES_ORDER, TRANSFER
+    referenceId   String
+
+    notes     String?
+    expiresAt DateTime?
+
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    createdById String?
+
+    @@index([itemId, warehouseId])
+    @@index([referenceId])
+}

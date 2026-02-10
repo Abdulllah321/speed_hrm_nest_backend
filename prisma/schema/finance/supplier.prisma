@@ -48,6 +48,7 @@ model Supplier {
 
     // Relations
     paymentVouchers PaymentVoucher[]
+    rfqVendors      RequestForQuotationVendor[]
 
     @@index([chartOfAccountId])
     @@index([nature])

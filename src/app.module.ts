@@ -87,6 +87,10 @@ import { ItemModule } from './master/erp/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
 
 import { IntegrationModule } from './integration/integration.module';
+import { WarehouseModule } from './warehouse/warehouse.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
+import { RfqModule } from './purchase/rfq/rfq.module';
 
 @Module({
   imports: [
@@ -185,6 +189,10 @@ import { IntegrationModule } from './integration/integration.module';
     ItemModule,
     IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
     SupplierModule,
+    WarehouseModule,
+    InventoryModule,
+    PurchaseRequisitionModule,
+    RfqModule,
   ],
   controllers: [AppController],
   providers: [AppService],
