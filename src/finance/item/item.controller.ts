@@ -11,13 +11,13 @@ import {
 } from '@nestjs/common';
 import { ItemService } from './item.service';
 import { CreateItemDto, UpdateItemDto } from './dto/item.dto';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../../../common/guards/permissions.guard';
-import { Permissions } from '../../../common/decorators/permissions.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('ERP Items')
-@Controller('api/master/erp/item')
+@Controller('api/finance/items')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class ItemController {
