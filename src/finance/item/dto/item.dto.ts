@@ -20,6 +20,10 @@ export class CreateItemDto {
     @IsOptional()
     description?: string;
 
+    @IsString()
+    @IsOptional()
+    imageUrl?: string;
+
     @IsBoolean()
     @IsOptional()
     isActive?: boolean;

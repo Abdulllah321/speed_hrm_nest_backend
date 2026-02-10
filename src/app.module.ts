@@ -83,7 +83,7 @@ import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
 import { SeasonModule } from './master/season/season.module';
 import { SegmentModule } from './master/segment/segment.module';
-import { ItemModule } from './master/erp/item/item.module';
+import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
 
 import { IntegrationModule } from './integration/integration.module';
