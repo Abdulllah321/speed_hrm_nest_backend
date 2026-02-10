@@ -5,7 +5,7 @@ import { UpdateRfqDto, AddVendorsDto } from './dto/update-rfq.dto';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('Request For Quotation (RFQ)')
-@Controller('rfq')
+@Controller('api/rfq')
 export class RfqController {
     constructor(private readonly service: RfqService) { }
 
