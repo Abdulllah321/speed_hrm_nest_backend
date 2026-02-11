@@ -54,77 +54,77 @@ export const PERMISSIONS = [
   },
   //Institute 
   {
-    name:'master.institute.create',
-    module:'master.institute',
-    action:'create',
-    description:'Create Institute',
+    name: 'master.institute.create',
+    module: 'master.institute',
+    action: 'create',
+    description: 'Create Institute',
   },
   {
-    name:'master.institute.read',
-    module:'master.institute',
-    action:'read',
-    description:'Read Institute',
+    name: 'master.institute.read',
+    module: 'master.institute',
+    action: 'read',
+    description: 'Read Institute',
   },
   {
-    name:'master.institute.update',
-  
-    description:'Update Institute',
+    name: 'master.institute.update',
+
+    description: 'Update Institute',
   },
   {
-    name:'master.institute.delete',
-    module:'master.institute',
-    action:'delete',
-    description:'Delete Institute',
-  }, 
+    name: 'master.institute.delete',
+    module: 'master.institute',
+    action: 'delete',
+    description: 'Delete Institute',
+  },
   // Qualification
   {
-    name:'master.qualification.create',
-    module:'master.qualification',
-    action:'create',
-    description:'Create Qualification',
+    name: 'master.qualification.create',
+    module: 'master.qualification',
+    action: 'create',
+    description: 'Create Qualification',
   },
   {
-    name:'master.qualification.read',
-    module:'master.qualification',
-    action:'read',
-    description:'Read Qualification',
+    name: 'master.qualification.read',
+    module: 'master.qualification',
+    action: 'read',
+    description: 'Read Qualification',
   },
   {
-    name:'master.qualification.update',
-    module:'master.qualification',
-    action:'update',
-    description:'Update Qualification',
+    name: 'master.qualification.update',
+    module: 'master.qualification',
+    action: 'update',
+    description: 'Update Qualification',
   },
   {
-    name:'master.qualification.delete',
-    module:'master.qualification',
-    action:'delete',
-    description:'Delete Qualification',
+    name: 'master.qualification.delete',
+    module: 'master.qualification',
+    action: 'delete',
+    description: 'Delete Qualification',
   },
   // Designation
   {
-    name:'master.designation.create',
-    module:'master.designation',
-    action:'create',
-    description:'Create Designation',
+    name: 'master.designation.create',
+    module: 'master.designation',
+    action: 'create',
+    description: 'Create Designation',
   },
   {
-    name:'master.designation.read',
-    module:'master.designation',
-    action:'read',
-    description:'Read Designation',
+    name: 'master.designation.read',
+    module: 'master.designation',
+    action: 'read',
+    description: 'Read Designation',
   },
   {
-    name:'master.designation.update',
-    module:'master.designation',
-    action:'update',
-    description:'Update Designation',
+    name: 'master.designation.update',
+    module: 'master.designation',
+    action: 'update',
+    description: 'Update Designation',
   },
   {
-    name:'master.designation.delete',
-    module:'master.designation',
-    action:'delete',
-    description:'Delete Designation',
+    name: 'master.designation.delete',
+    module: 'master.designation',
+    action: 'delete',
+    description: 'Delete Designation',
   },
   // Location
   {
@@ -150,6 +150,31 @@ export const PERMISSIONS = [
     module: 'master.location',
     action: 'delete',
     description: 'Delete Location',
+  },
+  // POS
+  {
+    name: 'master.pos.create',
+    module: 'master.pos',
+    action: 'create',
+    description: 'Create POS',
+  },
+  {
+    name: 'master.pos.read',
+    module: 'master.pos',
+    action: 'read',
+    description: 'Read POS',
+  },
+  {
+    name: 'master.pos.update',
+    module: 'master.pos',
+    action: 'update',
+    description: 'Update POS',
+  },
+  {
+    name: 'master.pos.delete',
+    module: 'master.pos',
+    action: 'delete',
+    description: 'Delete POS',
   },
   // Job Type
   {
@@ -322,44 +347,44 @@ export const PERMISSIONS = [
   },
   {
     name: 'master.loan-type.delete',
-   
+
     description: 'Delete Loan Type',
   },
   // Leave Types
   {
     name: 'master.leave-type.create',
-   
+
     description: 'Create Leave Type',
   },
   {
     name: 'master.leave-type.read',
-   
+
     description: 'Read Leave Type',
   },
   {
     name: 'master.leave-type.update',
-    
+
     description: 'Update Leave Type',
   },
   {
     name: 'master.leave-type.delete',
-  
+
     description: 'Delete Leave Type',
   },
   // Leaves Policy
   {
     name: 'master.leaves-policy.create',
-   
+
     description: 'Create Leaves Policy',
   },
   {
     name: 'master.leaves-policy.read',
-   
+
     description: 'Read Leaves Policy',
   },
   {
     name: 'master.leaves-policy.update',
-   
+
     description: 'Update Leaves Policy'
   },
   {
@@ -369,17 +394,17 @@ export const PERMISSIONS = [
   // Equipment
   {
     name: 'master.equipment.create',
-    
+
     description: 'Create Equipment'
   },
   {
     name: 'master.equipment.read',
-   
+
     description: 'Read Equipment'
   },
   {
     name: 'master.equipment.update',
-  
+
     description: 'Update Equipment'
   },
   {
@@ -389,22 +414,22 @@ export const PERMISSIONS = [
   // Salary Breakup
   {
     name: 'master.salary-breakup.create',
-   
+
     description: 'Create Salary Breakup'
   },
   {
     name: 'master.salary-breakup.read',
-   
+
     description: 'Read Salary Breakup'
   },
   {
     name: 'master.salary-breakup.update',
-   
+
     description: 'Update Salary Breakup'
   },
   {
     name: 'master.salary-breakup.delete',
-  
+
     description: 'Delete Salary Breakup'
   },
   // EOBI
@@ -415,17 +440,17 @@ export const PERMISSIONS = [
   },
   {
     name: 'master.eobi.read',
- 
+
     description: 'Read EOBI'
   },
   {
     name: 'master.eobi.update',
-    
+
     description: 'Update EOBI'
   },
   {
     name: 'master.eobi.delete',
- 
+
     description: 'Delete EOBI'
   },
   // Social Security
@@ -436,122 +461,122 @@ export const PERMISSIONS = [
   },
   {
     name: 'master.social-security.read',
-  
+
     description: 'Read Social Security'
   },
   {
     name: 'master.social-security.update',
-   
+
     description: 'Update Social Security'
   },
   {
     name: 'master.social-security.delete',
-    
+
     description: 'Delete Social Security'
   },
   // Tax Slabs
   {
     name: 'master.tax-slab.create',
-   
+
     description: 'Create Tax Slab'
   },
   {
     name: 'master.tax-slab.read',
-    
+
     description: 'Read Tax Slab'
   },
   {
     name: 'master.tax-slab.update',
-     description: 'Update Tax Slab'
+    description: 'Update Tax Slab'
   },
   {
     name: 'master.tax-slab.delete',
-    
+
     description: 'Delete Tax Slab'
   },
   // Provident Fund
   {
     name: 'master.provident-fund.create',
-   
-    
+
+
     description: 'Create Provident Fund'
   },
   {
     name: 'master.provident-fund.read',
-    
+
     description: 'Read Provident Fund'
   },
   {
     name: 'master.provident-fund.update',
-    
+
     description: 'Update Provident Fund'
   },
   {
     name: 'master.provident-fund.delete',
-    
+
     description: 'Delete Provident Fund'
   },
   // Bonus Types
   {
     name: 'master.bonus-type.create',
-    
+
     description: 'Create Bonus Type'
   },
   {
     name: 'master.bonus-type.read',
-   
+
     description: 'Read Bonus Type'
   },
   {
     name: 'master.bonus-type.update',
-   
-    description: 'Update Bonus Type'  
+
+    description: 'Update Bonus Type'
   },
   {
     name: 'master.bonus-type.delete',
-    
+
     description: 'Delete Bonus Type'
   },
   // Allowance Head
   {
     name: 'master.allowance-head.create',
-   
+
     description: 'Create Allowance Head'
   },
   {
     name: 'master.allowance-head.read',
-   
+
     description: 'Read Allowance Head'
   },
   {
     name: 'master.allowance-head.update',
-    
+
     description: 'Update Allowance Head'
   },
   {
     name: 'master.allowance-head.delete',
-  
+
     description: 'Delete Allowance Head'
   },
   // Deduction Head
   {
     name: 'master.deduction-head.create',
-   
+
     description: 'Create Deduction Head'
   },
   {
     name: 'master.deduction-head.read',
-  
+
     description: 'Read Deduction Head'
   },
   {
     name: 'master.deduction-head.update',
-   
+
     description: 'Update Deduction Head'
   },
   {
     name: 'master.deduction-head.delete',
-   
+
     description: 'Delete Deduction Head'
   },
   // Bank
@@ -572,91 +597,91 @@ export const PERMISSIONS = [
     description: 'Delete Bank'
   },
 
-              // HR MODULES
+  // HR MODULES
   //Dashboard
   {
-    name:'hr.dashboard.view',
-    description:'View HR Dashboard'
+    name: 'hr.dashboard.view',
+    description: 'View HR Dashboard'
   },
   //Employee
   {
-    name:'hr.employee.create',
-    description:'Create Employee'
+    name: 'hr.employee.create',
+    description: 'Create Employee'
   },
   {
-    name:'hr.employee.read',
-    description:'Read Employee'
+    name: 'hr.employee.read',
+    description: 'Read Employee'
   },
   {
-    name:'hr.employee.transfer',
-    description:'Transfer Employee'
-  },
-    {
-    name:'hr.employee.user-account',
-    description:'User Account'
-  },
- 
-  {
-    name:'hr.employee.update',
-    description:'Update Employee'
+    name: 'hr.employee.transfer',
+    description: 'Transfer Employee'
   },
   {
-    name:'hr.employee.delete',
-    description:'Delete Employee'
+    name: 'hr.employee.user-account',
+    description: 'User Account'
+  },
+
+  {
+    name: 'hr.employee.update',
+    description: 'Update Employee'
+  },
+  {
+    name: 'hr.employee.delete',
+    description: 'Delete Employee'
   },
   //Exit Clearance
   {
-    name:'hr.exit-clearance.create',
-    description:'Exit Clearance'
+    name: 'hr.exit-clearance.create',
+    description: 'Exit Clearance'
   },
   {
-    name:'hr.exit-clearance.read',
-    description:'Read Exit Clearance'
+    name: 'hr.exit-clearance.read',
+    description: 'Read Exit Clearance'
   },
   {
-    name:'hr.exit-clearance.update',
-    description:'Update Exit Clearance'
+    name: 'hr.exit-clearance.update',
+    description: 'Update Exit Clearance'
   },
   {
-    name:'hr.exit-clearance.delete',
-    description:'Delete Exit Clearance'
+    name: 'hr.exit-clearance.delete',
+    description: 'Delete Exit Clearance'
   },
   //Attendance
   {
-    name:'hr.attendance.view',
-    description:'View Attendance'
+    name: 'hr.attendance.view',
+    description: 'View Attendance'
   },
   {
-    name:'hr.attendance.create',
-    description:'Create Attendance'
+    name: 'hr.attendance.create',
+    description: 'Create Attendance'
   },
   {
-    name:'hr.attendance.update',
-    description:'Update Attendance'
+    name: 'hr.attendance.update',
+    description: 'Update Attendance'
   },
   {
-    name:'hr.attendance.delete',
-    description:'Delete Attendance'
+    name: 'hr.attendance.delete',
+    description: 'Delete Attendance'
   },
   {
-    name:'hr.attendance.summary',
-    description:'Attendance Summary'
+    name: 'hr.attendance.summary',
+    description: 'Attendance Summary'
   },
   {
-    name:'hr.attendance.request',
-    description:'Attendance Request'
+    name: 'hr.attendance.request',
+    description: 'Attendance Request'
   },
   {
-    name:'hr.attendance.request-list',
-    description:'Attendance Request List'
+    name: 'hr.attendance.request-list',
+    description: 'Attendance Request List'
   },
   {
-    name:'hr.attendance.request-update',
-    description:'Update Attendance Request'
+    name: 'hr.attendance.request-update',
+    description: 'Update Attendance Request'
   },
   {
-    name:'hr.attendance.request-delete',
-    description:'Delete Attendance Request'
+    name: 'hr.attendance.request-delete',
+    description: 'Delete Attendance Request'
   },
   {
     name: 'hr.attendance.request-approve',
@@ -684,76 +709,76 @@ export const PERMISSIONS = [
     description: 'Approve Overtime Request'
   },
   {
-    name:'hr.attendance.exemptions',
-    description:'Attendance Exemptions'
+    name: 'hr.attendance.exemptions',
+    description: 'Attendance Exemptions'
   },
   {
-    name:'hr.attendance.exemptions-list',
-    description:'Attendance Exemptions List'
+    name: 'hr.attendance.exemptions-list',
+    description: 'Attendance Exemptions List'
   },
- 
+
   // working hour Policy
   {
-    name:'hr.working-hour-policy.create',
-    description:'Create Working Hour Policy'
+    name: 'hr.working-hour-policy.create',
+    description: 'Create Working Hour Policy'
   },
   {
-    name:'hr.working-hour-policy.read',
-    description:'Read Working Hour Policy'
+    name: 'hr.working-hour-policy.read',
+    description: 'Read Working Hour Policy'
   },
   {
-    name:'hr.working-hour-policy.update',
-    description:'Update Working Hour Policy'
+    name: 'hr.working-hour-policy.update',
+    description: 'Update Working Hour Policy'
   },
   {
-    name:'hr.working-hour-policy.delete',
-    description:'Delete Working Hour Policy'
+    name: 'hr.working-hour-policy.delete',
+    description: 'Delete Working Hour Policy'
   },
   {
-    name:'hr.working-hour-policy.assign',
-    description:'Assign Working Hour Policy'
+    name: 'hr.working-hour-policy.assign',
+    description: 'Assign Working Hour Policy'
   },
   {
-    name:'hr.working-hour-policy.assign-list',
-    description:'Assign Working Hour Policy List'
+    name: 'hr.working-hour-policy.assign-list',
+    description: 'Assign Working Hour Policy List'
   },
   // Holiday 
   {
-    name:'hr.holiday.create',
-    description:'Create Holiday'
+    name: 'hr.holiday.create',
+    description: 'Create Holiday'
   },
   {
-    name:'hr.holiday.read',
-    description:'Read Holiday'
+    name: 'hr.holiday.read',
+    description: 'Read Holiday'
   },
   {
-    name:'hr.holiday.update',
-    description:'Update Holiday'
+    name: 'hr.holiday.update',
+    description: 'Update Holiday'
   },
   {
-    name:'hr.holiday.delete',
-    description:'Delete Holiday'
+    name: 'hr.holiday.delete',
+    description: 'Delete Holiday'
   },
   //Leave
   {
-    name:'hr.leave.create',
-    description:'Create Leave'
+    name: 'hr.leave.create',
+    description: 'Create Leave'
   },
   {
-    name:'hr.leave.read',
-    description:'Read Leave'
+    name: 'hr.leave.read',
+    description: 'Read Leave'
   },
   {
-    name:'hr.leave.update',
-    description:'Update Leave'
+    name: 'hr.leave.update',
+    description: 'Update Leave'
   },
   {
-    name:'hr.leave.delete',
-    description:'Delete Leave'
+    name: 'hr.leave.delete',
+    description: 'Delete Leave'
   },
   {
-    name:'hr.leave.selectEmployee',
-    description:'Select Employee for Leave'
+    name: 'hr.leave.selectEmployee',
+    description: 'Select Employee for Leave'
   },
   // Loan Request
   {
