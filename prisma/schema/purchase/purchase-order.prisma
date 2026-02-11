@@ -24,7 +24,8 @@ model PurchaseOrder {
     createdAt DateTime @default(now()) @map("created_at")
     updatedAt DateTime @updatedAt @map("updated_at")
 
-    items PurchaseOrderItem[]
+    items             PurchaseOrderItem[]
+    goodsReceiptNotes GoodsReceiptNote[]
 
     @@map("purchase_orders")
 }
@@ -38,6 +39,7 @@ model PurchaseOrderItem {
     description String?
 
     quantity        Decimal @db.Decimal(15, 4)
+    receivedQty     Decimal @default(0) @map("received_qty") @db.Decimal(15, 4)
     unitPrice       Decimal @map("unit_price") @db.Decimal(15, 2)
     taxPercent      Decimal @default(0) @map("tax_percent") @db.Decimal(5, 2)
     discountPercent Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)

@@ -93,6 +93,7 @@ import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purch
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
+import { GrnModule } from './warehouse/grn/grn.module';
 
 @Module({
   imports: [
@@ -197,6 +198,7 @@ import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.mo
     RfqModule,
     VendorQuotationModule,
     PurchaseOrderModule,
+    GrnModule,
   ],
   controllers: [AppController],
   providers: [AppService],

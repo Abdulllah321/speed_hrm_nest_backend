@@ -1,0 +1,56 @@
+model GoodsReceiptNote {
+    id        String @id @default(uuid())
+    grnNumber String @unique @map("grn_number")
+
+    purchaseOrderId String        @map("purchase_order_id")
+    purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+    warehouseId String    @map("warehouse_id")
+    warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+    receivedDate DateTime @default(now()) @map("received_date")
+    status       String   @default("SUBMITTED") // SUBMITTED, CANCELLED
+
+    notes String?
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    items GoodsReceiptNoteItem[]
+
+    @@map("goods_receipt_notes")
+}
+
+model GoodsReceiptNoteItem {
+    id                 String           @id @default(uuid())
+    goodsReceiptNoteId String           @map("goods_receipt_note_id")
+    goodsReceiptNote   GoodsReceiptNote @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+
+    itemId      String  @map("item_id")
+    description String?
+
+    receivedQty Decimal @map("received_qty") @db.Decimal(15, 4)
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    @@map("goods_receipt_note_items")
+}
+
+model StockLedger {
+    id          String @id @default(uuid())
+    itemId      String @map("item_id")
+    warehouseId String @map("warehouse_id")
+
+    qty Decimal @db.Decimal(15, 4) // Positive for IN, Negative for OUT
+
+    referenceType String @map("reference_type") // e.g. "GRN", "STOCK_ADJUSTMENT"
+    referenceId   String @map("reference_id") // ID of the document
+
+    createdAt DateTime @default(now()) @map("created_at")
+
+    @@index([itemId])
+    @@index([warehouseId])
+    @@index([referenceId])
+    @@map("stock_ledgers")
+}
