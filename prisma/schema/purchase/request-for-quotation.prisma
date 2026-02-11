@@ -13,6 +13,7 @@ model RequestForQuotation {
 
     vendors          RequestForQuotationVendor[]
     vendorQuotations VendorQuotation[]
+    purchaseOrders   PurchaseOrder[]
 
     @@map("rfqs")
 }

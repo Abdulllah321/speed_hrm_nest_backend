@@ -50,6 +50,7 @@ model Supplier {
     paymentVouchers  PaymentVoucher[]
     rfqVendors       RequestForQuotationVendor[]
     vendorQuotations VendorQuotation[]
+    purchaseOrders   PurchaseOrder[]
 
     @@index([chartOfAccountId])
     @@index([nature])
