@@ -93,6 +93,8 @@ import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purch
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 
+import { SearchModule } from './search/search.module';
+
 @Module({
   imports: [
     CacheModule.registerAsync({
@@ -195,6 +197,7 @@ import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotat
     PurchaseRequisitionModule,
     RfqModule,
     VendorQuotationModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

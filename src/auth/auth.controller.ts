@@ -375,13 +375,6 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout user' })
   async logout(@Req() req: any, @Res() res: any) {
-    // Extract token from Authorization header to invalidate only this session
-    const authHeader = req.headers['authorization'] as string;
-    const accessToken = authHeader?.startsWith('Bearer ')
-      ? authHeader.split(' ')[1]
-      : undefined;
-    await this.service.logout(req.user.userId, accessToken);
-
     const clearCookieOptions = this.getCookieOptions(req);
 
     res.clearCookie('accessToken', clearCookieOptions);
@@ -407,31 +400,7 @@ export class AuthController {
     );
   }
 
-  @Get('sessions')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get active sessions' })
-  async sessions(@Req() req: any) {
-    const authHeader = req.headers['authorization'] as string;
-    const accessToken = authHeader?.startsWith('Bearer ')
-      ? authHeader.split(' ')[1]
-      : req.cookies?.['accessToken'];
-    return this.service.getActiveSessions(req.user.userId, accessToken);
-  }
 
-  @Post('sessions/terminate')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Terminate a session' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: { sessionId: { type: 'string', example: 'session-uuid' } },
-    },
-  })
-  async terminate(@Req() req: any, @Body('sessionId') sessionId: string) {
-    return this.service.terminateSession(req.user.userId, sessionId);
-  }
 
   @Get('login-history')
   @UseGuards(JwtAuthGuard)
