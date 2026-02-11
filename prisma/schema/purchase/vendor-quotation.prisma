@@ -19,7 +19,8 @@ model VendorQuotation {
     createdAt DateTime @default(now()) @map("created_at")
     updatedAt DateTime @updatedAt @map("updated_at")
 
-    items VendorQuotationItem[]
+    items          VendorQuotationItem[]
+    purchaseOrders PurchaseOrder[]
 
     @@unique([rfqId, vendorId])
     @@map("vendor_quotations")

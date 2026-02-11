@@ -92,6 +92,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
+import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
 
 @Module({
   imports: [
@@ -195,6 +196,7 @@ import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotat
     PurchaseRequisitionModule,
     RfqModule,
     VendorQuotationModule,
+    PurchaseOrderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
