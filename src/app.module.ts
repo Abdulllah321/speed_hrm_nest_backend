@@ -92,6 +92,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
+import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
 
@@ -197,6 +198,7 @@ import { SearchModule } from './search/search.module';
     PurchaseRequisitionModule,
     RfqModule,
     VendorQuotationModule,
+    PosModule,
     SearchModule,
   ],
   controllers: [AppController],
