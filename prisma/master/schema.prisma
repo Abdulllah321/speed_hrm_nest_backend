@@ -96,8 +96,6 @@ model User {
   isDashboardEnabled  Boolean   @default(false)
 
   role          Role?            @relation(fields: [roleId], references: [id])
-  sessions      Session[]
-  refreshTokens RefreshToken[]
   activityLogs  ActivityLog[]
   loginHistory  LoginHistory[]
   preferences   UserPreference[]
@@ -147,37 +145,6 @@ model RolePermission {
   @@unique([roleId, permissionId])
 }
 
-model Session {
-  id             String   @id @default(uuid())
-  userId         String
-  token          String   @unique
-  ipAddress      String?
-  userAgent      String?
-  deviceInfo     String?
-  isActive       Boolean  @default(true)
-  expiresAt      DateTime
-  createdAt      DateTime @default(now())
-  lastActivityAt DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([token])
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String
-  token     String   @unique
-  family    String
-  isRevoked Boolean  @default(false)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([token])
-}
-
 model ActivityLog {
   id           String   @id @default(uuid())
   userId       String?
@@ -215,16 +182,6 @@ model LoginHistory {
 
   @@index([userId])
   @@index([createdAt])
-}
-
-model BlacklistedToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  reason    String?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@index([token])
 }
 
 model UserPreference {
@@ -426,6 +383,21 @@ model Location {
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  pos         Pos[]
+}
+
+model Pos {
+  id          String   @id @default(uuid())
+  posId       String // 3-character unique ID for this location
+  name        String
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([locationId, posId])
 }
 
 model AllowanceHead {
@@ -917,7 +889,7 @@ model Brand {
   status      String     @default("active")
   createdById String?
   createdAt   DateTime   @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime   @updatedAt
   divisions   Division[]
 }
 
@@ -949,7 +921,7 @@ model Size {
   status      String   @default("active")
   createdById String?
   createdAt   DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt   DateTime @updatedAt
 }
 
 model Silhouette {
@@ -1019,5 +991,3 @@ model Season {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
-
-
