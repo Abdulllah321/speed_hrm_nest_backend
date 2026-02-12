@@ -59,47 +59,23 @@ export class AuthService {
         userId: user.id,
         email: user.email,
         roleId: user.roleId,
-        // permissions removed to keep token size small - fetched in Guard
         employeeId: user.employeeId,
         roleName: user.role?.name || null,
       },
       authConfig.jwt.accessSecret,
       accessOpts,
     );
-    const family = crypto.randomUUID();
+
+    // Create a stateless refresh token
     const refreshOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.refreshExpiresIn as any,
       issuer: authConfig.jwt.issuer,
     };
     const refreshToken = jwt.sign(
-      { userId: user.id, family },
+      { userId: user.id },
       authConfig.jwt.refreshSecret,
       refreshOpts,
     );
-    const refreshTokenExpiryMs = parseExpiryToMs(
-      authConfig.jwt.refreshExpiresIn,
-    );
-
-    await this.prismaMaster.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: refreshToken,
-        family,
-        expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
-      },
-    });
-
-    await this.prismaMaster.session.create({
-      data: {
-        userId: user.id,
-        token: accessToken,
-        isActive: true,
-        ipAddress: ipAddress || null,
-        userAgent: userAgent || null,
-        lastActivityAt: new Date(),
-        expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout),
-      },
-    });
 
     await this.prismaMaster.loginHistory.create({
       data: {
@@ -121,7 +97,7 @@ export class AuthService {
           role: user.role?.name || null,
           permissions:
             user.role?.permissions
-              .filter((p) => p.permission) // Filter out null permissions
+              .filter((p) => p.permission)
               .map((p) => p.permission.name) || [],
         },
         accessToken,
@@ -228,40 +204,15 @@ export class AuthService {
       accessOpts,
     );
 
-    const family = crypto.randomUUID();
     const refreshOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.refreshExpiresIn as any,
       issuer: authConfig.jwt.issuer,
     };
     const refreshToken = jwt.sign(
-      { userId: targetUser.id, family },
+      { userId: targetUser.id },
       authConfig.jwt.refreshSecret,
       refreshOpts,
     );
-    const refreshTokenExpiryMs = parseExpiryToMs(
-      authConfig.jwt.refreshExpiresIn,
-    );
-
-    await this.prismaMaster.refreshToken.create({
-      data: {
-        userId: targetUser.id,
-        token: refreshToken,
-        family,
-        expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
-      },
-    });
-
-    await this.prismaMaster.session.create({
-      data: {
-        userId: targetUser.id,
-        token: accessToken,
-        isActive: true,
-        ipAddress: ipAddress || null,
-        userAgent: userAgent || null,
-        lastActivityAt: new Date(),
-        expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout),
-      },
-    });
 
     return {
       status: true,
@@ -462,43 +413,23 @@ export class AuthService {
       accessOpts,
     );
 
-    const family = crypto.randomUUID();
     const refreshOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.refreshExpiresIn as any,
       issuer: authConfig.jwt.issuer,
     };
     const refreshToken = jwt.sign(
-      { userId: user.id, family },
+      { userId: user.id },
       authConfig.jwt.refreshSecret,
       refreshOpts,
     );
-    const refreshTokenExpiryMs = parseExpiryToMs(
-      authConfig.jwt.refreshExpiresIn,
-    );
 
-    await this.prismaMaster.refreshToken.create({
+    await this.prismaMaster.loginHistory.create({
       data: {
         userId: user.id,
-        token: refreshToken,
-        family,
-        expiresAt: new Date(Date.now() + refreshTokenExpiryMs),
-      },
-    });
-
-    // Delete any existing sessions for this user to avoid duplicate token errors
-    await this.prismaMaster.session.deleteMany({
-      where: { userId: user.id, isActive: true },
-    });
-
-    await this.prismaMaster.session.create({
-      data: {
-        userId: user.id,
-        token: accessToken,
-        isActive: true,
-        ipAddress: ipAddress || null,
+        ipAddress: ipAddress || 'Unknown',
         userAgent: userAgent || null,
-        lastActivityAt: new Date(),
-        expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout),
+        status: 'success',
+        deviceInfo: 'SSO:DriveSafe',
       },
     });
 
@@ -542,18 +473,6 @@ export class AuthService {
   async refresh(token: string) {
     try {
       const decoded = jwt.verify(token, authConfig.jwt.refreshSecret) as any;
-      const stored = await this.prismaMaster.refreshToken.findUnique({
-        where: { token },
-      });
-      if (!stored) {
-        return { status: false, message: 'Invalid refresh token (not found)' };
-      }
-      if (stored.isRevoked) {
-        return { status: false, message: 'Invalid refresh token (revoked)' };
-      }
-      if (new Date() > stored.expiresAt) {
-        return { status: false, message: 'Invalid refresh token (expired)' };
-      }
 
       const user = await this.prismaMaster.user.findUnique({
         where: { id: decoded.userId },
@@ -581,42 +500,7 @@ export class AuthService {
         accessOpts,
       );
 
-      // Update session with new access token
-      await this.prismaMaster.$transaction(async (tx) => {
-        const existingSession = await tx.session.findFirst({
-          where: { userId: user.id, isActive: true },
-          orderBy: { lastActivityAt: 'desc' },
-        });
-
-        if (existingSession) {
-          await tx.session.update({
-            where: { id: existingSession.id },
-            data: {
-              token: accessToken,
-              lastActivityAt: new Date(),
-              expiresAt: new Date(
-                Date.now() + authConfig.security.sessionTimeout,
-              ),
-            },
-          });
-        } else {
-          await tx.session.create({
-            data: {
-              userId: user.id,
-              token: accessToken,
-              isActive: true,
-              ipAddress: null,
-              userAgent: null,
-              lastActivityAt: new Date(),
-              expiresAt: new Date(
-                Date.now() + authConfig.security.sessionTimeout,
-              ),
-            },
-          });
-        }
-      });
-
-      // Return the same refresh token (no rotation)
+      // Return the same refresh token (no rotation required in simple stateless)
       return {
         status: true,
         data: { accessToken, refreshToken: token },
@@ -702,26 +586,8 @@ export class AuthService {
   }
 
   async logout(userId: string, accessToken?: string) {
-    if (accessToken) {
-      const session = await this.prismaMaster.session.findFirst({
-        where: { userId, token: accessToken, isActive: true },
-      });
-      if (session) {
-        await this.prismaMaster.session.update({
-          where: { id: session.id },
-          data: { isActive: false },
-        });
-      }
-    } else {
-      await this.prismaMaster.session.updateMany({
-        where: { userId, isActive: true },
-        data: { isActive: false },
-      });
-      await this.prismaMaster.refreshToken.updateMany({
-        where: { userId, isRevoked: false },
-        data: { isRevoked: true },
-      });
-    }
+    // Simply return success since there is no server-side token state to clear.
+    // Cookies are cleared in the controller.
     return { status: true, message: 'Logged out' };
   }
 
@@ -744,62 +610,9 @@ export class AuthService {
         resetCookies: true,
       };
 
-    if (accessToken) {
-      const session = await this.prismaMaster.session.findFirst({
-        where: { userId, token: accessToken, isActive: true },
-      });
-
-      if (!session) {
-        return {
-          status: false,
-          message: 'Session not found or expired',
-          valid: false,
-          resetCookies: true,
-        };
-      }
-
-      const now = new Date();
-      if (session.expiresAt < now) {
-        await this.prismaMaster.session.update({
-          where: { id: session.id },
-          data: { isActive: false },
-        });
-        return {
-          status: false,
-          message: 'Session expired',
-          valid: false,
-          resetCookies: true,
-        };
-      }
-
-      await this.prismaMaster.session.update({
-        where: { id: session.id },
-        data: {
-          lastActivityAt: new Date(),
-          expiresAt: new Date(Date.now() + authConfig.security.sessionTimeout),
-        },
-      });
-    } else {
-      const validSession = await this.prismaMaster.session.findFirst({
-        where: {
-          userId,
-          isActive: true,
-          expiresAt: { gt: new Date() },
-        },
-      });
-
-      if (!validSession) {
-        return {
-          status: false,
-          message: 'No valid session found',
-          valid: false,
-          resetCookies: true,
-        };
-      }
-    }
-
     return {
       status: true,
+      message: 'Session is valid',
       valid: true,
       data: { userId: user.id, email: user.email, roleId: user.roleId },
     };
@@ -893,41 +706,6 @@ export class AuthService {
     return { status: true, data: user, message: 'Profile updated' };
   }
 
-  async getActiveSessions(userId: string, currentAccessToken?: string) {
-    const sessions = await this.prismaMaster.session.findMany({
-      where: { userId, isActive: true },
-      orderBy: { lastActivityAt: 'desc' },
-    });
-
-    const data = sessions.map((session) => ({
-      id: session.id,
-      userId: session.userId,
-      ipAddress: session.ipAddress,
-      userAgent: session.userAgent,
-      deviceInfo: session.deviceInfo,
-      lastActivityAt: session.lastActivityAt,
-      expiresAt: session.expiresAt,
-      createdAt: session.createdAt,
-      isCurrent: currentAccessToken
-        ? session.token === currentAccessToken
-        : false,
-    }));
-
-    return { status: true, data };
-  }
-
-  async terminateSession(userId: string, sessionId: string) {
-    const session = await this.prismaMaster.session.findUnique({
-      where: { id: sessionId },
-    });
-    if (!session || session.userId !== userId)
-      return { status: false, message: 'Session not found' };
-    await this.prismaMaster.session.update({
-      where: { id: sessionId },
-      data: { isActive: false },
-    });
-    return { status: true, message: 'Session terminated' };
-  }
 
   async getLoginHistory(userId: string) {
     const logs = await this.prismaMaster.loginHistory.findMany({

@@ -94,6 +94,9 @@ import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
 import { GrnModule } from './warehouse/grn/grn.module';
+import { PosModule } from './master/pos/pos.module';
+
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -199,6 +202,8 @@ import { GrnModule } from './warehouse/grn/grn.module';
     VendorQuotationModule,
     PurchaseOrderModule,
     GrnModule,
+    PosModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
