@@ -16,8 +16,9 @@ model Warehouse {
     createdById String?
     updatedById String?
 
-    locations         WarehouseLocation[]
-    goodsReceiptNotes GoodsReceiptNote[]
+    locations          WarehouseLocation[]
+    goodsReceiptNotes  GoodsReceiptNote[]
+    stockLedgerEntries StockLedger[]
 
     @@index([companyId])
     @@index([type])

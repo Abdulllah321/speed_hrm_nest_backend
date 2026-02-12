@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateGrnDto } from './dto/grn.dto';
-import { Decimal } from '@prisma/client/runtime/client';
+import { MovementType, Prisma } from '@prisma/client';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 
 @Injectable()
 export class GrnService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private stockLedgerService: StockLedgerService,
+    ) { }
 
     async findAll() {
         return this.prisma.goodsReceiptNote.findMany({
@@ -66,7 +70,7 @@ export class GrnService {
                         create: dto.items.map((item) => ({
                             itemId: item.itemId,
                             description: item.description,
-                            receivedQty: new Decimal(item.receivedQty),
+                            receivedQty: new Prisma.Decimal(item.receivedQty),
                         })),
                     },
                 },
@@ -80,8 +84,8 @@ export class GrnService {
                     throw new BadRequestException(`Item ${grnItem.itemId} not found in PO`);
                 }
 
-                const remainingQty = new Decimal(poItem.quantity).minus(new Decimal(poItem.receivedQty));
-                if (new Decimal(grnItem.receivedQty).gt(remainingQty)) {
+                const remainingQty = new Prisma.Decimal(poItem.quantity).minus(new Prisma.Decimal(poItem.receivedQty));
+                if (new Prisma.Decimal(grnItem.receivedQty).gt(remainingQty)) {
                     throw new BadRequestException(
                         `Received quantity exceeds remaining quantity for item ${grnItem.itemId}. Remaining: ${remainingQty}`,
                     );
@@ -91,20 +95,20 @@ export class GrnService {
                 await tx.purchaseOrderItem.update({
                     where: { id: poItem.id },
                     data: {
-                        receivedQty: { increment: new Decimal(grnItem.receivedQty) },
+                        receivedQty: { increment: new Prisma.Decimal(grnItem.receivedQty) },
                     },
                 });
 
                 // 4. Create Stock Ledger entry
-                await tx.stockLedger.create({
-                    data: {
-                        itemId: grnItem.itemId,
-                        warehouseId: dto.warehouseId,
-                        qty: new Decimal(grnItem.receivedQty),
-                        referenceType: 'GRN',
-                        referenceId: grn.id,
-                    },
-                });
+                // 4. Create Stock Ledger entry
+                await this.stockLedgerService.createEntry({
+                    itemId: grnItem.itemId,
+                    warehouseId: dto.warehouseId,
+                    qty: new Prisma.Decimal(grnItem.receivedQty),
+                    movementType: MovementType.INBOUND,
+                    referenceType: 'GRN',
+                    referenceId: grn.id,
+                }, tx);
             }
 
             // 5. Update PO Status
@@ -118,7 +122,7 @@ export class GrnService {
             }
 
             const allReceived = updatedPo.items.every((item) =>
-                new Decimal(item.receivedQty).gte(new Decimal(item.quantity)),
+                new Prisma.Decimal(item.receivedQty).gte(new Prisma.Decimal(item.quantity)),
             );
 
             await tx.purchaseOrder.update({

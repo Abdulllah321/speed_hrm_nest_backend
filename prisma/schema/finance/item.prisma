@@ -41,6 +41,7 @@ model Item {
   uomId          String?
   segmentId      String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  stockLedgerEntries StockLedger[]
 }

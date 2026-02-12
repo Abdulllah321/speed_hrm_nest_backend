@@ -36,21 +36,3 @@ model GoodsReceiptNoteItem {
 
     @@map("goods_receipt_note_items")
 }
-
-model StockLedger {
-    id          String @id @default(uuid())
-    itemId      String @map("item_id")
-    warehouseId String @map("warehouse_id")
-
-    qty Decimal @db.Decimal(15, 4) // Positive for IN, Negative for OUT
-
-    referenceType String @map("reference_type") // e.g. "GRN", "STOCK_ADJUSTMENT"
-    referenceId   String @map("reference_id") // ID of the document
-
-    createdAt DateTime @default(now()) @map("created_at")
-
-    @@index([itemId])
-    @@index([warehouseId])
-    @@index([referenceId])
-    @@map("stock_ledgers")
-}
