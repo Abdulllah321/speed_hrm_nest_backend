@@ -59,6 +59,10 @@ export class GrnService {
         const grnNumber = `GRN-${Date.now()}`;
 
         return this.prisma.$transaction(async (tx) => {
+            // Fetch Item ID mapping
+            // GRN Item uses itemId as the string ID (e.g. "2121"), but StockLedger needs the internal UUID of the Item
+            // We need to find the Item UUID based on the itemId string provided in dto.items
+            
             // 1. Create GRN
             const grn = await tx.goodsReceiptNote.create({
                 data: {
@@ -84,6 +88,16 @@ export class GrnService {
                     throw new BadRequestException(`Item ${grnItem.itemId} not found in PO`);
                 }
 
+                // Resolve internal Item UUID from itemId (e.g. "2121")
+                const itemRecord = await tx.item.findUnique({
+                    where: { itemId: grnItem.itemId },
+                    select: { id: true }
+                });
+
+                if (!itemRecord) {
+                    throw new BadRequestException(`Item with ID ${grnItem.itemId} not found in database master`);
+                }
+
                 const remainingQty = new Prisma.Decimal(poItem.quantity).minus(new Prisma.Decimal(poItem.receivedQty));
                 if (new Prisma.Decimal(grnItem.receivedQty).gt(remainingQty)) {
                     throw new BadRequestException(
@@ -100,9 +114,9 @@ export class GrnService {
                 });
 
                 // 4. Create Stock Ledger entry
-                // 4. Create Stock Ledger entry
+                // Use itemRecord.id (UUID) instead of grnItem.itemId (String ID) for the relation
                 await this.stockLedgerService.createEntry({
-                    itemId: grnItem.itemId,
+                    itemId: itemRecord.id, // This is the UUID required by the foreign key
                     warehouseId: dto.warehouseId,
                     qty: new Prisma.Decimal(grnItem.receivedQty),
                     movementType: MovementType.INBOUND,
