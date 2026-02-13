@@ -1,52 +1,42 @@
 model PurchaseOrder {
-    id                String          @id @default(uuid())
-    poNumber          String          @unique @map("po_number")
-    vendorQuotationId String          @map("vendor_quotation_id")
-    vendorQuotation   VendorQuotation @relation(fields: [vendorQuotationId], references: [id])
+  id                   String               @id @default(uuid())
+  poNumber             String               @unique @map("po_number")
+  vendorQuotationId    String?              @map("vendor_quotation_id")
+  vendorId             String               @map("vendor_id")
+  rfqId                String?              @map("rfq_id")
+  orderDate            DateTime             @default(now()) @map("order_date")
+  expectedDeliveryDate DateTime?            @map("expected_delivery_date")
+  status               String               @default("DRAFT")
+  subtotal             Decimal              @default(0) @db.Decimal(15, 2)
+  taxAmount            Decimal              @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  discountAmount       Decimal              @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  totalAmount          Decimal              @default(0) @map("total_amount") @db.Decimal(15, 2)
+  notes                String?
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  goodsReceiptNotes    GoodsReceiptNote[]
+  items                PurchaseOrderItem[]
+  rfq                  RequestForQuotation? @relation(fields: [rfqId], references: [id])
+  vendor               Supplier             @relation(fields: [vendorId], references: [id])
+  vendorQuotation      VendorQuotation?     @relation(fields: [vendorQuotationId], references: [id])
 
-    vendorId String   @map("vendor_id")
-    vendor   Supplier @relation(fields: [vendorId], references: [id])
-
-    rfqId String?              @map("rfq_id")
-    rfq   RequestForQuotation? @relation(fields: [rfqId], references: [id])
-
-    orderDate            DateTime  @default(now()) @map("order_date")
-    expectedDeliveryDate DateTime? @map("expected_delivery_date")
-    status               String    @default("DRAFT") // DRAFT, OPEN, CLOSED, CANCELLED
-
-    subtotal       Decimal @default(0) @db.Decimal(15, 2)
-    taxAmount      Decimal @default(0) @map("tax_amount") @db.Decimal(15, 2)
-    discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(15, 2)
-    totalAmount    Decimal @default(0) @map("total_amount") @db.Decimal(15, 2)
-
-    notes String?
-
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @updatedAt @map("updated_at")
-
-    items             PurchaseOrderItem[]
-    goodsReceiptNotes GoodsReceiptNote[]
-
-    @@map("purchase_orders")
+  @@map("purchase_orders")
 }
 
 model PurchaseOrderItem {
-    id              String        @id @default(uuid())
-    purchaseOrderId String        @map("purchase_order_id")
-    purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  purchaseOrderId String        @map("purchase_order_id")
+  itemId          String        @map("item_id")
+  description     String?
+  quantity        Decimal       @db.Decimal(15, 4)
+  unitPrice       Decimal       @map("unit_price") @db.Decimal(15, 2)
+  taxPercent      Decimal       @default(0) @map("tax_percent") @db.Decimal(5, 2)
+  discountPercent Decimal       @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  lineTotal       Decimal       @map("line_total") @db.Decimal(15, 2)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  receivedQty     Decimal       @default(0) @map("received_qty") @db.Decimal(15, 4)
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
 
-    itemId      String  @map("item_id")
-    description String?
-
-    quantity        Decimal @db.Decimal(15, 4)
-    receivedQty     Decimal @default(0) @map("received_qty") @db.Decimal(15, 4)
-    unitPrice       Decimal @map("unit_price") @db.Decimal(15, 2)
-    taxPercent      Decimal @default(0) @map("tax_percent") @db.Decimal(5, 2)
-    discountPercent Decimal @default(0) @map("discount_percent") @db.Decimal(5, 2)
-    lineTotal       Decimal @map("line_total") @db.Decimal(15, 2)
-
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @updatedAt @map("updated_at")
-
-    @@map("purchase_order_items")
+  @@map("purchase_order_items")
 }

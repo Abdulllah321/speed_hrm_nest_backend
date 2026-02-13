@@ -11,6 +11,11 @@ export class PurchaseOrderController {
         return this.purchaseOrderService.findAll();
     }
 
+    @Get('pending-quotations')
+    findPendingQuotations() {
+        return this.purchaseOrderService.findPendingQuotations();
+    }
+
     @Get(':id')
     findOne(@Param('id') id: string) {
         return this.purchaseOrderService.findOne(id);
@@ -18,7 +23,7 @@ export class PurchaseOrderController {
 
     @Post()
     create(@Body() createDto: CreatePurchaseOrderDto) {
-        return this.purchaseOrderService.createFromQuotation(createDto);
+        return this.purchaseOrderService.create(createDto);
     }
 
     @Patch(':id/status')

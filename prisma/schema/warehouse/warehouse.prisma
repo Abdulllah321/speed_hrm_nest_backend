@@ -1,62 +1,49 @@
 model Warehouse {
-    id          String  @id @default(uuid())
-    code        String  @unique
-    name        String
-    address     String?
-    type        String  @default("GENERAL") // RAW_MATERIAL, FINISHED_GOODS, etc.
-    description String?
-    isActive    Boolean @default(true)
-    managerId   String? // Link to Employee
+  id                 String              @id @default(uuid())
+  code               String              @unique
+  name               String
+  address            String?
+  type               String              @default("GENERAL")
+  description        String?
+  isActive           Boolean             @default(true)
+  managerId          String?
+  companyId          String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  createdById        String?
+  updatedById        String?
+  locations          WarehouseLocation[]
+  goodsReceiptNotes  GoodsReceiptNote[]
+  stockLedgerEntries StockLedger[]
 
-    // Organization
-    companyId String? // If multi-company tenant
-
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
-    createdById String?
-    updatedById String?
-
-    locations          WarehouseLocation[]
-    goodsReceiptNotes  GoodsReceiptNote[]
-    stockLedgerEntries StockLedger[]
-
-    @@index([companyId])
-    @@index([type])
+  @@index([companyId])
+  @@index([type])
 }
 
 model WarehouseLocation {
-    id          String  @id @default(uuid())
-    warehouseId String
-    code        String // Hierarchical code e.g. A-01-02
-    name        String
-    type        String  @default("BIN") // ZONE, AISLE, RACK, SHELF, BIN
-    barcode     String? @unique
+  id            String              @id @default(uuid())
+  warehouseId   String
+  code          String
+  name          String
+  type          String              @default("BIN")
+  barcode       String?             @unique
+  parentId      String?
+  length        Decimal?            @db.Decimal(10, 2)
+  width         Decimal?            @db.Decimal(10, 2)
+  height        Decimal?            @db.Decimal(10, 2)
+  maxWeight     Decimal?            @db.Decimal(10, 2)
+  volume        Decimal?            @db.Decimal(10, 2)
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  inventory     InventoryItem[]
+  movementsFrom StockMovement[]     @relation("MovementFrom")
+  movementsTo   StockMovement[]     @relation("MovementTo")
+  parent        WarehouseLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children      WarehouseLocation[] @relation("LocationHierarchy")
+  warehouse     Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
-    // Hierarchy
-    parentId String?
-    parent   WarehouseLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id])
-    children WarehouseLocation[] @relation("LocationHierarchy")
-
-    // Dimensions & Capacity
-    length    Decimal? @db.Decimal(10, 2)
-    width     Decimal? @db.Decimal(10, 2)
-    height    Decimal? @db.Decimal(10, 2)
-    maxWeight Decimal? @db.Decimal(10, 2)
-    volume    Decimal? @db.Decimal(10, 2)
-
-    isActive Boolean @default(true)
-
-    warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-    inventory InventoryItem[]
-
-    // Relations for movements
-    movementsFrom StockMovement[] @relation("MovementFrom")
-    movementsTo   StockMovement[] @relation("MovementTo")
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    @@unique([warehouseId, code])
-    @@index([parentId])
-    @@index([barcode])
+  @@unique([warehouseId, code])
+  @@index([parentId])
+  @@index([barcode])
 }

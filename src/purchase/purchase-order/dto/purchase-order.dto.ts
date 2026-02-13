@@ -27,8 +27,18 @@ export class CreatePurchaseOrderItemDto {
 
 export class CreatePurchaseOrderDto {
     @IsString()
-    @IsNotEmpty()
-    vendorQuotationId: string;
+    @IsOptional()
+    vendorQuotationId?: string;
+
+    @IsString()
+    @IsOptional()
+    vendorId?: string;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreatePurchaseOrderItemDto)
+    @IsOptional()
+    items?: CreatePurchaseOrderItemDto[];
 
     @IsString()
     @IsOptional()

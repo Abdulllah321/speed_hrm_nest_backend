@@ -39,6 +39,41 @@ export class StockLedgerService {
         });
     }
 
+    async getStockLevels(warehouseId?: string) {
+        const groupBy = await this.prisma.stockLedger.groupBy({
+            by: ['itemId', 'warehouseId'],
+            where: {
+                warehouseId,
+            },
+            _sum: {
+                qty: true,
+            },
+        });
+
+        // Enrich with Item and Warehouse details
+        const enriched = await Promise.all(groupBy.map(async (entry) => {
+            const item = await this.prisma.item.findUnique({
+                where: { id: entry.itemId },
+                select: { itemId: true, sku: true, description: true, uomId: true }
+            });
+            
+            const warehouse = await this.prisma.warehouse.findUnique({
+                where: { id: entry.warehouseId },
+                select: { name: true, code: true }
+            });
+
+            return {
+                itemId: entry.itemId,
+                warehouseId: entry.warehouseId,
+                totalQty: entry._sum.qty || new Prisma.Decimal(0),
+                item,
+                warehouse
+            };
+        }));
+
+        return enriched;
+    }
+
     async createEntry(data: {
         itemId: string;
         warehouseId: string;
