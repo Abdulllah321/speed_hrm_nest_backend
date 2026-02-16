@@ -1,19 +1,23 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { WebhookService } from '../webhook/webhook.service';
 import { Prisma } from '@prisma/client';
 import { SocialSecurityInstitution } from '@prisma/management-client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class EmployeeService {
+  private readonly logger = new Logger(EmployeeService.name);
+
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
+    private webhooks: WebhookService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) { }
 
@@ -1138,26 +1142,19 @@ export class EmployeeService {
           socialSecurityInstitutionId:
             getBodyString('socialSecurityInstitutionId') || null,
           status: 'active',
-          // Removed invalid socialSecurityRegistrations relation
           equipmentAssignments:
             equipmentAssignmentsValue &&
               Array.isArray(equipmentAssignmentsValue) &&
               equipmentAssignmentsValue.length > 0
               ? {
-                create: (equipmentAssignmentsValue as any[])
-                  .filter((ea) => ea.equipmentId)
-                  .map((ea: any) => ({
-                    equipmentId: ea.equipmentId,
-                    productId:
-                      ea.productId ||
-                      `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
-                    assignedDate: ea.assignedDate
-                      ? new Date(ea.assignedDate)
-                      : new Date(),
-                    notes: ea.notes || null,
-                    assignedById: ctx.userId,
-                    status: 'assigned',
-                  })),
+                create: (equipmentAssignmentsValue as any[]).filter(ea => ea.equipmentId).map(ea => ({
+                  equipmentId: ea.equipmentId,
+                  productId: ea.productId || `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                  assignedDate: ea.assignedDate ? new Date(ea.assignedDate) : new Date(),
+                  notes: ea.notes || null,
+                  assignedById: ctx.userId,
+                  status: 'assigned',
+                }))
               }
               : undefined,
           qualifications:
@@ -1165,85 +1162,22 @@ export class EmployeeService {
               Array.isArray(qualificationsValue) &&
               qualificationsValue.length > 0
               ? {
-                create: (
-                  qualificationsValue as Array<{
-                    qualification?: unknown;
-                    qualificationId?: unknown;
-                    instituteId?: unknown;
-                    cityId?: unknown;
-                    stateId?: unknown;
-                    year?: unknown;
-                    grade?: unknown;
-                  }>
-                )
-                  .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
-                  .map((q) => {
-                    // Safely convert qualification/qualificationId to string
-                    const qualificationIdValue =
-                      q.qualification || q.qualificationId;
-                    const qualificationIdStr =
-                      typeof qualificationIdValue === 'string'
-                        ? qualificationIdValue
-                        : typeof qualificationIdValue === 'number'
-                          ? String(qualificationIdValue)
-                          : '';
-
-                    // Safely convert other fields
-                    const instituteIdStr =
-                      q.instituteId && typeof q.instituteId === 'string'
-                        ? q.instituteId
-                        : q.instituteId &&
-                          (typeof q.instituteId === 'number' ||
-                            typeof q.instituteId === 'bigint')
-                          ? String(q.instituteId)
-                          : null;
-
-                    const cityIdStr =
-                      q.cityId && typeof q.cityId === 'string'
-                        ? q.cityId
-                        : q.cityId &&
-                          (typeof q.cityId === 'number' ||
-                            typeof q.cityId === 'bigint')
-                          ? String(q.cityId)
-                          : null;
-
-                    const stateIdStr =
-                      q.stateId && typeof q.stateId === 'string'
-                        ? q.stateId
-                        : q.stateId &&
-                          (typeof q.stateId === 'number' ||
-                            typeof q.stateId === 'bigint')
-                          ? String(q.stateId)
-                          : null;
-
-                    const yearValue =
-                      q.year && typeof q.year === 'number'
-                        ? q.year
-                        : q.year && typeof q.year === 'string'
-                          ? parseInt(q.year, 10)
-                          : null;
-
-                    const gradeStr =
-                      q.grade && typeof q.grade === 'string'
-                        ? q.grade
-                        : q.grade &&
-                          (typeof q.grade === 'number' ||
-                            typeof q.grade === 'bigint')
-                          ? String(q.grade)
-                          : null;
-
-                    return {
-                      qualificationId: qualificationIdStr,
-                      instituteId: instituteIdStr,
-                      cityId: cityIdStr,
-                      stateId: stateIdStr,
-                      year: yearValue,
-                      grade: gradeStr,
-                    };
-                  }),
+                create: (qualificationsValue as any[]).filter(q => q.qualification || q.qualificationId).map(q => ({
+                  qualificationId: String(q.qualification || q.qualificationId),
+                  instituteId: q.instituteId ? String(q.instituteId) : null,
+                  cityId: q.cityId ? String(q.cityId) : null,
+                  stateId: q.stateId ? String(q.stateId) : null,
+                  year: q.year ? parseInt(String(q.year)) : null,
+                  grade: q.grade ? String(q.grade) : null,
+                }))
               }
               : undefined,
         },
+      });
+
+      // Trigger webhook
+      this.webhooks.trigger('employee.created', created).catch((err) => {
+        this.logger.error(`Failed to trigger employee.created webhook: ${err.message}`);
       });
 
       await this.activityLogs.log({
@@ -1913,6 +1847,12 @@ export class EmployeeService {
 
       await this.cacheManager.del('employees_list');
       await this.cacheManager.del('employees_dropdown');
+
+      // Trigger webhook
+      this.webhooks.trigger('employee.updated', updated).catch((err) => {
+        this.logger.error(`Failed to trigger employee.updated webhook: ${err.message}`);
+      });
+
       return {
         status: true,
         data: updated,
@@ -1959,6 +1899,12 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'success',
       });
+
+      // Trigger webhook
+      this.webhooks.trigger('employee.deleted', existing).catch((err) => {
+        this.logger.error(`Failed to trigger employee.deleted webhook: ${err.message}`);
+      });
+
       await this.cacheManager.del('employees_list');
       await this.cacheManager.del('employees_dropdown');
       return { status: true, data: removed };
@@ -2644,6 +2590,12 @@ export class EmployeeService {
 
       await this.cacheManager.del('employees_list');
       await this.cacheManager.del('employees_dropdown');
+
+      // Trigger webhook
+      this.webhooks.trigger('employee.updated', rejoined).catch((err) => {
+        this.logger.error(`Failed to trigger employee.updated (rejoin) webhook: ${err.message}`);
+      });
+
       return {
         status: true,
         data: rejoined,

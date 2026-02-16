@@ -10,7 +10,7 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private prismaMaster: PrismaMasterService) {}
+  constructor(private prismaMaster: PrismaMasterService) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
@@ -19,8 +19,8 @@ export class JwtAuthGuard implements CanActivate {
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (req.cookies && req.cookies['accessToken']) {
-      token = req.cookies['accessToken'];
+    } else if (req.cookies) {
+      token = req.cookies['accessToken'] || req.cookies['posAccessToken'];
     }
 
     if (!token) {
@@ -32,6 +32,17 @@ export class JwtAuthGuard implements CanActivate {
       const decoded = jwt.verify(token, authConfig.jwt.accessSecret, {
         issuer: authConfig.jwt.issuer,
       }) as any;
+
+      // Handle POS terminal authentication
+      if (decoded.isTerminal || decoded.terminalId) {
+        req.user = {
+          ...decoded,
+          id: decoded.terminalId, // Use terminalId as id for compatibility
+          roleName: 'POS_TERMINAL',
+          permissions: ['pos:*'],
+        };
+        return true;
+      }
 
       // Fetch fresh permissions from DB
       // This solves the cookie size limit issue by keeping the JWT small
@@ -72,14 +83,15 @@ export class JwtAuthGuard implements CanActivate {
 
       req.user = {
         ...decoded,
+        id: decoded.userId,
         roleName: user.role?.name,
         permissions: permissions,
       };
-      
+
       return true;
     } catch (error) {
-       // console.error('Token validation error:', error);
-       throw new UnauthorizedException('Invalid token');
+      // console.error('Token validation error:', error);
+      throw new UnauthorizedException('Invalid token');
     }
   }
 }

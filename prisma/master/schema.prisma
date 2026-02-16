@@ -64,6 +64,7 @@ model Company {
   @@index([tenantId])
   @@index([code])
   @@index([status])
+  pos Pos[]
 }
 
 // --- AUTHENTICATION & IDENTITY (Centralized) ---
@@ -346,17 +347,16 @@ model Country {
 }
 
 model City {
-  id          String     @id @default(uuid())
+  id          String   @id @default(uuid())
   name        String
   countryId   String
   stateId     String
-  status      String     @default("active")
+  status      String   @default("active")
   createdById String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  country     Country    @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  state       State      @relation(fields: [stateId], references: [id], onDelete: Cascade)
-  locations   Location[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  country     Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  state       State    @relation(fields: [stateId], references: [id], onDelete: Cascade)
 
   @@unique([name, countryId, stateId])
 }
@@ -371,33 +371,6 @@ model State {
   updatedAt   DateTime @updatedAt
   cities      City[]
   country     Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
-}
-
-model Location {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  address     String?
-  cityId      String?
-  city        City?    @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  status      String   @default("active")
-  createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  pos         Pos[]
-}
-
-model Pos {
-  id          String   @id @default(uuid())
-  posId       String // 3-character unique ID for this location
-  name        String
-  locationId  String
-  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  status      String   @default("active")
-  createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([locationId, posId])
 }
 
 model AllowanceHead {
@@ -990,4 +963,64 @@ model Season {
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ==================== POS & MODULE ==============================
+
+model Location {
+    id                 String   @id @default(uuid())
+    name               String   @unique
+    code               String   @unique @default(cuid()) // Unique code for identifying location (e.g. NYC-01)
+    phone              String?
+    geoFenceEnabled    Boolean  @default(false)
+    geoFenceRadius     Int      @default(100) // In meters
+    ipWhitelist        String? // Comma separated list of allowed IPs
+    ipWhitelistEnabled Boolean  @default(false)
+    address            String?
+    latitude           Decimal? @db.Decimal(10, 8) // For geolocation-based nearest location detection
+    longitude          Decimal? @db.Decimal(11, 8) // For geolocation-based nearest location detection
+    cityId             String? // Refers to City in Master DB
+    companyId          String? // Refers to Company in Master DB
+    status             String   @default("active")
+    createdById        String? // Refers to User in Master DB
+    createdAt          DateTime @default(now())
+    updatedAt          DateTime @updatedAt
+    pos                Pos[]
+}
+
+model Pos {
+    id           String   @id @default(uuid())
+    posId        String // 3-character unique ID for this location
+    terminalCode String   @unique // Unique code for cloud-based terminal identification (e.g., MAIN-01)
+    name         String
+    locationId   String
+    location     Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+    companyId    String? // Direct link for easier querying. Refers to Company 
+    company      Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+    terminalPin  String? // Hashed pin for specialized POS login
+    status       String   @default("active")
+    createdById  String? // Refers to User in Master DB
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    sessions PosSession[]
+
+    @@unique([locationId, posId])
+}
+
+model PosSession {
+    id       String    @id @default(uuid())
+    posId    String
+    pos      Pos       @relation(fields: [posId], references: [id], onDelete: Cascade)
+    userId   String? // The user who opened the session. Refers to User in Master DB
+    openedAt DateTime  @default(now())
+    closedAt DateTime?
+    status   String    @default("open") // open, closed
+    token    String? // Associated JWT for this session
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([posId])
+    @@index([status])
 }

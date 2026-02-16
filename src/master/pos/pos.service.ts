@@ -4,6 +4,7 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { CreatePosDto } from './dto/create-pos.dto';
 import { UpdatePosDto } from './dto/update-pos.dto';
 import { generateNextPosId } from '../../common/utils/pos-id-generator';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class PosService {
@@ -43,11 +44,46 @@ export class PosService {
             const existingIds = existingPos.map(p => p.posId);
             const nextPosId = generateNextPosId(existingIds);
 
+            // Generate terminalCode if not provided
+            let terminalCode = body.terminalCode;
+            if (!terminalCode) {
+                const location = await this.prismaMaster.location.findUnique({
+                    where: { id: body.locationId },
+                    select: { name: true }
+                });
+
+                const prefix = location?.name
+                    ? location.name.substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '')
+                    : 'POS';
+
+                terminalCode = `${prefix}-${nextPosId}`;
+
+                // Check for uniqueness and append suffix if needed
+                const existing = await this.prismaMaster.pos.findUnique({ where: { terminalCode } });
+                if (existing) {
+                    terminalCode = `${terminalCode}-${Math.floor(Math.random() * 900) + 100}`;
+                }
+            } else {
+                // strict check if manually provided
+                const existing = await this.prismaMaster.pos.findUnique({ where: { terminalCode } });
+                if (existing) {
+                    throw new BadRequestException('Terminal Code already exists');
+                }
+            }
+
+            let hashedPin = null;
+            if (body.terminalPin) {
+                hashedPin = await bcrypt.hash(body.terminalPin, 10);
+            }
+
             const created = await this.prismaMaster.pos.create({
                 data: {
                     name: body.name,
                     locationId: body.locationId,
+                    companyId: body.companyId,
                     posId: nextPosId,
+                    terminalCode,
+                    terminalPin: hashedPin,
                     status: body.status ?? 'active',
                     createdById: ctx.userId,
                 },
@@ -95,10 +131,17 @@ export class PosService {
             });
             if (!existing) return { status: false, message: 'POS not found' };
 
+            let hashedPin = existing.terminalPin;
+            if (body.terminalPin) {
+                hashedPin = await bcrypt.hash(body.terminalPin, 10);
+            }
+
             const updated = await this.prismaMaster.pos.update({
                 where: { id },
                 data: {
                     name: body.name ?? existing.name,
+                    companyId: body.companyId ?? existing.companyId,
+                    terminalPin: hashedPin,
                     status: body.status ?? existing.status,
                 },
             });
@@ -179,5 +222,47 @@ export class PosService {
             });
             return { status: false, message: 'Failed to delete POS' };
         }
+    }
+
+    async validateTerminal(terminalCode: string, pin: string) {
+        const terminal = await this.prismaMaster.pos.findUnique({
+            where: {
+                terminalCode,
+            },
+            include: {
+                company: {
+                    include: {
+                        tenant: true,
+                    },
+                },
+            },
+        });
+
+        if (!terminal || terminal.status !== 'active') { // Ensure status check is here as findUnique doesn't filter by it
+            return { status: false, message: 'Terminal not found or inactive' };
+        }
+
+        if (!terminal || !terminal.terminalPin) {
+            return { status: false, message: 'Terminal not found or security not configured' };
+        }
+
+        const isValid = await bcrypt.compare(pin, terminal.terminalPin);
+        if (!isValid) {
+            return { status: false, message: 'Invalid Terminal PIN' };
+        }
+
+        return {
+            status: true,
+            data: {
+                terminalId: terminal.id,
+                name: terminal.name,
+                companyId: terminal.companyId,
+                company: terminal.company,
+                tenant: terminal.company?.tenant,
+                posId: terminal.posId,
+                terminalCode: terminal.terminalCode,
+                locationId: terminal.locationId,
+            },
+        };
     }
 }

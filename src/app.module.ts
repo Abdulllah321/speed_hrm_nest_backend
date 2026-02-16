@@ -3,6 +3,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { QueueModule } from './queue/queue.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandModule } from './master/brand/brand.module';
@@ -95,6 +96,7 @@ import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotat
 import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -109,6 +111,7 @@ import { SearchModule } from './search/search.module';
         }),
       }),
     }),
+    QueueModule,
     DatabaseModule,
     PrismaModule,
     AuthModule, // added swagger
@@ -200,6 +203,7 @@ import { SearchModule } from './search/search.module';
     VendorQuotationModule,
     PosModule,
     SearchModule,
+    WebhookModule,
   ],
   controllers: [AppController],
   providers: [AppService],
