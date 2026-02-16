@@ -157,6 +157,86 @@ export class AuthController {
     });
   }
 
+  @Post('pos/context')
+  @ApiOperation({ summary: 'Get POS Login Context' })
+  async getPosContext(@Body() body: any, @Req() req: any, @Res() res: any) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+
+    const result = await this.service.getPosLoginContext(
+      ipAddress,
+      body.code,
+      body.lat,
+      body.lng,
+    );
+
+    if (result.status) {
+      return res.status(200).send(result);
+    }
+    return res.status(400).send(result);
+  }
+
+  @Post('pos-login')
+  @ApiOperation({ summary: 'Login for POS Terminal' })
+  @ApiResponse({ status: 200, description: 'POS Terminal Login successful' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async posLogin(
+    @Body() body: { terminalCode: string, pin: string },
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await this.service.posTerminalLogin(
+      body.terminalCode,
+      body.pin,
+    );
+
+    if (result.status && result.data) {
+      const data = result.data as any;
+      const cookieOptions = this.getCookieOptions(req);
+
+      // Set terminal access token (30 days)
+      res.setCookie('posAccessToken', data.accessToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set terminal session data
+      res.setCookie('posSessionId', data.sessionId, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set terminal/pos data for client-side
+      res.setCookie('terminal', JSON.stringify(data.terminal), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set tenant code for database context
+      if (data.tenant) {
+        res.setCookie('tenantCode', data.tenant.code, {
+          ...cookieOptions,
+          maxAge: 30 * 24 * 60 * 60,
+        });
+      }
+
+      return res.send({
+        status: true,
+        message: 'Terminal authenticated successfully',
+        data: data,
+      });
+    }
+
+    return res.status(401).send({
+      status: false,
+      message: result.message || 'Invalid Terminal PIN',
+    });
+  }
+
   /**
    * SSO endpoint for DriveSafe integration.
    * Receives JWT token, validates it, provisions tenant/user if needed,
@@ -378,9 +458,12 @@ export class AuthController {
     const clearCookieOptions = this.getCookieOptions(req);
 
     res.clearCookie('accessToken', clearCookieOptions);
+    res.clearCookie('posAccessToken', clearCookieOptions);
     res.clearCookie('refreshToken', clearCookieOptions);
     res.clearCookie('userRole', clearCookieOptions);
     res.clearCookie('user', clearCookieOptions);
+    res.clearCookie('posSessionId', clearCookieOptions);
+    res.clearCookie('terminal', clearCookieOptions);
 
     return res.send({
       status: true,
@@ -465,5 +548,14 @@ export class AuthController {
   @ApiOperation({ summary: 'Get activity logs' })
   async activityLogs() {
     return this.service.getAllActivityLogs();
+  }
+
+  @Post('verify-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify current user password' })
+  async verifyPassword(@Req() req: any, @Body() body: { password: string }) {
+    const isValid = await this.service.verifyPassword(req.user.userId, body.password);
+    return { status: isValid, message: isValid ? 'Password verified' : 'Invalid password' };
   }
 }

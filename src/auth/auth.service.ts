@@ -6,6 +6,7 @@ import authConfig from '../config/auth.config';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { PrismaService } from '../database/prisma.service';
 import { CompanyService } from '../admin/company/company.service';
+import { PosService } from '../master/pos/pos.service';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(\d+)([smhd])$/);
@@ -28,6 +29,7 @@ export class AuthService {
     private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => CompanyService))
     private companyService: CompanyService,
+    private posService: PosService,
     @Optional() private prismaTenant: PrismaService,
   ) { }
 
@@ -470,6 +472,206 @@ export class AuthService {
     };
   }
 
+  private toRad(Value: number) {
+    return (Value * Math.PI) / 180;
+  }
+
+  private calculateDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ) {
+    const R = 6371e3; // metres
+    const dLat = this.toRad(lat2 - lat1);
+    const dLon = this.toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(lat1)) *
+      Math.cos(this.toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  async getPosLoginContext(
+    ip: string,
+    code?: string,
+    lat?: number,
+    lng?: number,
+  ) {
+    let location: any = null;
+
+    if (code) {
+      location = await this.prismaMaster.location.findFirst({
+        where: { code: { equals: code, mode: 'insensitive' }, status: 'active' },
+        include: { pos: { where: { status: 'active' } } },
+      });
+      if (!location) return { status: false, message: 'Invalid Location Code' };
+
+      // Validate GeoFence if enabled
+      if (location.geoFenceEnabled) {
+        if (!lat || !lng) {
+          return {
+            status: false,
+            message: 'Location access required for this site',
+          };
+        }
+        const dist = this.calculateDistance(
+          lat,
+          lng,
+          Number(location.latitude),
+          Number(location.longitude),
+        );
+        if (dist > location.geoFenceRadius) {
+          return {
+            status: false,
+            message: `You are too far from the location (${Math.round(dist)}m)`,
+          };
+        }
+      }
+    } else if (lat && lng) {
+      // Find nearest
+      const locations = await this.prismaMaster.location.findMany({
+        where: { status: 'active' },
+        include: { pos: { where: { status: 'active' } } },
+      });
+
+      let minDistance = Infinity;
+      let nearest: any = null;
+
+      for (const loc of locations) {
+        if (loc.latitude && loc.longitude) {
+          const dist = this.calculateDistance(
+            lat,
+            lng,
+            Number(loc.latitude),
+            Number(loc.longitude),
+          );
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearest = loc;
+          }
+        }
+      }
+
+      if (nearest) {
+        // Check GeoConstraints on nearest
+        if (nearest.geoFenceEnabled) {
+          if (minDistance > nearest.geoFenceRadius) {
+            return {
+              status: false,
+              message: 'No authorized location found nearby',
+            };
+          }
+        }
+        location = nearest;
+      } else {
+        return {
+          status: false,
+          message: 'No locations configured with coordinates',
+        };
+      }
+    } else {
+      return {
+        status: false,
+        message: 'Location Code or GPS Coordinates required',
+      };
+    }
+
+    // IP Whitelist Check
+    if (location.ipWhitelistEnabled && location.ipWhitelist) {
+      const allowedIps = location.ipWhitelist.split(',').map((i) => i.trim());
+      if (!allowedIps.includes(ip)) {
+        return { status: false, message: 'Access denied from this IP address' };
+      }
+    }
+
+    return {
+      status: true,
+      data: {
+        location: {
+          id: location.id,
+          name: location.name,
+          code: location.code,
+        },
+        terminals: location.pos.map((p) => ({
+          id: p.id,
+          name: p.name,
+          code: p.terminalCode,
+          status: p.status,
+        })),
+      },
+    };
+  }
+
+  async posTerminalLogin(
+    terminalCode: string,
+    pin: string,
+  ) {
+    const validation = await this.posService.validateTerminal(terminalCode, pin);
+    if (!validation.status || !validation.data) {
+      return validation;
+    }
+
+    const { terminalId, name, companyId, company, tenant, posId, locationId, terminalCode: dbTerminalCode } = validation.data;
+
+    // Create a specialized POS terminal token
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: '30d', // POS terminals stay logged in longer
+      issuer: authConfig.jwt.issuer,
+    };
+
+    const accessToken = jwt.sign(
+      {
+        terminalId,
+        posId,
+        locationId,
+        companyId,
+        tenantId: tenant?.id,
+        roleName: 'POS_TERMINAL',
+        isTerminal: true,
+        terminalCode: dbTerminalCode,
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    // Create a PosSession record
+    const session = await this.prismaMaster.posSession.create({
+      data: {
+        posId: terminalId,
+        status: 'open',
+        token: accessToken,
+      },
+    });
+
+    return {
+      status: true,
+      message: 'Terminal authenticated successfully',
+      data: {
+        terminal: {
+          id: terminalId,
+          posId,
+          name,
+        },
+        company: {
+          id: companyId,
+          name: company?.name,
+        },
+        tenant: tenant ? {
+          id: tenant.id,
+          code: tenant.code,
+          name: tenant.name,
+        } : null,
+        accessToken,
+        sessionId: session.id,
+      },
+    };
+  }
+
   async refresh(token: string) {
     try {
       const decoded = jwt.verify(token, authConfig.jwt.refreshSecret) as any;
@@ -511,7 +713,7 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    const user = (await this.prismaMaster.user.findUnique({
+    let user = (await this.prismaMaster.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -543,7 +745,39 @@ export class AuthService {
       },
     })) as any;
 
-    if (!user) return { status: false, message: 'User not found' };
+    // Handle POS Terminal identity if not a regular user
+    if (!user) {
+      const terminal = await this.prismaMaster.pos.findUnique({
+        where: { id: userId },
+        include: { location: true },
+      });
+
+      if (terminal) {
+        user = {
+          id: terminal.id,
+          firstName: terminal.name,
+          lastName: '(Terminal)',
+          email: terminal.terminalCode,
+          isTerminal: true,
+          terminal: {
+            id: terminal.id,
+            code: terminal.terminalCode,
+            name: terminal.name,
+            location: terminal.location ? {
+              id: terminal.location.id,
+              name: terminal.location.name,
+              code: terminal.location.code,
+            } : null,
+          },
+          role: {
+            name: 'POS_TERMINAL',
+            permissions: [{ permission: { name: 'pos:*' } }],
+          },
+        };
+      }
+    }
+
+    if (!user) return { status: false, message: 'Identity not found' };
 
     // Resolve employee details if prismaTenant is available
     if (this.prismaTenant) {
@@ -934,5 +1168,13 @@ export class AuthService {
     return permissionNames.every((permission) =>
       userPermissions.includes(permission),
     );
+  }
+
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.prismaMaster.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user || !user.password) return false;
+    return bcrypt.compare(password, user.password);
   }
 }
