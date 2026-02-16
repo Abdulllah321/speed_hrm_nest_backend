@@ -1,33 +1,29 @@
 model PurchaseRequisition {
-    id          String   @id @default(uuid())
-    prNumber    String   @unique @map("pr_number")
-    requestedBy String   @map("requested_by")
-    department  String?
-    requestDate DateTime @default(now()) @map("request_date")
-    status      String   @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED, CONVERTED_TO_RFQ
-    notes       String?
+  id          String                    @id @default(uuid())
+  prNumber    String                    @unique @map("pr_number")
+  requestedBy String                    @map("requested_by")
+  department  String?
+  requestDate DateTime                  @default(now()) @map("request_date")
+  status      String                    @default("DRAFT")
+  notes       String?
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+  items       PurchaseRequisitionItem[]
+  rfqs        RequestForQuotation[]
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @updatedAt @map("updated_at")
-
-    items PurchaseRequisitionItem[]
-    rfqs  RequestForQuotation[]
-
-    @@map("purchase_requisitions")
+  @@map("purchase_requisitions")
 }
 
 model PurchaseRequisitionItem {
-    id                    String              @id @default(uuid())
-    purchaseRequisitionId String              @map("purchase_requisition_id")
-    purchaseRequisition   PurchaseRequisition @relation(fields: [purchaseRequisitionId], references: [id], onDelete: Cascade)
+  id                    String              @id @default(uuid())
+  purchaseRequisitionId String              @map("purchase_requisition_id")
+  itemId                String              @map("item_id")
+  description           String?
+  requiredQty           Decimal             @map("required_qty") @db.Decimal(15, 4)
+  neededByDate          DateTime?           @map("needed_by_date")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  purchaseRequisition   PurchaseRequisition @relation(fields: [purchaseRequisitionId], references: [id], onDelete: Cascade)
 
-    itemId       String    @map("item_id")
-    description  String?
-    requiredQty  Decimal   @map("required_qty") @db.Decimal(15, 4)
-    neededByDate DateTime? @map("needed_by_date")
-
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @updatedAt @map("updated_at")
-
-    @@map("purchase_requisition_items")
+  @@map("purchase_requisition_items")
 }

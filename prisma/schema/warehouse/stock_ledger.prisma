@@ -1,0 +1,27 @@
+model StockLedger {
+  id            String       @id @default(uuid())
+  itemId        String       @map("item_id")
+  warehouseId   String       @map("warehouse_id")
+  qty           Decimal      @db.Decimal(15, 4)
+  referenceType String       @map("reference_type")
+  referenceId   String       @map("reference_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  locationId    String?      @map("location_id")
+  movementType  MovementType @map("movement_type")
+  item          Item         @relation(fields: [itemId], references: [id])
+  warehouse     Warehouse    @relation(fields: [warehouseId], references: [id])
+
+  @@index([itemId])
+  @@index([warehouseId])
+  @@index([referenceId])
+  @@index([movementType])
+  @@map("stock_ledgers")
+}
+
+enum MovementType {
+  INBOUND
+  OUTBOUND
+  TRANSFER
+  ADJUSTMENT
+  OPENING_BALANCE
+}

@@ -1,0 +1,29 @@
+model GoodsReceiptNote {
+  id              String                 @id @default(uuid())
+  grnNumber       String                 @unique @map("grn_number")
+  purchaseOrderId String                 @map("purchase_order_id")
+  warehouseId     String                 @map("warehouse_id")
+  receivedDate    DateTime               @default(now()) @map("received_date")
+  status          String                 @default("SUBMITTED")
+  notes           String?
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  items           GoodsReceiptNoteItem[]
+  purchaseOrder   PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
+  warehouse       Warehouse              @relation(fields: [warehouseId], references: [id])
+
+  @@map("goods_receipt_notes")
+}
+
+model GoodsReceiptNoteItem {
+  id                 String           @id @default(uuid())
+  goodsReceiptNoteId String           @map("goods_receipt_note_id")
+  itemId             String           @map("item_id")
+  description        String?
+  receivedQty        Decimal          @map("received_qty") @db.Decimal(15, 4)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  goodsReceiptNote   GoodsReceiptNote @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+
+  @@map("goods_receipt_note_items")
+}
