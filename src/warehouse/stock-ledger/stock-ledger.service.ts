@@ -54,7 +54,7 @@ export class StockLedgerService {
         const enriched = await Promise.all(groupBy.map(async (entry) => {
             const item = await this.prisma.item.findUnique({
                 where: { id: entry.itemId },
-                select: { itemId: true, sku: true, description: true, uomId: true }
+                select: { itemId: true, sku: true, description: true }
             });
             
             const warehouse = await this.prisma.warehouse.findUnique({

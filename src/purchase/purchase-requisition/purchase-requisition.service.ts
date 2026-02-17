@@ -18,7 +18,7 @@ export class PurchaseRequisitionService {
                 department: createDto.department,
                 requestDate: createDto.requestDate || new Date(),
                 notes: createDto.notes,
-                status: 'DRAFT',
+                status: 'SUBMITTED',
                 items: {
                     create: createDto.items.map(item => ({
                         itemId: item.itemId,

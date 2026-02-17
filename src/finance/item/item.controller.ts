@@ -37,6 +37,13 @@ export class ItemController {
         return this.itemService.findAll();
     }
 
+    @Get('next-id')
+    @Permissions('erp.item.read')
+    @ApiOperation({ summary: 'Get next auto-generated Item ID (preview)' })
+    async nextId() {
+        return this.itemService.nextItemId();
+    }
+
     @Get(':id')
     @Permissions('erp.item.read')
     @ApiOperation({ summary: 'Get item by id' })

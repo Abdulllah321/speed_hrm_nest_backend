@@ -20,6 +20,14 @@ export class CreateVendorQuotationItemDto {
 
     @IsNumber()
     @IsOptional()
+    fob?: number;
+
+    @IsNumber()
+    @IsOptional()
+    unitCost?: number;
+
+    @IsNumber()
+    @IsOptional()
     taxPercent?: number;
 
     @IsNumber()
@@ -35,6 +43,10 @@ export class CreateVendorQuotationDto {
     @IsUUID()
     @IsNotEmpty()
     vendorId: string;
+
+    @IsString()
+    @IsNotEmpty()
+    expiryDate: string;
 
     @IsString()
     @IsOptional()

@@ -2,8 +2,7 @@ import { IsString, IsOptional, IsBoolean, IsNumber, IsDate, IsUUID } from 'class
 import { Type } from 'class-transformer';
 
 export class CreateItemDto {
-    @IsString()
-    itemId: string;
+    // itemId will be auto-generated (6-digit serial)
 
     @IsString()
     sku: string;
@@ -36,6 +35,14 @@ export class CreateItemDto {
     @IsNumber()
     @IsOptional()
     unitPrice?: number;
+
+    @IsNumber()
+    @IsOptional()
+    fob?: number;
+
+    @IsNumber()
+    @IsOptional()
+    unitCost?: number;
 
     @IsNumber()
     @IsOptional()
@@ -135,7 +142,7 @@ export class CreateItemDto {
 
     @IsUUID()
     @IsOptional()
-    uomId?: string;
+    // uomId removed
 
     @IsUUID()
     @IsOptional()

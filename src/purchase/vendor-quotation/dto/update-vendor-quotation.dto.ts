@@ -5,6 +5,6 @@ import { IsString, IsOptional, IsEnum } from 'class-validator';
 export class UpdateVendorQuotationDto extends PartialType(CreateVendorQuotationDto) {
     @IsString()
     @IsOptional()
-    @IsEnum(['DRAFT', 'SUBMITTED', 'SELECTED', 'REJECTED'])
+    @IsEnum(['DRAFT', 'SUBMITTED', 'SELECTED', 'REJECTED', 'EXPIRED'])
     status?: string;
 }

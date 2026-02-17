@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { CreatePurchaseOrderDto } from './dto/purchase-order.dto';
+import { CreatePurchaseOrderDto, AwardFromRfqDto, CreateMultiDirectPurchaseOrderDto } from './dto/purchase-order.dto';
 import { Decimal } from '@prisma/client/runtime/client';
 
 @Injectable()
@@ -149,6 +149,10 @@ export class PurchaseOrderService {
             throw new BadRequestException('Purchase Order can only be created from a SELECTED quotation');
         }
 
+        if (quotation.expiryDate && quotation.expiryDate <= new Date()) {
+            throw new BadRequestException('Cannot create Purchase Order: quotation has expired');
+        }
+
         // Check if PO already exists for this quotation
         const existingPo = await this.prisma.purchaseOrder.findFirst({
             where: { vendorQuotationId: quotation.id }
@@ -201,5 +205,203 @@ export class PurchaseOrderService {
             where: { id },
             data: { status }
         });
+    }
+
+    async awardFromRfq(dto: AwardFromRfqDto) {
+        const rfq = await this.prisma.requestForQuotation.findUnique({
+            where: { id: dto.rfqId },
+            include: {
+                purchaseRequisition: {
+                    include: { items: true }
+                }
+            }
+        });
+
+        if (!rfq) {
+            throw new NotFoundException('RFQ not found');
+        }
+
+        const prItemsMap = new Map<string, Decimal>();
+        for (const item of rfq.purchaseRequisition?.items || []) {
+            const qty = new Decimal(item.requiredQty as any);
+            prItemsMap.set(item.itemId, qty);
+        }
+
+        const awardedTotals = new Map<string, Decimal>();
+        for (const group of dto.awards) {
+            for (const ai of group.items) {
+                const prev = awardedTotals.get(ai.itemId) || new Decimal(0);
+                awardedTotals.set(ai.itemId, prev.add(new Decimal(ai.quantity)));
+            }
+        }
+
+        for (const [itemId, total] of awardedTotals) {
+            const prQty = prItemsMap.get(itemId);
+            if (prQty && total.gt(prQty)) {
+                throw new BadRequestException('Awarded quantity exceeds PR required quantity');
+            }
+        }
+
+        const created = await this.prisma.$transaction(async (tx) => {
+            const results: any[] = [];
+
+            for (const group of dto.awards) {
+                const quotation = await tx.vendorQuotation.findUnique({
+                    where: { id: group.vendorQuotationId },
+                    include: {
+                        items: true,
+                        vendor: true,
+                        rfq: true
+                    }
+                });
+
+                if (!quotation) {
+                    throw new NotFoundException('Vendor Quotation not found');
+                }
+                if (quotation.rfqId !== dto.rfqId) {
+                    throw new BadRequestException('Quotation does not belong to RFQ');
+                }
+
+                let subtotal = new Decimal(0);
+                let taxAmount = new Decimal(0);
+                let discountAmount = new Decimal(0);
+
+                const itemsData = group.items.map(ai => {
+                    const qi = quotation.items.find(q => q.itemId === ai.itemId);
+                    if (!qi) {
+                        throw new BadRequestException('Item not found in quotation');
+                    }
+                    const qty = new Decimal(ai.quantity);
+                    const price = new Decimal(qi.unitPrice);
+                    const tax = new Decimal(qi.taxPercent || 0);
+                    const discount = new Decimal(qi.discountPercent || 0);
+
+                    const baseLine = qty.mul(price);
+                    const lineTax = baseLine.mul(tax).div(100);
+                    const lineDiscount = baseLine.mul(discount).div(100);
+                    const lineTotal = baseLine.add(lineTax).sub(lineDiscount);
+
+                    subtotal = subtotal.add(baseLine);
+                    taxAmount = taxAmount.add(lineTax);
+                    discountAmount = discountAmount.add(lineDiscount);
+
+                    return {
+                        itemId: qi.itemId,
+                        description: qi.description,
+                        quantity: qty,
+                        unitPrice: price,
+                        taxPercent: tax,
+                        discountPercent: discount,
+                        lineTotal: lineTotal
+                    };
+                });
+
+                const totalAmount = subtotal.add(taxAmount).sub(discountAmount);
+                const poNumber = `PO-${Date.now()}`;
+
+                const po = await tx.purchaseOrder.create({
+                    data: {
+                        poNumber,
+                        vendorQuotationId: quotation.id,
+                        vendorId: quotation.vendorId,
+                        rfqId: quotation.rfqId,
+                        notes: group.notes,
+                        expectedDeliveryDate: group.expectedDeliveryDate ? new Date(group.expectedDeliveryDate) : null,
+                        status: 'OPEN',
+                        subtotal,
+                        taxAmount,
+                        discountAmount,
+                        totalAmount,
+                        items: {
+                            create: itemsData
+                        }
+                    },
+                    include: {
+                        items: true,
+                        vendor: true
+                    }
+                });
+
+                results.push(po);
+            }
+
+            return results;
+        });
+
+        return created;
+    }
+
+    async createMultiDirect(dto: CreateMultiDirectPurchaseOrderDto) {
+        if (!dto.awards || dto.awards.length === 0) {
+            throw new BadRequestException('No vendor groups provided');
+        }
+
+        const created = await this.prisma.$transaction(async (tx) => {
+            const results: any[] = [];
+
+            for (const group of dto.awards) {
+                if (!group.vendorId || !group.items || group.items.length === 0) {
+                    throw new BadRequestException('Each group must include vendorId and items');
+                }
+
+                let subtotal = new Decimal(0);
+                let taxAmount = new Decimal(0);
+                let discountAmount = new Decimal(0);
+
+                const itemsData = group.items.map(item => {
+                    const qty = new Decimal(item.quantity);
+                    const price = new Decimal(item.unitPrice);
+                    const tax = new Decimal(item.taxPercent || 0);
+                    const discount = new Decimal(item.discountPercent || 0);
+
+                    const baseLine = qty.mul(price);
+                    const lineTax = baseLine.mul(tax).div(100);
+                    const lineDiscount = baseLine.mul(discount).div(100);
+                    const lineTotal = baseLine.add(lineTax).sub(lineDiscount);
+
+                    subtotal = subtotal.add(baseLine);
+                    taxAmount = taxAmount.add(lineTax);
+                    discountAmount = discountAmount.add(lineDiscount);
+
+                    return {
+                        itemId: item.itemId,
+                        description: item.description,
+                        quantity: qty,
+                        unitPrice: price,
+                        taxPercent: tax,
+                        discountPercent: discount,
+                        lineTotal
+                    };
+                });
+
+                const totalAmount = subtotal.add(taxAmount).sub(discountAmount);
+                const poNumber = `PO-${Date.now()}`;
+
+                const po = await tx.purchaseOrder.create({
+                    data: {
+                        poNumber,
+                        vendorId: group.vendorId,
+                        notes: group.notes,
+                        expectedDeliveryDate: group.expectedDeliveryDate ? new Date(group.expectedDeliveryDate) : null,
+                        status: 'OPEN',
+                        subtotal,
+                        taxAmount,
+                        discountAmount,
+                        totalAmount,
+                        items: { create: itemsData }
+                    },
+                    include: {
+                        items: true,
+                        vendor: true
+                    }
+                });
+
+                results.push(po);
+            }
+
+            return results;
+        });
+
+        return created;
     }
 }
