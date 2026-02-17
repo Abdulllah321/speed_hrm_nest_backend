@@ -59,3 +59,92 @@ export class PurchaseOrderResponseDto {
     };
     createdAt: Date;
 }
+
+export class AwardItemDto {
+    @IsString()
+    @IsNotEmpty()
+    itemId: string;
+
+    @IsNumber()
+    quantity: number;
+}
+
+export class AwardGroupDto {
+    @IsString()
+    @IsNotEmpty()
+    vendorQuotationId: string;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => AwardItemDto)
+    items: AwardItemDto[];
+
+    @IsString()
+    @IsOptional()
+    notes?: string;
+
+    @IsDateString()
+    @IsOptional()
+    expectedDeliveryDate?: string;
+}
+
+export class AwardFromRfqDto {
+    @IsString()
+    @IsNotEmpty()
+    rfqId: string;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => AwardGroupDto)
+    awards: AwardGroupDto[];
+}
+
+export class MultiDirectItemDto {
+    @IsString()
+    @IsNotEmpty()
+    itemId: string;
+
+    @IsString()
+    @IsOptional()
+    description?: string;
+
+    @IsNumber()
+    quantity: number;
+
+    @IsNumber()
+    unitPrice: number;
+
+    @IsNumber()
+    @IsOptional()
+    taxPercent?: number;
+
+    @IsNumber()
+    @IsOptional()
+    discountPercent?: number;
+}
+
+export class MultiDirectGroupDto {
+    @IsString()
+    @IsNotEmpty()
+    vendorId: string;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => MultiDirectItemDto)
+    items: MultiDirectItemDto[];
+
+    @IsString()
+    @IsOptional()
+    notes?: string;
+
+    @IsDateString()
+    @IsOptional()
+    expectedDeliveryDate?: string;
+}
+
+export class CreateMultiDirectPurchaseOrderDto {
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => MultiDirectGroupDto)
+    awards: MultiDirectGroupDto[];
+}

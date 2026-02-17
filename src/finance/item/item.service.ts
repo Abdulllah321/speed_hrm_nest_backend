@@ -12,8 +12,12 @@ export class ItemService {
 
     async create(createItemDto: CreateItemDto) {
         try {
+            const nextId = await this.generateNextItemId();
             const data = await this.prisma.item.create({
-                data: createItemDto,
+                data: {
+                    ...createItemDto,
+                    itemId: nextId,
+                },
             });
             return { status: true, data, message: 'Item created successfully' };
         } catch (error: any) {
@@ -27,6 +31,28 @@ export class ItemService {
         });
         const enrichedItems = await this.enrichItems(items);
         return { status: true, data: enrichedItems };
+    }
+
+    private async generateNextItemId(): Promise<string> {
+        const last = await this.prisma.item.findFirst({
+            orderBy: { itemId: 'desc' },
+            select: { itemId: true },
+        });
+        const lastNum = last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+        const next = lastNum + 1;
+        if (next > 999999) {
+            throw new Error('Item ID sequence exceeded maximum 999999');
+        }
+        return String(next).padStart(6, '0');
+    }
+
+    async nextItemId() {
+        try {
+            const nextId = await this.generateNextItemId();
+            return { status: true, data: { nextId } };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
     }
 
     async findOne(id: string) {
@@ -86,16 +112,16 @@ export class ItemService {
         const colorIds = [...new Set(items.map(i => i.colorId).filter(Boolean))];
         const itemClassIds = [...new Set(items.map(i => i.itemClassId).filter(Boolean))];
         const itemSubclassIds = [...new Set(items.map(i => i.itemSubclassId).filter(Boolean))];
-        const uomIds = [...new Set(items.map(i => i.uomId).filter(Boolean))];
+        // uom removed
 
         const [
             brands, divisions, categories, subCategories, seasons,
             genders, sizes, silhouettes, channelClasses, colors,
-            itemClasses, itemSubclasses, uoms
+            itemClasses, itemSubclasses
         ]: [
                 any[], any[], any[], any[], any[],
                 any[], any[], any[], any[], any[],
-                any[], any[], any[]
+                any[], any[]
             ] = await Promise.all([
                 brandIds.length ? this.prismaMaster.brand.findMany({ where: { id: { in: brandIds as string[] } } }) : [],
                 divisionIds.length ? this.prismaMaster.division.findMany({ where: { id: { in: divisionIds as string[] } } }) : [],
@@ -109,7 +135,6 @@ export class ItemService {
                 colorIds.length ? this.prismaMaster.color.findMany({ where: { id: { in: colorIds as string[] } } }) : [],
                 itemClassIds.length ? this.prismaMaster.itemClass.findMany({ where: { id: { in: itemClassIds as string[] } } }) : [],
                 itemSubclassIds.length ? this.prismaMaster.itemSubclass.findMany({ where: { id: { in: itemSubclassIds as string[] } } }) : [],
-                uomIds.length ? this.prismaMaster.uom.findMany({ where: { id: { in: uomIds as string[] } } }) : [],
             ]);
 
         return items.map(item => ({
@@ -126,7 +151,6 @@ export class ItemService {
             color: colors.find(x => x.id === item.colorId) || null,
             itemClass: itemClasses.find(x => x.id === item.itemClassId) || null,
             itemSubclass: itemSubclasses.find(x => x.id === item.itemSubclassId) || null,
-            uom: uoms.find(x => x.id === item.uomId) || null,
         }));
     }
 }

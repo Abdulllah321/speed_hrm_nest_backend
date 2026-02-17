@@ -1008,6 +1008,32 @@ export const PERMISSIONS = [
     name: 'hr.provident-fund.delete',
     description: 'Delete Employee Provident Fund'
   },
+  // Role Management
+  {
+    name: 'role.create',
+    module: 'role',
+    action: 'create',
+    description: 'Create Role'
+  },
+  {
+    name: 'role.read',
+    module: 'role',
+    action: 'read',
+    description: 'Read Role'
+  },
+  {
+    name: 'role.update',
+    module: 'role',
+    action: 'update',
+    description: 'Update Role'
+  },
+  {
+    name: 'role.delete',
+    module: 'role',
+    action: 'delete',
+    description: 'Delete Role'
+  },
+
   // Rebate
   {
     name: 'hr.rebate.read',

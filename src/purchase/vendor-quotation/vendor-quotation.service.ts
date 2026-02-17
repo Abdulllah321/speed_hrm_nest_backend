@@ -43,12 +43,20 @@ export class VendorQuotationService {
             throw new BadRequestException('Quotation already exists for this vendor and RFQ');
         }
 
+        // Validate expiry date
+        const now = new Date();
+        const expiry = new Date(createDto.expiryDate);
+        if (isNaN(expiry.getTime()) || expiry <= now) {
+            throw new BadRequestException('Expiry date must be a valid future date');
+        }
+
         // Create quotation with items
         const quotation = await this.prisma.vendorQuotation.create({
             data: {
         rfqId: createDto.rfqId,
         vendorId: createDto.vendorId,
         notes: createDto.notes,
+        expiryDate: expiry,
         status: 'SUBMITTED', // Auto-submit as per requirement
         items: createDto.items ? {
           create: createDto.items.map(item => {
@@ -63,6 +71,8 @@ export class VendorQuotationService {
               description: item.description,
               quotedQty: new Decimal(item.quotedQty),
               unitPrice: new Decimal(item.unitPrice),
+              fob: new Decimal(item.fob || 0),
+              unitCost: new Decimal(item.unitCost || 0),
               taxPercent: new Decimal(item.taxPercent || 0),
               discountPercent: new Decimal(item.discountPercent || 0),
               lineTotal: new Decimal(lineTotal)
@@ -89,7 +99,14 @@ export class VendorQuotationService {
 
     async findAll(rfqId?: string) {
         return this.prisma.vendorQuotation.findMany({
-            where: rfqId ? { rfqId } : {},
+            where: {
+                ...(rfqId ? { rfqId } : {}),
+                OR: [
+                    { expiryDate: null },
+                    { expiryDate: { gt: new Date() } }
+                ],
+                NOT: { status: 'EXPIRED' }
+            },
             include: {
                 items: true,
                 vendor: true,
@@ -125,6 +142,10 @@ export class VendorQuotationService {
             throw new NotFoundException('Vendor quotation not found');
         }
 
+        if (quotation.expiryDate && quotation.expiryDate <= new Date()) {
+            throw new NotFoundException('Vendor quotation expired');
+        }
+
         return quotation;
     }
 
@@ -132,11 +153,22 @@ export class VendorQuotationService {
         const quotations = await this.prisma.vendorQuotation.findMany({
             where: {
                 rfqId,
-                status: { in: ['SUBMITTED', 'SELECTED', 'REJECTED'] }
+                status: { in: ['SUBMITTED', 'SELECTED', 'REJECTED'] },
+                OR: [
+                    { expiryDate: null },
+                    { expiryDate: { gt: new Date() } }
+                ]
             },
             include: {
                 items: true,
-                vendor: true
+                vendor: true,
+                rfq: {
+                    include: {
+                        purchaseRequisition: {
+                            include: { items: true }
+                        }
+                    }
+                }
             },
             orderBy: { totalAmount: 'asc' }
         });
@@ -248,6 +280,8 @@ export class VendorQuotationService {
                                     description: item.description,
                                     quotedQty: new Decimal(item.quotedQty),
                                     unitPrice: new Decimal(item.unitPrice),
+                                    fob: new Decimal(item.fob || 0),
+                                    unitCost: new Decimal(item.unitCost || 0),
                                     taxPercent: new Decimal(item.taxPercent || 0),
                                     discountPercent: new Decimal(item.discountPercent || 0),
                                     lineTotal: new Decimal(lineTotal)

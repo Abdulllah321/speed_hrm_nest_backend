@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Patch } from '@nestjs/common';
 import { PurchaseOrderService } from './purchase-order.service';
-import { CreatePurchaseOrderDto } from './dto/purchase-order.dto';
+import { CreatePurchaseOrderDto, AwardFromRfqDto, CreateMultiDirectPurchaseOrderDto } from './dto/purchase-order.dto';
 
 @Controller('api/purchase-order')
 export class PurchaseOrderController {
@@ -24,6 +24,16 @@ export class PurchaseOrderController {
     @Post()
     create(@Body() createDto: CreatePurchaseOrderDto) {
         return this.purchaseOrderService.create(createDto);
+    }
+
+    @Post('award-from-rfq')
+    awardFromRfq(@Body() body: AwardFromRfqDto) {
+        return this.purchaseOrderService.awardFromRfq(body);
+    }
+
+    @Post('multi-direct')
+    createMultiDirect(@Body() body: CreateMultiDirectPurchaseOrderDto) {
+        return this.purchaseOrderService.createMultiDirect(body);
     }
 
     @Patch(':id/status')
