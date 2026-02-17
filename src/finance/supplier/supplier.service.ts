@@ -9,8 +9,14 @@ export class SupplierService {
 
     async create(createSupplierDto: CreateSupplierDto) {
         try {
+            const { chartOfAccountIds, ...data } = createSupplierDto;
             const supplier = await this.prisma.supplier.create({
-                data: createSupplierDto,
+                data: {
+                    ...data,
+                    chartOfAccounts: {
+                        connect: chartOfAccountIds?.map(id => ({ id }))
+                    }
+                },
             });
             return { status: true, data: supplier, message: 'Supplier created successfully' };
         } catch (error: any) {
@@ -23,7 +29,7 @@ export class SupplierService {
             const suppliers = await this.prisma.supplier.findMany({
                 orderBy: { createdAt: 'desc' },
                 include: {
-                    chartOfAccount: {
+                    chartOfAccounts: {
                         select: { code: true, name: true }
                     }
                 }
@@ -39,8 +45,8 @@ export class SupplierService {
             const supplier = await this.prisma.supplier.findUnique({
                 where: { id },
                 include: {
-                    chartOfAccount: {
-                        select: { code: true, name: true }
+                    chartOfAccounts: {
+                        select: { code: true, name: true, id: true }
                     }
                 }
             });
@@ -53,9 +59,15 @@ export class SupplierService {
 
     async update(id: string, updateSupplierDto: UpdateSupplierDto) {
         try {
+            const { chartOfAccountIds, ...data } = updateSupplierDto;
             const supplier = await this.prisma.supplier.update({
                 where: { id },
-                data: updateSupplierDto,
+                data: {
+                    ...data,
+                    chartOfAccounts: chartOfAccountIds ? {
+                        set: chartOfAccountIds.map(id => ({ id }))
+                    } : undefined
+                },
             });
             return { status: true, data: supplier, message: 'Supplier updated successfully' };
         } catch (error: any) {

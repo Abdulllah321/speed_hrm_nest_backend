@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, IsEmail } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, IsEmail, IsArray } from 'class-validator';
 import { SupplierNature, SupplierType } from '@prisma/client';
 
 export class CreateSupplierDto {
@@ -89,8 +89,9 @@ export class CreateSupplierDto {
     @IsOptional()
     ictNo?: string;
 
-    @ApiProperty()
-    @IsUUID()
+    @ApiProperty({ type: [String] })
+    @IsArray()
+    @IsString({ each: true })
     @IsNotEmpty()
-    chartOfAccountId: string;
+    chartOfAccountIds: string[];
 }
