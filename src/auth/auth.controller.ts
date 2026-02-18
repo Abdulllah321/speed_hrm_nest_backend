@@ -8,8 +8,13 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PrismaMasterService } from '../database/prisma-master.service';
+import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export const OptionalJwtAuth = () => SetMetadata('isOptional', true);
 import {
   ApiTags,
   ApiOperation,
@@ -27,7 +32,10 @@ import {
 @ApiTags('Auth')
 @Controller('api/auth')
 export class AuthController {
-  constructor(private service: AuthService) { }
+  constructor(
+    private service: AuthService,
+    private prismaMaster: PrismaMasterService
+  ) { }
 
   private getCookieOptions(req: any) {
     const isProd = process.env.NODE_ENV === 'production';
@@ -110,15 +118,28 @@ export class AuthController {
     const ipAddress =
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
+
+    // Get Browser ID from cookie or generate new one
+    let browserId = req.cookies?.bid;
+    const cookieOptions = this.getCookieOptions(req);
+
     const result = await this.service.login(
       body.email,
       body.password,
       ipAddress,
       userAgent,
+      browserId
     );
 
     if (result.status && result.data) {
-      const cookieOptions = this.getCookieOptions(req);
+      // If no browserId existed, set one now
+      if (!browserId) {
+        browserId = uuidv4();
+        res.setCookie('bid', browserId, {
+          ...cookieOptions,
+          maxAge: 365 * 24 * 60 * 60 * 10, // 10 years
+        });
+      }
 
       // Set access token (7 days to match JWT expiry)
       res.setCookie('accessToken', result.data.accessToken, {
@@ -144,10 +165,19 @@ export class AuthController {
         maxAge: 30 * 24 * 60 * 60,
       });
 
+      // Set session ID
+      res.setCookie('sessionId', result.data.sessionId, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
       return res.send({
         status: true,
         message: 'Login successful',
-        data: { user: result.data.user },
+        data: {
+          user: result.data.user,
+          sessionId: result.data.sessionId
+        },
       });
     }
 
@@ -177,6 +207,8 @@ export class AuthController {
   }
 
   @Post('pos-login')
+  @OptionalJwtAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Login for POS Terminal' })
   @ApiResponse({ status: 200, description: 'POS Terminal Login successful' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -189,52 +221,100 @@ export class AuthController {
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
-    const result = await this.service.posTerminalLogin(
+    // 1. Verify Terminal PIN
+    const validation = await this.service.posTerminalLogin(
       body.terminalCode,
       body.pin,
     );
 
-    if (result.status && result.data) {
-      const data = result.data as any;
-      const cookieOptions = this.getCookieOptions(req);
-
-      // Set terminal access token (30 days)
-      res.setCookie('posAccessToken', data.accessToken, {
-        ...cookieOptions,
-        maxAge: 30 * 24 * 60 * 60,
-      });
-
-      // Set terminal session data
-      res.setCookie('posSessionId', data.sessionId, {
-        ...cookieOptions,
-        maxAge: 30 * 24 * 60 * 60,
-      });
-
-      // Set terminal/pos data for client-side
-      res.setCookie('terminal', JSON.stringify(data.terminal), {
-        ...cookieOptions,
-        maxAge: 30 * 24 * 60 * 60,
-      });
-
-      // Set tenant code for database context
-      if (data.tenant) {
-        res.setCookie('tenantCode', data.tenant.code, {
-          ...cookieOptions,
-          maxAge: 30 * 24 * 60 * 60,
-        });
-      }
-
-      return res.send({
-        status: true,
-        message: 'Terminal authenticated successfully',
-        data: data,
-      });
+    if (!validation.status || !validation.data) {
+      return res.status(401).send(validation);
     }
 
-    return res.status(401).send({
-      status: false,
-      message: result.message || 'Invalid Terminal PIN',
+    const terminalData = validation.data as any;
+    const deviceInfo = {
+      ip: ipAddress,
+      userAgent: userAgent,
+      deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal',
+    };
+
+    // 2. Check if we have an existing user session to link
+    // req.user will be populated if a valid accessToken was provided
+    if (req.user && req.user.userId) {
+      // Auto-link existing user session
+      const linkResult = await this.service.posUserLinkSession(
+        req.user.userId,
+        terminalData.accessToken,
+        deviceInfo
+      );
+
+      if (linkResult.status && linkResult.data) {
+        const cookieOptions = this.getCookieOptions(req);
+        res.setCookie('accessToken', linkResult.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+        res.setCookie('user', JSON.stringify(linkResult.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+        res.setCookie('userRole', linkResult.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+        res.setCookie('sessionId', linkResult.data.sessionId, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+        res.setCookie('terminal', JSON.stringify(terminalData.terminal), { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+        res.setCookie('terminalId', terminalData.terminal.id, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+
+        return res.send(linkResult);
+      }
+    }
+
+    // 3. Otherwise, just set terminal-only token
+    const cookieOptions = this.getCookieOptions(req);
+    res.setCookie('accessToken', terminalData.accessToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+    res.setCookie('terminal', JSON.stringify(terminalData.terminal), { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+    res.setCookie('terminalId', terminalData.terminal.id, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+    res.setCookie('posSessionId', terminalData.sessionId, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+
+    return res.send(validation);
+  }
+
+  @Post('pos/switch-session')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Link an active user session to a POS terminal' })
+  async posSwitchSession(@Req() req: any, @Res() res: any) {
+    // Current terminal comes from the terminalId cookie
+    const terminalId = req.cookies?.['terminalId'];
+    if (!terminalId) {
+      return res.status(401).send({ status: false, message: 'Terminal not authenticated' });
+    }
+
+    // We also need the terminalAccessToken to verify the terminal officially if needed,
+    // but since we're using one accessToken, if req.user is a USER, we lost the terminal context 
+    // unless we stored a terminalToken specifically.
+
+    // For now, let's assume if terminalId cookie is there, we find the latest session for that terminal
+    const terminalSession = await this.prismaMaster.posSession.findFirst({
+      where: { posId: terminalId, status: 'open' },
+      orderBy: { createdAt: 'desc' }
     });
+
+    if (!terminalSession || !terminalSession.token) {
+      return res.status(401).send({ status: false, message: 'Terminal session not found' });
+    }
+
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    const deviceInfo = {
+      ip: ipAddress,
+      userAgent: userAgent,
+      deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal',
+    };
+
+    const result = await this.service.posUserLinkSession(req.user.userId || req.user.id, terminalSession.token, deviceInfo);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+      res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('sessionId', result.data.sessionId, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      return res.send(result);
+    }
+    return res.status(400).send(result);
   }
 
   /**
@@ -427,7 +507,17 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile' })
   async me(@Req() req: any) {
-    return this.service.me(req.user.userId);
+    const result = await this.service.me(req.user.id || req.user.userId);
+    if (result.status && result.data) {
+      // Enrich with POS context from current token if present
+      if (req.user.isPosUser) {
+        (result.data as any).isPosUser = true;
+        (result.data as any).terminalId = req.user.terminalId;
+        (result.data as any).locationId = req.user.locationId;
+        (result.data as any).posSessionId = req.user.posSessionId;
+      }
+    }
+    return result;
   }
 
   @Get('check-session')
@@ -458,12 +548,13 @@ export class AuthController {
     const clearCookieOptions = this.getCookieOptions(req);
 
     res.clearCookie('accessToken', clearCookieOptions);
-    res.clearCookie('posAccessToken', clearCookieOptions);
     res.clearCookie('refreshToken', clearCookieOptions);
     res.clearCookie('userRole', clearCookieOptions);
     res.clearCookie('user', clearCookieOptions);
     res.clearCookie('posSessionId', clearCookieOptions);
+    res.clearCookie('sessionId', clearCookieOptions);
     res.clearCookie('terminal', clearCookieOptions);
+    res.clearCookie('terminalId', clearCookieOptions);
 
     return res.send({
       status: true,
@@ -557,5 +648,14 @@ export class AuthController {
   async verifyPassword(@Req() req: any, @Body() body: { password: string }) {
     const isValid = await this.service.verifyPassword(req.user.userId, body.password);
     return { status: isValid, message: isValid ? 'Password verified' : 'Invalid password' };
+  }
+
+  @Get('profiles')
+  @ApiOperation({ summary: 'Get all active profiles on this browser' })
+  async getProfiles(@Req() req: any) {
+    const browserId = req.cookies?.bid;
+    if (!browserId) return { status: true, data: [] };
+    const profiles = await this.service.getAvailableProfiles(browserId);
+    return { status: true, data: profiles };
   }
 }

@@ -1,31 +1,30 @@
 model LoanRequest {
   id                      String    @id @default(uuid())
   employeeId              String
-  loanTypeId              String // Refers to LoanType in Master DB
+  loanTypeId              String
   amount                  Decimal   @db.Decimal(10, 2)
   requestedDate           DateTime
   repaymentStartMonthYear String?
   numberOfInstallments    Int?
   reason                  String
   additionalDetails       String?
-  approval1               String? // User.id in Master DB
+  approval1               String?
   approval1Status         String?
   approval1Date           DateTime?
-  approval2               String? // User.id in Master DB
+  approval2               String?
   approval2Status         String?
   approval2Date           DateTime?
   remarks                 String?
   approvalStatus          String    @default("pending")
-  approvedById            String? // User.id in Master DB
+  approvedById            String?
   approvedAt              DateTime?
   rejectionReason         String?
   status                  String    @default("pending")
-  createdById             String? // User in Master DB
-  updatedById             String? // User in Master DB
+  createdById             String?
+  updatedById             String?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([loanTypeId])
