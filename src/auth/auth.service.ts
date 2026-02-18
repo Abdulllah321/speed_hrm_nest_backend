@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import authConfig from '../config/auth.config';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { PrismaService } from '../database/prisma.service';
@@ -39,6 +40,7 @@ export class AuthService {
     password: string,
     ipAddress?: string,
     userAgent?: string,
+    browserId?: string
   ) {
     const user = await this.prismaMaster.user.findUnique({
       where: { email },
@@ -52,33 +54,7 @@ export class AuthService {
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return { status: false, message: 'Invalid credentials' };
 
-    const accessOpts: jwt.SignOptions = {
-      expiresIn: authConfig.jwt.accessExpiresIn as any,
-      issuer: authConfig.jwt.issuer,
-    };
-    const accessToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        roleId: user.roleId,
-        employeeId: user.employeeId,
-        roleName: user.role?.name || null,
-      },
-      authConfig.jwt.accessSecret,
-      accessOpts,
-    );
-
-    // Create a stateless refresh token
-    const refreshOpts: jwt.SignOptions = {
-      expiresIn: authConfig.jwt.refreshExpiresIn as any,
-      issuer: authConfig.jwt.issuer,
-    };
-    const refreshToken = jwt.sign(
-      { userId: user.id },
-      authConfig.jwt.refreshSecret,
-      refreshOpts,
-    );
-
+    // Update Login History
     await this.prismaMaster.loginHistory.create({
       data: {
         userId: user.id,
@@ -87,6 +63,41 @@ export class AuthService {
         status: 'success',
       },
     });
+
+    // Handle Session Management
+    const sessionToken = uuidv4();
+    const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, {
+      ip: ipAddress,
+      userAgent,
+      browserId
+    });
+
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.accessExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+
+    // Include sessionId in payload
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      roleId: user.roleId,
+      employeeId: user.employeeId,
+      roleName: user.role?.name || null,
+      sessionId: sessionId,
+    };
+
+    const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+
+    const refreshOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.refreshExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const refreshToken = jwt.sign(
+      { userId: user.id, sessionId: sessionId },
+      authConfig.jwt.refreshSecret,
+      refreshOpts,
+    );
 
     return {
       status: true,
@@ -104,6 +115,7 @@ export class AuthService {
         },
         accessToken,
         refreshToken,
+        sessionId
       },
     };
   }
@@ -1176,5 +1188,297 @@ export class AuthService {
     });
     if (!user || !user.password) return false;
     return bcrypt.compare(password, user.password);
+  }
+
+
+  // Helper to detect device type from user agent
+  private getDeviceType(userAgent?: string): string {
+    if (!userAgent) return 'DESKTOP';
+    const ua = userAgent.toLowerCase();
+    const isMobile = /mobile|android|iphone|ipad|phone/i.test(ua);
+    return isMobile ? 'MOBILE' : 'DESKTOP';
+  }
+
+  // Helper to manage concurrent sessions
+  private async manageActiveSessions(
+    userId: string,
+    roleName: string,
+    sessionToken: string,
+    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string; browserId?: string }
+  ): Promise<string> {
+    // Normalize role name check
+    const rName = roleName?.toLowerCase().trim() || '';
+    const isAdmin = ['super_admin', 'super admin', 'admin'].includes(rName);
+    const deviceType = this.getDeviceType(deviceInfo?.userAgent);
+
+    if (isAdmin) {
+      // Admins get 5 sessions total across any device
+      const maxSessions = 5;
+      const existingSessions = await this.prismaMaster.userSession.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      if (existingSessions.length >= maxSessions) {
+        const toDeleteCount = existingSessions.length - maxSessions + 1;
+        const toDeleteIds = existingSessions.slice(0, toDeleteCount).map(s => s.id);
+        await this.prismaMaster.userSession.deleteMany({
+          where: { id: { in: toDeleteIds } }
+        });
+      }
+    } else {
+      // Regular users get 1 Desktop and 1 Mobile session
+      // We remove any existing session for THIS device type
+      await this.prismaMaster.userSession.deleteMany({
+        where: {
+          userId,
+          deviceType: deviceType
+        }
+      });
+    }
+
+    // Create new session
+    const newSession = await this.prismaMaster.userSession.create({
+      data: {
+        userId,
+        token: sessionToken,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        ipAddress: deviceInfo?.ip,
+        userAgent: deviceInfo?.userAgent,
+        deviceInfo: deviceInfo?.deviceInfo,
+        browserId: deviceInfo?.browserId,
+        deviceType: deviceType
+      }
+    });
+
+    return newSession.id;
+  }
+
+  // Get all profiles associated with this browser
+  async getAvailableProfiles(browserId: string) {
+    if (!browserId) return [];
+
+    const sessions = await this.prismaMaster.userSession.findMany({
+      where: {
+        browserId,
+        expiresAt: { gt: new Date() }
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    // Deduplicate users and filter active sessions
+    const profiles = new Map();
+    sessions.forEach(s => {
+      if (!profiles.has(s.userId)) {
+        profiles.set(s.userId, {
+          ...s.user,
+          lastActive: s.updatedAt,
+          isActive: true
+        });
+      }
+    });
+
+    return Array.from(profiles.values());
+  }
+
+  async posUserLoginStandard(
+    email: string,
+    pass: string,
+    context: { terminalId: string; posId: string; locationId: string; posSessionId?: string, tenantId: string },
+    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string }
+  ) {
+    const user = await this.prismaMaster.user.findUnique({
+      where: { email },
+      include: { role: { include: { permissions: { include: { permission: true } } } } }
+    });
+
+    if (!user) return { status: false, message: 'Invalid credentials' };
+    if (user.status !== 'active') return { status: false, message: 'Account is not active' };
+
+    // Verify Tenant match
+    if (user.tenantId !== context.tenantId) {
+      return { status: false, message: 'User does not belong to this organization' };
+    }
+
+    const isValid = await bcrypt.compare(pass, user.password);
+    if (!isValid) return { status: false, message: 'Invalid credentials' };
+
+    // Update session with current user (POS Session)
+    if (context.posSessionId) {
+      await this.prismaMaster.posSession.update({
+        where: { id: context.posSessionId },
+        data: { userId: user.id },
+      });
+    }
+
+    // Generate User Session (Concurrent Limit)
+    const sessionToken = uuidv4();
+    const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, deviceInfo);
+
+    // Create User Access Token with POS Context
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: '12h',
+      issuer: authConfig.jwt.issuer,
+    };
+
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        employeeId: user.employeeId,
+        roleName: user.role?.name || null,
+        tenantId: user.tenantId,
+        // Preserve POS Context
+        terminalId: context.terminalId,
+        posId: context.posId,
+        locationId: context.locationId,
+        posSessionId: context.posSessionId,
+        isPosUser: true,
+        sessionId: sessionId,
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    // Also track login history
+    await this.prismaMaster.loginHistory.create({
+      data: {
+        userId: user.id,
+        ipAddress: deviceInfo?.ip || 'POS',
+        userAgent: deviceInfo?.userAgent || 'POS Terminal',
+        status: 'success',
+      },
+    });
+
+    return {
+      status: true,
+      message: 'Login successful',
+      data: {
+        user: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role?.name || null,
+          permissions: user.role?.permissions.map(p => p.permission.name) || [],
+          email: user.email,
+          isPosUser: true,
+        },
+        accessToken,
+        sessionId
+      },
+    };
+  }
+
+  async posUserLinkSession(
+    userId: string,
+    terminalToken: string,
+    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string }
+  ) {
+    try {
+      // Decode terminal token to get terminal/tenant context
+      const terminalDecoded = jwt.verify(terminalToken, authConfig.jwt.accessSecret) as any;
+
+      if (!terminalDecoded.isTerminal) {
+        return { status: false, message: 'Invalid terminal token' };
+      }
+
+      const user = await this.prismaMaster.user.findUnique({
+        where: { id: userId },
+        include: { role: { include: { permissions: { include: { permission: true } } } } }
+      });
+
+      if (!user) return { status: false, message: 'User not found' };
+      if (user.status !== 'active') return { status: false, message: 'Account is not active' };
+
+      // Verify Tenant match
+      if (user.tenantId !== terminalDecoded.tenantId) {
+        return { status: false, message: 'User does not belong to this organization' };
+      }
+
+      // Find or create POS session
+      let posSession = await this.prismaMaster.posSession.findFirst({
+        where: { posId: terminalDecoded.terminalId, status: 'open' },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (!posSession) {
+        // Create if missing (though it should be created at terminal login)
+        posSession = await this.prismaMaster.posSession.create({
+          data: {
+            posId: terminalDecoded.terminalId,
+            status: 'open',
+            token: terminalToken,
+            userId: user.id
+          }
+        });
+      } else {
+        await this.prismaMaster.posSession.update({
+          where: { id: posSession.id },
+          data: { userId: user.id },
+        });
+      }
+
+      // Generate User Session (Concurrent Limit)
+      const sessionToken = uuidv4();
+      const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, deviceInfo);
+
+      // Create Combined Token
+      const accessOpts: jwt.SignOptions = {
+        expiresIn: '12h',
+        issuer: authConfig.jwt.issuer,
+      };
+
+      const accessToken = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          roleId: user.roleId,
+          employeeId: user.employeeId,
+          roleName: user.role?.name || null,
+          tenantId: user.tenantId,
+          terminalId: terminalDecoded.terminalId,
+          posId: terminalDecoded.posId,
+          locationId: terminalDecoded.locationId,
+          posSessionId: posSession.id,
+          isPosUser: true,
+          sessionId: sessionId,
+        },
+        authConfig.jwt.accessSecret,
+        accessOpts,
+      );
+
+      return {
+        status: true,
+        message: 'Link successful',
+        data: {
+          user: {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role?.name || null,
+            permissions: user.role?.permissions.map(p => p.permission.name) || [],
+            email: user.email,
+            isPosUser: true
+          },
+          accessToken,
+          sessionId
+        },
+      };
+    } catch (err) {
+      console.error('POS Link Error:', err);
+      return { status: false, message: 'Failed to link session' };
+    }
   }
 }

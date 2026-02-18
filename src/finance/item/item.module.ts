@@ -9,6 +9,7 @@ import { UploadProcessor } from '../../queue/processors/upload.processor';
 import { CsvParserService } from '../../common/services/csv-parser.service';
 import { MasterDataService } from '../../common/services/master-data.service';
 import { ItemValidatorService } from '../../common/services/item-validator.service';
+import { UploadEventsService } from './upload-events.service';
 
 @Module({
     imports: [
@@ -25,6 +26,7 @@ import { ItemValidatorService } from '../../common/services/item-validator.servi
         CsvParserService,
         MasterDataService,
         ItemValidatorService,
+        UploadEventsService,
     ],
     exports: [ItemService],
 })

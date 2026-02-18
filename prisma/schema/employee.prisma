@@ -1,173 +1,167 @@
 model Employee {
-    id                     String    @id @default(uuid())
-    userId                 String?   @unique // Link to User in Master DB
-    employeeId             String    @unique
-    employeeName           String
-    fatherHusbandName      String
-    departmentId           String // Refers to Department in Master DB
-    subDepartmentId        String? // Refers to SubDepartment in Master DB
-    employeeGradeId        String // Refers to EmployeeGrade in Master DB
-    attendanceId           String
-    designationId          String // Refers to Designation in Master DB
-    maritalStatusId        String?
-    employmentStatusId     String? // Refers to EmployeeStatus in Master DB
-    probationExpiryDate    DateTime?
-    cnicNumber             String    @unique
-    cnicExpiryDate         DateTime?
-    lifetimeCnic           Boolean   @default(false)
-    joiningDate            DateTime?
-    dateOfBirth            DateTime?
-    nationality            String
-    gender                 String
-    contactNumber          String
-    emergencyContactNumber String?
-    emergencyContactPerson String?
-    personalEmail          String?
-    officialEmail          String?   @unique
-    countryId              String // Refers to Country in Master DB
-    stateId                String // Refers to State in Master DB
-    cityId                 String // Refers to City in Master DB
-    area                   String?
-    employeeSalary         Decimal
-    eobi                   Boolean   @default(false)
-    eobiId                 String?
-    eobiCode               String?
-    eobiNumber             String?
-    eobiDocumentUrl        String?
-    documentUrls           Json?
-    providentFund          Boolean   @default(false)
-    overtimeApplicable     Boolean   @default(false)
-    daysOff                String?
-    reportingManager       String?
-    workingHoursPolicyId   String // Refers to WorkingHoursPolicy in Master DB
-    locationId             String? // Refers to Location in Master DB
-    allocationId           String? // Refers to Allocation in Master DB
-    leavesPolicyId         String // Refers to LeavesPolicy in Master DB
-    allowRemoteAttendance  Boolean   @default(false)
-    currentAddress         String?
-    permanentAddress       String?
-    bankName               String?
-    accountNumber          String?
-    accountTitle           String?
-    status                 String    @default("active")
-    isRejoined             Boolean   @default(false)
-    originalJoiningDate    DateTime?
-    lastExitDate           DateTime?
-    rejoinCount            Int       @default(0)
-    createdAt              DateTime  @default(now())
-    updatedAt              DateTime  @updatedAt
-
-    // --- Relations (Tenant DB Only) ---
-    advanceSalaries                 AdvanceSalary[]
-    allowances                      Allowance[]
-    attendances                     Attendance[]
-    attendanceExemptions            AttendanceExemption[]
-    attendanceRequestQueries        AttendanceRequestQuery[]
-    bonuses                         Bonus[]                          @relation("BonusEmployee")
-    deductions                      Deduction[]
-    equipmentAssignments            EmployeeEquipment[]
-    qualifications                  EmployeeQualification[]
-    rejoiningHistory                EmployeeRejoiningHistory[]
-    exitClearances                  ExitClearance[]
-    increments                      Increment[]                      @relation("IncrementEmployee")
-    leaveApplications               LeaveApplication[]
-    leaveEncashments                LeaveEncashment[]
-    loanRequests                    LoanRequest[]
-    overtimeRequests                OvertimeRequest[]                @relation("OvertimeRequestEmployee")
-    pfWithdrawals                   PFWithdrawal[]
-    payrollDetails                  PayrollDetail[]
-    rebates                         Rebate[]
-    requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
-    policyAssignments               WorkingHoursPolicyAssignment[]
-    totalPayrollApprovalLevels      PayrollApprovalLevel[]           @relation("PayrollApprovalLevelAssignedEmployee")
-    transferHistory                 EmployeeTransferHistory[]
-    payrollApprovalRequests         PayrollApprovalRequest[]
-    socialSecurityInstitutionId     String? // Refers to SocialSecurityInstitution in Master DB
+  id                              String                           @id @default(uuid())
+  userId                          String?                          @unique
+  employeeId                      String                           @unique
+  employeeName                    String
+  fatherHusbandName               String
+  departmentId                    String
+  subDepartmentId                 String?
+  employeeGradeId                 String
+  attendanceId                    String
+  designationId                   String
+  maritalStatusId                 String?
+  employmentStatusId              String?
+  probationExpiryDate             DateTime?
+  cnicNumber                      String                           @unique
+  cnicExpiryDate                  DateTime?
+  lifetimeCnic                    Boolean                          @default(false)
+  joiningDate                     DateTime?
+  dateOfBirth                     DateTime?
+  nationality                     String
+  gender                          String
+  contactNumber                   String
+  emergencyContactNumber          String?
+  emergencyContactPerson          String?
+  personalEmail                   String?
+  officialEmail                   String?                          @unique
+  countryId                       String
+  stateId                         String
+  cityId                          String
+  area                            String?
+  employeeSalary                  Decimal
+  eobi                            Boolean                          @default(false)
+  eobiId                          String?
+  eobiCode                        String?
+  eobiNumber                      String?
+  eobiDocumentUrl                 String?
+  documentUrls                    Json?
+  providentFund                   Boolean                          @default(false)
+  overtimeApplicable              Boolean                          @default(false)
+  daysOff                         String?
+  reportingManager                String?
+  workingHoursPolicyId            String
+  locationId                      String?
+  allocationId                    String?
+  leavesPolicyId                  String
+  allowRemoteAttendance           Boolean                          @default(false)
+  currentAddress                  String?
+  permanentAddress                String?
+  bankName                        String?
+  accountNumber                   String?
+  accountTitle                    String?
+  status                          String                           @default("active")
+  isRejoined                      Boolean                          @default(false)
+  originalJoiningDate             DateTime?
+  lastExitDate                    DateTime?
+  rejoinCount                     Int                              @default(0)
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  socialSecurityInstitutionId     String?
+  advanceSalaries                 AdvanceSalary[]
+  allowances                      Allowance[]
+  attendances                     Attendance[]
+  attendanceExemptions            AttendanceExemption[]
+  attendanceRequestQueries        AttendanceRequestQuery[]
+  bonuses                         Bonus[]                          @relation("BonusEmployee")
+  deductions                      Deduction[]
+  equipmentAssignments            EmployeeEquipment[]
+  qualifications                  EmployeeQualification[]
+  rejoiningHistory                EmployeeRejoiningHistory[]
+  transferHistory                 EmployeeTransferHistory[]
+  exitClearances                  ExitClearance[]
+  increments                      Increment[]                      @relation("IncrementEmployee")
+  leaveApplications               LeaveApplication[]
+  leaveEncashments                LeaveEncashment[]
+  loanRequests                    LoanRequest[]
+  overtimeRequests                OvertimeRequest[]                @relation("OvertimeRequestEmployee")
+  pfWithdrawals                   PFWithdrawal[]
+  totalPayrollApprovalLevels      PayrollApprovalLevel[]           @relation("PayrollApprovalLevelAssignedEmployee")
+  payrollApprovalRequests         PayrollApprovalRequest[]
+  payrollDetails                  PayrollDetail[]
+  rebates                         Rebate[]
+  requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
+  policyAssignments               WorkingHoursPolicyAssignment[]
 }
 
 model EmployeeRejoiningHistory {
-    id                    String   @id @default(uuid())
-    employeeId            String
-    previousEmployeeId    String
-    newEmployeeId         String
-    previousAttendanceId  String
-    newAttendanceId       String
-    previousExitDate      DateTime
-    rejoiningDate         DateTime
-    previousDepartmentId  String?
-    newDepartmentId       String?
-    previousDesignationId String?
-    newDesignationId      String?
-    previousSalary        Decimal?
-    newSalary             Decimal?
-    previousValues        Json?
-    newValues             Json?
-    changedFields         Json?
-    remarks               String?
-    createdById           String? // User in Master DB
-    createdAt             DateTime @default(now())
+  id                    String   @id @default(uuid())
+  employeeId            String
+  previousEmployeeId    String
+  newEmployeeId         String
+  previousAttendanceId  String
+  newAttendanceId       String
+  previousExitDate      DateTime
+  rejoiningDate         DateTime
+  previousDepartmentId  String?
+  newDepartmentId       String?
+  previousDesignationId String?
+  newDesignationId      String?
+  previousSalary        Decimal?
+  newSalary             Decimal?
+  previousValues        Json?
+  newValues             Json?
+  changedFields         Json?
+  remarks               String?
+  createdById           String?
+  createdAt             DateTime @default(now())
+  employee              Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-    employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-    @@index([employeeId])
-    @@index([rejoiningDate])
+  @@index([employeeId])
+  @@index([rejoiningDate])
 }
 
 model EmployeeTransferHistory {
-    id                 String   @id @default(uuid())
-    employeeId         String
-    transferDate       DateTime
-    previousLocationId String?
-    newLocationId      String?
-    previousCityId     String?
-    newCityId          String?
-    previousStateId    String?
-    newStateId         String?
-    reason             String?
-    createdById        String? // User in Master DB
-    createdAt          DateTime @default(now())
+  id                 String   @id @default(uuid())
+  employeeId         String
+  transferDate       DateTime
+  previousLocationId String?
+  newLocationId      String?
+  previousCityId     String?
+  newCityId          String?
+  previousStateId    String?
+  newStateId         String?
+  reason             String?
+  createdById        String?
+  createdAt          DateTime @default(now())
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-    employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-    @@index([employeeId])
-    @@index([transferDate])
+  @@index([employeeId])
+  @@index([transferDate])
 }
 
 model EmployeeQualification {
-    id              String   @id @default(uuid())
-    employeeId      String
-    qualificationId String // Refers to Qualification in Master DB
-    instituteId     String? // Refers to Institute in Master DB
-    cityId          String? // City in Master DB
-    stateId         String? // State in Master DB
-    year            Int?
-    grade           String?
-    createdAt       DateTime @default(now())
-    updatedAt       DateTime @updatedAt
+  id              String   @id @default(uuid())
+  employeeId      String
+  qualificationId String
+  instituteId     String?
+  cityId          String?
+  stateId         String?
+  year            Int?
+  grade           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-    employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-    @@index([employeeId])
+  @@index([employeeId])
 }
 
 model EmployeeEquipment {
-    id           String    @id @default(uuid())
-    employeeId   String
-    equipmentId  String // Refers to Equipment in Master DB
-    productId    String
-    assignedDate DateTime  @default(now())
-    returnedDate DateTime?
-    status       String    @default("assigned")
-    notes        String?
-    metadata     Json?
-    assignedById String? // User in Master DB
-    returnedById String? // User in Master DB
-    createdAt    DateTime  @default(now())
-    updatedAt    DateTime  @updatedAt
+  id           String    @id @default(uuid())
+  employeeId   String
+  equipmentId  String
+  productId    String
+  assignedDate DateTime  @default(now())
+  returnedDate DateTime?
+  status       String    @default("assigned")
+  notes        String?
+  metadata     Json?
+  assignedById String?
+  returnedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-    employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-    @@index([employeeId])
-    @@index([status])
-    @@index([productId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([productId])
 }

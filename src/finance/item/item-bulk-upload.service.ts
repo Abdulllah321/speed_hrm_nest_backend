@@ -3,6 +3,9 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { PrismaService } from '../../database/prisma.service';
 import { UploadJobData } from '../../queue/processors/upload.processor';
+import { UploadEventsService } from './upload-events.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class ItemBulkUploadService {
@@ -11,36 +14,48 @@ export class ItemBulkUploadService {
     constructor(
         @InjectQueue('item-upload') private uploadQueue: Queue,
         private prisma: PrismaService,
+        private eventsService: UploadEventsService,
     ) { }
 
     /**
-     * Initiate bulk upload
+     * Initiate validation of bulk upload file
      */
-    async initiateUpload(
+    async initiateValidation(
         fileBuffer: Buffer,
         filename: string,
         userId: string,
     ): Promise<{ uploadId: string; jobId: string }> {
-        // Create upload record
+        // Create upload record with status 'validating'
         const upload = await this.prisma.bulkUpload.create({
             data: {
                 jobId: '', // Will update after job creation
                 filename,
-                totalRecords: 0, // Will update after parsing
+                totalRecords: 0,
                 uploadedBy: userId,
-                status: 'pending',
+                status: 'validating',
             },
         });
 
-        // Add job to queue
+        // Ensure uploads directory exists
+        const uploadDir = path.join(process.cwd(), 'uploads', 'bulk');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+
+        const ext = filename.split('.').pop();
+        const filePath = path.join(uploadDir, `upload-${upload.id}.${ext}`);
+        fs.writeFileSync(filePath, fileBuffer);
+
+        // Add validation job to queue
         const job = await this.uploadQueue.add({
             uploadId: upload.id,
-            fileBuffer,
+            fileBuffer, // Keep it for the first job for speed
             filename,
             userId,
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
-        } as UploadJobData, {
+            mode: 'validate',
+        } as any, {
             removeOnComplete: false,
             removeOnFail: false,
         });
@@ -51,12 +66,86 @@ export class ItemBulkUploadService {
             data: { jobId: String(job.id) },
         });
 
-        this.logger.log(`Upload initiated: ${upload.id} (Job ID: ${job.id})`);
+        this.logger.log(`Validation initiated: ${upload.id} (Job ID: ${job.id}), File saved to ${filePath}`);
 
         return {
             uploadId: upload.id,
             jobId: String(job.id),
         };
+    }
+
+    /**
+     * Confirm and start the actual upload of valid records
+     */
+    async confirmUpload(uploadId: string, userId: string): Promise<{ uploadId: string; jobId: string }> {
+        const upload = await this.prisma.bulkUpload.findUnique({
+            where: { id: uploadId },
+        });
+
+        if (!upload) {
+            throw new NotFoundException(`Upload ${uploadId} not found`);
+        }
+
+        if (upload.status === 'processing' || upload.status === 'pending' || upload.status === 'completed') {
+            return {
+                uploadId: upload.id,
+                jobId: upload.jobId,
+            };
+        }
+
+        if (upload.status !== 'validated') {
+            throw new Error(`Upload must be in 'validated' status to be confirmed (current: ${upload.status})`);
+        }
+
+        // Notify client immediately
+        this.eventsService.emit({
+            uploadId,
+            type: 'status',
+            data: { status: 'pending', message: 'Import confirmation received...' }
+        });
+
+        // Update status to 'pending' (ready for actual processing)
+        await this.prisma.bulkUpload.update({
+            where: { id: uploadId },
+            data: { status: 'pending', message: 'Confirming upload...' },
+        });
+
+        // Add processing job to queue
+        const job = await this.uploadQueue.add({
+            uploadId: upload.id,
+            filename: upload.filename,
+            userId,
+            tenantId: this.prisma.getTenantId() || '',
+            tenantDbUrl: this.prisma.getTenantDbUrl() || '',
+            mode: 'import',
+        } as any, {
+            removeOnComplete: false,
+            removeOnFail: false,
+        });
+
+        await this.prisma.bulkUpload.update({
+            where: { id: upload.id },
+            data: { jobId: String(job.id) },
+        });
+
+        this.logger.log(`Import confirmed: ${upload.id} (Job ID: ${job.id})`);
+
+        return {
+            uploadId,
+            jobId: String(job.id),
+        };
+    }
+
+    /**
+     * Old initiateUpload - keeping it for compatibility or removing it if we refactor everywhere
+     * Refactoring it to call initiateValidation by default.
+     */
+    async initiateUpload(
+        fileBuffer: Buffer,
+        filename: string,
+        userId: string,
+    ): Promise<{ uploadId: string; jobId: string }> {
+        return this.initiateValidation(fileBuffer, filename, userId);
     }
 
     /**
