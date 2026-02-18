@@ -83,6 +83,7 @@ import { TaxRateModule } from './master/tax-rate/tax-rate.module';
 import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
 import { SeasonModule } from './master/season/season.module';
+import { OldSeasonModule } from './master/old-season/old-season.module';
 import { SegmentModule } from './master/segment/segment.module';
 import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
@@ -195,6 +196,7 @@ import { SearchModule } from './search/search.module';
     ItemClassModule,
     ItemSubclassModule,
     SeasonModule,
+    OldSeasonModule,
     SegmentModule,
     ItemModule,
     IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)

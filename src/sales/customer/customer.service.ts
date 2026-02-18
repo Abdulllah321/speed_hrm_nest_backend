@@ -11,7 +11,11 @@ export class CustomerService {
       const customer = await this.prisma.customer.create({
         data: createDto,
       });
-      return { status: true, data: customer, message: 'Customer created successfully' };
+      return {
+        status: true,
+        data: customer,
+        message: 'Customer created successfully',
+      };
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -31,7 +35,11 @@ export class CustomerService {
   async findOne(id: string) {
     try {
       const customer = await this.prisma.customer.findUnique({ where: { id } });
-      return { status: !!customer, data: customer, message: customer ? undefined : 'Customer not found' };
+      return {
+        status: !!customer,
+        data: customer,
+        message: customer ? undefined : 'Customer not found',
+      };
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -43,7 +51,11 @@ export class CustomerService {
         where: { id },
         data: updateDto,
       });
-      return { status: true, data: customer, message: 'Customer updated successfully' };
+      return {
+        status: true,
+        data: customer,
+        message: 'Customer updated successfully',
+      };
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

@@ -126,6 +126,7 @@ export class PurchaseOrderService {
         data: {
           poNumber,
           vendorId: createDto.vendorId!,
+          purchaseRequisitionId: createDto.purchaseRequisitionId || null,
           notes: createDto.notes,
           expectedDeliveryDate: createDto.expectedDeliveryDate
             ? new Date(createDto.expectedDeliveryDate)

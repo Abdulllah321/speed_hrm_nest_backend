@@ -998,3 +998,12 @@ model Season {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model OldSeason {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

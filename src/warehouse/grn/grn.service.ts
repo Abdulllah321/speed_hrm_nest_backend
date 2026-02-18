@@ -67,8 +67,10 @@ export class GrnService {
     }
 
     const grnNumber = `GRN-${Date.now()}`;
-    const isFromRfqFlow = Boolean(
-      (po as any).vendorQuotationId || (po as any).rfqId,
+    const isProcurementLinkedFlow = Boolean(
+      (po as any).vendorQuotationId ||
+      (po as any).rfqId ||
+      (po as any).purchaseRequisitionId,
     );
 
     return this.prisma.$transaction(async (tx) => {
@@ -82,7 +84,7 @@ export class GrnService {
           grnNumber,
           purchaseOrderId: dto.purchaseOrderId,
           warehouseId: dto.warehouseId,
-          status: isFromRfqFlow ? 'VALUED' : 'RECEIVED_UNVALUED',
+          status: isProcurementLinkedFlow ? 'VALUED' : 'RECEIVED_UNVALUED',
           notes: dto.notes,
           items: {
             create: dto.items.map((item) => ({
@@ -133,8 +135,8 @@ export class GrnService {
           },
         });
 
-        // 4. Create stock ledger entry immediately for RFQ/VQ-based PO (old flow)
-        if (isFromRfqFlow) {
+        // 4. Create stock ledger entry immediately for RFQ/VQ/PR-linked PO
+        if (isProcurementLinkedFlow) {
           await this.stockLedgerService.createEntry(
             {
               itemId: itemRecord.id,

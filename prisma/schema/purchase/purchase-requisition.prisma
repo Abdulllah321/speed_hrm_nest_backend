@@ -10,6 +10,7 @@ model PurchaseRequisition {
   updatedAt   DateTime                  @updatedAt @map("updated_at")
   items       PurchaseRequisitionItem[]
   rfqs        RequestForQuotation[]
+  purchaseOrders PurchaseOrder[]
 
   @@map("purchase_requisitions")
 }
