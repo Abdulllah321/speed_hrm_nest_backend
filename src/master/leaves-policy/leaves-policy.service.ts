@@ -7,7 +7,7 @@ export class LeavesPolicyService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prismaMaster.leavesPolicy.findMany({
@@ -137,13 +137,13 @@ export class LeavesPolicyService {
       // Transform the data to include leaveTypeName
       const transformedItem = createdWithLeaveTypes
         ? {
-          ...createdWithLeaveTypes,
-          leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
-            leaveTypeId: lt.leaveTypeId,
-            leaveTypeName: lt.leaveType.name,
-            numberOfLeaves: lt.numberOfLeaves,
-          })),
-        }
+            ...createdWithLeaveTypes,
+            leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
+              leaveTypeId: lt.leaveTypeId,
+              leaveTypeName: lt.leaveType.name,
+              numberOfLeaves: lt.numberOfLeaves,
+            })),
+          }
         : created;
 
       return {
@@ -323,13 +323,13 @@ export class LeavesPolicyService {
       // Transform the data to include leaveTypeName
       const transformedItem = updatedWithLeaveTypes
         ? {
-          ...updatedWithLeaveTypes,
-          leaveTypes: updatedWithLeaveTypes.leaveTypes.map((lt) => ({
-            leaveTypeId: lt.leaveTypeId,
-            leaveTypeName: lt.leaveType.name,
-            numberOfLeaves: lt.numberOfLeaves,
-          })),
-        }
+            ...updatedWithLeaveTypes,
+            leaveTypes: updatedWithLeaveTypes.leaveTypes.map((lt) => ({
+              leaveTypeId: lt.leaveTypeId,
+              leaveTypeName: lt.leaveType.name,
+              numberOfLeaves: lt.numberOfLeaves,
+            })),
+          }
         : updated;
 
       return {

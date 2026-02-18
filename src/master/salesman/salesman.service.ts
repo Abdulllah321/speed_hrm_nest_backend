@@ -13,7 +13,11 @@ export class SalesmanService {
         createdById: userId,
       },
     });
-    return { status: true, data: result, message: 'Salesman created successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Salesman created successfully',
+    };
   }
 
   async findAll() {
@@ -35,7 +39,11 @@ export class SalesmanService {
       where: { id },
       data: updateDto,
     });
-    return { status: true, data: result, message: 'Salesman updated successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Salesman updated successfully',
+    };
   }
 
   async remove(id: string) {

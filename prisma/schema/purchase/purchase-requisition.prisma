@@ -1,8 +1,8 @@
 model PurchaseRequisition {
   id          String                    @id @default(uuid())
   prNumber    String                    @unique @map("pr_number")
-  requestedBy String                    @map("requested_by")
   department  String?
+  type        String?                   @default("local")
   requestDate DateTime                  @default(now()) @map("request_date")
   status      String                    @default("DRAFT")
   notes       String?
@@ -20,7 +20,6 @@ model PurchaseRequisitionItem {
   itemId                String              @map("item_id")
   description           String?
   requiredQty           Decimal             @map("required_qty") @db.Decimal(15, 4)
-  neededByDate          DateTime?           @map("needed_by_date")
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
   purchaseRequisition   PurchaseRequisition @relation(fields: [purchaseRequisitionId], references: [id], onDelete: Cascade)

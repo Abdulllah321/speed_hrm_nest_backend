@@ -10,7 +10,7 @@ export class PFService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
-  ) { }
+  ) {}
 
   async getPFEmployees() {
     try {
@@ -205,19 +205,19 @@ export class PFService {
       // Map relation data for response
       const dept = employeeId
         ? await this.prisma.employee
-          .findUnique({
-            where: { id: employeeId },
-            select: { departmentId: true },
-          })
-          .then(async (e) => {
-            if (e?.departmentId) {
-              return this.prismaMaster.department.findUnique({
-                where: { id: e.departmentId },
-                select: { name: true },
-              });
-            }
-            return null;
-          })
+            .findUnique({
+              where: { id: employeeId },
+              select: { departmentId: true },
+            })
+            .then(async (e) => {
+              if (e?.departmentId) {
+                return this.prismaMaster.department.findUnique({
+                  where: { id: e.departmentId },
+                  select: { name: true },
+                });
+              }
+              return null;
+            })
         : null;
 
       const mappedWithdrawal = {

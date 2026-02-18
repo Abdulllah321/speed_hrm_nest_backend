@@ -54,10 +54,12 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       if (!noop) {
         noop = createNoOpAdapter();
       }
-      
+
       super({ adapter: noop } as any);
       this.isInitialized = false;
-      this.logger.debug('PrismaService created without tenant context - calls will fail with ensureTenantContext() check');
+      this.logger.debug(
+        'PrismaService created without tenant context - calls will fail with ensureTenantContext() check',
+      );
       return;
     }
 
@@ -73,7 +75,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
         connectionTimeoutMillis: 2000,
       });
 
-      // Increase listener limit to accommodate multiple Prisma clients 
+      // Increase listener limit to accommodate multiple Prisma clients
       // although caching should keep this is check
       pool.setMaxListeners(100);
 
@@ -105,16 +107,18 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   ensureTenantContext(): void {
     if (!this.isInitialized) {
       throw new Error(
-        'Tenant database context is required for this operation. Ensure user is authenticated and has a valid company.'
+        'Tenant database context is required for this operation. Ensure user is authenticated and has a valid company.',
       );
     }
   }
 
   async onModuleDestroy() {
-    // Only disconnect the PrismaClient instance. 
+    // Only disconnect the PrismaClient instance.
     // Pools are shared and should be closed via static cleanupAllPools or when process exits.
     if (this.isInitialized) {
-      this.logger.debug(`Disconnecting PrismaClient instance for tenant: ${this.tenantId}`);
+      this.logger.debug(
+        `Disconnecting PrismaClient instance for tenant: ${this.tenantId}`,
+      );
       await this.$disconnect();
     }
   }
@@ -143,20 +147,22 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
         } catch (error) {
           logger.error(`Error closing pool for tenant ${tenantId}:`, error);
         }
-      }
+      },
     );
 
     // Cleanup no-op pool if it exists
     if (noop) {
-      cleanupPromises.push((async () => {
-        try {
-          // The no-op pool has max: 0, so there's nothing to clean
-          noop = null;
-          logger.debug('Cleaned up no-op adapter');
-        } catch (error) {
-          logger.error('Error cleaning no-op adapter:', error);
-        }
-      })());
+      cleanupPromises.push(
+        (async () => {
+          try {
+            // The no-op pool has max: 0, so there's nothing to clean
+            noop = null;
+            logger.debug('Cleaned up no-op adapter');
+          } catch (error) {
+            logger.error('Error cleaning no-op adapter:', error);
+          }
+        })(),
+      );
     }
 
     await Promise.all(cleanupPromises);
@@ -164,7 +170,12 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
     logger.log('All tenant pools and adapters cleaned up');
   }
 
-  static getPoolStats(): { tenantId: string; totalCount: number; idleCount: number; waitingCount: number }[] {
+  static getPoolStats(): {
+    tenantId: string;
+    totalCount: number;
+    idleCount: number;
+    waitingCount: number;
+  }[] {
     return Array.from(poolCache.entries()).map(([tenantId, pool]) => ({
       tenantId,
       totalCount: pool.totalCount,

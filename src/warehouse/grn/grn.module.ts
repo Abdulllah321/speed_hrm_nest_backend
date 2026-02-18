@@ -4,9 +4,9 @@ import { GrnController } from './grn.controller';
 import { StockLedgerModule } from '../stock-ledger/stock-ledger.module';
 
 @Module({
-    imports: [StockLedgerModule],
-    controllers: [GrnController],
-    providers: [GrnService],
-    exports: [GrnService],
+  imports: [StockLedgerModule],
+  controllers: [GrnController],
+  providers: [GrnService],
+  exports: [GrnService],
 })
-export class GrnModule { }
+export class GrnModule {}

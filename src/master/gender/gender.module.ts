@@ -4,8 +4,8 @@ import { GenderService } from './gender.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [GenderController],
-    providers: [GenderService],
+  imports: [PrismaModule],
+  controllers: [GenderController],
+  providers: [GenderService],
 })
-export class GenderModule { }
+export class GenderModule {}

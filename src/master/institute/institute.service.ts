@@ -7,7 +7,7 @@ export class InstituteService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prismaMaster.institute.findMany({

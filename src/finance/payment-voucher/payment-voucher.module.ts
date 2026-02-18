@@ -4,8 +4,8 @@ import { PaymentVoucherController } from './payment-voucher.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [PaymentVoucherController],
-    providers: [PaymentVoucherService],
+  imports: [PrismaModule],
+  controllers: [PaymentVoucherController],
+  providers: [PaymentVoucherService],
 })
-export class PaymentVoucherModule { }
+export class PaymentVoucherModule {}

@@ -9,7 +9,7 @@ export class AttendanceRequestQueryService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   private async resolveApproverUserId(args: {
     level: {
@@ -107,7 +107,6 @@ export class AttendanceRequestQueryService {
   }
 
   async list() {
-
     const queries = await this.prisma.attendanceRequestQuery.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
@@ -158,7 +157,6 @@ export class AttendanceRequestQueryService {
   }
 
   async get(id: string) {
-
     const query = await this.prisma.attendanceRequestQuery.findUnique({
       where: { id },
       include: {
@@ -180,9 +178,9 @@ export class AttendanceRequestQueryService {
     // Fetch department and designation for mapping from Master DB
     const department = query.department
       ? await this.prismaMaster.department.findUnique({
-        where: { id: query.department },
-        include: { subDepartments: true },
-      })
+          where: { id: query.department },
+          include: { subDepartments: true },
+        })
       : null;
 
     const subDepartment =
@@ -192,8 +190,8 @@ export class AttendanceRequestQueryService {
 
     const designation = query.employee?.designationId
       ? await this.prismaMaster.designation.findUnique({
-        where: { id: query.employee.designationId },
-      })
+          where: { id: query.employee.designationId },
+        })
       : null;
 
     return {
@@ -213,7 +211,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!body.employeeId) {
         return {
           status: false,
@@ -361,11 +358,11 @@ export class AttendanceRequestQueryService {
         status: true,
         data: createdWithEmployee
           ? {
-            ...createdWithEmployee,
-            employeeId:
-              createdWithEmployee.employee?.employeeId ||
-              createdWithEmployee.employeeId,
-          }
+              ...createdWithEmployee,
+              employeeId:
+                createdWithEmployee.employee?.employeeId ||
+                createdWithEmployee.employeeId,
+            }
           : created,
       };
     } catch (error: any) {
@@ -399,7 +396,6 @@ export class AttendanceRequestQueryService {
     }
 
     try {
-
       const existing = await this.prisma.attendanceRequestQuery.findUnique({
         where: { id },
       });
@@ -471,11 +467,11 @@ export class AttendanceRequestQueryService {
         status: true,
         data: updatedWithEmployee
           ? {
-            ...updatedWithEmployee,
-            employeeId:
-              updatedWithEmployee.employee?.employeeId ||
-              updatedWithEmployee.employeeId,
-          }
+              ...updatedWithEmployee,
+              employeeId:
+                updatedWithEmployee.employee?.employeeId ||
+                updatedWithEmployee.employeeId,
+            }
           : updated,
       };
     } catch (error: any) {
@@ -506,7 +502,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -813,7 +808,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.attendanceRequestQuery.findUnique({
         where: { id },
       });
@@ -865,7 +859,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       await this.prisma.attendanceRequestQuery.deleteMany({
         where: { id: { in: ids } },
       });

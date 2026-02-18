@@ -21,7 +21,7 @@ import {
 @ApiTags('Employee Status')
 @Controller('api')
 export class EmployeeStatusController {
-  constructor(private service: EmployeeStatusService) { }
+  constructor(private service: EmployeeStatusService) {}
 
   @Get('employee-statuses')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.read'))
