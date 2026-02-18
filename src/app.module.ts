@@ -93,8 +93,6 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
-import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
-import { GrnModule } from './warehouse/grn/grn.module';
 import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
@@ -203,8 +201,6 @@ import { WebhookModule } from './webhook/webhook.module';
     PurchaseRequisitionModule,
     RfqModule,
     VendorQuotationModule,
-    PurchaseOrderModule,
-    GrnModule,
     PosModule,
     SearchModule,
     WebhookModule,

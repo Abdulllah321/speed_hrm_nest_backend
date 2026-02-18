@@ -1,31 +1,36 @@
 model RequestForQuotation {
-  id                    String                      @id @default(uuid())
-  rfqNumber             String                      @unique @map("rfq_number")
-  purchaseRequisitionId String                      @map("purchase_requisition_id")
-  rfqDate               DateTime                    @default(now()) @map("rfq_date")
-  status                String                      @default("DRAFT")
-  notes                 String?
-  createdAt             DateTime                    @default(now()) @map("created_at")
-  updatedAt             DateTime                    @updatedAt @map("updated_at")
-  purchaseOrders        PurchaseOrder[]
-  vendors               RequestForQuotationVendor[]
-  purchaseRequisition   PurchaseRequisition         @relation(fields: [purchaseRequisitionId], references: [id])
-  vendorQuotations      VendorQuotation[]
+    id                    String              @id @default(uuid())
+    rfqNumber             String              @unique @map("rfq_number")
+    purchaseRequisitionId String              @map("purchase_requisition_id")
+    purchaseRequisition   PurchaseRequisition @relation(fields: [purchaseRequisitionId], references: [id])
 
-  @@map("rfqs")
+    rfqDate DateTime @default(now()) @map("rfq_date")
+    status  String   @default("DRAFT") // DRAFT, SENT, CLOSED
+    notes   String?
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    vendors          RequestForQuotationVendor[]
+    vendorQuotations VendorQuotation[]
+
+    @@map("rfqs")
 }
 
 model RequestForQuotationVendor {
-  id             String              @id @default(uuid())
-  rfqId          String              @map("rfq_id")
-  vendorId       String              @map("vendor_id")
-  sentAt         DateTime?           @map("sent_at")
-  responseStatus String              @default("PENDING") @map("response_status")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  rfq            RequestForQuotation @relation(fields: [rfqId], references: [id], onDelete: Cascade)
-  vendor         Supplier            @relation(fields: [vendorId], references: [id])
+    id    String              @id @default(uuid())
+    rfqId String              @map("rfq_id")
+    rfq   RequestForQuotation @relation(fields: [rfqId], references: [id], onDelete: Cascade)
 
-  @@unique([rfqId, vendorId])
-  @@map("rfq_vendors")
+    vendorId String   @map("vendor_id")
+    vendor   Supplier @relation(fields: [vendorId], references: [id])
+
+    sentAt         DateTime? @map("sent_at")
+    responseStatus String    @default("PENDING") @map("response_status") // PENDING, RESPONDED, DECLINED
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    @@unique([rfqId, vendorId])
+    @@map("rfq_vendors")
 }
