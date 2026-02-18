@@ -42,6 +42,10 @@ export class CreatePurchaseOrderDto {
   @IsOptional()
   vendorId?: string;
 
+  @IsString()
+  @IsOptional()
+  purchaseRequisitionId?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePurchaseOrderItemDto)
