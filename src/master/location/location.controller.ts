@@ -8,6 +8,8 @@ import {
   Put,
   Req,
   UseGuards,
+  SetMetadata,
+  Query,
 } from '@nestjs/common';
 import { LocationService } from './location.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -25,6 +27,28 @@ import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 @Controller('api')
 export class LocationController {
   constructor(private service: LocationService) {}
+
+  @Get('public/locations')
+  @ApiOperation({ summary: 'List all active locations (Public)' })
+  async listActivePublic() {
+    return this.service.listActive();
+  }
+
+  @Get('public/nearest')
+  @ApiOperation({ summary: 'Find nearest location by coordinates (Public)' })
+  async findNearestPublic(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+  ) {
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return { status: false, message: 'Invalid coordinates' };
+    }
+
+    return this.service.findNearestLocation(latitude, longitude);
+  }
 
   @Get('locations')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.location.read'))

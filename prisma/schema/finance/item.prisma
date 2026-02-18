@@ -1,7 +1,7 @@
 model Item {
   id                 String        @id @default(uuid())
   itemId             String        @unique
-  sku                String        @unique
+  sku                String        
   barCode            String?
   hsCode             String?
   description        String?
