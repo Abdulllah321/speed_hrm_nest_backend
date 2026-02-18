@@ -5,7 +5,7 @@ import { UpdateUomDto } from './dto/update-uom.dto';
 
 @Injectable()
 export class UomService {
-  constructor(private readonly prismaMaster: PrismaMasterService) { }
+  constructor(private readonly prismaMaster: PrismaMasterService) {}
 
   async create(createUomDto: CreateUomDto) {
     return this.prismaMaster.uom.create({

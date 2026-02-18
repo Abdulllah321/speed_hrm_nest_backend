@@ -60,7 +60,8 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('User not found or inactive');
       }
 
-      const permissions = user.role?.permissions.map((p) => p.permission.name) || [];
+      const permissions =
+        user.role?.permissions.map((p) => p.permission.name) || [];
       const roleName = user.role?.name?.toLowerCase();
 
       // Super Admin and Admin bypass
@@ -75,11 +76,11 @@ export class JwtAuthGuard implements CanActivate {
         roleName: user.role?.name,
         permissions: permissions,
       };
-      
+
       return true;
     } catch (error) {
-       // console.error('Token validation error:', error);
-       throw new UnauthorizedException('Invalid token');
+      // console.error('Token validation error:', error);
+      throw new UnauthorizedException('Invalid token');
     }
   }
 }

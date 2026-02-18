@@ -87,7 +87,6 @@ export class BonusService {
     status?: string;
   }) {
     try {
-      
       const where: any = {};
 
       if (params?.employeeId) {
@@ -218,7 +217,6 @@ export class BonusService {
 
   async get(id: string) {
     try {
-      
       const bonus = await this.prisma.bonus.findUnique({
         where: { id },
         include: {
@@ -258,7 +256,6 @@ export class BonusService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      
       if (!body.bonuses || body.bonuses.length === 0) {
         return {
           status: false,
@@ -477,7 +474,6 @@ export class BonusService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      
       const existing = await this.prisma.bonus.findUnique({
         where: { id },
       });
@@ -577,7 +573,6 @@ export class BonusService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      
       const existing = await this.prisma.bonus.findUnique({
         where: { id },
       });
@@ -622,7 +617,6 @@ export class BonusService {
     bonusTypeId?: string;
   }) {
     try {
-      
       const where: any = {
         employeeId: { in: params.employeeIds },
       };

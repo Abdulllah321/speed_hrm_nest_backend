@@ -105,7 +105,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         exception.stack,
         `${request.method} ${request.url}`,
       );
-      return (response as any).status(HttpStatus.BAD_REQUEST).send(errorResponse);
+      return (response as any)
+        .status(HttpStatus.BAD_REQUEST)
+        .send(errorResponse);
     }
 
     // Handle Prisma Client Initialization Errors

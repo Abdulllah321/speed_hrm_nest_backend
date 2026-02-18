@@ -79,6 +79,7 @@ import { StorageDimensionModule } from './master/storage-dimension/storage-dimen
 import { MachineModule } from './master/machine/machine.module';
 import { CategoryModule } from './master/category/category.module';
 import { UomModule } from './master/uom/uom.module';
+import { TaxRateModule } from './master/tax-rate/tax-rate.module';
 import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
 import { SeasonModule } from './master/season/season.module';
@@ -94,6 +95,7 @@ import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
 import { GrnModule } from './warehouse/grn/grn.module';
+import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
@@ -188,6 +190,7 @@ import { SearchModule } from './search/search.module';
     ColorModule,
     CategoryModule,
     UomModule,
+    TaxRateModule,
     ItemClassModule,
     ItemSubclassModule,
     SeasonModule,
@@ -202,10 +205,11 @@ import { SearchModule } from './search/search.module';
     VendorQuotationModule,
     PurchaseOrderModule,
     GrnModule,
+    LandedCostModule,
     PosModule,
     SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

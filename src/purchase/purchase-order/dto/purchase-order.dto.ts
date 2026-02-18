@@ -1,150 +1,158 @@
-import { IsString, IsNotEmpty, IsOptional, IsDateString, IsArray, ValidateNested, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsDateString,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePurchaseOrderItemDto {
-    @IsString()
-    @IsNotEmpty()
-    itemId: string;
+  @IsString()
+  @IsNotEmpty()
+  itemId: string;
 
-    @IsString()
-    @IsOptional()
-    description?: string;
+  @IsString()
+  @IsOptional()
+  description?: string;
 
-    @IsNumber()
-    quantity: number;
+  @IsNumber()
+  quantity: number;
 
-    @IsNumber()
-    unitPrice: number;
+  @IsNumber()
+  unitPrice: number;
 
-    @IsNumber()
-    @IsOptional()
-    taxPercent?: number;
+  @IsNumber()
+  @IsOptional()
+  taxPercent?: number;
 
-    @IsNumber()
-    @IsOptional()
-    discountPercent?: number;
+  @IsNumber()
+  @IsOptional()
+  discountPercent?: number;
 }
 
 export class CreatePurchaseOrderDto {
-    @IsString()
-    @IsOptional()
-    vendorQuotationId?: string;
+  @IsString()
+  @IsOptional()
+  vendorQuotationId?: string;
 
-    @IsString()
-    @IsOptional()
-    vendorId?: string;
+  @IsString()
+  @IsOptional()
+  vendorId?: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreatePurchaseOrderItemDto)
-    @IsOptional()
-    items?: CreatePurchaseOrderItemDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePurchaseOrderItemDto)
+  @IsOptional()
+  items?: CreatePurchaseOrderItemDto[];
 
-    @IsString()
-    @IsOptional()
-    notes?: string;
+  @IsString()
+  @IsOptional()
+  notes?: string;
 
-    @IsDateString()
-    @IsOptional()
-    expectedDeliveryDate?: string;
+  @IsDateString()
+  @IsOptional()
+  expectedDeliveryDate?: string;
 }
 
 export class PurchaseOrderResponseDto {
-    id: string;
-    poNumber: string;
-    status: string;
-    totalAmount: string;
-    vendor: {
-        name: string;
-    };
-    createdAt: Date;
+  id: string;
+  poNumber: string;
+  status: string;
+  totalAmount: string;
+  vendor: {
+    name: string;
+  };
+  createdAt: Date;
 }
 
 export class AwardItemDto {
-    @IsString()
-    @IsNotEmpty()
-    itemId: string;
+  @IsString()
+  @IsNotEmpty()
+  itemId: string;
 
-    @IsNumber()
-    quantity: number;
+  @IsNumber()
+  quantity: number;
 }
 
 export class AwardGroupDto {
-    @IsString()
-    @IsNotEmpty()
-    vendorQuotationId: string;
+  @IsString()
+  @IsNotEmpty()
+  vendorQuotationId: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => AwardItemDto)
-    items: AwardItemDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AwardItemDto)
+  items: AwardItemDto[];
 
-    @IsString()
-    @IsOptional()
-    notes?: string;
+  @IsString()
+  @IsOptional()
+  notes?: string;
 
-    @IsDateString()
-    @IsOptional()
-    expectedDeliveryDate?: string;
+  @IsDateString()
+  @IsOptional()
+  expectedDeliveryDate?: string;
 }
 
 export class AwardFromRfqDto {
-    @IsString()
-    @IsNotEmpty()
-    rfqId: string;
+  @IsString()
+  @IsNotEmpty()
+  rfqId: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => AwardGroupDto)
-    awards: AwardGroupDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AwardGroupDto)
+  awards: AwardGroupDto[];
 }
 
 export class MultiDirectItemDto {
-    @IsString()
-    @IsNotEmpty()
-    itemId: string;
+  @IsString()
+  @IsNotEmpty()
+  itemId: string;
 
-    @IsString()
-    @IsOptional()
-    description?: string;
+  @IsString()
+  @IsOptional()
+  description?: string;
 
-    @IsNumber()
-    quantity: number;
+  @IsNumber()
+  quantity: number;
 
-    @IsNumber()
-    unitPrice: number;
+  @IsNumber()
+  unitPrice: number;
 
-    @IsNumber()
-    @IsOptional()
-    taxPercent?: number;
+  @IsNumber()
+  @IsOptional()
+  taxPercent?: number;
 
-    @IsNumber()
-    @IsOptional()
-    discountPercent?: number;
+  @IsNumber()
+  @IsOptional()
+  discountPercent?: number;
 }
 
 export class MultiDirectGroupDto {
-    @IsString()
-    @IsNotEmpty()
-    vendorId: string;
+  @IsString()
+  @IsNotEmpty()
+  vendorId: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => MultiDirectItemDto)
-    items: MultiDirectItemDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MultiDirectItemDto)
+  items: MultiDirectItemDto[];
 
-    @IsString()
-    @IsOptional()
-    notes?: string;
+  @IsString()
+  @IsOptional()
+  notes?: string;
 
-    @IsDateString()
-    @IsOptional()
-    expectedDeliveryDate?: string;
+  @IsDateString()
+  @IsOptional()
+  expectedDeliveryDate?: string;
 }
 
 export class CreateMultiDirectPurchaseOrderDto {
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => MultiDirectGroupDto)
-    awards: MultiDirectGroupDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MultiDirectGroupDto)
+  awards: MultiDirectGroupDto[];
 }

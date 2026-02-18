@@ -9,4 +9,4 @@ import { CompanyModule } from '../admin/company/company.module';
   controllers: [AuthController],
   providers: [AuthService],
 })
-export class AuthModule { }
+export class AuthModule {}

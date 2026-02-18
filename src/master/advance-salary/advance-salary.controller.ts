@@ -31,7 +31,7 @@ import {
 @ApiTags('Advance Salary')
 @Controller('api')
 export class AdvanceSalaryController {
-  constructor(private service: AdvanceSalaryService) { }
+  constructor(private service: AdvanceSalaryService) {}
 
   @Get('advance-salaries')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

@@ -14,7 +14,7 @@ export class AllowanceService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(params?: {
     employeeId?: string;
@@ -24,7 +24,6 @@ export class AllowanceService {
     status?: string;
   }) {
     try {
-
       const where: any = {};
 
       if (params?.employeeId) {
@@ -125,14 +124,14 @@ export class AllowanceService {
       const mappedData = allowances.map((a) => {
         const emp = a.employee
           ? {
-            ...a.employee,
-            department: a.employee.departmentId
-              ? deptMap.get(a.employee.departmentId)
-              : null,
-            subDepartment: a.employee.subDepartmentId
-              ? subDeptMap.get(a.employee.subDepartmentId)
-              : null,
-          }
+              ...a.employee,
+              department: a.employee.departmentId
+                ? deptMap.get(a.employee.departmentId)
+                : null,
+              subDepartment: a.employee.subDepartmentId
+                ? subDeptMap.get(a.employee.subDepartmentId)
+                : null,
+            }
           : null;
 
         return {
@@ -156,7 +155,6 @@ export class AllowanceService {
 
   async get(id: string) {
     try {
-
       const allowance = await this.prisma.allowance.findUnique({
         where: { id },
         include: {
@@ -186,46 +184,46 @@ export class AllowanceService {
         }),
         allowance.createdById
           ? this.prismaMaster.user.findUnique({
-            where: { id: allowance.createdById },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          })
+              where: { id: allowance.createdById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
           : null,
         allowance.updatedById
           ? this.prismaMaster.user.findUnique({
-            where: { id: allowance.updatedById },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          })
+              where: { id: allowance.updatedById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
           : null,
         allowance.employee?.departmentId
           ? this.prismaMaster.department.findUnique({
-            where: { id: allowance.employee.departmentId },
-            select: { id: true, name: true },
-          })
+              where: { id: allowance.employee.departmentId },
+              select: { id: true, name: true },
+            })
           : null,
         allowance.employee?.subDepartmentId
           ? this.prismaMaster.subDepartment.findUnique({
-            where: { id: allowance.employee.subDepartmentId },
-            select: { id: true, name: true },
-          })
+              where: { id: allowance.employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
           : null,
       ]);
 
       const empMapped = allowance.employee
         ? {
-          ...allowance.employee,
-          department: dept,
-          subDepartment: subDept,
-        }
+            ...allowance.employee,
+            department: dept,
+            subDepartment: subDept,
+          }
         : null;
 
       return {
@@ -253,7 +251,6 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!body.allowances || body.allowances.length === 0) {
         return {
           status: false,
@@ -366,7 +363,6 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.allowance.findUnique({
         where: { id },
       });
@@ -433,7 +429,6 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.allowance.findUnique({
         where: { id },
       });
@@ -477,7 +472,6 @@ export class AllowanceService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!ids || ids.length === 0) {
         return {
           status: false,

@@ -13,11 +13,7 @@ import {
 import { CompanyService } from './company.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
-import {
-  IsNotEmpty,
-  IsString,
-  IsOptional,
-} from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 class CreateCompanyDto {
@@ -47,7 +43,7 @@ class UpdateCompanyDto {
 @Controller('api/admin/companies')
 @UseGuards(JwtAuthGuard)
 export class CompanyController {
-  constructor(private readonly companyService: CompanyService) { }
+  constructor(private readonly companyService: CompanyService) {}
 
   /**
    * Get all companies

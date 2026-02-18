@@ -1,4 +1,10 @@
-import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Optional,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
@@ -23,14 +29,12 @@ function parseExpiryToMs(expiry: string) {
 
 @Injectable()
 export class AuthService {
-
   constructor(
     private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => CompanyService))
     private companyService: CompanyService,
     @Optional() private prismaTenant: PrismaService,
-  ) { }
-
+  ) {}
 
   async login(
     email: string,
@@ -227,11 +231,11 @@ export class AuthService {
             targetUser.role?.permissions.map((p) => p.permission.name) || [],
           employee: employeeDetails
             ? {
-              id: employeeDetails.id,
-              employeeId: employeeDetails.employeeId,
-              designation: designationName,
-              department: departmentName,
-            }
+                id: employeeDetails.id,
+                employeeId: employeeDetails.employeeId,
+                designation: designationName,
+                department: departmentName,
+              }
             : null,
         },
         accessToken,
@@ -244,11 +248,7 @@ export class AuthService {
    * SSO Login via DriveSafe JWT token.
    * Implements Just-in-Time (JIT) provisioning for tenants and users.
    */
-  async ssoLogin(
-    token: string,
-    ipAddress?: string,
-    userAgent?: string,
-  ) {
+  async ssoLogin(token: string, ipAddress?: string, userAgent?: string) {
     // Get the DriveSafe SSO secret from environment
     const ssoSecret = process.env.DRIVESAFE_SSO_SECRET;
     if (!ssoSecret) {
@@ -548,7 +548,6 @@ export class AuthService {
     // Resolve employee details if prismaTenant is available
     if (this.prismaTenant) {
       try {
-
         const employee = await this.prismaTenant.employee.findUnique({
           where: { userId },
           select: {
@@ -670,7 +669,6 @@ export class AuthService {
     // Resolve employee details if prismaTenant is available
     if (this.prismaTenant) {
       try {
-
         const employee = await this.prismaTenant.employee.findUnique({
           where: { userId },
           select: {
@@ -706,7 +704,6 @@ export class AuthService {
     return { status: true, data: user, message: 'Profile updated' };
   }
 
-
   async getLoginHistory(userId: string) {
     const logs = await this.prismaMaster.loginHistory.findMany({
       where: { userId },
@@ -727,7 +724,6 @@ export class AuthService {
     // If tenant is connected, map employees to users
     if (this.prismaTenant) {
       try {
-
         const userIds = users.map((u) => u.id);
         const employees = await this.prismaTenant.employee.findMany({
           where: { userId: { in: userIds } },

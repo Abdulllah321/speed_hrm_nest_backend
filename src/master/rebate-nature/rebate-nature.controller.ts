@@ -28,7 +28,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RebateNatureController {
-  constructor(private readonly rebateNatureService: RebateNatureService) { }
+  constructor(private readonly rebateNatureService: RebateNatureService) {}
 
   @Post()
   @Permissions('hr.rebate-nature.create')

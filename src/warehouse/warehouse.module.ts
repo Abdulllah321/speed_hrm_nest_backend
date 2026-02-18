@@ -8,9 +8,13 @@ import { StockMovementService } from './stock-movement.service';
 import { StockOperationController } from './stock-operation.controller';
 
 @Module({
-    imports: [DatabaseModule],
-    controllers: [WarehouseController, InventoryController, StockOperationController],
-    providers: [WarehouseService, InventoryService, StockMovementService],
-    exports: [WarehouseService, InventoryService, StockMovementService],
+  imports: [DatabaseModule],
+  controllers: [
+    WarehouseController,
+    InventoryController,
+    StockOperationController,
+  ],
+  providers: [WarehouseService, InventoryService, StockMovementService],
+  exports: [WarehouseService, InventoryService, StockMovementService],
 })
-export class WarehouseModule { }
+export class WarehouseModule {}

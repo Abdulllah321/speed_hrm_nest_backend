@@ -27,7 +27,7 @@ import {
 @ApiTags('Auth')
 @Controller('api/auth')
 export class AuthController {
-  constructor(private service: AuthService) { }
+  constructor(private service: AuthService) {}
 
   private getCookieOptions(req: any) {
     const isProd = process.env.NODE_ENV === 'production';
@@ -399,8 +399,6 @@ export class AuthController {
       body.newPassword,
     );
   }
-
-
 
   @Get('login-history')
   @UseGuards(JwtAuthGuard)
