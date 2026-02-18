@@ -1,34 +1,70 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()
 export class LocationService {
   constructor(
+    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) {}
 
+  async listActive() {
+    return this.prismaMaster.location.findMany({
+      where: { status: 'active' },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async list() {
-    const items = await this.prismaMaster.location.findMany({
-      include: { city: true },
+    const items: any = await this.prismaMaster.location.findMany({
+      include: {
+        pos: {
+          select: {
+            id: true,
+            posId: true,
+            name: true,
+            status: true
+          }
+        }
+      },
       orderBy: { createdAt: 'desc' },
     });
+    if (items?.length > 0) {
+      for (const item of items) {
+        if (item?.cityId) {
+          const updatedItem = await this.prismaMaster.city.findUnique({
+            where: { id: item.cityId },
+          });
+          item.city = updatedItem;
+        }
+      }
+    }
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.location.findUnique({
+    const item: any = await this.prismaMaster.location.findUnique({
       where: { id },
-      include: { city: true },
     });
+    if (item?.cityId) {
+      const updatedItem = await this.prismaMaster.city.findUnique({
+        where: { id: item.cityId },
+      });
+      item.city = updatedItem;
+    }
     if (!item) return { status: false, message: 'Location not found' };
     return { status: true, data: item };
   }
 
   async create(
-    body: { name: string; address?: string; cityId?: string; status?: string },
+    body: { name: string; address?: string; cityId?: string; status?: string; companyId?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -37,6 +73,7 @@ export class LocationService {
           name: body.name,
           address: body.address || null,
           cityId: body.cityId?.trim() || null,
+          companyId: body.companyId,
           status: body.status ?? 'active',
           createdById: ctx.userId,
         },
@@ -73,7 +110,7 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; address?: string; cityId?: string; status?: string },
+    body: { name: string; address?: string; cityId?: string; status?: string; companyId?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -90,6 +127,7 @@ export class LocationService {
             body.cityId !== undefined
               ? body.cityId?.trim() || null
               : existing?.cityId,
+          companyId: body.companyId ?? existing?.companyId,
           status: body.status ?? existing?.status ?? 'active',
         },
       });
@@ -318,6 +356,80 @@ export class LocationService {
         status: 'failure',
       });
       return { status: false, message: 'Failed to delete locations' };
+    }
+  }
+
+  /**
+   * Find the nearest location based on latitude and longitude using Haversine formula
+   */
+  async findNearestLocation(latitude: number, longitude: number) {
+    try {
+      const locations = await this.prismaMaster.location.findMany({
+        where: {
+          status: 'active',
+          latitude: { not: null },
+          longitude: { not: null },
+        },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          latitude: true,
+          longitude: true,
+        },
+      });
+
+      if (locations.length === 0) {
+        return { status: false, message: 'No locations with coordinates found' };
+      }
+
+      // Haversine formula to calculate distance
+      const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371; // Earth's radius in kilometers
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      };
+
+      // Calculate distances and find nearest
+      let nearestLocation = locations[0];
+      let minDistance = calculateDistance(
+        latitude,
+        longitude,
+        Number(locations[0].latitude),
+        Number(locations[0].longitude)
+      );
+
+      for (let i = 1; i < locations.length; i++) {
+        const distance = calculateDistance(
+          latitude,
+          longitude,
+          Number(locations[i].latitude),
+          Number(locations[i].longitude)
+        );
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestLocation = locations[i];
+        }
+      }
+
+      return {
+        status: true,
+        data: {
+          ...nearestLocation,
+          distance: Math.round(minDistance * 100) / 100, // Round to 2 decimal places
+        },
+      };
+    } catch (error: any) {
+      return {
+        status: false,
+        message: error?.message || 'Failed to find nearest location',
+      };
     }
   }
 }
