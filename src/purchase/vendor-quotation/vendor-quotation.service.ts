@@ -46,30 +46,30 @@ export class VendorQuotationService {
         // Create quotation with items
         const quotation = await this.prisma.vendorQuotation.create({
             data: {
-                rfqId: createDto.rfqId,
-                vendorId: createDto.vendorId,
-                notes: createDto.notes,
-                status: 'DRAFT',
-                items: createDto.items ? {
-                    create: createDto.items.map(item => {
-                        const lineTotal = this.calculateLineTotal(
-                            item.quotedQty,
-                            item.unitPrice,
-                            item.taxPercent || 0,
-                            item.discountPercent || 0
-                        );
-                        return {
-                            itemId: item.itemId,
-                            description: item.description,
-                            quotedQty: new Decimal(item.quotedQty),
-                            unitPrice: new Decimal(item.unitPrice),
-                            taxPercent: new Decimal(item.taxPercent || 0),
-                            discountPercent: new Decimal(item.discountPercent || 0),
-                            lineTotal: new Decimal(lineTotal)
-                        };
-                    })
-                } : undefined
-            },
+        rfqId: createDto.rfqId,
+        vendorId: createDto.vendorId,
+        notes: createDto.notes,
+        status: 'SUBMITTED', // Auto-submit as per requirement
+        items: createDto.items ? {
+          create: createDto.items.map(item => {
+            const lineTotal = this.calculateLineTotal(
+              item.quotedQty,
+              item.unitPrice,
+              item.taxPercent || 0,
+              item.discountPercent || 0
+            );
+            return {
+              itemId: item.itemId,
+              description: item.description,
+              quotedQty: new Decimal(item.quotedQty),
+              unitPrice: new Decimal(item.unitPrice),
+              taxPercent: new Decimal(item.taxPercent || 0),
+              discountPercent: new Decimal(item.discountPercent || 0),
+              lineTotal: new Decimal(lineTotal)
+            };
+          })
+        } : undefined
+      },
             include: {
                 items: true,
                 vendor: true,

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisStore } from 'cache-manager-redis-yet';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -93,6 +94,8 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
+import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
+import { GrnModule } from './warehouse/grn/grn.module';
 import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
@@ -111,6 +114,7 @@ import { WebhookModule } from './webhook/webhook.module';
         }),
       }),
     }),
+    EventEmitterModule.forRoot(),
     QueueModule,
     DatabaseModule,
     PrismaModule,
@@ -201,6 +205,8 @@ import { WebhookModule } from './webhook/webhook.module';
     PurchaseRequisitionModule,
     RfqModule,
     VendorQuotationModule,
+    PurchaseOrderModule,
+    GrnModule,
     PosModule,
     SearchModule,
     WebhookModule,

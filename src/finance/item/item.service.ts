@@ -21,12 +21,96 @@ export class ItemService {
         }
     }
 
-    async findAll() {
-        const items = await this.prisma.item.findMany({
-            orderBy: { createdAt: 'desc' },
-        });
+    async findAll(
+        page: number = 1,
+        limit: number = 50,
+        search?: string,
+        sortBy: string = 'createdAt',
+        sortOrder: 'asc' | 'desc' = 'desc',
+    ) {
+        const skip = (page - 1) * limit;
+
+        // ── Allowed sortable columns (direct item fields) ──────────────────
+        const directSortFields = new Set([
+            'itemId', 'sku', 'unitPrice', 'isActive', 'createdAt', 'updatedAt',
+            'description', 'barCode', 'hsCode',
+        ]);
+
+        // Relational sort fields need special handling
+        const relationalSortFields: Record<string, string> = {
+            brand: 'brandId',
+            category: 'categoryId',
+            division: 'divisionId',
+        };
+
+        // ── Build WHERE clause ─────────────────────────────────────────────
+        let where: any = {};
+
+        if (search) {
+            const searchTerm = search.trim();
+
+            // First pass: find master-data IDs that match the search term
+            const [matchingBrands, matchingCategories, matchingDivisions] = await Promise.all([
+                this.prismaMaster.brand.findMany({
+                    where: { name: { contains: searchTerm, mode: 'insensitive' } },
+                    select: { id: true },
+                }),
+                this.prismaMaster.category.findMany({
+                    where: { name: { contains: searchTerm, mode: 'insensitive' } },
+                    select: { id: true },
+                }),
+                this.prismaMaster.division.findMany({
+                    where: { name: { contains: searchTerm, mode: 'insensitive' } },
+                    select: { id: true },
+                }),
+            ]);
+
+            where.OR = [
+                { itemId: { contains: searchTerm, mode: 'insensitive' } },
+                { sku: { contains: searchTerm, mode: 'insensitive' } },
+                { description: { contains: searchTerm, mode: 'insensitive' } },
+                { barCode: { contains: searchTerm, mode: 'insensitive' } },
+                ...(matchingBrands.length ? [{ brandId: { in: matchingBrands.map(b => b.id) } }] : []),
+                ...(matchingCategories.length ? [{ categoryId: { in: matchingCategories.map(c => c.id) } }] : []),
+                ...(matchingDivisions.length ? [{ divisionId: { in: matchingDivisions.map(d => d.id) } }] : []),
+            ];
+        }
+
+        // ── Build ORDER BY clause ──────────────────────────────────────────
+        const direction = sortOrder === 'asc' ? 'asc' : 'desc';
+        let orderBy: any;
+
+        if (directSortFields.has(sortBy)) {
+            orderBy = { [sortBy]: direction };
+        } else if (relationalSortFields[sortBy]) {
+            // Sort by the FK id as a fallback (true relational sort needs raw SQL)
+            orderBy = { [relationalSortFields[sortBy]]: direction };
+        } else {
+            orderBy = { createdAt: 'desc' };
+        }
+
+        // ── Query ──────────────────────────────────────────────────────────
+        const [items, total] = await Promise.all([
+            this.prisma.item.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy,
+            }),
+            this.prisma.item.count({ where }),
+        ]);
+
         const enrichedItems = await this.enrichItems(items);
-        return { status: true, data: enrichedItems };
+        return {
+            status: true,
+            data: enrichedItems,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        };
     }
 
     async findOne(id: string) {
@@ -66,6 +150,23 @@ export class ItemService {
                 where: { id },
             });
             return { status: true, message: 'Item deleted successfully' };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    async getUniqueHsCodes() {
+        try {
+            const result = await this.prisma.item.findMany({
+                where: {
+                    hsCode: { not: null },
+                },
+                distinct: ['hsCode'],
+                select: {
+                    hsCode: true,
+                },
+            });
+            return { status: true, data: result.map(i => i.hsCode) };
         } catch (error: any) {
             return { status: false, message: error.message };
         }

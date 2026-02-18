@@ -25,21 +25,21 @@ export class ItemValidatorService {
         const { row, data } = record;
 
         // Required fields
-        if (!data.sku || data.sku.trim() === '') {
+        if (!data.sku || String(data.sku).trim() === '') {
             errors.push({
                 row,
                 field: 'SKU',
                 value: data.sku,
-                reason: 'SKU is required',
+                reason: 'SKU is a required field and cannot be empty.',
             });
         }
 
-        if (!data.itemId || data.itemId.trim() === '') {
+        if (!data.itemId || String(data.itemId).trim() === '') {
             errors.push({
                 row,
                 field: 'ItemID',
                 value: data.itemId,
-                reason: 'ItemID is required',
+                reason: 'ItemID is a required unique identifier.',
             });
         }
 
@@ -48,75 +48,77 @@ export class ItemValidatorService {
                 row,
                 field: 'UnitPrice',
                 value: data.unitPrice,
-                reason: 'UnitPrice is required',
+                reason: 'UnitPrice is required for catalog items.',
             });
         }
 
         // Numeric validations
-        if (data.unitPrice !== null && data.unitPrice !== undefined && data.unitPrice < 0) {
-            errors.push({
-                row,
-                field: 'UnitPrice',
-                value: data.unitPrice,
-                reason: 'UnitPrice must be non-negative',
-            });
-        }
-
-        if (data.unitCost !== null && data.unitCost !== undefined && data.unitCost < 0) {
-            errors.push({
-                row,
-                field: 'UnitCost',
-                value: data.unitCost,
-                reason: 'UnitCost must be non-negative',
-            });
-        }
-
-        if (data.taxRate1 !== null && data.taxRate1 !== undefined && (data.taxRate1 < 0 || data.taxRate1 > 100)) {
-            errors.push({
-                row,
-                field: 'TaxRate1',
-                value: data.taxRate1,
-                reason: 'TaxRate1 must be between 0 and 100',
-            });
-        }
-
-        if (data.taxRate2 !== null && data.taxRate2 !== undefined && (data.taxRate2 < 0 || data.taxRate2 > 100)) {
-            errors.push({
-                row,
-                field: 'TaxRate2',
-                value: data.taxRate2,
-                reason: 'TaxRate2 must be between 0 and 100',
-            });
-        }
-
-        if (data.discountRate !== null && data.discountRate !== undefined && (data.discountRate < 0 || data.discountRate > 100)) {
-            errors.push({
-                row,
-                field: 'DiscountRate',
-                value: data.discountRate,
-                reason: 'DiscountRate must be between 0 and 100',
-            });
-        }
-
-        if (data.discountAmount !== null && data.discountAmount !== undefined && data.discountAmount < 0) {
-            errors.push({
-                row,
-                field: 'DiscountAmount',
-                value: data.discountAmount,
-                reason: 'DiscountAmount must be non-negative',
-            });
-        }
-
-        // Date validations
-        if (data.discountStartDate && data.discountEndDate) {
-            if (data.discountEndDate <= data.discountStartDate) {
+        if (data.unitPrice !== null && data.unitPrice !== undefined) {
+            const price = Number(data.unitPrice);
+            if (isNaN(price)) {
                 errors.push({
                     row,
-                    field: 'DiscountEndDate',
-                    value: data.discountEndDate,
-                    reason: 'DiscountEndDate must be after DiscountStartDate',
+                    field: 'UnitPrice',
+                    value: data.unitPrice,
+                    reason: 'UnitPrice must be a valid number.',
+                });
+            } else if (price < 0) {
+                errors.push({
+                    row,
+                    field: 'UnitPrice',
+                    value: data.unitPrice,
+                    reason: 'UnitPrice must be zero or a positive value.',
                 });
             }
+        }
+
+        if (data.taxRate1 !== null && data.taxRate1 !== undefined) {
+            const tr1 = Number(data.taxRate1);
+            if (isNaN(tr1)) {
+                errors.push({
+                    row,
+                    field: 'TaxRate1',
+                    value: data.taxRate1,
+                    reason: 'TaxRate1 must be a valid number.',
+                });
+            } else if (tr1 < 0 || tr1 > 100) {
+                errors.push({
+                    row,
+                    field: 'TaxRate1',
+                    value: data.taxRate1,
+                    reason: 'TaxRate1 must be a percentage between 0 and 100.',
+                });
+            }
+        }
+
+        // Barcode validation (optional but if provided should be sane)
+        if (data.barCode && String(data.barCode).length > 50) {
+            errors.push({
+                row,
+                field: 'BarCode',
+                value: data.barCode,
+                reason: 'BarCode is too long (max 50 characters).',
+            });
+        }
+
+        // Description validation
+        if (data.description && String(data.description).length > 1000) {
+            errors.push({
+                row,
+                field: 'Description',
+                value: data.description,
+                reason: 'Description is too long (max 1000 characters).',
+            });
+        }
+
+        // Master Data sanity (Concept/Brand is usually required for a good catalog)
+        if (!data.concept || String(data.concept).trim() === '') {
+            errors.push({
+                row,
+                field: 'Concept',
+                value: data.concept,
+                reason: 'Concept (Brand) is highly recommended for item classification.',
+            });
         }
 
         return {
@@ -139,37 +141,6 @@ export class ItemValidatorService {
         return allErrors;
     }
 
-    /**
-     * Check for duplicate SKUs within the upload file
-     */
-    checkDuplicateSKUs(records: ParsedRecord[]): ValidationError[] {
-        const errors: ValidationError[] = [];
-        const skuMap = new Map<string, number[]>(); // SKU -> [row numbers]
-
-        records.forEach((record) => {
-            if (record.data.sku) {
-                const normalized = record.data.sku.trim().toLowerCase();
-                const existing = skuMap.get(normalized) || [];
-                skuMap.set(normalized, [...existing, record.row]);
-            }
-        });
-
-        // Find duplicates
-        skuMap.forEach((rows, sku) => {
-            if (rows.length > 1) {
-                rows.forEach((row) => {
-                    errors.push({
-                        row,
-                        field: 'SKU',
-                        value: sku,
-                        reason: `Duplicate SKU found in file (appears in rows: ${rows.join(', ')})`,
-                    });
-                });
-            }
-        });
-
-        return errors;
-    }
 
     /**
      * Check for duplicate ItemIDs within the upload file
