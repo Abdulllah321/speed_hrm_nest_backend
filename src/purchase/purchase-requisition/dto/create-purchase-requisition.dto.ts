@@ -12,10 +12,6 @@ export class CreatePurchaseRequisitionItemDto {
   @IsNotEmpty()
   itemId: string;
 
-  @IsString()
-  @IsOptional()
-  description?: string;
-
   @IsNotEmpty()
   requiredQty: number;
 }

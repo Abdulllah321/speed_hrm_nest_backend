@@ -86,6 +86,7 @@ import { SeasonModule } from './master/season/season.module';
 import { SegmentModule } from './master/segment/segment.module';
 import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
+import { CustomerModule } from './sales/customer/customer.module';
 
 import { IntegrationModule } from './integration/integration.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
@@ -208,6 +209,7 @@ import { SearchModule } from './search/search.module';
     LandedCostModule,
     PosModule,
     SearchModule,
+    CustomerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
