@@ -18,7 +18,6 @@ model PurchaseRequisitionItem {
   id                    String              @id @default(uuid())
   purchaseRequisitionId String              @map("purchase_requisition_id")
   itemId                String              @map("item_id")
-  description           String?
   requiredQty           Decimal             @map("required_qty") @db.Decimal(15, 4)
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")

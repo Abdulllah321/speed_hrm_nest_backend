@@ -25,7 +25,6 @@ export class PurchaseRequisitionService {
         items: {
           create: createDto.items.map((item) => ({
             itemId: item.itemId,
-            description: item.description,
             requiredQty: item.requiredQty,
           })),
         },
@@ -88,7 +87,6 @@ export class PurchaseRequisitionService {
             items: {
               create: items.map((item) => ({
                 itemId: item.itemId,
-                description: item.description,
                 requiredQty: item.requiredQty,
               })),
             },
