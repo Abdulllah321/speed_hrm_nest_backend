@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Req,
 } from '@nestjs/common';
@@ -21,7 +22,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class ItemController {
-  constructor(private readonly itemService: ItemService) {}
+  constructor(private readonly itemService: ItemService) { }
 
   @Post()
   @Permissions('erp.item.create')
@@ -33,8 +34,27 @@ export class ItemController {
   @Get()
   @Permissions('erp.item.read')
   @ApiOperation({ summary: 'List all items' })
-  async findAll() {
-    return this.itemService.findAll();
+  async findAll(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+  ) {
+    return this.itemService.findAll(
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 50,
+      search,
+      sortBy,
+      sortOrder as 'asc' | 'desc' | undefined,
+    );
+  }
+
+  @Get('hs-codes/unique')
+  @Permissions('erp.item.read')
+  @ApiOperation({ summary: 'Get unique HS codes' })
+  async getUniqueHsCodes() {
+    return this.itemService.getUniqueHsCodes();
   }
 
   @Get('next-id')

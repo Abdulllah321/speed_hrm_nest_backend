@@ -25,7 +25,7 @@ async function bootstrap() {
   // Register multipart plugin on the adapter BEFORE creating the app
   await adapter.register(fastifyMultipart as any, {
     limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB limit
+      fileSize: 500 * 1024 * 1024, // 500MB limit
     },
   });
 

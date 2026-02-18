@@ -7,8 +7,18 @@ export class UpdatePosDto {
   @IsOptional()
   name?: string;
 
-  @ApiProperty({ description: 'Status of the POS', required: false })
-  @IsString()
-  @IsOptional()
-  status?: string;
+    @ApiProperty({ description: 'Company ID', required: false })
+    @IsString()
+    @IsOptional()
+    companyId?: string;
+
+    @ApiProperty({ description: 'Terminal PIN (4-6 digits)', required: false })
+    @IsString()
+    @IsOptional()
+    terminalPin?: string;
+
+    @ApiProperty({ description: 'Status of the POS', required: false })
+    @IsString()
+    @IsOptional()
+    status?: string;
 }

@@ -44,9 +44,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor(@Inject(REQUEST) private readonly request: TenantRequest) {
     // In Fastify, the middleware might set properties on the raw node request (req.raw)
     // while the REQUEST provider gives us the Fastify Request object.
-    const rawReq = (request as any).raw || {};
-    const tenantDbUrl = request.tenantDbUrl || rawReq.tenantDbUrl;
-    const tenantId = request.tenantId || rawReq.tenantId;
+    const rawReq = (request as any)?.raw || {};
+    const tenantDbUrl = request?.tenantDbUrl || rawReq.tenantDbUrl;
+    const tenantId = request?.tenantId || rawReq.tenantId;
 
     // If no tenant context, create with a no-op adapter
     // Any attempt to query will fail with a clear error message
@@ -110,6 +110,16 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
         'Tenant database context is required for this operation. Ensure user is authenticated and has a valid company.',
       );
     }
+  }
+
+  getTenantId(): string | null {
+    return this.tenantId;
+  }
+
+  getTenantDbUrl(): string | null {
+    // We need to re-extract it from the request if possible, or store it
+    const rawReq = (this.request as any)?.raw || {};
+    return this.request?.tenantDbUrl || rawReq.tenantDbUrl || null;
   }
 
   async onModuleDestroy() {
