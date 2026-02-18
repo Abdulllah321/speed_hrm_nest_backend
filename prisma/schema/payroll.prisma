@@ -1,7 +1,7 @@
 model Allowance {
   id               String   @id @default(uuid())
   employeeId       String
-  allowanceHeadId  String
+  allowanceHeadId  String // Refers to AllowanceHead in Master DB
   amount           Decimal  @db.Decimal(10, 2)
   month            String
   year             String
@@ -13,11 +13,12 @@ model Allowance {
   taxPercentage    Decimal? @db.Decimal(5, 2)
   notes            String?
   status           String   @default("active")
-  createdById      String?
-  updatedById      String?
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([allowanceHeadId])
@@ -29,7 +30,7 @@ model Allowance {
 model Deduction {
   id              String   @id @default(uuid())
   employeeId      String
-  deductionHeadId String
+  deductionHeadId String // Refers to DeductionHead in Master DB
   amount          Decimal  @db.Decimal(10, 2)
   month           String
   year            String
@@ -38,11 +39,12 @@ model Deduction {
   taxPercentage   Decimal? @db.Decimal(5, 2)
   notes           String?
   status          String   @default("active")
-  createdById     String?
-  updatedById     String?
+  createdById     String? // User in Master DB
+  updatedById     String? // User in Master DB
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, deductionHeadId, month, year])
   @@index([employeeId])
@@ -60,23 +62,24 @@ model AdvanceSalary {
   deductionYear      String
   deductionMonthYear String
   reason             String
-  approval1          String?
+  approval1          String? // User.id in Master DB
   approval1Status    String?
   approval1Date      DateTime?
-  approval2          String?
+  approval2          String? // User.id in Master DB
   approval2Status    String?
   approval2Date      DateTime?
   remarks            String?
   approvalStatus     String    @default("pending")
-  approvedById       String?
+  approvedById       String? // User.id in Master DB
   approvedAt         DateTime?
   rejectionReason    String?
   status             String    @default("pending")
-  createdById        String?
-  updatedById        String?
+  createdById        String? // User.id in Master DB
+  updatedById        String? // User.id in Master DB
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([deductionMonth, deductionYear])
@@ -96,18 +99,19 @@ model OvertimeRequest {
   weekdayOvertimeHours Decimal   @default(0) @db.Decimal(5, 2)
   holidayOvertimeHours Decimal   @default(0) @db.Decimal(5, 2)
   status               String    @default("pending")
-  approval1            String?
+  approval1            String? // User.id in Master DB
   approval1Status      String?
   approval1Date        DateTime?
-  approval2            String?
+  approval2            String? // User.id in Master DB
   approval2Status      String?
   approval2Date        DateTime?
   remarks              String?
-  createdById          String?
-  updatedById          String?
+  createdById          String? // User.id in Master DB
+  updatedById          String? // User.id in Master DB
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-  employee             Employee  @relation("OvertimeRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation("OvertimeRequestEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([overtimeType])
@@ -118,8 +122,8 @@ model OvertimeRequest {
 model Increment {
   id                  String   @id @default(uuid())
   employeeId          String
-  employeeGradeId     String?
-  designationId       String?
+  employeeGradeId     String? // Refers to EmployeeGrade in Master DB
+  designationId       String? // Refers to Designation in Master DB
   incrementType       String
   incrementAmount     Decimal? @db.Decimal(10, 2)
   incrementPercentage Decimal? @db.Decimal(5, 2)
@@ -130,11 +134,12 @@ model Increment {
   monthsOfIncrement   Int
   notes               String?
   status              String   @default("active")
-  createdById         String?
-  updatedById         String?
+  createdById         String? // User in Master DB
+  updatedById         String? // User in Master DB
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-  employee            Employee @relation("IncrementEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation("IncrementEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([employeeGradeId])
@@ -147,7 +152,7 @@ model Increment {
 model Bonus {
   id               String   @id @default(uuid())
   employeeId       String
-  bonusTypeId      String
+  bonusTypeId      String // Refers to BonusType in Master DB
   amount           Decimal  @db.Decimal(10, 2)
   calculationType  String
   percentage       Decimal? @db.Decimal(5, 2)
@@ -160,11 +165,12 @@ model Bonus {
   isTaxable        Boolean  @default(false)
   taxPercentage    Decimal? @db.Decimal(5, 2)
   status           String   @default("active")
-  createdById      String?
-  updatedById      String?
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  employee         Employee @relation("BonusEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation("BonusEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, bonusTypeId, bonusMonthYear])
   @@index([employeeId])
@@ -187,23 +193,24 @@ model LeaveEncashment {
   grossSalary      Decimal?  @db.Decimal(10, 2)
   annualSalary     Decimal?  @db.Decimal(10, 2)
   perDayAmount     Decimal?  @db.Decimal(10, 2)
-  approval1        String?
+  approval1        String? // User.id in Master DB
   approval1Status  String?
   approval1Date    DateTime?
-  approval2        String?
+  approval2        String? // User.id in Master DB
   approval2Status  String?
   approval2Date    DateTime?
   remarks          String?
   approvalStatus   String    @default("pending")
-  approvedById     String?
+  approvedById     String? // User.id in Master DB
   approvedAt       DateTime?
   rejectionReason  String?
   status           String    @default("pending")
-  createdById      String?
-  updatedById      String?
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([paymentMonth, paymentYear])
@@ -220,7 +227,7 @@ model Payroll {
   totalAmount   Decimal         @db.Decimal(15, 2)
   status        String          @default("draft")
   generatedAt   DateTime        @default(now())
-  generatedById String?
+  generatedById String? // User in Master DB
   details       PayrollDetail[]
 
   @@unique([month, year])
@@ -274,15 +281,16 @@ model PFWithdrawal {
   monthYear        String
   reason           String?
   approvalStatus   String    @default("pending")
-  approvedById     String?
+  approvedById     String? // User in Master DB
   approvedAt       DateTime?
   rejectionReason  String?
   status           String    @default("pending")
-  createdById      String?
-  updatedById      String?
+  createdById      String? // User in Master DB
+  updatedById      String? // User in Master DB
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([month, year])
@@ -301,14 +309,14 @@ model PayrollApprovalRequest {
   currentLevel    Int?
   maxLevel        Int?
   status          PayrollApprovalStatus           @default(pending)
-  createdById     String?
-  updatedById     String?
+  createdById     String? // User in Master DB
+  updatedById     String? // User in Master DB
   createdAt       DateTime                        @default(now())
   updatedAt       DateTime                        @updatedAt
-  histories       PayrollApprovalHistory[]
-  levels          PayrollApprovalLevel[]
-  configuration   RequestForwardingConfiguration? @relation(fields: [configurationId], references: [id])
   employee        Employee                        @relation(fields: [employeeId], references: [id])
+  configuration   RequestForwardingConfiguration? @relation(fields: [configurationId], references: [id], onDelete: SetNull)
+  levels          PayrollApprovalLevel[]
+  histories       PayrollApprovalHistory[]
 
   @@index([requestType])
   @@index([employeeId])
@@ -316,27 +324,28 @@ model PayrollApprovalRequest {
 }
 
 model PayrollApprovalLevel {
-  id                    String                 @id @default(uuid())
+  id                    String                @id @default(uuid())
   approvalRequestId     String
   level                 Int
   approverType          String
   departmentHeadMode    String?
-  thresholdAmount       Decimal?               @db.Decimal(10, 2)
-  thresholdPercentage   Decimal?               @db.Decimal(5, 2)
+  thresholdAmount       Decimal?              @db.Decimal(10, 2)
+  thresholdPercentage   Decimal?              @db.Decimal(5, 2)
   autoApprovalTrigger   AutoApprovalTrigger?
   autoApprovalCondition String?
-  status                PayrollApprovalStatus  @default(pending)
-  assignedApproverId    String?
-  assignedEmployeeId    String?
-  departmentId          String?
-  subDepartmentId       String?
-  approvedById          String?
+  status                PayrollApprovalStatus @default(pending)
+  assignedApproverId    String? // User in Master DB
+  assignedEmployeeId    String? // Employee in Tenant DB
+  departmentId          String? // Department in Master DB
+  subDepartmentId       String? // SubDepartment in Master DB
+  approvedById          String? // User in Master DB
   approvedAt            DateTime?
   rejectionReason       String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  approvalRequest       PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
-  assignedEmployee      Employee?              @relation("PayrollApprovalLevelAssignedEmployee", fields: [assignedEmployeeId], references: [id])
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  approvalRequest  PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  assignedEmployee Employee?              @relation("PayrollApprovalLevelAssignedEmployee", fields: [assignedEmployeeId], references: [id])
 
   @@unique([approvalRequestId, level])
   @@index([approvalRequestId])
@@ -345,36 +354,20 @@ model PayrollApprovalLevel {
 }
 
 model PayrollApprovalHistory {
-  id                String                 @id @default(uuid())
+  id                String                @id @default(uuid())
   approvalRequestId String
   level             Int
   status            PayrollApprovalStatus
   action            String
-  performedById     String?
-  performedAt       DateTime               @default(now())
+  performedById     String? // User in Master DB
+  performedAt       DateTime              @default(now())
   remarks           String?
-  approvalRequest   PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+
+  approvalRequest PayrollApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
 
   @@index([approvalRequestId])
   @@index([performedById])
   @@index([status])
-}
-
-model Rebate {
-  id             String   @id @default(uuid())
-  employeeId     String
-  rebateNatureId String
-  rebateAmount   Decimal  @db.Decimal(12, 2)
-  monthYear      String
-  attachment     String?
-  status         String   @default("pending")
-  remarks        String?
-  createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  @@unique([employeeId, rebateNatureId, monthYear])
 }
 
 enum PayrollRequestType {
@@ -403,4 +396,22 @@ enum AutoApprovalTrigger {
   amount_above_threshold
   time_based
   manual_override
+}
+
+model Rebate {
+  id             String   @id @default(uuid())
+  employeeId     String
+  rebateNatureId String // Refers to RebateNature in Master DB
+  rebateAmount   Decimal  @db.Decimal(12, 2)
+  monthYear      String
+  attachment     String?
+  status         String   @default("pending")
+  remarks        String?
+  createdById    String? // User in Master DB
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, rebateNatureId, monthYear])
 }

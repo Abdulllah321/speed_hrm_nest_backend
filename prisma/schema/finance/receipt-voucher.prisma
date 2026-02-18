@@ -1,33 +1,40 @@
 model ReceiptVoucher {
-  id             String                 @id @default(uuid())
-  type           String
-  rvNo           String                 @unique
-  rvDate         DateTime
-  refBillNo      String?
-  billDate       DateTime?
-  chequeNo       String?
-  chequeDate     DateTime?
-  debitAccountId String
-  debitAmount    Decimal                @default(0.0) @db.Decimal(15, 2)
-  description    String
-  status         String                 @default("pending")
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  createdBy      String?
-  debitAccount   ChartOfAccount         @relation("DebitAccountRelation", fields: [debitAccountId], references: [id])
-  details        ReceiptVoucherDetail[]
+    id         String    @id @default(uuid())
+    type       String // bank or cash
+    rvNo       String    @unique
+    rvDate     DateTime
+    refBillNo  String?
+    billDate   DateTime?
+    chequeNo   String?
+    chequeDate DateTime?
+
+    debitAccountId String
+    debitAmount    Decimal @default(0.0) @db.Decimal(15, 2)
+
+    description String
+    status      String @default("pending") // pending, approved, rejected
+
+    details ReceiptVoucherDetail[]
+
+    debitAccount ChartOfAccount @relation("DebitAccountRelation", fields: [debitAccountId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    createdBy String?
 }
 
 model ReceiptVoucherDetail {
-  id               String         @id @default(uuid())
-  receiptVoucherId String
-  accountId        String
-  credit           Decimal        @default(0.0) @db.Decimal(15, 2)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  account          ChartOfAccount @relation(fields: [accountId], references: [id])
-  receiptVoucher   ReceiptVoucher @relation(fields: [receiptVoucherId], references: [id], onDelete: Cascade)
+    id               String  @id @default(uuid())
+    receiptVoucherId String
+    accountId        String
+    credit           Decimal @default(0.0) @db.Decimal(15, 2)
 
-  @@index([receiptVoucherId])
-  @@index([accountId])
+    receiptVoucher ReceiptVoucher @relation(fields: [receiptVoucherId], references: [id], onDelete: Cascade)
+    account        ChartOfAccount @relation(fields: [accountId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([receiptVoucherId])
+    @@index([accountId])
 }
