@@ -8,7 +8,7 @@ export class ItemService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private prisma: PrismaService,
-  ) {}
+  ) { }
 
   async create(createItemDto: CreateItemDto) {
     try {
@@ -23,14 +23,6 @@ export class ItemService {
     } catch (error: any) {
       return { status: false, message: error.message };
     }
-  }
-
-  async findAll() {
-    const items = await this.prisma.item.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
-    const enrichedItems = await this.enrichItems(items);
-    return { status: true, data: enrichedItems };
   }
 
   private async generateNextItemId(): Promise<string> {
@@ -69,6 +61,112 @@ export class ItemService {
     return { status: true, data: enrichedItems[0] };
   }
 
+  async findAll(
+    page: number = 1,
+    limit: number = 50,
+    search?: string,
+    sortBy: string = 'createdAt',
+    sortOrder: 'asc' | 'desc' = 'desc',
+  ) {
+    const skip = (page - 1) * limit;
+
+    // ── Allowed sortable columns (direct item fields) ──────────────────
+    const directSortFields = new Set([
+      'itemId',
+      'sku',
+      'unitPrice',
+      'isActive',
+      'createdAt',
+      'updatedAt',
+      'description',
+      'barCode',
+      'hsCode',
+    ]);
+
+    // Relational sort fields need special handling
+    const relationalSortFields: Record<string, string> = {
+      brand: 'brandId',
+      category: 'categoryId',
+      division: 'divisionId',
+    };
+
+    // ── Build WHERE clause ─────────────────────────────────────────────
+    let where: any = {};
+
+    if (search) {
+      const searchTerm = search.trim();
+
+      // First pass: find master-data IDs that match the search term
+      const [matchingBrands, matchingCategories, matchingDivisions] =
+        await Promise.all([
+          this.prismaMaster.brand.findMany({
+            where: { name: { contains: searchTerm, mode: 'insensitive' } },
+            select: { id: true },
+          }),
+          this.prismaMaster.category.findMany({
+            where: { name: { contains: searchTerm, mode: 'insensitive' } },
+            select: { id: true },
+          }),
+          this.prismaMaster.division.findMany({
+            where: { name: { contains: searchTerm, mode: 'insensitive' } },
+            select: { id: true },
+          }),
+        ]);
+
+      where.OR = [
+        { itemId: { contains: searchTerm, mode: 'insensitive' } },
+        { sku: { contains: searchTerm, mode: 'insensitive' } },
+        { description: { contains: searchTerm, mode: 'insensitive' } },
+        { barCode: { contains: searchTerm, mode: 'insensitive' } },
+        ...(matchingBrands.length
+          ? [{ brandId: { in: matchingBrands.map((b) => b.id) } }]
+          : []),
+        ...(matchingCategories.length
+          ? [{ categoryId: { in: matchingCategories.map((c) => c.id) } }]
+          : []),
+        ...(matchingDivisions.length
+          ? [{ divisionId: { in: matchingDivisions.map((d) => d.id) } }]
+          : []),
+      ];
+    }
+
+    // ── Build ORDER BY clause ──────────────────────────────────────────
+    const direction = sortOrder === 'asc' ? 'asc' : 'desc';
+    let orderBy: any;
+
+    if (directSortFields.has(sortBy)) {
+      orderBy = { [sortBy]: direction };
+    } else if (relationalSortFields[sortBy]) {
+      // Sort by the FK id as a fallback (true relational sort needs raw SQL)
+      orderBy = { [relationalSortFields[sortBy]]: direction };
+    } else {
+      orderBy = { createdAt: 'desc' };
+    }
+
+    // ── Query ──────────────────────────────────────────────────────────
+    const [items, total] = await Promise.all([
+      this.prisma.item.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+      }),
+      this.prisma.item.count({ where }),
+    ]);
+
+    const enrichedItems = await this.enrichItems(items);
+    return {
+      status: true,
+      data: enrichedItems,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
   async update(id: string, updateItemDto: UpdateItemDto) {
     try {
       const findResult = await this.prisma.item.findUnique({ where: { id } });
@@ -95,6 +193,23 @@ export class ItemService {
         where: { id },
       });
       return { status: true, message: 'Item deleted successfully' };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
+
+  async getUniqueHsCodes() {
+    try {
+      const result = await this.prisma.item.findMany({
+        where: {
+          hsCode: { not: null },
+        },
+        distinct: ['hsCode'],
+        select: {
+          hsCode: true,
+        },
+      });
+      return { status: true, data: result.map((i) => i.hsCode) };
     } catch (error: any) {
       return { status: false, message: error.message };
     }
@@ -133,7 +248,7 @@ export class ItemService {
     const itemSubclassIds = [
       ...new Set(items.map((i) => i.itemSubclassId).filter(Boolean)),
     ];
-    // uom removed
+    const uomIds = [...new Set(items.map((i) => i.uomId).filter(Boolean))];
 
     const [
       brands,
@@ -148,81 +263,88 @@ export class ItemService {
       colors,
       itemClasses,
       itemSubclasses,
+      uoms,
     ]: [
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-      any[],
-    ] = await Promise.all([
-      brandIds.length
-        ? this.prismaMaster.brand.findMany({
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+        any[],
+      ] = await Promise.all([
+        brandIds.length
+          ? this.prismaMaster.brand.findMany({
             where: { id: { in: brandIds as string[] } },
           })
-        : [],
-      divisionIds.length
-        ? this.prismaMaster.division.findMany({
+          : [],
+        divisionIds.length
+          ? this.prismaMaster.division.findMany({
             where: { id: { in: divisionIds as string[] } },
           })
-        : [],
-      categoryIds.length
-        ? this.prismaMaster.category.findMany({
+          : [],
+        categoryIds.length
+          ? this.prismaMaster.category.findMany({
             where: { id: { in: categoryIds as string[] } },
           })
-        : [],
-      subCategoryIds.length
-        ? this.prismaMaster.category.findMany({
+          : [],
+        subCategoryIds.length
+          ? this.prismaMaster.category.findMany({
             where: { id: { in: subCategoryIds as string[] } },
           })
-        : [],
-      seasonIds.length
-        ? this.prismaMaster.season.findMany({
+          : [],
+        seasonIds.length
+          ? this.prismaMaster.season.findMany({
             where: { id: { in: seasonIds as string[] } },
           })
-        : [],
-      genderIds.length
-        ? this.prismaMaster.gender.findMany({
+          : [],
+        genderIds.length
+          ? this.prismaMaster.gender.findMany({
             where: { id: { in: genderIds as string[] } },
           })
-        : [],
-      sizeIds.length
-        ? this.prismaMaster.size.findMany({
+          : [],
+        sizeIds.length
+          ? this.prismaMaster.size.findMany({
             where: { id: { in: sizeIds as string[] } },
           })
-        : [],
-      silhouetteIds.length
-        ? this.prismaMaster.silhouette.findMany({
+          : [],
+        silhouetteIds.length
+          ? this.prismaMaster.silhouette.findMany({
             where: { id: { in: silhouetteIds as string[] } },
           })
-        : [],
-      channelClassIds.length
-        ? this.prismaMaster.channelClass.findMany({
+          : [],
+        channelClassIds.length
+          ? this.prismaMaster.channelClass.findMany({
             where: { id: { in: channelClassIds as string[] } },
           })
-        : [],
-      colorIds.length
-        ? this.prismaMaster.color.findMany({
+          : [],
+        colorIds.length
+          ? this.prismaMaster.color.findMany({
             where: { id: { in: colorIds as string[] } },
           })
-        : [],
-      itemClassIds.length
-        ? this.prismaMaster.itemClass.findMany({
+          : [],
+        itemClassIds.length
+          ? this.prismaMaster.itemClass.findMany({
             where: { id: { in: itemClassIds as string[] } },
           })
-        : [],
-      itemSubclassIds.length
-        ? this.prismaMaster.itemSubclass.findMany({
+          : [],
+        itemSubclassIds.length
+          ? this.prismaMaster.itemSubclass.findMany({
             where: { id: { in: itemSubclassIds as string[] } },
           })
-        : [],
-    ]);
+          : [],
+        uomIds.length
+          ? this.prismaMaster.uom.findMany({
+            where: { id: { in: uomIds as string[] } },
+          })
+          : [],
+      ]);
 
     return items.map((item) => ({
       ...item,
@@ -241,6 +363,7 @@ export class ItemService {
       itemClass: itemClasses.find((x) => x.id === item.itemClassId) || null,
       itemSubclass:
         itemSubclasses.find((x) => x.id === item.itemSubclassId) || null,
+      uom: uoms.find((x) => x.id === item.uomId) || null,
     }));
   }
 }

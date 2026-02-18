@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisStore } from 'cache-manager-redis-yet';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { QueueModule } from './queue/queue.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandModule } from './master/brand/brand.module';
@@ -101,6 +103,7 @@ import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -115,6 +118,8 @@ import { SearchModule } from './search/search.module';
         }),
       }),
     }),
+    EventEmitterModule.forRoot(),
+    QueueModule,
     DatabaseModule,
     PrismaModule,
     AuthModule, // added swagger
@@ -212,6 +217,7 @@ import { SearchModule } from './search/search.module';
     PosModule,
     SearchModule,
     CustomerModule,
+    WebhookModule,
   ],
   controllers: [AppController],
   providers: [AppService],
