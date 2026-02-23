@@ -149,10 +149,7 @@ export class CreateItemDto {
 
   @IsUUID()
   @IsOptional()
-  // uomId removed
-  @IsUUID()
-  @IsOptional()
   segmentId?: string;
 }
 
-export class UpdateItemDto extends CreateItemDto {}
+export class UpdateItemDto extends CreateItemDto { }
