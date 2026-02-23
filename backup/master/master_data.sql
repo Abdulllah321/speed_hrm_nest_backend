@@ -876,14 +876,14 @@ INSERT INTO public."City" (id, name, "countryId", "stateId", status, "createdByI
 -- Data for Name: Tenant; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-INSERT INTO public."Tenant" (id, "externalId", name, code, "isActive", "createdAt", "updatedAt") VALUES ('cmkzblxz30000a0u194ezr84g', NULL, 'Speed Sport', 'speed_sport', true, '2026-01-29 10:37:52.574', '2026-01-29 10:37:52.574');
+-- INSERT INTO public."Tenant" (id, "externalId", name, code, "isActive", "createdAt", "updatedAt") VALUES ('cmkzblxz30000a0u194ezr84g', NULL, 'Speed Sport', 'speed_sport', true, '2026-01-29 10:37:52.574', '2026-01-29 10:37:52.574');
 
 
 --
 -- Data for Name: Company; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-INSERT INTO public."Company" (id, "tenantId", name, code, status, "dbName", "dbUrl", "dbHost", "dbPort", "dbUser", "dbPassword", "encryptionKey", "parentId", "createdAt", "updatedAt") VALUES ('cmkzbm5qs0001a0u1119b2ygn', 'cmkzblxz30000a0u194ezr84g', 'Speed Sport', 'speed_sport', 'active', 'tenant_speed_sport_mkzblxzg', 'postgresql://user_speed_sport_mkzblxzh:ePdPdE*&71uEdxyLhu29@HwN3TCyCzH^@localhost:5433/tenant_speed_sport_mkzblxzg?schema=public', 'localhost', 5433, 'user_speed_sport_mkzblxzh', '36f3d0e57604e62f2633ce68688a52ed:b1bfb3dc7e1ad0998a6ece911f34c0ed:0f2f91bec5a3834fdadf5a10689b22103f6cf732466c6a786fc02b62ec384a80', NULL, NULL, '2026-01-29 10:38:02.644', '2026-01-29 10:38:02.644');
+-- INSERT INTO public."Company" (id, "tenantId", name, code, status, "dbName", "dbUrl", "dbHost", "dbPort", "dbUser", "dbPassword", "encryptionKey", "parentId", "createdAt", "updatedAt") VALUES ('cmkzbm5qs0001a0u1119b2ygn', 'cmkzblxz30000a0u194ezr84g', 'Speed Sport', 'speed_sport', 'active', 'tenant_speed_sport_mkzblxzg', 'postgresql://user_speed_sport_mkzblxzh:ePdPdE*&71uEdxyLhu29@HwN3TCyCzH^@localhost:5433/tenant_speed_sport_mkzblxzg?schema=public', 'localhost', 5433, 'user_speed_sport_mkzblxzh', '36f3d0e57604e62f2633ce68688a52ed:b1bfb3dc7e1ad0998a6ece911f34c0ed:0f2f91bec5a3834fdadf5a10689b22103f6cf732466c6a786fc02b62ec384a80', NULL, NULL, '2026-01-29 10:38:02.644', '2026-01-29 10:38:02.644');
 
 
 --

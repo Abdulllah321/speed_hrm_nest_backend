@@ -250,25 +250,95 @@ export class AuthController {
 
       if (linkResult.status && linkResult.data) {
         const cookieOptions = this.getCookieOptions(req);
-        res.setCookie('accessToken', linkResult.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
-        res.setCookie('user', JSON.stringify(linkResult.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
-        res.setCookie('userRole', linkResult.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
-        res.setCookie('sessionId', linkResult.data.sessionId, { ...cookieOptions, maxAge: 12 * 60 * 60 });
-        res.setCookie('terminal', JSON.stringify(terminalData.terminal), { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
-        res.setCookie('terminalId', terminalData.terminal.id, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+        res.setCookie('accessToken', linkResult.data.accessToken, { ...cookieOptions, maxAge: 8 * 60 * 60 });
+        res.setCookie('user', JSON.stringify(linkResult.data.user), { ...cookieOptions, maxAge: 8 * 60 * 60 });
+        res.setCookie('userRole', linkResult.data.user.role || '', { ...cookieOptions, maxAge: 8 * 60 * 60 });
+        // NOTE: sessionId, terminal, and terminalId were deliberately removed to clean up cookies. 
+        // Their context is intrinsically provided by the `/me` API via access token embedding.
 
         return res.send(linkResult);
+      }
+
+      if (linkResult.errorType === 'NO_POS_ACCESS') {
+        // The user was logged in, but they don't have POS permissions.
+        // We still consider the terminal unlock successful (so we issue the terminal-only token)
+        // and tell the frontend to prompt for profile selection.
+        const cookieOptions = this.getCookieOptions(req);
+        res.setCookie('accessToken', terminalData.accessToken, { ...cookieOptions, maxAge: 8 * 60 * 60 });
+
+        return res.send({
+          status: true,
+          errorType: 'NO_POS_ACCESS',
+          message: linkResult.message,
+          data: terminalData
+        });
       }
     }
 
     // 3. Otherwise, just set terminal-only token
     const cookieOptions = this.getCookieOptions(req);
-    res.setCookie('accessToken', terminalData.accessToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
-    res.setCookie('terminal', JSON.stringify(terminalData.terminal), { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
-    res.setCookie('terminalId', terminalData.terminal.id, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
-    res.setCookie('posSessionId', terminalData.sessionId, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 });
+    res.setCookie('accessToken', terminalData.accessToken, { ...cookieOptions, maxAge: 8 * 60 * 60 });
+    // NOTE: terminal, terminalId, posSessionId cookies were removed. The access token carries this state.
 
     return res.send(validation);
+  }
+
+  @Post('pos/user-login')
+  @OptionalJwtAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Login a user into an already-authenticated POS terminal' })
+  async posUserLogin(
+    @Body() body: { email: string; password: string },
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const terminalId = req.user?.terminalId;
+    if (!terminalId) {
+      return res.status(401).send({ status: false, message: 'Terminal not authenticated. Complete the terminal PIN step first.' });
+    }
+
+    // Find the latest open terminal session to get the terminal token
+    const terminalSession = await this.prismaMaster.posSession.findFirst({
+      where: { posId: terminalId, status: 'open' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!terminalSession?.token) {
+      return res.status(401).send({ status: false, message: 'Terminal session not found or expired. Please re-enter PIN.' });
+    }
+
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    // Decode terminal token to extract POS context (terminalId, posId, locationId, tenantId)
+    let terminalContext: any;
+    try {
+      const jwt = require('jsonwebtoken');
+      terminalContext = jwt.decode(terminalSession.token);
+    } catch {
+      return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
+    }
+
+    const context = {
+      terminalId: terminalContext?.terminalId || terminalId,
+      posId: terminalContext?.posId || terminalId,
+      locationId: terminalContext?.locationId || '',
+      posSessionId: terminalSession.id,
+      tenantId: terminalContext?.tenantId || '',
+    };
+
+    const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
+    const result = await this.service.posUserLoginStandard(body.email, body.password, context, deviceInfo);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+      res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      return res.send(result);
+    }
+
+    return res.status(401).send(result);
   }
 
   @Post('pos/switch-session')
@@ -276,8 +346,8 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Link an active user session to a POS terminal' })
   async posSwitchSession(@Req() req: any, @Res() res: any) {
-    // Current terminal comes from the terminalId cookie
-    const terminalId = req.cookies?.['terminalId'];
+    // Current terminal comes from the authenticated terminal token context
+    const terminalId = req.user?.terminalId;
     if (!terminalId) {
       return res.status(401).send({ status: false, message: 'Terminal not authenticated' });
     }
@@ -311,7 +381,7 @@ export class AuthController {
       res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
       res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
       res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('sessionId', result.data.sessionId, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+
       return res.send(result);
     }
     return res.status(400).send(result);
@@ -455,6 +525,60 @@ export class AuthController {
     });
   }
 
+  @Post('stop-impersonating')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Stop impersonating and return to original admin session' })
+  async stopImpersonating(@Req() req: any, @Res() res: any) {
+    if (!req.user.isImpersonating || !req.user.impersonatorId) {
+      return res.status(400).send({
+        status: false,
+        message: 'You are not currenty impersonating anyone',
+      });
+    }
+
+    const result = await this.service.stopImpersonating(req.user.impersonatorId);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+
+      // Set access token
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      // Set refresh token
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user role
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user summary data
+      res.setCookie('user', JSON.stringify(result.data.user), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      return res.send({
+        status: true,
+        message: 'Returned to original session',
+        data: { user: result.data.user },
+      });
+    }
+
+    return res.status(400).send({
+      status: false,
+      message: result.message || 'Failed to stop impersonating',
+    });
+  }
+
   @Post('refresh-token')
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed' })
@@ -515,6 +639,31 @@ export class AuthController {
         (result.data as any).terminalId = req.user.terminalId;
         (result.data as any).locationId = req.user.locationId;
         (result.data as any).posSessionId = req.user.posSessionId;
+
+        // Fetch full terminal details natively instead of parsing cookies
+        if (req.user.terminalId) {
+          const terminalRaw = await this.prismaMaster.pos.findUnique({
+            where: { id: req.user.terminalId },
+            include: { location: true },
+          });
+          if (terminalRaw) {
+            (result.data as any).terminal = {
+              id: terminalRaw.id,
+              code: terminalRaw.terminalCode,
+              name: terminalRaw.name,
+              location: terminalRaw.location ? {
+                id: terminalRaw.location.id,
+                code: terminalRaw.location.code,
+                name: terminalRaw.location.name,
+              } : null
+            };
+          }
+        }
+      }
+      // Enrich with impersonation context from current token
+      if (req.user.isImpersonating) {
+        (result.data as any).isImpersonating = true;
+        (result.data as any).impersonatorId = req.user.impersonatorId;
       }
     }
     return result;
