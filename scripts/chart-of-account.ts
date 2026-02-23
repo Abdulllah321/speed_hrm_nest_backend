@@ -2737,24 +2737,34 @@ async function seedAccounts(
 
     // console.log(`Processing ${data.code} - ${data.name}`);
 
-    const upserted = await prisma.chartOfAccount.upsert({
+    let upserted;
+    const existing = await prisma.chartOfAccount.findFirst({
       where: { code: data.code },
-      update: {
-        name: data.name,
-        type: data.type as AccountType,
-        isGroup: data.isGroup,
-        parentId: parentId,
-        isActive: true,
-      },
-      create: {
-        code: data.code,
-        name: data.name,
-        type: data.type as AccountType,
-        isGroup: data.isGroup,
-        parentId: parentId,
-        isActive: true,
-      },
     });
+
+    if (existing) {
+      upserted = await prisma.chartOfAccount.update({
+        where: { id: existing.id },
+        data: {
+          name: data.name,
+          type: data.type as AccountType,
+          isGroup: data.isGroup,
+          parentId: parentId,
+          isActive: true,
+        },
+      });
+    } else {
+      upserted = await prisma.chartOfAccount.create({
+        data: {
+          code: data.code,
+          name: data.name,
+          type: data.type as AccountType,
+          isGroup: data.isGroup,
+          parentId: parentId,
+          isActive: true,
+        },
+      });
+    }
 
     if (children && children.length > 0) {
       await seedAccounts(prisma, children, upserted.id);
