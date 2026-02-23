@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
 import { UomService } from './uom.service';
 import { CreateUomDto } from './dto/create-uom.dto';
 import { UpdateUomDto } from './dto/update-uom.dto';
@@ -9,7 +18,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 @Controller('api/master/erp/uom')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class UomController {
-  constructor(private readonly uomService: UomService) { }
+  constructor(private readonly uomService: UomService) {}
 
   @Post()
   @Permissions('erp.uom.create')

@@ -26,7 +26,7 @@ import {
 @ApiTags('Salary Breakup')
 @Controller('api')
 export class SalaryBreakupController {
-  constructor(private service: SalaryBreakupService) { }
+  constructor(private service: SalaryBreakupService) {}
 
   @Get('salary-breakups')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.read'))

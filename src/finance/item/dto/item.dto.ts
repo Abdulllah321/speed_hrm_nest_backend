@@ -1,145 +1,155 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsDate, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsDate,
+  IsUUID,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateItemDto {
-    @IsString()
-    itemId: string;
+  // itemId will be auto-generated (6-digit serial)
 
-    @IsString()
-    sku: string;
+  @IsString()
+  sku: string;
 
-    @IsString()
-    @IsOptional()
-    barCode?: string;
+  @IsString()
+  @IsOptional()
+  barCode?: string;
 
-    @IsString()
-    @IsOptional()
-    hsCode?: string;
+  @IsString()
+  @IsOptional()
+  hsCode?: string;
 
-    @IsString()
-    @IsOptional()
-    description?: string;
+  @IsString()
+  @IsOptional()
+  description?: string;
 
-    @IsString()
-    @IsOptional()
-    imageUrl?: string;
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
 
-    @IsBoolean()
-    @IsOptional()
-    isActive?: boolean;
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 
-    @IsString()
-    @IsOptional()
-    status?: string;
+  @IsString()
+  @IsOptional()
+  status?: string;
 
-    // Pricing & Discounts
-    @IsNumber()
-    @IsOptional()
-    unitPrice?: number;
+  // Pricing & Discounts
+  @IsNumber()
+  @IsOptional()
+  unitPrice?: number;
 
-    @IsNumber()
-    @IsOptional()
-    taxRate1?: number;
+  @IsNumber()
+  @IsOptional()
+  fob?: number;
 
-    @IsNumber()
-    @IsOptional()
-    taxRate2?: number;
+  @IsNumber()
+  @IsOptional()
+  unitCost?: number;
 
-    @IsNumber()
-    @IsOptional()
-    discountRate?: number;
+  @IsNumber()
+  @IsOptional()
+  taxRate1?: number;
 
-    @IsNumber()
-    @IsOptional()
-    discountAmount?: number;
+  @IsNumber()
+  @IsOptional()
+  taxRate2?: number;
 
-    @IsDate()
-    @IsOptional()
-    @Type(() => Date)
-    discountStartDate?: Date;
+  @IsNumber()
+  @IsOptional()
+  discountRate?: number;
 
-    @IsDate()
-    @IsOptional()
-    @Type(() => Date)
-    discountEndDate?: Date;
+  @IsNumber()
+  @IsOptional()
+  discountAmount?: number;
 
-    // Attributes
-    @IsString()
-    @IsOptional()
-    case?: string;
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  discountStartDate?: Date;
 
-    @IsString()
-    @IsOptional()
-    band?: string;
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  discountEndDate?: Date;
 
-    @IsString()
-    @IsOptional()
-    movementType?: string;
+  // Attributes
+  @IsString()
+  @IsOptional()
+  case?: string;
 
-    @IsString()
-    @IsOptional()
-    heelHeight?: string;
+  @IsString()
+  @IsOptional()
+  band?: string;
 
-    @IsString()
-    @IsOptional()
-    width?: string;
+  @IsString()
+  @IsOptional()
+  movementType?: string;
 
-    // Master Relations (Id's)
-    @IsUUID()
-    @IsOptional()
-    brandId?: string;
+  @IsString()
+  @IsOptional()
+  heelHeight?: string;
 
-    @IsUUID()
-    @IsOptional()
-    divisionId?: string;
+  @IsString()
+  @IsOptional()
+  width?: string;
 
-    @IsUUID()
-    @IsOptional()
-    genderId?: string;
+  // Master Relations (Id's)
+  @IsUUID()
+  @IsOptional()
+  brandId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    sizeId?: string;
+  @IsUUID()
+  @IsOptional()
+  divisionId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    silhouetteId?: string;
+  @IsUUID()
+  @IsOptional()
+  genderId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    channelClassId?: string;
+  @IsUUID()
+  @IsOptional()
+  sizeId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    colorId?: string;
+  @IsUUID()
+  @IsOptional()
+  silhouetteId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    categoryId?: string;
+  @IsUUID()
+  @IsOptional()
+  channelClassId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    subCategoryId?: string;
+  @IsUUID()
+  @IsOptional()
+  colorId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    itemClassId?: string;
+  @IsUUID()
+  @IsOptional()
+  categoryId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    itemSubclassId?: string;
+  @IsUUID()
+  @IsOptional()
+  subCategoryId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    seasonId?: string;
+  @IsUUID()
+  @IsOptional()
+  itemClassId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    uomId?: string;
+  @IsUUID()
+  @IsOptional()
+  itemSubclassId?: string;
 
-    @IsUUID()
-    @IsOptional()
-    segmentId?: string;
+  @IsUUID()
+  @IsOptional()
+  seasonId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  segmentId?: string;
 }
 
 export class UpdateItemDto extends CreateItemDto { }

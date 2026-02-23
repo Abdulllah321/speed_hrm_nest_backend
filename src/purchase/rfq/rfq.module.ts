@@ -4,9 +4,9 @@ import { RfqController } from './rfq.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [RfqController],
-    providers: [RfqService],
-    exports: [RfqService],
+  imports: [PrismaModule],
+  controllers: [RfqController],
+  providers: [RfqService],
+  exports: [RfqService],
 })
-export class RfqModule { }
+export class RfqModule {}

@@ -38,7 +38,6 @@ export interface ParsedRecord {
         hsCode?: string;
         itemId?: string;
         barCode?: string;
-        uom?: string;
         segment?: string;
     };
 }
@@ -202,7 +201,6 @@ export class CsvParserService {
             hsCode: this.normalizeValue(this.getValue(row, 'HSCode')),
             itemId: this.normalizeValue(this.getValue(row, 'ItemID')),
             barCode: this.normalizeValue(this.getValue(row, 'BarCode')),
-            uom: this.normalizeValue(this.getValue(row, 'UOM')),
             segment: this.normalizeValue(this.getValue(row, 'Segment')),
         };
     }

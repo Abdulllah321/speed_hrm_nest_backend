@@ -8,4 +8,4 @@ import { PrismaModule } from '../../prisma/prisma.module';
   controllers: [LeaveTypeController],
   providers: [LeaveTypeService],
 })
-export class LeaveTypeModule { }
+export class LeaveTypeModule {}

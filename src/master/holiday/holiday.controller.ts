@@ -27,7 +27,7 @@ import { CreateHolidayDto, UpdateHolidayDto } from './dto/holiday.dto';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class HolidayController {
-  constructor(private service: HolidayService) { }
+  constructor(private service: HolidayService) {}
 
   @Get('holidays')
   @Permissions('hr.holiday.read')

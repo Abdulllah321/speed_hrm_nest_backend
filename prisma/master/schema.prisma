@@ -653,6 +653,13 @@ model Bank {
   updatedAt           DateTime @updatedAt
 }
 
+model TaxRate1 {
+  id        String   @id @default(uuid())
+  taxRate1  Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model RebateNature {
   id                      String   @id @default(uuid())
   name                    String   @unique
@@ -978,6 +985,15 @@ model ItemSubclass {
 }
 
 model Season {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OldSeason {
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")

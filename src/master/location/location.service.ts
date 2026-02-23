@@ -9,7 +9,7 @@ export class LocationService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async listActive() {
     return this.prismaMaster.location.findMany({

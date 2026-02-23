@@ -5,8 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StockLedgerController } from './stock-ledger.controller';
 
 @Module({
-    controllers: [StockLedgerController],
-    providers: [StockLedgerService, PrismaService],
-    exports: [StockLedgerService],
+  controllers: [StockLedgerController],
+  providers: [StockLedgerService, PrismaService],
+  exports: [StockLedgerService],
 })
-export class StockLedgerModule { }
+export class StockLedgerModule {}
