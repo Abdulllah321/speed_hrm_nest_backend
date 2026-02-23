@@ -10,8 +10,6 @@ export interface UploadEvent {
 
 @Injectable()
 export class UploadEventsService {
-    private readonly logger = new Logger(UploadEventsService.name);
-
     constructor(private eventEmitter: EventEmitter2) { }
 
     emit(event: UploadEvent) {
