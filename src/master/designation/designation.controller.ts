@@ -23,7 +23,7 @@ import {
 @ApiTags('Designation')
 @Controller('api')
 export class DesignationController {
-  constructor(private service: DesignationService) { }
+  constructor(private service: DesignationService) {}
 
   @Get('designations')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.read'))

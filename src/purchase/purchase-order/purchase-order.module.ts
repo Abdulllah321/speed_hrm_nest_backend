@@ -4,9 +4,9 @@ import { PurchaseOrderController } from './purchase-order.controller';
 import { PrismaModule } from 'src/prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [PurchaseOrderController],
-    providers: [PurchaseOrderService],
-    exports: [PurchaseOrderService]
+  imports: [PrismaModule],
+  controllers: [PurchaseOrderController],
+  providers: [PurchaseOrderService],
+  exports: [PurchaseOrderService],
 })
-export class PurchaseOrderModule { }
+export class PurchaseOrderModule {}

@@ -29,7 +29,7 @@ import {
 @ApiTags('Department')
 @Controller('api')
 export class DepartmentController {
-  constructor(private service: DepartmentService) { }
+  constructor(private service: DepartmentService) {}
 
   @Get('departments')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.department.read'))
@@ -44,7 +44,7 @@ export class DepartmentController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get department by id' })
   async get(@Param('id') id: string) {
-    return this.service.getDepartmentById(id);  
+    return this.service.getDepartmentById(id);
   }
 
   @Post('departments')

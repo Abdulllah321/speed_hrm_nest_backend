@@ -7,7 +7,7 @@ export class DashboardService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-  ) { }
+  ) {}
 
   async getDashboardStats() {
     this.prisma.ensureTenantContext();

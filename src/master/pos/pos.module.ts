@@ -5,9 +5,9 @@ import { DatabaseModule } from '../../database/database.module';
 import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
 
 @Module({
-    imports: [DatabaseModule, ActivityLogsModule],
-    controllers: [PosController],
-    providers: [PosService],
-    exports: [PosService],
+  imports: [DatabaseModule, ActivityLogsModule],
+  controllers: [PosController],
+  providers: [PosService],
+  exports: [PosService],
 })
-export class PosModule { }
+export class PosModule {}

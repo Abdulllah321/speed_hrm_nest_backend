@@ -1,7 +1,12 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from './notifications.gateway';
-import nodemailer from  'nodemailer';
+import nodemailer from 'nodemailer';
 import {
   type CreateNotificationInput,
   type NotificationChannel,
@@ -77,7 +82,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
             pass: testAccount.pass,
           },
         });
-        this.logger.log(`Ethereal Email Configured. Preview URL will be logged.`);
+        this.logger.log(
+          `Ethereal Email Configured. Preview URL will be logged.`,
+        );
         this.logger.log(`User: ${testAccount.user}, Pass: ${testAccount.pass}`);
       }
     } catch (error) {
@@ -315,20 +322,27 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
         // Note: If you need to fallback to Employee email (Tenant DB), use:
         if (!recipientEmail && user.employeeId) {
-          const emp = await this.prisma.employee.findUnique({ where: { id: user.employeeId } });
-          if (emp) recipientEmail = emp.officialEmail || emp.personalEmail || undefined;
+          const emp = await this.prisma.employee.findUnique({
+            where: { id: user.employeeId },
+          });
+          if (emp)
+            recipientEmail =
+              emp.officialEmail || emp.personalEmail || undefined;
         }
-
       }
     }
 
     if (!recipientEmail) {
-      this.logger.warn(`Skipping email: No recipient found for userId ${args.userId}`);
+      this.logger.warn(
+        `Skipping email: No recipient found for userId ${args.userId}`,
+      );
       return;
     }
 
     if (!this.transporter) {
-      this.logger.warn('Email transporter not ready, retrying initialization...');
+      this.logger.warn(
+        'Email transporter not ready, retrying initialization...',
+      );
       await this.createTestAccount();
     }
 

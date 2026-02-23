@@ -1,19 +1,19 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Delete,
-    Body,
-    Param,
-    UseGuards,
-    Req,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { SegmentService } from './segment.service';
 import {
-    CreateSegmentsDto,
-    UpdateSegmentDto,
-    BulkUpdateSegmentsDto,
+  CreateSegmentsDto,
+  UpdateSegmentDto,
+  BulkUpdateSegmentsDto,
 } from './dto/segment.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -22,67 +22,70 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/master/erp/segment')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SegmentController {
-    constructor(private readonly segmentService: SegmentService) { }
+  constructor(private readonly segmentService: SegmentService) {}
 
-    @Get()
-    @Permissions('erp.segment.read')
-    async getAll() {
-        return this.segmentService.getAll();
-    }
+  @Get()
+  @Permissions('erp.segment.read')
+  async getAll() {
+    return this.segmentService.getAll();
+  }
 
-    @Get(':id')
-    @Permissions('erp.segment.read')
-    async getById(@Param('id') id: string) {
-        return this.segmentService.getById(id);
-    }
+  @Get(':id')
+  @Permissions('erp.segment.read')
+  async getById(@Param('id') id: string) {
+    return this.segmentService.getById(id);
+  }
 
-    @Post()
-    @Permissions('erp.segment.create')
-    async createMany(@Body() dto: CreateSegmentsDto, @Req() req: any) {
-        return this.segmentService.createMany(dto.items, req.user.id || req.user.userId);
-    }
+  @Post()
+  @Permissions('erp.segment.create')
+  async createMany(@Body() dto: CreateSegmentsDto, @Req() req: any) {
+    return this.segmentService.createMany(
+      dto.items,
+      req.user.id || req.user.userId,
+    );
+  }
 
-    @Put('bulk')
-    @Permissions('erp.segment.update')
-    async updateMany(@Body() dto: BulkUpdateSegmentsDto, @Req() req: any) {
-        return this.segmentService.updateMany(dto.items, {
-            userId: req.user.id || req.user.userId,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
+  @Put('bulk')
+  @Permissions('erp.segment.update')
+  async updateMany(@Body() dto: BulkUpdateSegmentsDto, @Req() req: any) {
+    return this.segmentService.updateMany(dto.items, {
+      userId: req.user.id || req.user.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 
-    @Put(':id')
-    @Permissions('erp.segment.update')
-    async update(
-        @Param('id') id: string,
-        @Body() dto: UpdateSegmentDto,
-        @Req() req: any,
-    ) {
-        return this.segmentService.update(id, dto, {
-            userId: req.user.id || req.user.userId,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
+  @Put(':id')
+  @Permissions('erp.segment.update')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSegmentDto,
+    @Req() req: any,
+  ) {
+    return this.segmentService.update(id, dto, {
+      userId: req.user.id || req.user.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 
-    @Delete('bulk')
-    @Permissions('erp.segment.delete')
-    async deleteMany(@Body('ids') ids: string[], @Req() req: any) {
-        return this.segmentService.deleteMany(ids, {
-            userId: req.user.id || req.user.userId,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
+  @Delete('bulk')
+  @Permissions('erp.segment.delete')
+  async deleteMany(@Body('ids') ids: string[], @Req() req: any) {
+    return this.segmentService.deleteMany(ids, {
+      userId: req.user.id || req.user.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 
-    @Delete(':id')
-    @Permissions('erp.segment.delete')
-    async delete(@Param('id') id: string, @Req() req: any) {
-        return this.segmentService.delete(id, {
-            userId: req.user.id || req.user.userId,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
+  @Delete(':id')
+  @Permissions('erp.segment.delete')
+  async delete(@Param('id') id: string, @Req() req: any) {
+    return this.segmentService.delete(id, {
+      userId: req.user.id || req.user.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 }

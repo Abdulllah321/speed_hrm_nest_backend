@@ -10,7 +10,10 @@ import {
   Req,
 } from '@nestjs/common';
 import { CompanyGroupService } from './company-group.service';
-import { CreateCompanyGroupDto, UpdateCompanyGroupDto } from './dto/company-group-dto';
+import {
+  CreateCompanyGroupDto,
+  UpdateCompanyGroupDto,
+} from './dto/company-group-dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 

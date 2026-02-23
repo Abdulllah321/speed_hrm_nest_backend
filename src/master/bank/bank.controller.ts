@@ -24,7 +24,7 @@ import { CreateBankDto, UpdateBankDto } from './dto/bank.dto';
 @ApiTags('Bank')
 @Controller('api')
 export class BankController {
-  constructor(private service: BankService) { }
+  constructor(private service: BankService) {}
 
   @Get('banks')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.read'))

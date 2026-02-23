@@ -4,6 +4,7 @@ model VendorQuotation {
   vendorId       String                @map("vendor_id")
   quotationDate  DateTime              @default(now()) @map("quotation_date")
   status         String                @default("DRAFT")
+  expiryDate     DateTime?             @map("expiry_date")
   subtotal       Decimal               @default(0) @db.Decimal(15, 2)
   taxAmount      Decimal               @default(0) @map("tax_amount") @db.Decimal(15, 2)
   discountAmount Decimal               @default(0) @map("discount_amount") @db.Decimal(15, 2)
@@ -27,6 +28,8 @@ model VendorQuotationItem {
   description       String?
   quotedQty         Decimal         @map("quoted_qty") @db.Decimal(15, 4)
   unitPrice         Decimal         @map("unit_price") @db.Decimal(15, 2)
+  fob               Decimal         @default(0) @db.Decimal(15, 2)
+  unitCost          Decimal         @default(0) @map("unit_cost") @db.Decimal(15, 2)
   taxPercent        Decimal         @default(0) @map("tax_percent") @db.Decimal(5, 2)
   discountPercent   Decimal         @default(0) @map("discount_percent") @db.Decimal(5, 2)
   lineTotal         Decimal         @map("line_total") @db.Decimal(15, 2)

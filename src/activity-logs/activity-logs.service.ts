@@ -10,7 +10,7 @@ export class ActivityLogsService {
     private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => ActivityLogsGateway))
     private gateway: ActivityLogsGateway,
-  ) { }
+  ) {}
 
   async findAll(query: {
     page?: number;

@@ -4,9 +4,9 @@ import { ItemClassController } from './item-class.controller';
 import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
 
 @Module({
-    imports: [ActivityLogsModule],
-    controllers: [ItemClassController],
-    providers: [ItemClassService],
-    exports: [ItemClassService],
+  imports: [ActivityLogsModule],
+  controllers: [ItemClassController],
+  providers: [ItemClassService],
+  exports: [ItemClassService],
 })
-export class ItemClassModule { }
+export class ItemClassModule {}
