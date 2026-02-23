@@ -516,7 +516,10 @@ export class EmployeeService {
       location: emp.location?.id || emp.locationId,
       leavesPolicy: emp.leavesPolicy?.id || emp.leavesPolicyId,
       allocation: emp.allocation?.id || emp.allocationId || null,
-      socialSecurityInstitution: emp.socialSecurityInstitution?.id || emp.socialSecurityInstitutionId || null,
+      socialSecurityInstitution:
+        emp.socialSecurityInstitution?.id ||
+        emp.socialSecurityInstitutionId ||
+        null,
       // Avatar from user table
       avatarUrl: emp.user?.avatar || null,
       // EOBI Document URL
@@ -539,7 +542,8 @@ export class EmployeeService {
       workingHoursPolicyName: emp.workingHoursPolicy?.name || null,
       locationName: emp.location?.name || null,
       leavesPolicyName: emp.leavesPolicy?.name || null,
-      socialSecurityInstitutionName: emp.socialSecurityInstitution?.name || null,
+      socialSecurityInstitutionName:
+        emp.socialSecurityInstitution?.name || null,
       // Keep relation objects for display purposes
       departmentRelation: emp.department,
       subDepartmentRelation: emp.subDepartment,
@@ -1147,14 +1151,20 @@ export class EmployeeService {
               Array.isArray(equipmentAssignmentsValue) &&
               equipmentAssignmentsValue.length > 0
               ? {
-                create: (equipmentAssignmentsValue as any[]).filter(ea => ea.equipmentId).map(ea => ({
-                  equipmentId: ea.equipmentId,
-                  productId: ea.productId || `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
-                  assignedDate: ea.assignedDate ? new Date(ea.assignedDate) : new Date(),
-                  notes: ea.notes || null,
-                  assignedById: ctx.userId,
-                  status: 'assigned',
-                }))
+                create: (equipmentAssignmentsValue as any[])
+                  .filter((ea) => ea.equipmentId)
+                  .map((ea: any) => ({
+                    equipmentId: ea.equipmentId,
+                    productId:
+                      ea.productId ||
+                      `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                    assignedDate: ea.assignedDate
+                      ? new Date(ea.assignedDate)
+                      : new Date(),
+                    notes: ea.notes || null,
+                    assignedById: ctx.userId,
+                    status: 'assigned',
+                  })),
               }
               : undefined,
           qualifications:
@@ -1162,14 +1172,82 @@ export class EmployeeService {
               Array.isArray(qualificationsValue) &&
               qualificationsValue.length > 0
               ? {
-                create: (qualificationsValue as any[]).filter(q => q.qualification || q.qualificationId).map(q => ({
-                  qualificationId: String(q.qualification || q.qualificationId),
-                  instituteId: q.instituteId ? String(q.instituteId) : null,
-                  cityId: q.cityId ? String(q.cityId) : null,
-                  stateId: q.stateId ? String(q.stateId) : null,
-                  year: q.year ? parseInt(String(q.year)) : null,
-                  grade: q.grade ? String(q.grade) : null,
-                }))
+                create: (
+                  qualificationsValue as Array<{
+                    qualification?: unknown;
+                    qualificationId?: unknown;
+                    instituteId?: unknown;
+                    cityId?: unknown;
+                    stateId?: unknown;
+                    year?: unknown;
+                    grade?: unknown;
+                  }>
+                )
+                  .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
+                  .map((q) => {
+                    // Safely convert qualification/qualificationId to string
+                    const qualificationIdValue =
+                      q.qualification || q.qualificationId;
+                    const qualificationIdStr =
+                      typeof qualificationIdValue === 'string'
+                        ? qualificationIdValue
+                        : typeof qualificationIdValue === 'number'
+                          ? String(qualificationIdValue)
+                          : '';
+
+                    // Safely convert other fields
+                    const instituteIdStr =
+                      q.instituteId && typeof q.instituteId === 'string'
+                        ? q.instituteId
+                        : q.instituteId &&
+                          (typeof q.instituteId === 'number' ||
+                            typeof q.instituteId === 'bigint')
+                          ? String(q.instituteId)
+                          : null;
+
+                    const cityIdStr =
+                      q.cityId && typeof q.cityId === 'string'
+                        ? q.cityId
+                        : q.cityId &&
+                          (typeof q.cityId === 'number' ||
+                            typeof q.cityId === 'bigint')
+                          ? String(q.cityId)
+                          : null;
+
+                    const stateIdStr =
+                      q.stateId && typeof q.stateId === 'string'
+                        ? q.stateId
+                        : q.stateId &&
+                          (typeof q.stateId === 'number' ||
+                            typeof q.stateId === 'bigint')
+                          ? String(q.stateId)
+                          : null;
+
+                    const yearValue =
+                      q.year && typeof q.year === 'number'
+                        ? q.year
+                        : q.year && typeof q.year === 'string'
+                          ? parseInt(q.year, 10)
+                          : null;
+
+                    const gradeStr =
+                      q.grade && typeof q.grade === 'string'
+                        ? q.grade
+                        : q.grade &&
+                          (typeof q.grade === 'number' ||
+                            typeof q.grade === 'bigint')
+                          ? String(q.grade)
+                          : null;
+
+                    return {
+                      qualificationId: qualificationIdStr,
+                      instituteId: instituteIdStr,
+                      cityId: cityIdStr,
+                      stateId: stateIdStr,
+                      year: yearValue,
+                      grade: gradeStr,
+                    };
+                  }),
               }
               : undefined,
         },
@@ -1983,7 +2061,8 @@ export class EmployeeService {
         data: {
           ...employee,
           socialSecurityInstitution,
-          socialSecurityInstitutionName: socialSecurityInstitution?.name || null,
+          socialSecurityInstitutionName:
+            socialSecurityInstitution?.name || null,
         },
         message: `Found inactive employee: ${employee.employeeName}. Ready for rejoining.`,
       };
@@ -2405,41 +2484,48 @@ export class EmployeeService {
                   where: { id: reg.institutionId },
                 });
               const employerReg =
-                await this.prismaMaster.socialSecurityEmployerRegistration.findFirst({
-                  where: { institutionId: reg.institutionId, status: 'active' },
-                });
-              if (employerReg) {
-                await this.prismaMaster.socialSecurityEmployeeRegistration.create({
-                  data: {
-                    companyId: employerReg.companyId,
-                    institutionId: reg.institutionId,
-                    employerRegistrationId: employerReg.id,
-                    employeeId: existing.id,
-                    registrationNumber: reg.registrationNumber,
-                    cardNumber: reg.cardNumber || null,
-                    registrationDate: reg.registrationDate
-                      ? new Date(reg.registrationDate)
-                      : new Date(),
-                    expiryDate: reg.expiryDate
-                      ? new Date(reg.expiryDate)
-                      : null,
-                    contributionRate: reg.contributionRate
-                      ? Number(reg.contributionRate)
-                      : 0,
-                    baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
-                    monthlyContribution: reg.monthlyContribution
-                      ? Number(reg.monthlyContribution)
-                      : 0,
-                    employeeContribution: reg.employeeContribution
-                      ? Number(reg.employeeContribution)
-                      : 0,
-                    employerContribution: reg.employerContribution
-                      ? Number(reg.employerContribution)
-                      : 0,
-                    status: reg.status || 'active',
-                    isEmployerContribution: true,
+                await this.prismaMaster.socialSecurityEmployerRegistration.findFirst(
+                  {
+                    where: {
+                      institutionId: reg.institutionId,
+                      status: 'active',
+                    },
                   },
-                });
+                );
+              if (employerReg) {
+                await this.prismaMaster.socialSecurityEmployeeRegistration.create(
+                  {
+                    data: {
+                      companyId: employerReg.companyId,
+                      institutionId: reg.institutionId,
+                      employerRegistrationId: employerReg.id,
+                      employeeId: existing.id,
+                      registrationNumber: reg.registrationNumber,
+                      cardNumber: reg.cardNumber || null,
+                      registrationDate: reg.registrationDate
+                        ? new Date(reg.registrationDate)
+                        : new Date(),
+                      expiryDate: reg.expiryDate
+                        ? new Date(reg.expiryDate)
+                        : null,
+                      contributionRate: reg.contributionRate
+                        ? Number(reg.contributionRate)
+                        : 0,
+                      baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
+                      monthlyContribution: reg.monthlyContribution
+                        ? Number(reg.monthlyContribution)
+                        : 0,
+                      employeeContribution: reg.employeeContribution
+                        ? Number(reg.employeeContribution)
+                        : 0,
+                      employerContribution: reg.employerContribution
+                        ? Number(reg.employerContribution)
+                        : 0,
+                      status: reg.status || 'active',
+                      isEmployerContribution: true,
+                    },
+                  },
+                );
               }
             }
           }

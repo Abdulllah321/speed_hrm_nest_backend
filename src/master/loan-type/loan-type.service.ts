@@ -8,7 +8,7 @@ export class LoanTypeService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prismaMaster.loanType.findMany({

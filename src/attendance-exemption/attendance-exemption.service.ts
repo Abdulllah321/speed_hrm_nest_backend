@@ -9,7 +9,7 @@ export class AttendanceExemptionService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   private async resolveApproverUserId(args: {
     level: {
@@ -108,7 +108,6 @@ export class AttendanceExemptionService {
 
   async list() {
     try {
-
       const exemptions = await this.prisma.attendanceExemption.findMany({
         orderBy: { createdAt: 'desc' },
         include: {
@@ -182,7 +181,6 @@ export class AttendanceExemptionService {
 
   async get(id: string) {
     try {
-
       const exemption = await this.prisma.attendanceExemption.findUnique({
         where: { id },
         include: {
@@ -204,21 +202,21 @@ export class AttendanceExemptionService {
       const [department, subDepartment, designation] = await Promise.all([
         exemption.department
           ? this.prismaMaster.department.findUnique({
-            where: { id: exemption.department },
-            select: { name: true },
-          })
+              where: { id: exemption.department },
+              select: { name: true },
+            })
           : null,
         exemption.subDepartment
           ? this.prismaMaster.subDepartment.findUnique({
-            where: { id: exemption.subDepartment },
-            select: { name: true },
-          })
+              where: { id: exemption.subDepartment },
+              select: { name: true },
+            })
           : null,
         exemption.employee?.designationId
           ? this.prismaMaster.designation.findUnique({
-            where: { id: exemption.employee.designationId },
-            select: { name: true },
-          })
+              where: { id: exemption.employee.designationId },
+              select: { name: true },
+            })
           : null,
       ]);
 
@@ -243,7 +241,6 @@ export class AttendanceExemptionService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!body.employeeId) {
         return {
           status: false,
@@ -405,7 +402,6 @@ export class AttendanceExemptionService {
     }
 
     try {
-
       const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
       });
@@ -464,7 +460,6 @@ export class AttendanceExemptionService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -770,7 +765,6 @@ export class AttendanceExemptionService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.attendanceExemption.findUnique({
         where: { id },
       });

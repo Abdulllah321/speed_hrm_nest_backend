@@ -15,6 +15,8 @@ model Item {
   discountAmount     Float?        @default(0)
   discountStartDate  DateTime?
   discountEndDate    DateTime?
+  fob                Float         @default(0)
+  unitCost           Float         @default(0) @map("unit_cost")
   case               String?
   band               String?
   movementType       String?
@@ -32,7 +34,6 @@ model Item {
   itemClassId        String?
   itemSubclassId     String?
   seasonId           String?
-  uomId              String?
   segmentId          String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt

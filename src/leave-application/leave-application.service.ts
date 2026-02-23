@@ -11,7 +11,7 @@ export class LeaveApplicationService {
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
-  ) { }
+  ) {}
 
   private async resolveApproverUserId(args: {
     level: {

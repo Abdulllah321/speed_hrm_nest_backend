@@ -10,7 +10,7 @@ export class RebateService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(params?: {
     employeeId?: string;
@@ -172,14 +172,14 @@ export class RebateService {
         }),
         rebate.createdById
           ? this.prismaMaster.user.findUnique({
-            where: { id: rebate.createdById },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          })
+              where: { id: rebate.createdById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
           : Promise.resolve(null),
       ]);
 
@@ -188,15 +188,15 @@ export class RebateService {
         const [dept, subDept] = await Promise.all([
           employee.departmentId
             ? this.prismaMaster.department.findUnique({
-              where: { id: employee.departmentId },
-              select: { id: true, name: true },
-            })
+                where: { id: employee.departmentId },
+                select: { id: true, name: true },
+              })
             : Promise.resolve(null),
           employee.subDepartmentId
             ? this.prismaMaster.subDepartment.findUnique({
-              where: { id: employee.subDepartmentId },
-              select: { id: true, name: true },
-            })
+                where: { id: employee.subDepartmentId },
+                select: { id: true, name: true },
+              })
             : Promise.resolve(null),
         ]);
         employeeWithLabels = {
@@ -293,15 +293,15 @@ export class RebateService {
       const [dept, subDept] = await Promise.all([
         employee.departmentId
           ? this.prismaMaster.department.findUnique({
-            where: { id: employee.departmentId },
-            select: { id: true, name: true },
-          })
+              where: { id: employee.departmentId },
+              select: { id: true, name: true },
+            })
           : Promise.resolve(null),
         employee.subDepartmentId
           ? this.prismaMaster.subDepartment.findUnique({
-            where: { id: employee.subDepartmentId },
-            select: { id: true, name: true },
-          })
+              where: { id: employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
           : Promise.resolve(null),
       ]);
 
@@ -449,15 +449,15 @@ export class RebateService {
       const [dept, subDept] = await Promise.all([
         employee?.departmentId
           ? this.prismaMaster.department.findUnique({
-            where: { id: employee.departmentId },
-            select: { id: true, name: true },
-          })
+              where: { id: employee.departmentId },
+              select: { id: true, name: true },
+            })
           : Promise.resolve(null),
         employee?.subDepartmentId
           ? this.prismaMaster.subDepartment.findUnique({
-            where: { id: employee.subDepartmentId },
-            select: { id: true, name: true },
-          })
+              where: { id: employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
           : Promise.resolve(null),
       ]);
 
@@ -465,18 +465,18 @@ export class RebateService {
         ...updated,
         employee: employee
           ? {
-            ...employee,
-            department: dept,
-            subDepartment: subDept,
-          }
+              ...employee,
+              department: dept,
+              subDepartment: subDept,
+            }
           : null,
         rebateNature: rebateNature
           ? {
-            id: rebateNature.id,
-            name: rebateNature.name,
-            type: rebateNature.type,
-            category: rebateNature.category,
-          }
+              id: rebateNature.id,
+              name: rebateNature.name,
+              type: rebateNature.type,
+              category: rebateNature.category,
+            }
           : null,
       };
 

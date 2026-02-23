@@ -25,7 +25,7 @@ export class PayrollService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
 
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -280,7 +280,9 @@ export class PayrollService {
         .filter((pa) => pa.employeeId === emp.id)
         .map((pa) => ({
           ...pa,
-          workingHoursPolicy: workingHoursPolicyMap.get(pa.workingHoursPolicyId),
+          workingHoursPolicy: workingHoursPolicyMap.get(
+            pa.workingHoursPolicyId,
+          ),
         })),
     }));
 
@@ -836,7 +838,10 @@ export class PayrollService {
         where: { id: { in: Array.from(designationIds) } },
       }),
       this.prismaMaster.user.findMany({
-        where: { employeeId: { in: Array.from(employeeIds) }, status: 'active' },
+        where: {
+          employeeId: { in: Array.from(employeeIds) },
+          status: 'active',
+        },
       }),
     ]);
 
@@ -894,10 +899,18 @@ export class PayrollService {
     }
   }
 
-  private generatePayslipHTML(detail: any, month: string, year: string): string {
+  private generatePayslipHTML(
+    detail: any,
+    month: string,
+    year: string,
+  ): string {
     const emp = detail.employee;
     const formatCurrency = (amount: any) =>
-      new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', minimumFractionDigits: 0 }).format(Number(amount));
+      new Intl.NumberFormat('en-PK', {
+        style: 'currency',
+        currency: 'PKR',
+        minimumFractionDigits: 0,
+      }).format(Number(amount));
 
     return `
       <!DOCTYPE html>
@@ -942,25 +955,33 @@ export class PayrollService {
             <div style="flex: 1;">
               <div class="section-title">Earnings</div>
               <div class="table-row"><span>Basic Salary</span> <span>${formatCurrency(detail.basicSalary)}</span></div>
-              ${(detail.allowanceBreakup || []).map((a: any) => `
+              ${(detail.allowanceBreakup || [])
+                .map(
+                  (a: any) => `
                 <div class="table-row"><span>${a.name}</span> <span>${formatCurrency(a.amount)}</span></div>
-              `).join('')}
-              ${(detail.overtimeAmount > 0) ? `<div class="table-row"><span>Overtime</span> <span>${formatCurrency(detail.overtimeAmount)}</span></div>` : ''}
-              ${(detail.bonusAmount > 0) ? `<div class="table-row"><span>Bonus</span> <span>${formatCurrency(detail.bonusAmount)}</span></div>` : ''}
+              `,
+                )
+                .join('')}
+              ${detail.overtimeAmount > 0 ? `<div class="table-row"><span>Overtime</span> <span>${formatCurrency(detail.overtimeAmount)}</span></div>` : ''}
+              ${detail.bonusAmount > 0 ? `<div class="table-row"><span>Bonus</span> <span>${formatCurrency(detail.bonusAmount)}</span></div>` : ''}
               <div class="total-row"><span>Total Earnings</span> <span>${formatCurrency(Number(detail.basicSalary) + Number(detail.totalAllowances) + Number(detail.overtimeAmount) + Number(detail.bonusAmount))}</span></div>
             </div>
 
             <div style="flex: 1;">
               <div class="section-title">Deductions</div>
-              ${(detail.deductionBreakup || []).map((d: any) => `
+              ${(detail.deductionBreakup || [])
+                .map(
+                  (d: any) => `
                 <div class="table-row"><span>${d.name}</span> <span>${formatCurrency(d.amount)}</span></div>
-              `).join('')}
-              ${(detail.taxDeduction > 0) ? `<div class="table-row"><span>Tax</span> <span>${formatCurrency(detail.taxDeduction)}</span></div>` : ''}
-              ${(detail.eobiDeduction > 0) ? `<div class="table-row"><span>EOBI</span> <span>${formatCurrency(detail.eobiDeduction)}</span></div>` : ''}
-              ${(detail.providentFundDeduction > 0) ? `<div class="table-row"><span>Provident Fund</span> <span>${formatCurrency(detail.providentFundDeduction)}</span></div>` : ''}
-              ${(detail.loanDeduction > 0) ? `<div class="table-row"><span>Loan</span> <span>${formatCurrency(detail.loanDeduction)}</span></div>` : ''}
-              ${(detail.advanceSalaryDeduction > 0) ? `<div class="table-row"><span>Advance Salary</span> <span>${formatCurrency(detail.advanceSalaryDeduction)}</span></div>` : ''}
-              ${(detail.attendanceDeduction > 0) ? `<div class="table-row"><span>Attendance/Late</span> <span>${formatCurrency(detail.attendanceDeduction)}</span></div>` : ''}
+              `,
+                )
+                .join('')}
+              ${detail.taxDeduction > 0 ? `<div class="table-row"><span>Tax</span> <span>${formatCurrency(detail.taxDeduction)}</span></div>` : ''}
+              ${detail.eobiDeduction > 0 ? `<div class="table-row"><span>EOBI</span> <span>${formatCurrency(detail.eobiDeduction)}</span></div>` : ''}
+              ${detail.providentFundDeduction > 0 ? `<div class="table-row"><span>Provident Fund</span> <span>${formatCurrency(detail.providentFundDeduction)}</span></div>` : ''}
+              ${detail.loanDeduction > 0 ? `<div class="table-row"><span>Loan</span> <span>${formatCurrency(detail.loanDeduction)}</span></div>` : ''}
+              ${detail.advanceSalaryDeduction > 0 ? `<div class="table-row"><span>Advance Salary</span> <span>${formatCurrency(detail.advanceSalaryDeduction)}</span></div>` : ''}
+              ${detail.attendanceDeduction > 0 ? `<div class="table-row"><span>Attendance/Late</span> <span>${formatCurrency(detail.attendanceDeduction)}</span></div>` : ''}
               <div class="total-row"><span>Total Deductions</span> <span>${formatCurrency(detail.totalDeductions)}</span></div>
             </div>
           </div>
@@ -1006,12 +1027,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-          departmentId: filters.departmentId,
-        }),
+            departmentId: filters.departmentId,
+          }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-          subDepartmentId: filters.subDepartmentId,
-        }),
+            subDepartmentId: filters.subDepartmentId,
+          }),
       };
     }
 
@@ -1197,12 +1218,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-          departmentId: filters.departmentId,
-        }),
+            departmentId: filters.departmentId,
+          }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-          subDepartmentId: filters.subDepartmentId,
-        }),
+            subDepartmentId: filters.subDepartmentId,
+          }),
       };
     }
 
@@ -1286,23 +1307,23 @@ export class PayrollService {
     const [dept, subDept, des, grade] = await Promise.all([
       detail.employee.departmentId
         ? this.prismaMaster.department.findUnique({
-          where: { id: detail.employee.departmentId },
-        })
+            where: { id: detail.employee.departmentId },
+          })
         : null,
       detail.employee.subDepartmentId
         ? this.prismaMaster.subDepartment.findUnique({
-          where: { id: detail.employee.subDepartmentId },
-        })
+            where: { id: detail.employee.subDepartmentId },
+          })
         : null,
       detail.employee.designationId
         ? this.prismaMaster.designation.findUnique({
-          where: { id: detail.employee.designationId },
-        })
+            where: { id: detail.employee.designationId },
+          })
         : null,
       detail.employee.employeeGradeId
         ? this.prismaMaster.employeeGrade.findUnique({
-          where: { id: detail.employee.employeeGradeId },
-        })
+            where: { id: detail.employee.employeeGradeId },
+          })
         : null,
     ]);
 
@@ -1562,7 +1583,7 @@ export class PayrollService {
         const matchesMonth =
           advance.deductionMonth === normalizedMonthForComparison ||
           String(Number(advance.deductionMonth)).padStart(2, '0') ===
-          normalizedMonthForComparison;
+            normalizedMonthForComparison;
         const matchesYear =
           advance.deductionYear === normalizedYearForComparison ||
           String(advance.deductionYear) === normalizedYearForComparison;
@@ -1676,7 +1697,7 @@ export class PayrollService {
           0,
           Math.floor(
             (incrementDate.getTime() - lastDate.getTime()) /
-            (1000 * 60 * 60 * 24),
+              (1000 * 60 * 60 * 24),
           ),
         );
 
@@ -1716,7 +1737,7 @@ export class PayrollService {
         0,
         Math.floor(
           (monthEnd.getTime() - lastDate.getTime() + 1000 * 60 * 60 * 24) /
-          (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
         ),
       );
       if (daysAfterLastIncrement > 0) {
@@ -1886,9 +1907,7 @@ export class PayrollService {
       totalShortDayCount += stats.shortDay;
 
       // Absent Deduction
-      totalDeduction = totalDeduction.add(
-        perDaySalary.mul(stats.absent)
-      );
+      totalDeduction = totalDeduction.add(perDaySalary.mul(stats.absent));
 
       // Half Day Deduction
       if (
@@ -1898,13 +1917,18 @@ export class PayrollService {
       ) {
         let chargeableHalfDays = stats.halfDay;
         if (policy.applyDeductionAfterHalfDays) {
-          chargeableHalfDays = Math.max(0, stats.halfDay - policy.applyDeductionAfterHalfDays);
+          chargeableHalfDays = Math.max(
+            0,
+            stats.halfDay - policy.applyDeductionAfterHalfDays,
+          );
         }
 
         if (chargeableHalfDays > 0) {
           let amount = new Decimal(0);
           if (policy.halfDayDeductionType === 'amount') {
-            amount = new Decimal(policy.halfDayDeductionAmount).mul(chargeableHalfDays);
+            amount = new Decimal(policy.halfDayDeductionAmount).mul(
+              chargeableHalfDays,
+            );
           } else if (policy.halfDayDeductionType === 'percentage') {
             amount = perDaySalary
               .mul(new Decimal(policy.halfDayDeductionAmount).div(100))
@@ -1923,19 +1947,25 @@ export class PayrollService {
       ) {
         let chargeableShortDays = stats.shortDay;
         if (policy.applyDeductionAfterShortDays) {
-          chargeableShortDays = Math.max(0, stats.shortDay - policy.applyDeductionAfterShortDays);
+          chargeableShortDays = Math.max(
+            0,
+            stats.shortDay - policy.applyDeductionAfterShortDays,
+          );
         }
 
         if (chargeableShortDays > 0) {
           let amount = new Decimal(0);
           if (policy.shortDayDeductionType === 'amount') {
-            amount = new Decimal(policy.shortDayDeductionAmount).mul(chargeableShortDays);
+            amount = new Decimal(policy.shortDayDeductionAmount).mul(
+              chargeableShortDays,
+            );
           } else if (policy.shortDayDeductionType === 'percentage') {
             amount = perDaySalary
               .mul(new Decimal(policy.shortDayDeductionAmount).div(100))
               .mul(chargeableShortDays);
           }
-          totalShortDayDeductionAmount = totalShortDayDeductionAmount.add(amount);
+          totalShortDayDeductionAmount =
+            totalShortDayDeductionAmount.add(amount);
           totalDeduction = totalDeduction.add(amount);
         }
       }
@@ -1948,12 +1978,15 @@ export class PayrollService {
       ) {
         let chargeableLates = stats.late;
         if (policy.applyDeductionAfterLates) {
-          chargeableLates = Math.max(0, stats.late - policy.applyDeductionAfterLates);
+          chargeableLates = Math.max(
+            0,
+            stats.late - policy.applyDeductionAfterLates,
+          );
         }
 
         if (chargeableLates > 0) {
           const deductionPerLate = perDaySalary.mul(
-            new Decimal(policy.lateDeductionPercent).div(100)
+            new Decimal(policy.lateDeductionPercent).div(100),
           );
           const amount = deductionPerLate.mul(chargeableLates);
           totalLateDeductionAmount = totalLateDeductionAmount.add(amount);

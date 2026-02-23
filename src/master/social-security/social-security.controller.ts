@@ -35,7 +35,7 @@ import {
 @ApiTags('Social Security')
 @Controller('api')
 export class SocialSecurityController {
-  constructor(private service: SocialSecurityService) { }
+  constructor(private service: SocialSecurityService) {}
 
   // ========== Institution Endpoints ==========
   @Get('social-security-institutions')

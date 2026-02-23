@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   controllers: [SocialSecurityController],
   providers: [SocialSecurityService],
 })
-export class SocialSecurityModule { }
+export class SocialSecurityModule {}

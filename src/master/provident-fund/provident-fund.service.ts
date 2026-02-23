@@ -7,7 +7,7 @@ export class ProvidentFundService {
   constructor(
     private prisma: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prisma.providentFund.findMany({

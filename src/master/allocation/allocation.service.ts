@@ -9,7 +9,7 @@ export class AllocationService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async create(
     name: string,

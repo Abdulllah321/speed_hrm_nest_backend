@@ -4,8 +4,8 @@ import { SilhouetteService } from './silhouette.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [SilhouetteController],
-    providers: [SilhouetteService],
+  imports: [PrismaModule],
+  controllers: [SilhouetteController],
+  providers: [SilhouetteService],
 })
-export class SilhouetteModule { }
+export class SilhouetteModule {}

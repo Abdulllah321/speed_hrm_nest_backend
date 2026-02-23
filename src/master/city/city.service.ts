@@ -11,7 +11,7 @@ export class CityService {
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) { }
+  ) {}
 
   async getAllCountries() {
     const cacheKey = 'countries_all';

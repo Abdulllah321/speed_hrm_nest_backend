@@ -13,7 +13,7 @@ export class IncrementService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   private async enrichSingleIncrement(increment: any) {
     if (!increment) return null;
@@ -28,39 +28,39 @@ export class IncrementService {
     ] = await Promise.all([
       increment.employeeGradeId
         ? this.prismaMaster.employeeGrade.findUnique({
-          where: { id: increment.employeeGradeId },
-          select: { id: true, grade: true },
-        })
+            where: { id: increment.employeeGradeId },
+            select: { id: true, grade: true },
+          })
         : null,
       increment.designationId
         ? this.prismaMaster.designation.findUnique({
-          where: { id: increment.designationId },
-          select: { id: true, name: true },
-        })
+            where: { id: increment.designationId },
+            select: { id: true, name: true },
+          })
         : null,
       increment.employee?.departmentId
         ? this.prismaMaster.department.findUnique({
-          where: { id: increment.employee.departmentId },
-          select: { id: true, name: true },
-        })
+            where: { id: increment.employee.departmentId },
+            select: { id: true, name: true },
+          })
         : null,
       increment.employee?.subDepartmentId
         ? this.prismaMaster.subDepartment.findUnique({
-          where: { id: increment.employee.subDepartmentId },
-          select: { id: true, name: true },
-        })
+            where: { id: increment.employee.subDepartmentId },
+            select: { id: true, name: true },
+          })
         : null,
       increment.createdById
         ? this.prismaMaster.user.findUnique({
-          where: { id: increment.createdById },
-          select: { id: true, firstName: true, lastName: true, email: true },
-        })
+            where: { id: increment.createdById },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          })
         : null,
       increment.updatedById
         ? this.prismaMaster.user.findUnique({
-          where: { id: increment.updatedById },
-          select: { id: true, firstName: true, lastName: true, email: true },
-        })
+            where: { id: increment.updatedById },
+            select: { id: true, firstName: true, lastName: true, email: true },
+          })
         : null,
     ]);
 
@@ -89,7 +89,6 @@ export class IncrementService {
 
   async list(params?: { employeeId?: string; month?: string; year?: string }) {
     try {
-
       const where: any = {};
 
       if (params?.employeeId) {
@@ -155,27 +154,27 @@ export class IncrementService {
         await Promise.all([
           employeeGradeIds.length
             ? this.prismaMaster.employeeGrade.findMany({
-              where: { id: { in: employeeGradeIds } },
-              select: { id: true, grade: true },
-            })
+                where: { id: { in: employeeGradeIds } },
+                select: { id: true, grade: true },
+              })
             : [],
           designationIds.length
             ? this.prismaMaster.designation.findMany({
-              where: { id: { in: designationIds } },
-              select: { id: true, name: true },
-            })
+                where: { id: { in: designationIds } },
+                select: { id: true, name: true },
+              })
             : [],
           departmentIds.length
             ? this.prismaMaster.department.findMany({
-              where: { id: { in: departmentIds } },
-              select: { id: true, name: true },
-            })
+                where: { id: { in: departmentIds } },
+                select: { id: true, name: true },
+              })
             : [],
           subDepartmentIds.length
             ? this.prismaMaster.subDepartment.findMany({
-              where: { id: { in: subDepartmentIds } },
-              select: { id: true, name: true },
-            })
+                where: { id: { in: subDepartmentIds } },
+                select: { id: true, name: true },
+              })
             : [],
         ]);
 
@@ -252,7 +251,6 @@ export class IncrementService {
 
   async get(id: string) {
     try {
-
       const increment = await this.prisma.increment.findUnique({
         where: { id },
         include: {
@@ -290,7 +288,6 @@ export class IncrementService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!body.increments || body.increments.length === 0) {
         return {
           status: false,
@@ -437,7 +434,6 @@ export class IncrementService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.increment.findUnique({
         where: { id },
       });
@@ -555,7 +551,6 @@ export class IncrementService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.increment.findUnique({
         where: { id },
       });

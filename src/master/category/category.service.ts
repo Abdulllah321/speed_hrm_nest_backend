@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Injectable()
 export class CategoryService {
-  constructor(private readonly prismaMaster: PrismaMasterService) { }
+  constructor(private readonly prismaMaster: PrismaMasterService) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
     if (createCategoryDto.parentId) {
@@ -96,7 +100,9 @@ export class CategoryService {
     }
 
     if (category.children.length > 0) {
-      throw new BadRequestException('Cannot delete category with sub-categories');
+      throw new BadRequestException(
+        'Cannot delete category with sub-categories',
+      );
     }
 
     return this.prismaMaster.category.delete({

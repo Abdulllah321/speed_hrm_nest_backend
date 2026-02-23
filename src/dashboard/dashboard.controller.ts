@@ -7,7 +7,7 @@ import { PermissionGuard } from '../common/guards/permission.guard';
 @Controller('api/dashboard')
 @UseGuards(JwtAuthGuard, PermissionGuard('hr.dashboard.view'))
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) { }
+  constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('stats')
   @UseGuards(JwtAuthGuard)

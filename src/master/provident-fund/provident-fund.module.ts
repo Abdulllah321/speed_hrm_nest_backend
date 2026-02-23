@@ -9,4 +9,4 @@ import { DatabaseModule } from '../../database/database.module';
   controllers: [ProvidentFundController],
   providers: [ProvidentFundService],
 })
-export class ProvidentFundModule { }
+export class ProvidentFundModule {}

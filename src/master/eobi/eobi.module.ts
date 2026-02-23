@@ -8,4 +8,4 @@ import { PrismaModule } from '../../prisma/prisma.module';
   controllers: [EobiController],
   providers: [EobiService],
 })
-export class EobiModule { }
+export class EobiModule {}

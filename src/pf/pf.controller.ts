@@ -8,7 +8,12 @@ import {
   Req,
 } from '@nestjs/common';
 import { PFService } from './pf.service';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -21,7 +26,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @ApiTags('Provident Fund')
 @Controller('api/pf')
 export class PFController {
-  constructor(private readonly pfService: PFService) { }
+  constructor(private readonly pfService: PFService) {}
 
   @Get('employees')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

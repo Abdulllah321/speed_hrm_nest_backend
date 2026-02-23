@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   controllers: [LocationController],
   providers: [LocationService],
 })
-export class LocationModule { }
+export class LocationModule {}

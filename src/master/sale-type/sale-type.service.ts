@@ -4,7 +4,7 @@ import { CreateSaleTypeDto, UpdateSaleTypeDto } from './dto/sale-type-dto';
 
 @Injectable()
 export class SaleTypeService {
-  constructor(private prisma: PrismaMasterService) { }
+  constructor(private prisma: PrismaMasterService) {}
 
   async create(createDto: CreateSaleTypeDto, userId: string) {
     const result = await this.prisma.saleType.create({
@@ -13,7 +13,11 @@ export class SaleTypeService {
         createdById: userId,
       },
     });
-    return { status: true, data: result, message: 'Sale Type created successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Sale Type created successfully',
+    };
   }
 
   async findAll() {
@@ -35,7 +39,11 @@ export class SaleTypeService {
       where: { id },
       data: updateDto,
     });
-    return { status: true, data: result, message: 'Sale Type updated successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Sale Type updated successfully',
+    };
   }
 
   async remove(id: string) {
