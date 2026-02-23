@@ -1,6 +1,6 @@
 model ChartOfAccount {
   id                    String                 @id @default(uuid())
-  code                  String                 @unique
+  code                  String                
   name                  String
   type                  AccountType
   isGroup               Boolean                @default(false)
