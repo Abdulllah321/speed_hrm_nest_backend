@@ -130,7 +130,7 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ) {
-    // Verify acting user is allowed (admin / super admin)
+    // 1. Verify acting user is allowed (admin / super admin)
     const actingUser = await this.prismaMaster.user.findUnique({
       where: { id: actingUserId },
       include: { role: true },
@@ -146,62 +146,120 @@ export class AuthService {
       return { status: false, message: 'Not authorized to impersonate users' };
     }
 
-    // Find target user by employeeId
-    const targetUser = await this.prismaMaster.user.findFirst({
+    // 2. Fetch employee details from Tenant DB first (we need this for JIT provisioning)
+    const employeeDetails = await this.prismaTenant.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        employeeId: true,
+        employeeName: true,
+        officialEmail: true,
+        personalEmail: true,
+        designationId: true,
+        departmentId: true,
+        status: true,
+      },
+    });
+
+    if (!employeeDetails) {
+      return { status: false, message: 'Employee record not found in system' };
+    }
+
+    // 3. Find target user in Master DB by employeeId
+    let targetUser = await this.prismaMaster.user.findFirst({
       where: { employeeId },
       include: {
         role: { include: { permissions: { include: { permission: true } } } },
       },
     });
 
+    // 4. JIT: If no user account is found, create/assign the dashboard account
     if (!targetUser) {
-      return { status: false, message: 'User account not found for employee' };
+      const email = employeeDetails.officialEmail || employeeDetails.personalEmail;
+      if (!email) {
+        return { status: false, message: 'Employee has no email configured. Cannot create dashboard account.' };
+      }
+
+      // Check if user exists by email but isn't linked to this employeeId
+      targetUser = await this.prismaMaster.user.findUnique({
+        where: { email },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
+      });
+
+      if (targetUser) {
+        // Link existing user to this employeeId and enable dashboard
+        targetUser = await this.prismaMaster.user.update({
+          where: { id: targetUser.id },
+          data: {
+            employeeId,
+            isDashboardEnabled: true,
+            status: 'active'
+          },
+          include: {
+            role: { include: { permissions: { include: { permission: true } } } },
+          },
+        });
+      } else {
+        // Create brand new user account
+        const nameParts = (employeeDetails.employeeName || '').split(' ');
+        const firstName = nameParts[0] || 'Employee';
+        const lastName = nameParts.slice(1).join(' ') || '.';
+
+        targetUser = await this.prismaMaster.user.create({
+          data: {
+            email,
+            firstName,
+            lastName,
+            employeeId,
+            status: 'active',
+            isDashboardEnabled: true,
+            isFirstPassword: true,
+            mustChangePassword: true,
+            authProvider: 'local',
+          },
+          include: {
+            role: { include: { permissions: { include: { permission: true } } } },
+          },
+        });
+      }
     }
 
-    // Fetch employee details separately from Tenant DB if needed
-    // Assuming we want to return employee info in the response
-    const employeeDetails = await this.prismaTenant.employee.findUnique({
-      where: { employeeId },
-      select: {
-        id: true,
-        employeeId: true,
-        designationId: true,
-        departmentId: true,
-      },
-    });
+    // 5. Final validation of target
+    if (targetUser.status !== 'active' || employeeDetails.status !== 'active') {
+      return { status: false, message: 'Account or employee is not active' };
+    }
 
-    // Fetch master data for designation and department
+    // Force enable dashboard if it was previously disabled
+    if (targetUser.isDashboardEnabled === false) {
+      targetUser = await this.prismaMaster.user.update({
+        where: { id: targetUser.id },
+        data: { isDashboardEnabled: true },
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
+      });
+    }
+
+    // Fetch master data for designation and department display
     let designationName: string | null = null;
     let departmentName: string | null = null;
 
-    if (employeeDetails) {
-      if (employeeDetails.designationId) {
-        const designation = await this.prismaMaster.designation.findUnique({
-          where: { id: employeeDetails.designationId },
-        });
-        designationName = designation?.name || null;
-      }
-      if (employeeDetails.departmentId) {
-        const department = await this.prismaMaster.department.findUnique({
-          where: { id: employeeDetails.departmentId },
-        });
-        departmentName = department?.name || null;
-      }
+    if (employeeDetails.designationId) {
+      const designation = await this.prismaMaster.designation.findUnique({
+        where: { id: employeeDetails.designationId },
+      });
+      designationName = designation?.name || null;
+    }
+    if (employeeDetails.departmentId) {
+      const department = await this.prismaMaster.department.findUnique({
+        where: { id: employeeDetails.departmentId },
+      });
+      departmentName = department?.name || null;
     }
 
-    if (targetUser.status !== 'active') {
-      return { status: false, message: 'Target user account is not active' };
-    }
-
-    // Optional: require dashboard to be enabled
-    if (targetUser.isDashboardEnabled === false) {
-      return {
-        status: false,
-        message: 'Dashboard access is not enabled for this user',
-      };
-    }
-
-    // Create tokens similar to normal login
+    // 6. Generate Impersonation Session
     const accessOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.accessExpiresIn as any,
       issuer: authConfig.jwt.issuer,
@@ -213,6 +271,8 @@ export class AuthService {
         roleId: targetUser.roleId,
         employeeId: targetUser.employeeId,
         roleName: targetUser.role?.name || null,
+        impersonatorId: actingUserId,
+        isImpersonating: true,
       },
       authConfig.jwt.accessSecret,
       accessOpts,
@@ -223,7 +283,11 @@ export class AuthService {
       issuer: authConfig.jwt.issuer,
     };
     const refreshToken = jwt.sign(
-      { userId: targetUser.id },
+      {
+        userId: targetUser.id,
+        impersonatorId: actingUserId,
+        isImpersonating: true,
+      },
       authConfig.jwt.refreshSecret,
       refreshOpts,
     );
@@ -239,14 +303,71 @@ export class AuthService {
           role: targetUser.role?.name || null,
           permissions:
             targetUser.role?.permissions.map((p) => p.permission.name) || [],
-          employee: employeeDetails
-            ? {
-              id: employeeDetails.id,
-              employeeId: employeeDetails.employeeId,
-              designation: designationName,
-              department: departmentName,
-            }
-            : null,
+          employee: {
+            id: employeeDetails.id,
+            employeeId: employeeDetails.employeeId,
+            designation: designationName,
+            department: departmentName,
+          },
+        },
+        accessToken,
+        refreshToken,
+      },
+    };
+  }
+
+  /**
+   * Stop impersonating and return to the original admin session.
+   */
+  async stopImpersonating(impersonatorId: string) {
+    const user = await this.prismaMaster.user.findUnique({
+      where: { id: impersonatorId },
+      include: {
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
+    });
+
+    if (!user) return { status: false, message: 'Original user not found' };
+    if (user.status !== 'active') return { status: false, message: 'Original account is not active' };
+
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.accessExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      roleId: user.roleId,
+      employeeId: user.employeeId,
+      roleName: user.role?.name || null,
+    };
+
+    const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+
+    const refreshOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.refreshExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const refreshToken = jwt.sign(
+      { userId: user.id },
+      authConfig.jwt.refreshSecret,
+      refreshOpts,
+    );
+
+    return {
+      status: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role?.name || null,
+          permissions:
+            user.role?.permissions
+              .filter((p) => p.permission)
+              .map((p) => p.permission.name) || [],
         },
         accessToken,
         refreshToken,
@@ -632,7 +753,7 @@ export class AuthService {
 
     // Create a specialized POS terminal token
     const accessOpts: jwt.SignOptions = {
-      expiresIn: '30d', // POS terminals stay logged in longer
+      expiresIn: '8h', // POS terminals stay logged in for 8 hours (PIN requirement)
       issuer: authConfig.jwt.issuer,
     };
 
@@ -709,6 +830,8 @@ export class AuthService {
           roleId: user.roleId,
           employeeId: user.employeeId,
           roleName: user.role?.name || null,
+          impersonatorId: decoded.impersonatorId,
+          isImpersonating: decoded.isImpersonating,
         },
         authConfig.jwt.accessSecret,
         accessOpts,
@@ -1295,9 +1418,10 @@ export class AuthService {
   async posUserLoginStandard(
     email: string,
     pass: string,
-    context: { terminalId: string; posId: string; locationId: string; posSessionId?: string, tenantId: string },
+    context: { terminalId: string; posId: string; locationId: string; posSessionId?: string; tenantId: string },
     deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string }
   ) {
+    // ── 1. Verify user credentials & master-level checks ─────────────────────
     const user = await this.prismaMaster.user.findUnique({
       where: { email },
       include: { role: { include: { permissions: { include: { permission: true } } } } }
@@ -1306,15 +1430,65 @@ export class AuthService {
     if (!user) return { status: false, message: 'Invalid credentials' };
     if (user.status !== 'active') return { status: false, message: 'Account is not active' };
 
-    // Verify Tenant match
-    if (user.tenantId !== context.tenantId) {
-      return { status: false, message: 'User does not belong to this organization' };
+    // Verify the user belongs to the same company/tenant as this terminal
+    if (context.tenantId && user.tenantId !== context.tenantId) {
+      return { status: false, message: 'You do not belong to this organization' };
     }
 
     const isValid = await bcrypt.compare(pass, user.password);
     if (!isValid) return { status: false, message: 'Invalid credentials' };
 
-    // Update session with current user (POS Session)
+    // Verify POS Access
+    const hasPosAccess = user.role?.isSystem || user.role?.permissions?.some(p => p.permission.module === 'POS');
+    if (!hasPosAccess) {
+      return { status: false, errorType: 'NO_POS_ACCESS', message: 'User does not have POS access.' };
+    }
+
+    // ── 2. Employee check in tenant DB (Bypassed for System Admins) ───────────
+    // The user must be an active employee linked to this terminal's location
+    if (!user.role?.isSystem && this.prismaTenant && context.locationId) {
+      let employee: any = null;
+
+      // Primary lookup: by userId (direct link)
+      if (user.id) {
+        employee = await this.prismaTenant.employee.findFirst({
+          where: { userId: user.id },
+          select: { id: true, locationId: true, status: true, employeeName: true }
+        });
+      }
+
+      // Fallback: by employeeId string if the master User.employeeId is set
+      if (!employee && user.employeeId) {
+        employee = await this.prismaTenant.employee.findFirst({
+          where: { employeeId: user.employeeId },
+          select: { id: true, locationId: true, status: true, employeeName: true }
+        });
+      }
+
+      if (!employee) {
+        return { status: false, message: 'No employee record found for this user in the system' };
+      }
+
+      if (employee.status !== 'active') {
+        return { status: false, message: 'Your employee account is not active' };
+      }
+
+      // Check location assignment — must match this terminal's location
+      if (employee.locationId && employee.locationId !== context.locationId) {
+        return {
+          status: false,
+          message: `You are not assigned to this location. Please contact your administrator.`,
+        };
+      }
+
+      // If locationId is null/unset on the employee, we allow it (unassigned = can log in anywhere)
+      // You can tighten this by uncommenting the block below:
+      if (!employee.locationId) {
+        return { status: false, message: 'You have no location assigned. Contact admin.' };
+      }
+    }
+
+    // ── 3. Link to POS session if one is active ───────────────────────────────
     if (context.posSessionId) {
       await this.prismaMaster.posSession.update({
         where: { id: context.posSessionId },
@@ -1322,11 +1496,10 @@ export class AuthService {
       });
     }
 
-    // Generate User Session (Concurrent Limit)
+    // ── 4. Issue combined POS + User access token ─────────────────────────────
     const sessionToken = uuidv4();
     const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, deviceInfo);
 
-    // Create User Access Token with POS Context
     const accessOpts: jwt.SignOptions = {
       expiresIn: '12h',
       issuer: authConfig.jwt.issuer,
@@ -1340,19 +1513,18 @@ export class AuthService {
         employeeId: user.employeeId,
         roleName: user.role?.name || null,
         tenantId: user.tenantId,
-        // Preserve POS Context
+        // POS context embedded in token
         terminalId: context.terminalId,
         posId: context.posId,
         locationId: context.locationId,
         posSessionId: context.posSessionId,
         isPosUser: true,
-        sessionId: sessionId,
+        sessionId,
       },
       authConfig.jwt.accessSecret,
       accessOpts,
     );
 
-    // Also track login history
     await this.prismaMaster.loginHistory.create({
       data: {
         userId: user.id,
@@ -1376,7 +1548,7 @@ export class AuthService {
           isPosUser: true,
         },
         accessToken,
-        sessionId
+        sessionId,
       },
     };
   }
@@ -1405,6 +1577,12 @@ export class AuthService {
       // Verify Tenant match
       if (user.tenantId !== terminalDecoded.tenantId) {
         return { status: false, message: 'User does not belong to this organization' };
+      }
+
+      // Verify POS Access
+      const hasPosAccess = user.role?.isSystem || user.role?.permissions?.some(p => p.permission.module === 'POS');
+      if (!hasPosAccess) {
+        return { status: false, errorType: 'NO_POS_ACCESS', message: 'User does not have POS access. Please log in with a POS-authorized profile.' };
       }
 
       // Find or create POS session
@@ -1436,7 +1614,7 @@ export class AuthService {
 
       // Create Combined Token
       const accessOpts: jwt.SignOptions = {
-        expiresIn: '12h',
+        expiresIn: '8h',
         issuer: authConfig.jwt.issuer,
       };
 
