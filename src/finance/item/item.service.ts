@@ -248,7 +248,7 @@ export class ItemService {
     const itemSubclassIds = [
       ...new Set(items.map((i) => i.itemSubclassId).filter(Boolean)),
     ];
-    const uomIds = [...new Set(items.map((i) => i.uomId).filter(Boolean))];
+
 
     const [
       brands,
@@ -263,9 +263,7 @@ export class ItemService {
       colors,
       itemClasses,
       itemSubclasses,
-      uoms,
     ]: [
-        any[],
         any[],
         any[],
         any[],
@@ -339,11 +337,7 @@ export class ItemService {
             where: { id: { in: itemSubclassIds as string[] } },
           })
           : [],
-        uomIds.length
-          ? this.prismaMaster.uom.findMany({
-            where: { id: { in: uomIds as string[] } },
-          })
-          : [],
+
       ]);
 
     return items.map((item) => ({
@@ -363,7 +357,7 @@ export class ItemService {
       itemClass: itemClasses.find((x) => x.id === item.itemClassId) || null,
       itemSubclass:
         itemSubclasses.find((x) => x.id === item.itemSubclassId) || null,
-      uom: uoms.find((x) => x.id === item.uomId) || null,
+
     }));
   }
 }

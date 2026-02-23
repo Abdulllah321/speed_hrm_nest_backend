@@ -401,33 +401,7 @@ export class MasterDataService {
         return record.id;
     }
 
-    /**
-     * Get or create UOM master record
-     */
-    async getOrCreateUom(name: string): Promise<string | null> {
-        if (!name) return null;
 
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('uom');
-        this.initCache('uom');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prismaMaster.uom.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new UOM: ${normalized}`);
-            record = await this.prismaMaster.uom.create({
-                data: { name: normalized },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
 
     /**
      * Get or create Segment master record
