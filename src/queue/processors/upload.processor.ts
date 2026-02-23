@@ -293,7 +293,6 @@ export class UploadProcessor {
             silhouetteId,
             channelClassId,
             seasonId,
-            uomId,
             segmentId,
         ] = await Promise.all([
             this.masterData.getOrCreateBrand(data.concept as string),
@@ -305,7 +304,6 @@ export class UploadProcessor {
             this.masterData.getOrCreateSilhouette(data.silhouette as string),
             this.masterData.getOrCreateChannelClass(data.channelClass as string),
             this.masterData.getOrCreateSeason(data.season as string),
-            this.masterData.getOrCreateUom(data.uom as string),
             this.masterData.getOrCreateSegment(data.segment as string),
         ]);
 
@@ -354,7 +352,6 @@ export class UploadProcessor {
                 silhouetteId,
                 channelClassId,
                 seasonId,
-                uomId,
                 segmentId,
             },
         });

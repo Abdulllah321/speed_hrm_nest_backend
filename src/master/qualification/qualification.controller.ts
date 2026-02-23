@@ -23,7 +23,7 @@ import {
 @ApiTags('Qualification')
 @Controller('api')
 export class QualificationController {
-  constructor(private service: QualificationService) { }
+  constructor(private service: QualificationService) {}
 
   @Get('qualifications')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.read'))

@@ -34,7 +34,7 @@ import {
 export class AuthController {
   constructor(
     private service: AuthService,
-    private prismaMaster: PrismaMasterService
+    private prismaMaster: PrismaMasterService,
   ) { }
 
   private getCookieOptions(req: any) {
@@ -722,8 +722,6 @@ export class AuthController {
       body.newPassword,
     );
   }
-
-
 
   @Get('login-history')
   @UseGuards(JwtAuthGuard)

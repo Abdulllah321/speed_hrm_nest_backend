@@ -24,7 +24,7 @@ import { CreateCityDto } from './dto/city.dto';
 @ApiTags('City')
 @Controller('api')
 export class CityController {
-  constructor(private service: CityService) { }
+  constructor(private service: CityService) {}
 
   @Get('countries')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))

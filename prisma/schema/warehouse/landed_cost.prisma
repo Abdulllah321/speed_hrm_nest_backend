@@ -1,0 +1,11 @@
+model LandedCostChargeType {
+  id         String          @id @default(uuid())
+  name       String          @unique
+  accountId  String
+  account    ChartOfAccount  @relation(fields: [accountId], references: [id])
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@map("landed_cost_charge_types")
+}

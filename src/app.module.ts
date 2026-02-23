@@ -81,12 +81,15 @@ import { StorageDimensionModule } from './master/storage-dimension/storage-dimen
 import { MachineModule } from './master/machine/machine.module';
 import { CategoryModule } from './master/category/category.module';
 import { UomModule } from './master/uom/uom.module';
+import { TaxRateModule } from './master/tax-rate/tax-rate.module';
 import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
 import { SeasonModule } from './master/season/season.module';
+import { OldSeasonModule } from './master/old-season/old-season.module';
 import { SegmentModule } from './master/segment/segment.module';
 import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
+import { CustomerModule } from './sales/customer/customer.module';
 
 import { IntegrationModule } from './integration/integration.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
@@ -96,6 +99,7 @@ import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
 import { GrnModule } from './warehouse/grn/grn.module';
+import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
@@ -193,9 +197,11 @@ import { WebhookModule } from './webhook/webhook.module';
     ColorModule,
     CategoryModule,
     UomModule,
+    TaxRateModule,
     ItemClassModule,
     ItemSubclassModule,
     SeasonModule,
+    OldSeasonModule,
     SegmentModule,
     ItemModule,
     IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
@@ -207,11 +213,13 @@ import { WebhookModule } from './webhook/webhook.module';
     VendorQuotationModule,
     PurchaseOrderModule,
     GrnModule,
+    LandedCostModule,
     PosModule,
     SearchModule,
+    CustomerModule,
     WebhookModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

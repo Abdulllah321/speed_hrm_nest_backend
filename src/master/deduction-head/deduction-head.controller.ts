@@ -27,7 +27,7 @@ import {
 @ApiTags('Deduction Head')
 @Controller('api')
 export class DeductionHeadController {
-  constructor(private service: DeductionHeadService) { }
+  constructor(private service: DeductionHeadService) {}
 
   @Get('deduction-heads')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.read'))

@@ -10,7 +10,7 @@ export class AttendanceService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(filters?: {
     employeeId?: string;
@@ -983,11 +983,11 @@ export class AttendanceService {
           const checkIn =
             checkInValue && checkInValue.trim()
               ? (() => {
-                const time24 = convertTo24Hour(checkInValue);
-                const dateTimeStr = `${dateStr}T${time24}`;
-                const parsed = new Date(dateTimeStr);
-                return isNaN(parsed.getTime()) ? undefined : parsed;
-              })()
+                  const time24 = convertTo24Hour(checkInValue);
+                  const dateTimeStr = `${dateStr}T${time24}`;
+                  const parsed = new Date(dateTimeStr);
+                  return isNaN(parsed.getTime()) ? undefined : parsed;
+                })()
               : undefined;
 
           const checkOutValue =
@@ -1002,11 +1002,11 @@ export class AttendanceService {
           const checkOut =
             checkOutValue && checkOutValue.trim()
               ? (() => {
-                const time24 = convertTo24Hour(checkOutValue);
-                const dateTimeStr = `${dateStr}T${time24}`;
-                const parsed = new Date(dateTimeStr);
-                return isNaN(parsed.getTime()) ? undefined : parsed;
-              })()
+                  const time24 = convertTo24Hour(checkOutValue);
+                  const dateTimeStr = `${dateStr}T${time24}`;
+                  const parsed = new Date(dateTimeStr);
+                  return isNaN(parsed.getTime()) ? undefined : parsed;
+                })()
               : undefined;
           // Check if this date is a public holiday
           const holiday = await this.prismaMaster.holiday.findFirst({
@@ -1135,8 +1135,8 @@ export class AttendanceService {
               longitude:
                 record.Longitude || record.longitude
                   ? new Decimal(
-                    parseFloat(record.Longitude || record.longitude),
-                  )
+                      parseFloat(record.Longitude || record.longitude),
+                    )
                   : null,
               workingHours: workingHours,
               overtimeHours: overtimeHours,
@@ -1164,8 +1164,8 @@ export class AttendanceService {
               longitude:
                 record.Longitude || record.longitude
                   ? new Decimal(
-                    parseFloat(record.Longitude || record.longitude),
-                  )
+                      parseFloat(record.Longitude || record.longitude),
+                    )
                   : null,
               workingHours: workingHours,
               overtimeHours: overtimeHours,
@@ -1484,7 +1484,7 @@ export class AttendanceService {
         const totalDays =
           Math.round(
             (endMidnight.getTime() - startMidnight.getTime()) /
-            (1000 * 60 * 60 * 24),
+              (1000 * 60 * 60 * 24),
           ) + 1;
         let scheduleDays = 0;
         let offDays = 0;

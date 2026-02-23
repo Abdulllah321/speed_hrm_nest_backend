@@ -13,7 +13,11 @@ export class MachineService {
         createdById: userId,
       },
     });
-    return { status: true, data: result, message: 'Machine created successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Machine created successfully',
+    };
   }
 
   async findAll() {
@@ -35,7 +39,11 @@ export class MachineService {
       where: { id },
       data: updateDto,
     });
-    return { status: true, data: result, message: 'Machine updated successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Machine updated successfully',
+    };
   }
 
   async remove(id: string) {

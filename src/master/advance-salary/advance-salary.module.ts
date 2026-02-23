@@ -11,4 +11,4 @@ import { NotificationsModule } from '../../notifications/notifications.module';
   providers: [AdvanceSalaryService],
   exports: [AdvanceSalaryService],
 })
-export class AdvanceSalaryModule { }
+export class AdvanceSalaryModule {}

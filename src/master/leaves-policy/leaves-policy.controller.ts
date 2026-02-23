@@ -28,7 +28,7 @@ import {
 @ApiTags('Leaves Policy')
 @Controller('api')
 export class LeavesPolicyController {
-  constructor(private service: LeavesPolicyService) { }
+  constructor(private service: LeavesPolicyService) {}
 
   @Get('leaves-policies')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.read'))

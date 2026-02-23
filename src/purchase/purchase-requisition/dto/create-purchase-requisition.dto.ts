@@ -1,44 +1,40 @@
-
-import { IsDate, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  IsDate,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePurchaseRequisitionItemDto {
-    @IsString()
-    @IsNotEmpty()
-    itemId: string;
+  @IsString()
+  @IsNotEmpty()
+  itemId: string;
 
-    @IsString()
-    @IsOptional()
-    description?: string;
-
-    @IsNotEmpty()
-    requiredQty: number;
-
-    @IsDate()
-    @Type(() => Date)
-    @IsOptional()
-    neededByDate?: Date;
+  @IsNotEmpty()
+  requiredQty: number;
 }
 
 export class CreatePurchaseRequisitionDto {
-    @IsString()
-    @IsNotEmpty()
-    requestedBy: string;
+  @IsString()
+  @IsOptional()
+  department?: string;
 
-    @IsString()
-    @IsOptional()
-    department?: string;
+  @IsString()
+  @IsOptional()
+  type?: string;
 
-    @IsDate()
-    @Type(() => Date)
-    @IsOptional()
-    requestDate?: Date;
+  @IsDate()
+  @Type(() => Date)
+  @IsOptional()
+  requestDate?: Date;
 
-    @IsString()
-    @IsOptional()
-    notes?: string;
+  @IsString()
+  @IsOptional()
+  notes?: string;
 
-    @ValidateNested({ each: true })
-    @Type(() => CreatePurchaseRequisitionItemDto)
-    items: CreatePurchaseRequisitionItemDto[];
+  @ValidateNested({ each: true })
+  @Type(() => CreatePurchaseRequisitionItemDto)
+  items: CreatePurchaseRequisitionItemDto[];
 }

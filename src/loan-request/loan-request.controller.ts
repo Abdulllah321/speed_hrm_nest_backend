@@ -33,7 +33,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class LoanRequestController {
-  constructor(private service: LoanRequestService) { }
+  constructor(private service: LoanRequestService) {}
 
   @Get('loan-requests')
   @Permissions('hr.loan-request.read')
@@ -53,14 +53,17 @@ export class LoanRequestController {
     @Query('requestedDate') requestedDate?: string,
     @Query('repaymentStartMonthYear') repaymentStartMonthYear?: string,
   ) {
-    return this.service.list({
-      employeeId,
-      loanTypeId,
-      status,
-      approvalStatus,
-      requestedDate,
-      repaymentStartMonthYear,
-    }, req.user);
+    return this.service.list(
+      {
+        employeeId,
+        loanTypeId,
+        status,
+        approvalStatus,
+        requestedDate,
+        repaymentStartMonthYear,
+      },
+      req.user,
+    );
   }
 
   @Get('loan-requests/:id')

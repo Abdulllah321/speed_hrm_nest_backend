@@ -4,6 +4,7 @@ model PurchaseOrder {
   vendorQuotationId    String?              @map("vendor_quotation_id")
   vendorId             String               @map("vendor_id")
   rfqId                String?              @map("rfq_id")
+  purchaseRequisitionId String?             @map("purchase_requisition_id")
   orderDate            DateTime             @default(now()) @map("order_date")
   expectedDeliveryDate DateTime?            @map("expected_delivery_date")
   status               String               @default("DRAFT")
@@ -17,6 +18,7 @@ model PurchaseOrder {
   goodsReceiptNotes    GoodsReceiptNote[]
   items                PurchaseOrderItem[]
   rfq                  RequestForQuotation? @relation(fields: [rfqId], references: [id])
+  purchaseRequisition  PurchaseRequisition? @relation(fields: [purchaseRequisitionId], references: [id])
   vendor               Supplier             @relation(fields: [vendorId], references: [id])
   vendorQuotation      VendorQuotation?     @relation(fields: [vendorQuotationId], references: [id])
 

@@ -9,4 +9,4 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   controllers: [SalaryBreakupController],
   providers: [SalaryBreakupService],
 })
-export class SalaryBreakupModule { }
+export class SalaryBreakupModule {}

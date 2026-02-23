@@ -7,7 +7,7 @@ export class AllowanceHeadService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const items = await this.prismaMaster.allowanceHead.findMany({

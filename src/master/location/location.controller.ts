@@ -26,7 +26,7 @@ import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 @ApiTags('Location')
 @Controller('api')
 export class LocationController {
-  constructor(private service: LocationService) { }
+  constructor(private service: LocationService) {}
 
   @Get('public/locations')
   @ApiOperation({ summary: 'List all active locations (Public)' })

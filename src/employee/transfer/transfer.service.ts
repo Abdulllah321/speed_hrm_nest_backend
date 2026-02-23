@@ -12,10 +12,9 @@ export class TransferService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-  ) { }
+  ) {}
 
   async create(createTransferDto: CreateTransferDto, userId: string) {
-
     const {
       employeeId,
       transferDate,
@@ -74,7 +73,6 @@ export class TransferService {
   }
 
   async findAll(employeeId: string) {
-
     const transfers = await this.prisma.employeeTransferHistory.findMany({
       where: { employeeId },
       orderBy: {

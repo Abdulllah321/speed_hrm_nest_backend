@@ -10,4 +10,4 @@ import { PosModule } from '../master/pos/pos.module';
   controllers: [AuthController],
   providers: [AuthService],
 })
-export class AuthModule { }
+export class AuthModule {}
