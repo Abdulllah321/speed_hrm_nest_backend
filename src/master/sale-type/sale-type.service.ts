@@ -1,10 +1,11 @@
+import { PrismaService } from '../../database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateSaleTypeDto, UpdateSaleTypeDto } from './dto/sale-type-dto';
 
 @Injectable()
 export class SaleTypeService {
-  constructor(private prisma: PrismaMasterService) {}
+  constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateSaleTypeDto, userId: string) {
     const result = await this.prisma.saleType.create({

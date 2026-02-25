@@ -58,7 +58,7 @@ export class AdvanceSalaryService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -76,7 +76,7 @@ export class AdvanceSalaryService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -183,11 +183,11 @@ export class AdvanceSalaryService {
           where: { id: { in: Array.from(userIds) } },
           select: { id: true, firstName: true, lastName: true, email: true },
         }),
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: Array.from(deptIds) } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: Array.from(subDeptIds) } },
           select: { id: true, name: true },
         }),
@@ -262,13 +262,13 @@ export class AdvanceSalaryService {
           select: { id: true, firstName: true, lastName: true, email: true },
         }),
         advanceSalary.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: advanceSalary.employee.departmentId },
               select: { id: true, name: true },
             })
           : null,
         advanceSalary.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: advanceSalary.employee.subDepartmentId },
               select: { id: true, name: true },
             })

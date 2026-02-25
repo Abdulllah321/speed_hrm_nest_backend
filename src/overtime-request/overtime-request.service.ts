@@ -11,8 +11,8 @@ import {
 @Injectable()
 export class OvertimeRequestService {
   constructor(
-    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
   ) {}
@@ -57,7 +57,7 @@ export class OvertimeRequestService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -75,7 +75,7 @@ export class OvertimeRequestService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -177,10 +177,10 @@ export class OvertimeRequestService {
       ];
 
       const [departments, subDepartments, users] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds as string[] } },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds as string[] } },
         }),
         this.prismaMaster.user.findMany({
@@ -283,11 +283,11 @@ export class OvertimeRequestService {
       ].filter(Boolean) as string[];
 
       const [dept, subDept, users] = await Promise.all([
-        this.prismaMaster.department.findUnique({
+        this.prisma.department.findUnique({
           where: { id: overtimeRequest.employee.departmentId },
         }),
         overtimeRequest.employee.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: overtimeRequest.employee.subDepartmentId },
             })
           : null,

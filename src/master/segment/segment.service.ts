@@ -3,6 +3,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import {
   CreateSegmentDto,
   UpdateSegmentDto,
@@ -12,7 +14,9 @@ import {
 @Injectable()
 export class SegmentService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
+        private prismaMaster: PrismaMasterService,
+    
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
@@ -24,7 +28,7 @@ export class SegmentService {
       return { status: true, data: cachedData };
     }
 
-    const segments = await this.prismaMaster.segment.findMany({
+    const segments = await this.prisma.segment.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -54,7 +58,7 @@ export class SegmentService {
   }
 
   async getById(id: string) {
-    const segment = await this.prismaMaster.segment.findUnique({
+    const segment = await this.prisma.segment.findUnique({
       where: { id },
     });
     if (!segment) return { status: false, message: 'Segment not found' };
@@ -73,7 +77,7 @@ export class SegmentService {
 
   async createMany(items: CreateSegmentDto[], createdById: string) {
     try {
-      const result = await this.prismaMaster.segment.createMany({
+      const result = await this.prisma.segment.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -108,12 +112,12 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.segment.findUnique({
+      const existing = await this.prisma.segment.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Segment not found' };
 
-      const segment = await this.prismaMaster.segment.update({
+      const segment = await this.prisma.segment.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -150,7 +154,7 @@ export class SegmentService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.segment.update({
+          await this.prisma.segment.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -184,7 +188,7 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.segment.deleteMany({
+      const result = await this.prisma.segment.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -214,10 +218,10 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.segment.findUnique({
+      const existing = await this.prisma.segment.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.segment.delete({ where: { id } });
+      const result = await this.prisma.segment.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

@@ -1,5 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { CreatePosDto } from './dto/create-pos.dto';
 import { UpdatePosDto } from './dto/update-pos.dto';
@@ -9,12 +11,13 @@ import * as bcrypt from 'bcrypt';
 @Injectable()
 export class PosService {
   constructor(
+    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) { }
 
   async list(locationId?: string) {
-    const items = await this.prismaMaster.pos.findMany({
+    const items = await this.prisma.pos.findMany({
       where: locationId ? { locationId } : {},
       include: { location: true },
       orderBy: { createdAt: 'desc' },
@@ -23,7 +26,7 @@ export class PosService {
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.pos.findUnique({
+    const item = await this.prisma.pos.findUnique({
       where: { id },
       include: { location: true },
     });
@@ -37,7 +40,7 @@ export class PosService {
   ) {
     try {
       // Get existing POS IDs for this location to generate the next sequential ID
-      const existingPos = await this.prismaMaster.pos.findMany({
+      const existingPos = await this.prisma.pos.findMany({
         where: { locationId: body.locationId },
         select: { posId: true },
       });
@@ -47,7 +50,7 @@ export class PosService {
       // Generate terminalCode if not provided
       let terminalCode = body.terminalCode;
       if (!terminalCode) {
-        const location = await this.prismaMaster.location.findUnique({
+        const location = await this.prisma.location.findUnique({
           where: { id: body.locationId },
           select: { name: true },
         });
@@ -59,7 +62,7 @@ export class PosService {
         terminalCode = `${prefix}-${nextPosId}`;
 
         // Check for uniqueness and append suffix if needed
-        const existing = await this.prismaMaster.pos.findUnique({
+        const existing = await this.prisma.pos.findUnique({
           where: { terminalCode },
         });
         if (existing) {
@@ -67,7 +70,7 @@ export class PosService {
         }
       } else {
         // strict check if manually provided
-        const existing = await this.prismaMaster.pos.findUnique({
+        const existing = await this.prisma.pos.findUnique({
           where: { terminalCode },
         });
         if (existing) {
@@ -80,7 +83,7 @@ export class PosService {
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
 
-      const created = await this.prismaMaster.pos.create({
+      const created = await this.prisma.pos.create({
         data: {
           name: body.name,
           locationId: body.locationId,
@@ -133,7 +136,7 @@ export class PosService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.pos.findUnique({
+      const existing = await this.prisma.pos.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'POS not found' };
@@ -143,7 +146,7 @@ export class PosService {
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
 
-      const updated = await this.prismaMaster.pos.update({
+      const updated = await this.prisma.pos.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -194,12 +197,12 @@ export class PosService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.pos.findUnique({
+      const existing = await this.prisma.pos.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'POS not found' };
 
-      const removed = await this.prismaMaster.pos.delete({
+      const removed = await this.prisma.pos.delete({
         where: { id },
       });
 
@@ -235,18 +238,19 @@ export class PosService {
   }
 
   async validateTerminal(terminalCode: string, pin: string) {
-    const terminal = await this.prismaMaster.pos.findUnique({
+    const terminal = await this.prisma.pos.findUnique({
       where: {
         terminalCode,
       },
-      include: {
-        company: {
-          include: {
-            tenant: true,
-          },
-        },
-      },
     });
+
+    let company: any = null;
+    if (terminal?.companyId) {
+      company = await this.prismaMaster.company.findUnique({
+        where: { id: terminal.companyId },
+        include: { tenant: true }
+      });
+    }
 
     if (!terminal || terminal.status !== 'active') {
       return { status: false, message: 'Terminal not found or inactive' };
@@ -270,8 +274,9 @@ export class PosService {
         terminalId: terminal.id,
         name: terminal.name,
         companyId: terminal.companyId,
-        company: terminal.company,
-        tenant: terminal.company?.tenant,
+        company: company,
+        tenant: company?.tenant,
+
         posId: terminal.posId,
         terminalCode: terminal.terminalCode,
         locationId: terminal.locationId,

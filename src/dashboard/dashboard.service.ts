@@ -100,7 +100,7 @@ export class DashboardService {
       },
     });
 
-    const departments = await this.prismaMaster.department.findMany({
+    const departments = await this.prisma.department.findMany({
       select: { id: true, name: true },
     });
 
@@ -489,7 +489,7 @@ export class DashboardService {
       });
 
     // 3. Upcoming Holidays
-    const upcomingHoliday = await this.prismaMaster.holiday.findFirst({
+    const upcomingHoliday = await this.prisma.holiday.findFirst({
       where: {
         dateFrom: {
           gte: today,

@@ -1,23 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 
 @Injectable()
 export class JobTypeService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
   async list() {
-    const items = await this.prismaMaster.jobType.findMany({
+    const items = await this.prisma.jobType.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.jobType.findUnique({ where: { id } });
+    const item = await this.prisma.jobType.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'Job type not found' };
     return { status: true, data: item };
   }
@@ -27,7 +29,7 @@ export class JobTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.jobType.create({
+      const created = await this.prisma.jobType.create({
         data: { name, status: 'active', createdById: ctx.userId },
       });
       await this.activityLogs.log({
@@ -74,7 +76,7 @@ export class JobTypeService {
   ) {
     if (!names?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prismaMaster.jobType.createMany({
+      const result = await this.prisma.jobType.createMany({
         data: names.map((n) => ({
           name: n,
           status: 'active',
@@ -125,10 +127,10 @@ export class JobTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.jobType.findUnique({
+      const existing = await this.prisma.jobType.findUnique({
         where: { id },
       });
-      const updated = await this.prismaMaster.jobType.update({
+      const updated = await this.prisma.jobType.update({
         where: { id },
         data: { name },
       });
@@ -179,7 +181,7 @@ export class JobTypeService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        await this.prismaMaster.jobType.update({
+        await this.prisma.jobType.update({
           where: { id: item.id },
           data: { name: item.name },
         });
@@ -226,10 +228,10 @@ export class JobTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.jobType.findUnique({
+      const existing = await this.prisma.jobType.findUnique({
         where: { id },
       });
-      const removed = await this.prismaMaster.jobType.delete({ where: { id } });
+      const removed = await this.prisma.jobType.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -274,7 +276,7 @@ export class JobTypeService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prismaMaster.jobType.deleteMany({
+      const removed = await this.prisma.jobType.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

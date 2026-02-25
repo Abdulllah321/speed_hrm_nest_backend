@@ -7,9 +7,8 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 export class AttendanceRequestQueryService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   private async resolveApproverUserId(args: {
     level: {
@@ -51,7 +50,7 @@ export class AttendanceRequestQueryService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -69,7 +68,7 @@ export class AttendanceRequestQueryService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -122,10 +121,10 @@ export class AttendanceRequestQueryService {
     });
 
     // Fetch all departments and designations for mapping from Master DB
-    const departments = await this.prismaMaster.department.findMany({
+    const departments = await this.prisma.department.findMany({
       include: { subDepartments: true },
     });
-    const designations = await this.prismaMaster.designation.findMany();
+    const designations = await this.prisma.designation.findMany();
 
     // Map IDs to names
     const mappedQueries = queries.map((query) => {
@@ -177,10 +176,10 @@ export class AttendanceRequestQueryService {
 
     // Fetch department and designation for mapping from Master DB
     const department = query.department
-      ? await this.prismaMaster.department.findUnique({
-          where: { id: query.department },
-          include: { subDepartments: true },
-        })
+      ? await this.prisma.department.findUnique({
+        where: { id: query.department },
+        include: { subDepartments: true },
+      })
       : null;
 
     const subDepartment =
@@ -189,9 +188,9 @@ export class AttendanceRequestQueryService {
         : null;
 
     const designation = query.employee?.designationId
-      ? await this.prismaMaster.designation.findUnique({
-          where: { id: query.employee.designationId },
-        })
+      ? await this.prisma.designation.findUnique({
+        where: { id: query.employee.designationId },
+      })
       : null;
 
     return {
@@ -358,11 +357,11 @@ export class AttendanceRequestQueryService {
         status: true,
         data: createdWithEmployee
           ? {
-              ...createdWithEmployee,
-              employeeId:
-                createdWithEmployee.employee?.employeeId ||
-                createdWithEmployee.employeeId,
-            }
+            ...createdWithEmployee,
+            employeeId:
+              createdWithEmployee.employee?.employeeId ||
+              createdWithEmployee.employeeId,
+          }
           : created,
       };
     } catch (error: any) {
@@ -467,11 +466,11 @@ export class AttendanceRequestQueryService {
         status: true,
         data: updatedWithEmployee
           ? {
-              ...updatedWithEmployee,
-              employeeId:
-                updatedWithEmployee.employee?.employeeId ||
-                updatedWithEmployee.employeeId,
-            }
+            ...updatedWithEmployee,
+            employeeId:
+              updatedWithEmployee.employee?.employeeId ||
+              updatedWithEmployee.employeeId,
+          }
           : updated,
       };
     } catch (error: any) {

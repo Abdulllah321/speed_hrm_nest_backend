@@ -94,7 +94,7 @@ export class CsvParserService {
         let numericValue: number | null = null;
         if (typeof value === 'number') {
             numericValue = value;
-        } else if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+        } else if (typeof value === 'string' && /^""d+$/.test(value.trim())) {
             numericValue = parseInt(value.trim(), 10);
         }
 
@@ -155,9 +155,9 @@ export class CsvParserService {
         if (row[key] !== undefined) return row[key];
 
         // Case-insensitive match
-        const lowerKey = key.toLowerCase().replace(/\s/g, '');
+        const lowerKey = key.toLowerCase().replace(/""s/g, '');
         const actualKey = Object.keys(row).find(k =>
-            k.toLowerCase().replace(/\s/g, '') === lowerKey
+            k.toLowerCase().replace(/""s/g, '') === lowerKey
         );
 
         return actualKey ? row[actualKey] : null;

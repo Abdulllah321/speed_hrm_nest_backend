@@ -80,7 +80,6 @@ import { SalesmanModule } from './master/salesman/salesman.module';
 import { StorageDimensionModule } from './master/storage-dimension/storage-dimension.module';
 import { MachineModule } from './master/machine/machine.module';
 import { CategoryModule } from './master/category/category.module';
-import { UomModule } from './master/uom/uom.module';
 import { TaxRateModule } from './master/tax-rate/tax-rate.module';
 import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
@@ -90,7 +89,6 @@ import { SegmentModule } from './master/segment/segment.module';
 import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
 import { CustomerModule } from './sales/customer/customer.module';
-
 import { IntegrationModule } from './integration/integration.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -196,7 +194,6 @@ import { WebhookModule } from './webhook/webhook.module';
     ChannelClassModule,
     ColorModule,
     CategoryModule,
-    UomModule,
     TaxRateModule,
     ItemClassModule,
     ItemSubclassModule,

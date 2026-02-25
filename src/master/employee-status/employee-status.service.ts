@@ -1,19 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 
 @Injectable()
 export class EmployeeStatusService {
-  constructor(private prismaMaster: PrismaMasterService) {}
+  constructor(private prisma: PrismaService) {}
 
   async list() {
-    const items = await this.prismaMaster.employeeStatus.findMany({
+    const items = await this.prisma.employeeStatus.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.employeeStatus.findUnique({
+    const item = await this.prisma.employeeStatus.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Status not found' };
@@ -25,7 +27,7 @@ export class EmployeeStatusService {
       if (!data.status) {
         return { status: false, message: 'Status name is required' };
       }
-      const item = await this.prismaMaster.employeeStatus.create({
+      const item = await this.prisma.employeeStatus.create({
         data: {
           status: data.status,
           statusType: data.statusType || 'Active',
@@ -47,7 +49,7 @@ export class EmployeeStatusService {
 
   async update(id: string, data: { status?: string; statusType?: string }) {
     try {
-      const item = await this.prismaMaster.employeeStatus.update({
+      const item = await this.prisma.employeeStatus.update({
         where: { id },
         data,
       });
@@ -67,7 +69,7 @@ export class EmployeeStatusService {
 
   async delete(id: string) {
     try {
-      await this.prismaMaster.employeeStatus.delete({ where: { id } });
+      await this.prisma.employeeStatus.delete({ where: { id } });
       return { status: true, message: 'Employee status deleted successfully' };
     } catch (error) {
       return {
@@ -91,7 +93,7 @@ export class EmployeeStatusService {
         return { status: false, message: 'No valid data provided' };
       }
 
-      await this.prismaMaster.employeeStatus.createMany({
+      await this.prisma.employeeStatus.createMany({
         data: validData,
         skipDuplicates: true,
       });

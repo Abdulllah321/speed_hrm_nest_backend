@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { PrismaMasterService } from '../database/prisma-master.service';
 import { Decimal } from '@prisma/client/runtime/client';
+import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class PFService {
@@ -9,7 +9,7 @@ export class PFService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly prismaMaster: PrismaMasterService,
+    private readonly prismaMaster: PrismaMasterService
   ) {}
 
   async getPFEmployees() {
@@ -45,15 +45,15 @@ export class PFService {
       ] as string[];
 
       const [departments, subDepartments, designations] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.designation.findMany({
+        this.prisma.designation.findMany({
           where: { id: { in: desgIds } },
           select: { id: true, name: true },
         }),
@@ -211,7 +211,7 @@ export class PFService {
             })
             .then(async (e) => {
               if (e?.departmentId) {
-                return this.prismaMaster.department.findUnique({
+                return this.prisma.department.findUnique({
                   where: { id: e.departmentId },
                   select: { name: true },
                 });
@@ -316,11 +316,11 @@ export class PFService {
       ] as string[];
 
       const [departments, subDepartments] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),

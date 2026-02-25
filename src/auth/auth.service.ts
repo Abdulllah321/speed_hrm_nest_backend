@@ -16,7 +16,7 @@ import { CompanyService } from '../admin/company/company.service';
 import { PosService } from '../master/pos/pos.service';
 
 function parseExpiryToMs(expiry: string) {
-  const m = expiry.match(/^(\d+)([smhd])$/);
+  const m = expiry.match(/^(""d+)([smhd])$/);
   if (!m) return 30 * 24 * 60 * 60 * 1000;
   const v = parseInt(m[1]);
   const unit = m[2];
@@ -36,7 +36,7 @@ export class AuthService {
     @Inject(forwardRef(() => CompanyService))
     private companyService: CompanyService,
     private posService: PosService,
-    @Optional() private prismaTenant: PrismaService,
+    @Optional() private prisma: PrismaService,
   ) {}
 
   async login(
@@ -151,7 +151,7 @@ export class AuthService {
     }
 
     // 2. Fetch employee details from Tenant DB first (we need this for JIT provisioning)
-    const employeeDetails = await this.prismaTenant.employee.findUnique({
+    const employeeDetails = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       select: {
         id: true,
@@ -251,13 +251,13 @@ export class AuthService {
     let departmentName: string | null = null;
 
     if (employeeDetails.designationId) {
-      const designation = await this.prismaMaster.designation.findUnique({
+      const designation = await this.prisma.designation.findUnique({
         where: { id: employeeDetails.designationId },
       });
       designationName = designation?.name || null;
     }
     if (employeeDetails.departmentId) {
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: employeeDetails.departmentId },
       });
       departmentName = department?.name || null;
@@ -638,7 +638,7 @@ export class AuthService {
     let location: any = null;
 
     if (code) {
-      location = await this.prismaMaster.location.findFirst({
+      location = await this.prisma.location.findFirst({
         where: { code: { equals: code, mode: 'insensitive' }, status: 'active' },
         include: { pos: { where: { status: 'active' } } },
       });
@@ -667,7 +667,7 @@ export class AuthService {
       }
     } else if (lat && lng) {
       // Find nearest
-      const locations = await this.prismaMaster.location.findMany({
+      const locations = await this.prisma.location.findMany({
         where: { status: 'active' },
         include: { pos: { where: { status: 'active' } } },
       });
@@ -773,7 +773,7 @@ export class AuthService {
     );
 
     // Create a PosSession record
-    const session = await this.prismaMaster.posSession.create({
+    const session = await this.prisma.posSession.create({
       data: {
         posId: terminalId,
         status: 'open',
@@ -882,7 +882,7 @@ export class AuthService {
 
     // Handle POS Terminal identity if not a regular user
     if (!user) {
-      const terminal = await this.prismaMaster.pos.findUnique({
+      const terminal = await this.prisma.pos.findUnique({
         where: { id: userId },
         include: { location: true },
       });
@@ -914,10 +914,10 @@ export class AuthService {
 
     if (!user) return { status: false, message: 'Identity not found' };
 
-    // Resolve employee details if prismaTenant is available
-    if (this.prismaTenant) {
+    // Resolve employee details if prisma is available
+    if (this.prisma) {
       try {
-        const employee = await this.prismaTenant.employee.findUnique({
+        const employee = await this.prisma.employee.findUnique({
           where: { userId },
           select: {
             id: true,
@@ -931,10 +931,10 @@ export class AuthService {
         if (employee) {
           // Fetch Master data for department and designation
           const [dept, desg] = await Promise.all([
-            this.prismaMaster.department.findUnique({
+            this.prisma.department.findUnique({
               where: { id: employee.departmentId || '' },
             }),
-            this.prismaMaster.designation.findUnique({
+            this.prisma.designation.findUnique({
               where: { id: employee.designationId || '' },
             }),
           ]);
@@ -1035,10 +1035,10 @@ export class AuthService {
       },
     })) as any;
 
-    // Resolve employee details if prismaTenant is available
-    if (this.prismaTenant) {
+    // Resolve employee details if prisma is available
+    if (this.prisma) {
       try {
-        const employee = await this.prismaTenant.employee.findUnique({
+        const employee = await this.prisma.employee.findUnique({
           where: { userId },
           select: {
             id: true,
@@ -1051,10 +1051,10 @@ export class AuthService {
 
         if (employee) {
           const [dept, desg] = await Promise.all([
-            this.prismaMaster.department.findUnique({
+            this.prisma.department.findUnique({
               where: { id: employee.departmentId || '' },
             }),
-            this.prismaMaster.designation.findUnique({
+            this.prisma.designation.findUnique({
               where: { id: employee.designationId || '' },
             }),
           ]);
@@ -1091,10 +1091,10 @@ export class AuthService {
     })) as any[];
 
     // If tenant is connected, map employees to users
-    if (this.prismaTenant) {
+    if (this.prisma) {
       try {
         const userIds = users.map((u) => u.id);
-        const employees = await this.prismaTenant.employee.findMany({
+        const employees = await this.prisma.employee.findMany({
           where: { userId: { in: userIds } },
           select: {
             userId: true,
@@ -1120,10 +1120,10 @@ export class AuthService {
         ];
 
         const [departments, designations] = await Promise.all([
-          this.prismaMaster.department.findMany({
+          this.prisma.department.findMany({
             where: { id: { in: deptIds } },
           }),
-          this.prismaMaster.designation.findMany({
+          this.prisma.designation.findMany({
             where: { id: { in: desgIds } },
           }),
         ]);
@@ -1442,12 +1442,12 @@ export class AuthService {
 
     // ── 2. Employee check in tenant DB (Bypassed for System Admins) ───────────
     // The user must be an active employee linked to this terminal's location
-    if (!user.role?.isSystem && this.prismaTenant && context.locationId) {
+    if (!user.role?.isSystem && this.prisma && context.locationId) {
       let employee: any = null;
 
       // Primary lookup: by userId (direct link)
       if (user.id) {
-        employee = await this.prismaTenant.employee.findFirst({
+        employee = await this.prisma.employee.findFirst({
           where: { userId: user.id },
           select: { id: true, locationId: true, status: true, employeeName: true }
         });
@@ -1455,7 +1455,7 @@ export class AuthService {
 
       // Fallback: by employeeId string if the master User.employeeId is set
       if (!employee && user.employeeId) {
-        employee = await this.prismaTenant.employee.findFirst({
+        employee = await this.prisma.employee.findFirst({
           where: { employeeId: user.employeeId },
           select: { id: true, locationId: true, status: true, employeeName: true }
         });
@@ -1486,7 +1486,7 @@ export class AuthService {
 
     // ── 3. Link to POS session if one is active ───────────────────────────────
     if (context.posSessionId) {
-      await this.prismaMaster.posSession.update({
+      await this.prisma.posSession.update({
         where: { id: context.posSessionId },
         data: { userId: user.id },
       });
@@ -1582,14 +1582,14 @@ export class AuthService {
       }
 
       // Find or create POS session
-      let posSession = await this.prismaMaster.posSession.findFirst({
+      let posSession = await this.prisma.posSession.findFirst({
         where: { posId: terminalDecoded.terminalId, status: 'open' },
         orderBy: { createdAt: 'desc' }
       });
 
       if (!posSession) {
         // Create if missing (though it should be created at terminal login)
-        posSession = await this.prismaMaster.posSession.create({
+        posSession = await this.prisma.posSession.create({
           data: {
             posId: terminalDecoded.terminalId,
             status: 'open',
@@ -1598,7 +1598,7 @@ export class AuthService {
           }
         });
       } else {
-        await this.prismaMaster.posSession.update({
+        await this.prisma.posSession.update({
           where: { id: posSession.id },
           data: { userId: user.id },
         });
