@@ -26,7 +26,7 @@ export class GenderService {
       return { status: true, data: cachedData };
     }
 
-    const genders = await this.prismaMaster.gender.findMany({
+    const genders = await this.prisma.gender.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -56,7 +56,7 @@ export class GenderService {
   }
 
   async getGenderById(id: string) {
-    const gender = await this.prismaMaster.gender.findUnique({
+    const gender = await this.prisma.gender.findUnique({
       where: { id },
     });
     if (!gender) return { status: false, message: 'Gender not found' };
@@ -75,7 +75,7 @@ export class GenderService {
 
   async createGenders(items: CreateGenderDto[], createdById: string) {
     try {
-      const genders = await this.prismaMaster.gender.createMany({
+      const genders = await this.prisma.gender.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -110,10 +110,10 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.gender.findUnique({
+      const existing = await this.prisma.gender.findUnique({
         where: { id },
       });
-      const gender = await this.prismaMaster.gender.update({
+      const gender = await this.prisma.gender.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -151,7 +151,7 @@ export class GenderService {
       const updated: any[] = [];
       for (const dto of validDtos) {
         updated.push(
-          await this.prismaMaster.gender.update({
+          await this.prisma.gender.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -185,7 +185,7 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.gender.deleteMany({
+      const result = await this.prisma.gender.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -215,10 +215,10 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.gender.findUnique({
+      const existing = await this.prisma.gender.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.gender.delete({ where: { id } });
+      const result = await this.prisma.gender.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

@@ -53,11 +53,11 @@ export class RequestForwardingService {
 
     // Fetch Master DB data in parallel
     const [departments, subDepartments, users] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: Array.from(deptIds) } },
         select: { id: true, name: true },
       }),
-      this.prismaMaster.subDepartment.findMany({
+      this.prisma.subDepartment.findMany({
         where: { id: { in: Array.from(subDeptIds) } },
         select: { id: true, name: true },
       }),
@@ -136,11 +136,11 @@ export class RequestForwardingService {
 
     // Fetch Master DB data in parallel
     const [departments, subDepartments, users] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: Array.from(deptIds) } },
         select: { id: true, name: true },
       }),
-      this.prismaMaster.subDepartment.findMany({
+      this.prisma.subDepartment.findMany({
         where: { id: { in: Array.from(subDeptIds) } },
         select: { id: true, name: true },
       }),
@@ -331,11 +331,11 @@ export class RequestForwardingService {
 
     // Fetch Master DB data in parallel (Promise.all as requested)
     const [departments, subDepartments] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: Array.from(deptIds) } },
         select: { id: true, name: true },
       }),
-      this.prismaMaster.subDepartment.findMany({
+      this.prisma.subDepartment.findMany({
         where: { id: { in: Array.from(subDeptIds) } },
         select: { id: true, name: true },
       }),
@@ -553,11 +553,11 @@ export class RequestForwardingService {
 
     // Fetch Master DB data in parallel (Promise.all as requested)
     const [departments, subDepartments] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: Array.from(deptIds) } },
         select: { id: true, name: true },
       }),
-      this.prismaMaster.subDepartment.findMany({
+      this.prisma.subDepartment.findMany({
         where: { id: { in: Array.from(subDeptIds) } },
         select: { id: true, name: true },
       }),

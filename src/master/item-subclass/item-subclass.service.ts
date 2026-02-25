@@ -3,6 +3,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import {
   CreateItemSubclassDto,
   UpdateItemSubclassDto,
@@ -12,8 +14,9 @@ import {
 @Injectable()
 export class ItemSubclassService {
   constructor(
-    private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,    private prismaMaster: PrismaMasterService,
+    
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
@@ -24,7 +27,7 @@ export class ItemSubclassService {
       return { status: true, data: cachedData };
     }
 
-    const subclasses = await this.prismaMaster.itemSubclass.findMany({
+    const subclasses = await this.prisma.itemSubclass.findMany({
       include: {
         itemClass: true,
       },
@@ -58,7 +61,7 @@ export class ItemSubclassService {
   }
 
   async getById(id: string) {
-    const subclass = await this.prismaMaster.itemSubclass.findUnique({
+    const subclass = await this.prisma.itemSubclass.findUnique({
       where: { id },
       include: { itemClass: true },
     });
@@ -77,7 +80,7 @@ export class ItemSubclassService {
   }
 
   async getByClass(itemClassId: string) {
-    const subclasses = await this.prismaMaster.itemSubclass.findMany({
+    const subclasses = await this.prisma.itemSubclass.findMany({
       where: { itemClassId },
       include: { itemClass: true },
       orderBy: { createdAt: 'desc' },
@@ -87,7 +90,7 @@ export class ItemSubclassService {
 
   async createMany(items: CreateItemSubclassDto[], createdById: string) {
     try {
-      const result = await this.prismaMaster.itemSubclass.createMany({
+      const result = await this.prisma.itemSubclass.createMany({
         data: items.map((item) => ({
           name: item.name,
           itemClassId: item.itemClassId,
@@ -124,13 +127,13 @@ export class ItemSubclassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.itemSubclass.findUnique({
+      const existing = await this.prisma.itemSubclass.findUnique({
         where: { id },
       });
       if (!existing)
         return { status: false, message: 'Item Subclass not found' };
 
-      const subclass = await this.prismaMaster.itemSubclass.update({
+      const subclass = await this.prisma.itemSubclass.update({
         where: { id },
         data: {
           name: dto.name,
@@ -172,7 +175,7 @@ export class ItemSubclassService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.itemSubclass.update({
+          await this.prisma.itemSubclass.update({
             where: { id: dto.id },
             data: {
               name: dto.name,
@@ -211,7 +214,7 @@ export class ItemSubclassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.itemSubclass.deleteMany({
+      const result = await this.prisma.itemSubclass.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -242,10 +245,10 @@ export class ItemSubclassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.itemSubclass.findUnique({
+      const existing = await this.prisma.itemSubclass.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.itemSubclass.delete({
+      const result = await this.prisma.itemSubclass.delete({
         where: { id },
       });
 

@@ -257,7 +257,7 @@ export class ItemBulkUploadService {
         }
 
         // CSV Header
-        let csv = 'Row,Reason,Field,Value\n';
+        let csv = 'Row,Reason,Field,Value""n';
 
         // CSV Rows
         errors.forEach((error) => {
@@ -266,7 +266,7 @@ export class ItemBulkUploadService {
             const field = error.data?.field || 'N/A';
             const value = error.data?.value || 'N/A';
 
-            csv += `${row},"${reason}",${field},${value}\n`;
+            csv += `${row},"${reason}",${field},${value}""n`;
         });
 
         return csv;

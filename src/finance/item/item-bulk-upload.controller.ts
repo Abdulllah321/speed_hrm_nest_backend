@@ -159,7 +159,7 @@ export class ItemBulkUploadController {
         const template = [
             'Concept,ItemID,SKU,BarCode,Description,UnitPrice,TaxRate1,TaxRate2,DiscountRate,DiscountAmount,DiscountStartDate,DiscountEndDate,IsActive,Concept,Size,Color,Division,Department,ProductCategory,Silhouette,Class,Subclass,Channel Class,Season,OldSeason,Gender,Case,Band,Movement Type,Heel Height,Width,HSCode,UOM,Segment',
             'Sample,ITEM-001,SKU-001,BAR-001,Description,150,5,0,0,0,,,true,BrandX,M,Red,Mens,Footwear,Shoes,Casual,ClassA,Subclass1,Retail,Summer 2024,N/A,Male,N/A,Premium,Standard,Low,Medium,1234,PC,Standard',
-        ].join('\n');
+        ].join('""n');
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="item-upload-template.csv"');
         return res.status(HttpStatus.OK).send(template);

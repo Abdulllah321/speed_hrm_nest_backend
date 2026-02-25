@@ -6,7 +6,7 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { WebhookService } from '../webhook/webhook.service';
 import { Prisma } from '@prisma/client';
-import { SocialSecurityInstitution } from '@prisma/management-client';
+import { SocialSecurityInstitution } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -30,113 +30,48 @@ export class EmployeeService {
       return { status: true, data: cached };
     }
 
-    // Fetch from Tenant DB ( transactional data only)
+    // Fetch from Tenant DB with all relations joined
     const employees = await this.prisma.employee.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
-        qualifications: true,
-        equipmentAssignments: true,
+        department: true,
+        subDepartment: true,
+        designation: true,
+        employeeGrade: true,
+        city: true,
+        state: true,
+        country: true,
+        socialSecurityInstitution: true,
+        qualifications: { include: { qualification: true, institute: true } },
+        equipmentAssignments: { include: { equipment: true } },
       },
     });
 
-    // Resolve IDs from Master DB
-    const departmentIds = [
-      ...new Set(employees.map((e) => e.departmentId).filter(Boolean)),
-    ] as string[];
-    const subDepartmentIds = [
-      ...new Set(employees.map((e) => e.subDepartmentId).filter(Boolean)),
-    ] as string[];
-    const designationIds = [
-      ...new Set(employees.map((e) => e.designationId).filter(Boolean)),
-    ] as string[];
-    const cityIds = [
-      ...new Set(employees.map((e) => e.cityId).filter(Boolean)),
-    ] as string[];
-    const stateIds = [
-      ...new Set(employees.map((e) => e.stateId).filter(Boolean)),
-    ] as string[];
-    const countryIds = [
-      ...new Set(employees.map((e) => e.countryId).filter(Boolean)),
-    ] as string[];
-    const socialSecurityInstitutionIds = [
-      ...new Set(
-        employees.map((e) => e.socialSecurityInstitutionId).filter(Boolean),
-      ),
-    ] as string[];
-
-    const [
-      departments,
-      subDepartments,
-      designations,
-      cities,
-      states,
-      countries,
-      users,
-      socialSecurityInstitutions,
-    ] = await Promise.all([
-      this.prismaMaster.department.findMany({
-        where: { id: { in: departmentIds } },
-      }),
-      this.prismaMaster.subDepartment.findMany({
-        where: { id: { in: subDepartmentIds } },
-      }),
-      this.prismaMaster.designation.findMany({
-        where: { id: { in: designationIds } },
-      }),
-      this.prismaMaster.city.findMany({
-        where: { id: { in: cityIds } },
-      }),
-      this.prismaMaster.state.findMany({
-        where: { id: { in: stateIds } },
-      }),
-      this.prismaMaster.country.findMany({
-        where: { id: { in: countryIds } },
-      }),
-      this.prismaMaster.user.findMany({
-        where: {
-          id: {
-            in: employees.map((e) => e.userId).filter(Boolean) as string[],
-          },
-        },
-      }),
-      this.prismaMaster.socialSecurityInstitution.findMany({
-        where: { id: { in: socialSecurityInstitutionIds } },
-      }),
-    ]);
-
-    const deptMap = new Map(departments.map((d) => [d.id, d.name]));
-    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s.name]));
-    const desMap = new Map(designations.map((d) => [d.id, d.name]));
-    const cityMap = new Map(cities.map((c) => [c.id, c.name]));
-    const stateMap = new Map(states.map((s) => [s.id, s.name]));
-    const countryMap = new Map(countries.map((c) => [c.id, c.name]));
+    // User lives in Master DB — must be queried separately
+    const userIds = employees.map((e) => e.userId).filter(Boolean) as string[];
+    const users = userIds.length
+      ? await this.prismaMaster.user.findMany({
+        where: { id: { in: userIds } },
+      })
+      : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
-    const ssiMap = new Map(
-      socialSecurityInstitutions.map((s) => [s.id, s.name]),
-    );
 
     const enrichedEmployees = employees.map((emp) => {
       const user = emp.userId ? userMap.get(emp.userId) : null;
       return {
         ...emp,
-        departmentName: deptMap.get(emp.departmentId) || null,
-        subDepartmentName: emp.subDepartmentId
-          ? subDeptMap.get(emp.subDepartmentId)
-          : null,
-        designationName: desMap.get(emp.designationId) || null,
-        cityName: cityMap.get(emp.cityId) || null,
-        stateName: stateMap.get(emp.stateId) || null,
-        countryName: countryMap.get(emp.countryId) || null,
-        socialSecurityInstitutionName: emp.socialSecurityInstitutionId
-          ? ssiMap.get(emp.socialSecurityInstitutionId)
-          : null,
+        departmentName: emp.department?.name || null,
+        subDepartmentName: emp.subDepartment?.name || null,
+        designationName: emp.designation?.name || null,
+        cityName: emp.city?.name || null,
+        stateName: emp.state?.name || null,
+        countryName: emp.country?.name || null,
+        socialSecurityInstitutionName: emp.socialSecurityInstitution?.name || null,
         avatarUrl: user?.avatar || null,
         // Legacy compatibility
-        department: deptMap.get(emp.departmentId) || emp.departmentId,
-        subDepartment: emp.subDepartmentId
-          ? subDeptMap.get(emp.subDepartmentId)
-          : emp.subDepartmentId,
-        designation: desMap.get(emp.designationId) || emp.designationId,
+        department: emp.department?.name || emp.departmentId,
+        subDepartment: emp.subDepartment?.name || emp.subDepartmentId,
+        designation: emp.designation?.name || emp.designationId,
       };
     });
 
@@ -170,55 +105,14 @@ export class EmployeeService {
         departmentId: true,
         subDepartmentId: true,
         workingHoursPolicyId: true,
+        department: true,
+        subDepartment: true,
+        workingHoursPolicy: true,
       },
       orderBy: { employeeName: 'asc' },
     });
 
-    // Fetch Master Data for names
-    const departmentIds = [...new Set(employees.map((e) => e.departmentId))];
-    const subDepartmentIds = [
-      ...new Set(
-        employees.map((e) => e.subDepartmentId).filter(Boolean) as string[],
-      ),
-    ];
-    const workingHoursPolicy = [
-      ...new Set(
-        employees
-          .map((e) => e.workingHoursPolicyId)
-          .filter(Boolean) as string[],
-      ),
-    ];
-    const [departments, subDepartments, workingHoursPolicies] =
-      await Promise.all([
-        this.prismaMaster.department.findMany({
-          where: { id: { in: departmentIds } },
-        }),
-        this.prismaMaster.subDepartment.findMany({
-          where: { id: { in: subDepartmentIds } },
-        }),
-        this.prismaMaster.workingHoursPolicy.findMany({
-          where: { id: { in: workingHoursPolicy } },
-        }),
-      ]);
-
-    const deptMap = new Map(departments.map((d) => [d.id, d]));
-    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
-    const workingHoursPolicyMap = new Map(
-      workingHoursPolicies.map((w) => [w.id, w]),
-    );
-
-    const mappedEmployees = employees.map((emp) => ({
-      ...emp,
-      department: deptMap.get(emp.departmentId),
-      subDepartment: emp.subDepartmentId
-        ? subDeptMap.get(emp.subDepartmentId)
-        : null,
-      workingHoursPolicy: emp.workingHoursPolicyId
-        ? workingHoursPolicyMap.get(emp.workingHoursPolicyId)
-        : null,
-    }));
-
-    return { status: true, data: mappedEmployees };
+    return { status: true, data: employees };
   }
 
   // Minimal fields for dropdowns/selects
@@ -238,56 +132,26 @@ export class EmployeeService {
         providentFund: true,
         officialEmail: true,
         personalEmail: true,
+        department: { select: { id: true, name: true } },
+        subDepartment: { select: { id: true, name: true } },
+        designation: { select: { id: true, name: true } },
       },
       orderBy: { employeeName: 'asc' },
     });
 
-    // Fetch Master Data for names
-    const departmentIds = [...new Set(employees.map((e) => e.departmentId))];
-    const subDepartmentIds = [
-      ...new Set(
-        employees.map((e) => e.subDepartmentId).filter(Boolean) as string[],
-      ),
-    ];
-    const designationIds = [...new Set(employees.map((e) => e.designationId))];
-
-    const [departments, subDepartments, designations] = await Promise.all([
-      this.prismaMaster.department.findMany({
-        where: { id: { in: departmentIds } },
-      }),
-      this.prismaMaster.subDepartment.findMany({
-        where: { id: { in: subDepartmentIds } },
-      }),
-      this.prismaMaster.designation.findMany({
-        where: { id: { in: designationIds } },
-      }),
-    ]);
-
-    const deptMap = new Map(departments.map((d) => [d.id, d]));
-    const subDeptMap = new Map(subDepartments.map((s) => [s.id, s]));
-    const desMap = new Map(designations.map((d) => [d.id, d]));
-
-    const result = employees.map((emp) => {
-      const dept = deptMap.get(emp.departmentId);
-      const subDept = emp.subDepartmentId
-        ? subDeptMap.get(emp.subDepartmentId)
-        : null;
-      const des = desMap.get(emp.designationId);
-
-      return {
-        id: emp.id,
-        employeeId: emp.employeeId,
-        employeeName: emp.employeeName,
-        departmentId: emp.departmentId,
-        subDepartmentId: emp.subDepartmentId,
-        departmentName: dept?.name || null,
-        subDepartmentName: subDept?.name || null,
-        designationName: des?.name || null,
-        providentFund: emp.providentFund,
-        officialEmail: emp.officialEmail,
-        personalEmail: emp.personalEmail,
-      };
-    });
+    const result = employees.map((emp) => ({
+      id: emp.id,
+      employeeId: emp.employeeId,
+      employeeName: emp.employeeName,
+      departmentId: emp.departmentId,
+      subDepartmentId: emp.subDepartmentId,
+      departmentName: emp.department?.name || null,
+      subDepartmentName: emp.subDepartment?.name || null,
+      designationName: emp.designation?.name || null,
+      providentFund: emp.providentFund,
+      officialEmail: emp.officialEmail,
+      personalEmail: emp.personalEmail,
+    }));
 
     await this.cacheManager.set(cacheKey, result, 3600000);
     return { status: true, data: result };
@@ -302,8 +166,22 @@ export class EmployeeService {
     const employee = await this.prisma.employee.findUnique({
       where: { id },
       include: {
-        qualifications: true,
-        equipmentAssignments: true,
+        department: true,
+        subDepartment: true,
+        employeeGrade: true,
+        designation: true,
+        maritalStatus: true,
+        employmentStatus: true,
+        country: true,
+        state: true,
+        city: true,
+        location: true,
+        allocation: true,
+        workingHoursPolicy: true,
+        leavesPolicy: true,
+        socialSecurityInstitution: true,
+        qualifications: { include: { qualification: true, institute: true } },
+        equipmentAssignments: { include: { equipment: true } },
         ...(includeHistory
           ? {
             rejoiningHistory: {
@@ -316,7 +194,7 @@ export class EmployeeService {
                 createdAt: true,
               },
               orderBy: {
-                rejoiningDate: 'desc',
+                rejoiningDate: 'desc' as const,
               },
               take: 1,
             },
@@ -326,125 +204,13 @@ export class EmployeeService {
     });
     if (!employee) return { status: false, message: 'Employee not found' };
 
-    // Fetch ALL Master Data in parallel
-    const [
-      user,
-      dept,
-      subDept,
-      grade,
-      designation,
-      maritalStatus,
-      empStatus,
-      country,
-      state,
-      city,
-      location,
-      allocation,
-      workingHoursPolicy,
-      leavesPolicy,
-      socialSecurityInstitution,
-    ] = await Promise.all([
-      employee.userId
-        ? this.prismaMaster.user.findUnique({
-          where: { id: employee.userId },
-          select: { id: true, avatar: true },
-        })
-        : null,
-      this.prismaMaster.department.findUnique({
-        where: { id: employee.departmentId },
-      }),
-      employee.subDepartmentId
-        ? this.prismaMaster.subDepartment.findUnique({
-          where: { id: employee.subDepartmentId },
-        })
-        : null,
-      this.prismaMaster.employeeGrade.findUnique({
-        where: { id: employee.employeeGradeId },
-      }),
-      this.prismaMaster.designation.findUnique({
-        where: { id: employee.designationId },
-      }),
-      employee.maritalStatusId
-        ? this.prismaMaster.maritalStatus.findUnique({
-          where: { id: employee.maritalStatusId },
-        })
-        : null,
-      employee.employmentStatusId
-        ? this.prismaMaster.employeeStatus.findUnique({
-          where: { id: employee.employmentStatusId },
-        })
-        : null,
-      this.prismaMaster.country.findUnique({
-        where: { id: employee.countryId },
-      }),
-      this.prismaMaster.state.findUnique({ where: { id: employee.stateId } }),
-      this.prismaMaster.city.findUnique({ where: { id: employee.cityId } }),
-      employee.locationId
-        ? this.prismaMaster.location.findUnique({
-          where: { id: employee.locationId },
-        })
-        : null,
-      employee.allocationId
-        ? this.prismaMaster.allocation.findUnique({
-          where: { id: employee.allocationId },
-        })
-        : null,
-      employee.workingHoursPolicyId
-        ? this.prismaMaster.workingHoursPolicy.findUnique({
-          where: { id: employee.workingHoursPolicyId },
-        })
-        : null,
-      employee.leavesPolicyId
-        ? this.prismaMaster.leavesPolicy.findUnique({
-          where: { id: employee.leavesPolicyId },
-        })
-        : null,
-      employee.socialSecurityInstitutionId
-        ? this.prismaMaster.socialSecurityInstitution.findUnique({
-          where: { id: employee.socialSecurityInstitutionId },
-        })
-        : null,
-    ]);
-
-    // Handle Qualification & Equipment Master Data
-    if (employee.qualifications.length > 0) {
-      const qualIds = employee.qualifications.map((q) => q.qualificationId);
-      const instIds = employee.qualifications
-        .map((q) => q.instituteId)
-        .filter(Boolean) as string[];
-
-      const [quals, insts] = await Promise.all([
-        this.prismaMaster.qualification.findMany({
-          where: { id: { in: qualIds } },
-        }),
-        this.prismaMaster.institute.findMany({
-          where: { id: { in: instIds } },
-        }),
-      ]);
-
-      const qualMap = new Map(quals.map((q) => [q.id, q]));
-      const instMap = new Map(insts.map((i) => [i.id, i]));
-
-      (employee as any).qualifications = employee.qualifications.map((q) => ({
-        ...q,
-        qualification: qualMap.get(q.qualificationId),
-        institute: q.instituteId ? instMap.get(q.instituteId) : null,
-      }));
-    }
-
-    if (employee.equipmentAssignments.length > 0) {
-      const equipIds = employee.equipmentAssignments.map((e) => e.equipmentId);
-      const equips = await this.prismaMaster.equipment.findMany({
-        where: { id: { in: equipIds } },
-      });
-      const equipMap = new Map(equips.map((e) => [e.id, e]));
-
-      (employee as any).equipmentAssignments =
-        employee.equipmentAssignments.map((e) => ({
-          ...e,
-          equipment: equipMap.get(e.equipmentId),
-        }));
-    }
+    // User lives in Master DB — must be queried separately
+    const user = employee.userId
+      ? await this.prismaMaster.user.findUnique({
+        where: { id: employee.userId },
+        select: { id: true, avatar: true },
+      })
+      : null;
 
     // Apply latest active increment salary if available
     if (
@@ -454,49 +220,7 @@ export class EmployeeService {
       (employee as any).employeeSalary = (employee as any).increments[0].salary;
     }
 
-    // Type assertion since we know the query includes these relations
-    const emp = employee as typeof employee & {
-      user?: { id: string; avatar: string | null } | null;
-      department?: { id: string; name: string } | null;
-      subDepartment?: { id: string; name: string } | null;
-      employeeGrade?: { id: string; grade: string } | null;
-      designation?: { id: string; name: string } | null;
-      maritalStatus?: { id: string; name: string } | null;
-      employmentStatus?: { id: string; status: string } | null;
-      country?: { id: string; name: string } | null;
-      state?: { id: string; name: string } | null;
-      city?: { id: string; name: string } | null;
-      workingHoursPolicy?: { id: string; name: string } | null;
-      location?: { id: string; name: string } | null;
-      leavesPolicy?: { id: string; name: string } | null;
-      allocation?: { id: string; name: string } | null;
-      socialSecurityInstitution?: { id: string; name: string } | null;
-      rejoiningHistory?: Array<{
-        id: string;
-        rejoiningDate: Date;
-        previousEmployeeId: string;
-        newEmployeeId: string;
-        remarks: string | null;
-        createdAt: Date;
-      }>;
-    };
-
-    // Manually attach fetched master data to the object for mapping
-    emp.user = user;
-    emp.department = dept;
-    emp.subDepartment = subDept;
-    emp.employeeGrade = grade;
-    emp.designation = designation;
-    emp.maritalStatus = maritalStatus;
-    emp.employmentStatus = empStatus;
-    emp.country = country;
-    emp.state = state;
-    emp.city = city;
-    emp.workingHoursPolicy = workingHoursPolicy;
-    emp.location = location;
-    emp.leavesPolicy = leavesPolicy;
-    emp.allocation = allocation;
-    emp.socialSecurityInstitution = socialSecurityInstitution;
+    const emp = employee as any;
 
     // Map relations to IDs for form compatibility, while keeping relation objects
     const mappedEmployee = {
@@ -521,7 +245,7 @@ export class EmployeeService {
         emp.socialSecurityInstitutionId ||
         null,
       // Avatar from user table
-      avatarUrl: emp.user?.avatar || null,
+      avatarUrl: user?.avatar || null,
       // EOBI Document URL
       eobiDocumentUrl: emp.eobiDocumentUrl || null,
       // Document URLs (JSON field)
@@ -846,7 +570,7 @@ export class EmployeeService {
         }
       } else {
         // Verify the UUID exists
-        const countryExists = await this.prismaMaster.country.findUnique({
+        const countryExists = await this.prisma.country.findUnique({
           where: { id: countryValue },
         });
         if (!countryExists) {
@@ -864,7 +588,7 @@ export class EmployeeService {
         }
       } else {
         // Verify the UUID exists
-        const stateExists = await this.prismaMaster.state.findUnique({
+        const stateExists = await this.prisma.state.findUnique({
           where: { id: stateValue },
         });
         if (!stateExists) {
@@ -882,7 +606,7 @@ export class EmployeeService {
         }
       } else {
         // Verify the UUID exists
-        const cityExists = await this.prismaMaster.city.findUnique({
+        const cityExists = await this.prisma.city.findUnique({
           where: { id: cityValue },
         });
         if (!cityExists) {
@@ -2050,7 +1774,7 @@ export class EmployeeService {
       let socialSecurityInstitution: SocialSecurityInstitution | null = null;
       if (employee.socialSecurityInstitutionId) {
         socialSecurityInstitution =
-          await this.prismaMaster.socialSecurityInstitution.findUnique({
+          await this.prisma.socialSecurityInstitution.findUnique({
             where: { id: employee.socialSecurityInstitutionId },
           });
       }
@@ -2177,7 +1901,7 @@ export class EmployeeService {
       };
 
       // Prepare update data - allow ALL fields to be updated
-      const updateData: Prisma.EmployeeUpdateInput = {
+      const updateData: Prisma.EmployeeUncheckedUpdateInput = {
         employeeId: (body as { employeeId?: unknown }).employeeId as string,
         attendanceId: (body as { attendanceId?: unknown })
           .attendanceId as string,
@@ -2472,7 +2196,7 @@ export class EmployeeService {
         .socialSecurityRegistrations;
       if (socialSecurityRegistrationsValue !== undefined) {
         // Delete existing
-        await this.prismaMaster.socialSecurityEmployeeRegistration.deleteMany({
+        await this.prisma.socialSecurityEmployeeRegistration.deleteMany({
           where: { employeeId: existing.id },
         });
 
@@ -2480,11 +2204,11 @@ export class EmployeeService {
           for (const reg of socialSecurityRegistrationsValue) {
             if (reg.institutionId && reg.registrationNumber) {
               const institution =
-                await this.prismaMaster.socialSecurityInstitution.findUnique({
+                await this.prisma.socialSecurityInstitution.findUnique({
                   where: { id: reg.institutionId },
                 });
               const employerReg =
-                await this.prismaMaster.socialSecurityEmployerRegistration.findFirst(
+                await this.prisma.socialSecurityEmployerRegistration.findFirst(
                   {
                     where: {
                       institutionId: reg.institutionId,
@@ -2493,7 +2217,7 @@ export class EmployeeService {
                   },
                 );
               if (employerReg) {
-                await this.prismaMaster.socialSecurityEmployeeRegistration.create(
+                await this.prisma.socialSecurityEmployeeRegistration.create(
                   {
                     data: {
                       companyId: employerReg.companyId,
@@ -2552,10 +2276,11 @@ export class EmployeeService {
           Array.isArray(equipmentAssignmentsValue) &&
           equipmentAssignmentsValue.length > 0
         ) {
-          updateData.equipmentAssignments = {
-            create: (equipmentAssignmentsValue as any[])
-              .filter((ea) => ea.equipmentId)
-              .map((ea: any) => ({
+          // Create equipment assignments separately after the main update
+          for (const ea of (equipmentAssignmentsValue as any[]).filter((ea: any) => ea.equipmentId)) {
+            await this.prisma.employeeEquipment.create({
+              data: {
+                employeeId: existing.id,
                 equipmentId: ea.equipmentId,
                 productId:
                   ea.productId ||
@@ -2566,8 +2291,9 @@ export class EmployeeService {
                 notes: ea.notes || null,
                 assignedById: ctx.userId,
                 status: 'assigned',
-              })),
-          };
+              },
+            });
+          }
         }
       }
 
@@ -2611,7 +2337,6 @@ export class EmployeeService {
       });
 
       // Create comprehensive rejoining history record
-      // Using type assertion for JSON fields until Prisma migration is run
       await this.prisma.employeeRejoiningHistory.create({
         data: {
           employeeId: existing.id,
@@ -2627,10 +2352,10 @@ export class EmployeeService {
           ),
           previousDepartmentId: existing.departmentId,
           newDepartmentId:
-            (updateData.departmentId as any) || existing.departmentId,
+            (updateData.departmentId as string) || existing.departmentId,
           previousDesignationId: existing.designationId,
           newDesignationId:
-            (updateData.designationId as any) || existing.designationId,
+            (updateData.designationId as string) || existing.designationId,
           previousSalary: existing.employeeSalary,
           newSalary:
             (updateData.employeeSalary as unknown as string) ||
@@ -2639,7 +2364,6 @@ export class EmployeeService {
             | string
             | undefined,
           createdById: ctx.userId,
-          // JSON fields - convert to plain JSON objects for Prisma
           previousValues: JSON.parse(
             JSON.stringify(existing),
           ) as Prisma.InputJsonValue,
@@ -2649,7 +2373,7 @@ export class EmployeeService {
           changedFields: JSON.parse(
             JSON.stringify(changedFields),
           ) as Prisma.InputJsonValue,
-        },
+        } as Prisma.EmployeeRejoiningHistoryUncheckedCreateInput,
       });
 
       // Reactivate user if exists
@@ -2769,13 +2493,13 @@ export class EmployeeService {
     const trimmedName = name.trim();
 
     // Try to find existing department
-    let department = await this.prismaMaster.department.findUnique({
+    let department = await this.prisma.department.findUnique({
       where: { name: trimmedName },
     });
 
     // If not found, create it
     if (!department) {
-      department = await this.prismaMaster.department.create({
+      department = await this.prisma.department.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -2800,7 +2524,7 @@ export class EmployeeService {
     const trimmedName = name.trim();
 
     // Try to find existing sub-department
-    let subDepartment = await this.prismaMaster.subDepartment.findFirst({
+    let subDepartment = await this.prisma.subDepartment.findFirst({
       where: {
         name: trimmedName,
         departmentId: departmentId,
@@ -2809,7 +2533,7 @@ export class EmployeeService {
 
     // If not found, create it
     if (!subDepartment) {
-      subDepartment = await this.prismaMaster.subDepartment.create({
+      subDepartment = await this.prisma.subDepartment.create({
         data: {
           name: trimmedName,
           departmentId: departmentId,
@@ -2833,12 +2557,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let designation = await this.prismaMaster.designation.findUnique({
+    let designation = await this.prisma.designation.findUnique({
       where: { name: trimmedName },
     });
 
     if (!designation) {
-      designation = await this.prismaMaster.designation.create({
+      designation = await this.prisma.designation.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -2861,12 +2585,12 @@ export class EmployeeService {
     }
     const trimmedGrade = grade.trim();
 
-    let employeeGrade = await this.prismaMaster.employeeGrade.findUnique({
+    let employeeGrade = await this.prisma.employeeGrade.findUnique({
       where: { grade: trimmedGrade },
     });
 
     if (!employeeGrade) {
-      employeeGrade = await this.prismaMaster.employeeGrade.create({
+      employeeGrade = await this.prisma.employeeGrade.create({
         data: {
           grade: trimmedGrade,
           createdById: ctx.userId || null,
@@ -2889,12 +2613,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let maritalStatus = await this.prismaMaster.maritalStatus.findUnique({
+    let maritalStatus = await this.prisma.maritalStatus.findUnique({
       where: { name: trimmedName },
     });
 
     if (!maritalStatus) {
-      maritalStatus = await this.prismaMaster.maritalStatus.create({
+      maritalStatus = await this.prisma.maritalStatus.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -2917,12 +2641,12 @@ export class EmployeeService {
     }
     const trimmedStatus = status.trim();
 
-    let employmentStatus = await this.prismaMaster.employeeStatus.findUnique({
+    let employmentStatus = await this.prisma.employeeStatus.findUnique({
       where: { status: trimmedStatus },
     });
 
     if (!employmentStatus) {
-      employmentStatus = await this.prismaMaster.employeeStatus.create({
+      employmentStatus = await this.prisma.employeeStatus.create({
         data: {
           status: trimmedStatus,
           createdById: ctx.userId || null,
@@ -2961,7 +2685,7 @@ export class EmployeeService {
     const searchName = mappedName || trimmedName;
 
     // Try multiple search strategies
-    let country = await this.prismaMaster.country.findFirst({
+    let country = await this.prisma.country.findFirst({
       where: {
         OR: [
           { name: { equals: searchName, mode: 'insensitive' } },
@@ -2974,7 +2698,7 @@ export class EmployeeService {
 
     // If still not found and we used a mapping, try original name
     if (!country && mappedName) {
-      country = await this.prismaMaster.country.findFirst({
+      country = await this.prisma.country.findFirst({
         where: {
           OR: [
             { name: { equals: trimmedName, mode: 'insensitive' } },
@@ -3016,7 +2740,7 @@ export class EmployeeService {
     const searchName = mappedName || trimmedName;
 
     // Try exact match first
-    let state = await this.prismaMaster.state.findFirst({
+    let state = await this.prisma.state.findFirst({
       where: {
         name: { equals: searchName, mode: 'insensitive' },
         countryId: countryId,
@@ -3025,7 +2749,7 @@ export class EmployeeService {
 
     // If not found, try contains search
     if (!state) {
-      state = await this.prismaMaster.state.findFirst({
+      state = await this.prisma.state.findFirst({
         where: {
           name: { contains: searchName, mode: 'insensitive' },
           countryId: countryId,
@@ -3035,7 +2759,7 @@ export class EmployeeService {
 
     // If still not found and we used a mapping, try original name
     if (!state && mappedName) {
-      state = await this.prismaMaster.state.findFirst({
+      state = await this.prisma.state.findFirst({
         where: {
           OR: [
             {
@@ -3084,7 +2808,7 @@ export class EmployeeService {
     const searchName = mappedName || trimmedName;
 
     // Try exact match first
-    let city = await this.prismaMaster.city.findFirst({
+    let city = await this.prisma.city.findFirst({
       where: {
         name: { equals: searchName, mode: 'insensitive' },
         stateId: stateId,
@@ -3093,7 +2817,7 @@ export class EmployeeService {
 
     // If not found, try contains search
     if (!city) {
-      city = await this.prismaMaster.city.findFirst({
+      city = await this.prisma.city.findFirst({
         where: {
           name: { contains: searchName, mode: 'insensitive' },
           stateId: stateId,
@@ -3103,7 +2827,7 @@ export class EmployeeService {
 
     // If still not found and we used a mapping, try original name
     if (!city && mappedName) {
-      city = await this.prismaMaster.city.findFirst({
+      city = await this.prisma.city.findFirst({
         where: {
           OR: [
             {
@@ -3133,12 +2857,12 @@ export class EmployeeService {
       throw new Error('Location name is required');
     }
 
-    let location = await this.prismaMaster.location.findUnique({
+    let location = await this.prisma.location.findUnique({
       where: { name: locationName },
     });
 
     if (!location) {
-      location = await this.prismaMaster.location.create({
+      location = await this.prisma.location.create({
         data: {
           name: locationName,
           createdById: ctx.userId,
@@ -3161,13 +2885,13 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let policy = await this.prismaMaster.workingHoursPolicy.findUnique({
+    let policy = await this.prisma.workingHoursPolicy.findUnique({
       where: { name: trimmedName },
     });
 
     if (!policy) {
       // Create with default values - these should be set properly in production
-      policy = await this.prismaMaster.workingHoursPolicy.create({
+      policy = await this.prisma.workingHoursPolicy.create({
         data: {
           name: trimmedName,
           startWorkingHours: '09:00',
@@ -3192,12 +2916,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let policy = await this.prismaMaster.leavesPolicy.findUnique({
+    let policy = await this.prisma.leavesPolicy.findUnique({
       where: { name: trimmedName },
     });
 
     if (!policy) {
-      policy = await this.prismaMaster.leavesPolicy.create({
+      policy = await this.prisma.leavesPolicy.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -3219,12 +2943,12 @@ export class EmployeeService {
     }
     const trimmedName = name.trim();
 
-    let allocation = await this.prismaMaster.allocation.findUnique({
+    let allocation = await this.prisma.allocation.findUnique({
       where: { name: trimmedName },
     });
 
     if (!allocation) {
-      allocation = await this.prismaMaster.allocation.create({
+      allocation = await this.prisma.allocation.create({
         data: {
           name: trimmedName,
           createdById: ctx.userId || null,
@@ -3799,7 +3523,7 @@ export class EmployeeService {
               }
             } else if (stateName && stateName.trim() !== '') {
               // Try to infer country from state
-              const state = await this.prismaMaster.state.findFirst({
+              const state = await this.prisma.state.findFirst({
                 where: { name: stateName },
               });
 
@@ -3834,7 +3558,7 @@ export class EmployeeService {
             }
 
             if (!stateId) {
-              const sampleStates = await this.prismaMaster.state.findMany({
+              const sampleStates = await this.prisma.state.findMany({
                 where: { countryId },
                 take: 5,
                 select: { name: true },
@@ -3855,7 +3579,7 @@ export class EmployeeService {
             cityId = await this.findCityByName(cityName, stateId);
 
             if (!cityId) {
-              const sampleCities = await this.prismaMaster.city.findMany({
+              const sampleCities = await this.prisma.city.findMany({
                 where: { stateId },
                 take: 5,
                 select: { name: true },

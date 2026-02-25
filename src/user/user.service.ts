@@ -64,11 +64,11 @@ export class UserService {
       if (employee) {
         // Fetch Master data for labels
         const [dept, desg] = await Promise.all([
-          this.prismaMaster.department.findUnique({
+          this.prisma.department.findUnique({
             where: { id: employee.departmentId },
             select: { name: true },
           }),
-          this.prismaMaster.designation.findUnique({
+          this.prisma.designation.findUnique({
             where: { id: employee.designationId },
             select: { name: true },
           }),
@@ -117,11 +117,11 @@ export class UserService {
       const desgIds = [...new Set(employees.map((e) => e.designationId))];
 
       const [departments, designations] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.designation.findMany({
+        this.prisma.designation.findMany({
           where: { id: { in: desgIds } },
           select: { id: true, name: true },
         }),
@@ -176,11 +176,11 @@ export class UserService {
 
       if (employee) {
         const [dept, desg] = await Promise.all([
-          this.prismaMaster.department.findUnique({
+          this.prisma.department.findUnique({
             where: { id: employee.departmentId },
             select: { name: true },
           }),
-          this.prismaMaster.designation.findUnique({
+          this.prisma.designation.findUnique({
             where: { id: employee.designationId },
             select: { name: true },
           }),

@@ -12,6 +12,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PrismaMasterService } from '../database/prisma-master.service';
+import { PrismaService } from '../database/prisma.service';
+
 import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export const OptionalJwtAuth = () => SetMetadata('isOptional', true);
@@ -34,7 +36,7 @@ import {
 export class AuthController {
   constructor(
     private service: AuthService,
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
   ) { }
 
   private getCookieOptions(req: any) {
@@ -298,7 +300,7 @@ export class AuthController {
     }
 
     // Find the latest open terminal session to get the terminal token
-    const terminalSession = await this.prismaMaster.posSession.findFirst({
+    const terminalSession = await this.prisma.posSession.findFirst({
       where: { posId: terminalId, status: 'open' },
       orderBy: { createdAt: 'desc' },
     });
@@ -357,7 +359,7 @@ export class AuthController {
     // unless we stored a terminalToken specifically.
 
     // For now, let's assume if terminalId cookie is there, we find the latest session for that terminal
-    const terminalSession = await this.prismaMaster.posSession.findFirst({
+    const terminalSession = await this.prisma.posSession.findFirst({
       where: { posId: terminalId, status: 'open' },
       orderBy: { createdAt: 'desc' }
     });
@@ -642,7 +644,7 @@ export class AuthController {
 
         // Fetch full terminal details natively instead of parsing cookies
         if (req.user.terminalId) {
-          const terminalRaw = await this.prismaMaster.pos.findUnique({
+          const terminalRaw = await this.prisma.pos.findUnique({
             where: { id: req.user.terminalId },
             include: { location: true },
           });

@@ -56,7 +56,7 @@ export class LeaveEncashmentService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -74,7 +74,7 @@ export class LeaveEncashmentService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -95,13 +95,13 @@ export class LeaveEncashmentService {
     const [department, subDepartment, approvedBy, createdBy, updatedBy] =
       await Promise.all([
         leaveEncashment.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: leaveEncashment.employee.departmentId },
               select: { id: true, name: true },
             })
           : null,
         leaveEncashment.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: leaveEncashment.employee.subDepartmentId },
               select: { id: true, name: true },
             })
@@ -261,11 +261,11 @@ export class LeaveEncashmentService {
       ] as string[];
 
       const [departments, subDepartments, users] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),

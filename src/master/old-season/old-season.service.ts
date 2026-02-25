@@ -3,6 +3,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import {
   CreateOldSeasonDto,
   UpdateOldSeasonDto,
@@ -12,7 +14,8 @@ import {
 @Injectable()
 export class OldSeasonService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,    private prismaMaster: PrismaMasterService,
+    
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
@@ -24,7 +27,7 @@ export class OldSeasonService {
       return { status: true, data: cachedData };
     }
 
-    const oldSeasons = await this.prismaMaster.oldSeason.findMany({
+    const oldSeasons = await this.prisma.oldSeason.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -54,7 +57,7 @@ export class OldSeasonService {
   }
 
   async getById(id: string) {
-    const season = await this.prismaMaster.oldSeason.findUnique({
+    const season = await this.prisma.oldSeason.findUnique({
       where: { id },
     });
     if (!season) return { status: false, message: 'Old Season not found' };
@@ -73,7 +76,7 @@ export class OldSeasonService {
 
   async createMany(items: CreateOldSeasonDto[], createdById: string) {
     try {
-      const result = await this.prismaMaster.oldSeason.createMany({
+      const result = await this.prisma.oldSeason.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -108,12 +111,12 @@ export class OldSeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.oldSeason.findUnique({
+      const existing = await this.prisma.oldSeason.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Old Season not found' };
 
-      const updated = await this.prismaMaster.oldSeason.update({
+      const updated = await this.prisma.oldSeason.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -150,7 +153,7 @@ export class OldSeasonService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.oldSeason.update({
+          await this.prisma.oldSeason.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -184,7 +187,7 @@ export class OldSeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.oldSeason.deleteMany({
+      const result = await this.prisma.oldSeason.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -214,10 +217,10 @@ export class OldSeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.oldSeason.findUnique({
+      const existing = await this.prisma.oldSeason.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.oldSeason.delete({
+      const result = await this.prisma.oldSeason.delete({
         where: { id },
       });
 

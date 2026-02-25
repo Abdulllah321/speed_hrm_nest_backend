@@ -1,23 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 
 @Injectable()
 export class InstituteService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
   async list() {
-    const items = await this.prismaMaster.institute.findMany({
+    const items = await this.prisma.institute.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.institute.findUnique({
+    const item = await this.prisma.institute.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Institute not found' };
@@ -29,7 +31,7 @@ export class InstituteService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.institute.create({
+      const created = await this.prisma.institute.create({
         data: {
           name: body.name,
           status: body.status ?? 'active',
@@ -80,10 +82,10 @@ export class InstituteService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.institute.findUnique({
+      const existing = await this.prisma.institute.findUnique({
         where: { id },
       });
-      const updated = await this.prismaMaster.institute.update({
+      const updated = await this.prisma.institute.update({
         where: { id },
         data: {
           name: body.name ?? existing?.name,
@@ -135,10 +137,10 @@ export class InstituteService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.institute.findUnique({
+      const existing = await this.prisma.institute.findUnique({
         where: { id },
       });
-      const removed = await this.prismaMaster.institute.delete({
+      const removed = await this.prisma.institute.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -191,7 +193,7 @@ export class InstituteService {
       createdById: ctx.userId,
     }));
     try {
-      const result = await this.prismaMaster.institute.createMany({
+      const result = await this.prisma.institute.createMany({
         data,
         skipDuplicates: true,
       });
@@ -246,7 +248,7 @@ export class InstituteService {
     let skipped = 0;
     for (const name of seedItems) {
       try {
-        await this.prismaMaster.institute.create({
+        await this.prisma.institute.create({
           data: { name, status: 'active', createdById: ctx.userId },
         });
         created++;

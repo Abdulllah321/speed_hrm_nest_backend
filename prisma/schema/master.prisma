@@ -1,0 +1,814 @@
+model Designation {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    employees              Employee[]
+    rejoiningHistoriesPrev EmployeeRejoiningHistory[] @relation("HistoryPrevDesig")
+    rejoiningHistoriesNew  EmployeeRejoiningHistory[] @relation("HistoryNewDesig")
+}
+
+model Category {
+    id            String   @id @default(uuid())
+    name          String
+    parentId      String?
+    accountHeadId String? // Linked to ChartOfAccount.id in Tenant DB
+    createdAt     DateTime @default(now())
+    updatedAt     DateTime @updatedAt
+
+    parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    children Category[] @relation("CategoryHierarchy")
+
+    @@index([parentId])
+}
+
+model Allocation {
+    id          String       @id @default(uuid())
+    name        String       @unique
+    status      String       @default("active")
+    createdById String?
+    createdAt   DateTime     @default(now())
+    updatedAt   DateTime     @updatedAt
+    departments Department[]
+    employees   Employee[]
+}
+
+model JobType {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Institute {
+    id                     String                  @id @default(uuid())
+    name                   String                  @unique
+    status                 String                  @default("active")
+    createdById            String?
+    createdAt              DateTime                @default(now())
+    updatedAt              DateTime                @updatedAt
+    employeeQualifications EmployeeQualification[]
+}
+
+model Qualification {
+    id                     String                  @id @default(uuid())
+    name                   String                  @unique
+    status                 String                  @default("active")
+    createdById            String?
+    createdAt              DateTime                @default(now())
+    updatedAt              DateTime                @updatedAt
+    employeeQualifications EmployeeQualification[]
+}
+
+model MaritalStatus {
+    id          String     @id @default(uuid())
+    name        String     @unique
+    status      String     @default("active")
+    createdById String?
+    createdAt   DateTime   @default(now())
+    updatedAt   DateTime   @updatedAt
+    employees   Employee[]
+}
+
+model DegreeType {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Country {
+    id        String     @id @default(uuid())
+    name      String
+    iso       String
+    nicename  String
+    iso3      String
+    phoneCode Int
+    numcode   Int
+    createdAt DateTime   @default(now())
+    updatedAt DateTime   @updatedAt
+    cities    City[]
+    states    State[]
+    employees Employee[]
+}
+
+model City {
+    id          String   @id @default(uuid())
+    name        String
+    countryId   String
+    stateId     String
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    country     Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+    state       State    @relation(fields: [stateId], references: [id], onDelete: Cascade)
+
+    employees              Employee[]
+    employeeQualifications EmployeeQualification[]
+    transferHistoriesPrev  EmployeeTransferHistory[] @relation("TransferPrevCity")
+    transferHistoriesNew   EmployeeTransferHistory[] @relation("TransferNewCity")
+
+    @@unique([name, countryId, stateId])
+}
+
+model State {
+    id          String   @id @default(uuid())
+    name        String
+    countryId   String
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    cities      City[]
+    country     Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+    employees              Employee[]
+    employeeQualifications EmployeeQualification[]
+    transferHistoriesPrev  EmployeeTransferHistory[] @relation("TransferPrevState")
+    transferHistoriesNew   EmployeeTransferHistory[] @relation("TransferNewState")
+}
+
+model AllowanceHead {
+    id              String   @id @default(uuid())
+    name            String   @unique
+    calculationType String   @default("Amount")
+    amount          Decimal? @db.Decimal(10, 2)
+    percentage      Decimal? @db.Decimal(5, 2)
+    status          String   @default("active")
+    createdById     String?
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+}
+
+model DeductionHead {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model LoanType {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model LeaveType {
+    id             String                  @id @default(uuid())
+    name           String                  @unique
+    status         String                  @default("active")
+    createdById    String?
+    createdAt      DateTime                @default(now())
+    updatedAt      DateTime                @updatedAt
+    leavesPolicies LeavesPolicyLeaveType[]
+}
+
+model LeavesPolicy {
+    id                      String                  @id @default(uuid())
+    name                    String                  @unique
+    details                 String?
+    policyDateFrom          DateTime?
+    policyDateTill          DateTime?
+    fullDayDeductionRate    Decimal?
+    halfDayDeductionRate    Decimal?
+    shortLeaveDeductionRate Decimal?
+    status                  String                  @default("active")
+    isDefault               Boolean                 @default(false)
+    createdById             String?
+    createdAt               DateTime                @default(now())
+    updatedAt               DateTime                @updatedAt
+    leaveTypes              LeavesPolicyLeaveType[]
+    employees               Employee[]
+}
+
+model LeavesPolicyLeaveType {
+    id             String       @id @default(uuid())
+    leavesPolicyId String
+    leaveTypeId    String
+    numberOfLeaves Int
+    createdAt      DateTime     @default(now())
+    updatedAt      DateTime     @updatedAt
+    leaveType      LeaveType    @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+    leavesPolicy   LeavesPolicy @relation(fields: [leavesPolicyId], references: [id], onDelete: Cascade)
+
+    @@unique([leavesPolicyId, leaveTypeId])
+}
+
+model Equipment {
+    id                 String              @id @default(uuid())
+    name               String              @unique
+    equipmentType      String              @default("other")
+    description        String?
+    status             String              @default("active")
+    createdById        String?
+    createdAt          DateTime            @default(now())
+    updatedAt          DateTime            @updatedAt
+    employeeEquipments EmployeeEquipment[]
+}
+
+model SalaryBreakup {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    details     String?
+    percentage  Decimal? @db.Decimal(5, 2)
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model TaxSlab {
+    id          String   @id @default(uuid())
+    name        String
+    minAmount   Decimal
+    maxAmount   Decimal
+    rate        Decimal
+    fixedAmount Decimal? @default(0)
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model BonusType {
+    id              String   @id @default(uuid())
+    name            String   @unique
+    calculationType String   @default("Amount")
+    amount          Decimal? @db.Decimal(10, 2)
+    percentage      Decimal? @db.Decimal(5, 2)
+    status          String   @default("active")
+    createdById     String?
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+}
+
+model ApprovalSetting {
+    id          String   @id @default(uuid())
+    name        String
+    levels      Int      @default(1)
+    details     String?
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Department {
+    id             String          @id @default(uuid())
+    name           String          @unique
+    allocationId   String?
+    headId         String?         @unique // Employee ID in Tenant DB
+    head           Employee?       @relation("DepartmentHead", fields: [headId], references: [id])
+    createdById    String?
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    allocation     Allocation?     @relation(fields: [allocationId], references: [id])
+    subDepartments SubDepartment[]
+
+    employees              Employee[]
+    rejoiningHistoriesPrev EmployeeRejoiningHistory[] @relation("HistoryPrevDept")
+    rejoiningHistoriesNew  EmployeeRejoiningHistory[] @relation("HistoryNewDept")
+}
+
+model SubDepartment {
+    id           String     @id @default(uuid())
+    name         String
+    departmentId String
+    headId       String?    @unique // Employee ID in Tenant DB
+    head         Employee?  @relation("SubDepartmentHead", fields: [headId], references: [id])
+    createdById  String?
+    createdAt    DateTime   @default(now())
+    updatedAt    DateTime   @updatedAt
+    department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+    employees Employee[]
+
+    @@unique([name, departmentId])
+}
+
+model EOBI {
+    id                   String   @id @default(uuid())
+    name                 String
+    eobiId               String?
+    eobiCode             String?
+    amount               Decimal?
+    employerContribution Decimal  @db.Decimal(10, 2)
+    employeeContribution Decimal  @db.Decimal(10, 2)
+    yearMonth            String
+    status               String   @default("active")
+    createdById          String?
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
+}
+
+model EmployeeGrade {
+    id          String     @id @default(uuid())
+    grade       String     @unique
+    status      String     @default("active")
+    createdById String?
+    createdAt   DateTime   @default(now())
+    updatedAt   DateTime   @updatedAt
+    employees   Employee[]
+}
+
+model EmployeeStatus {
+    id          String     @id @default(uuid())
+    status      String     @unique
+    statusType  String     @default("active")
+    createdById String?
+    createdAt   DateTime   @default(now())
+    updatedAt   DateTime   @updatedAt
+    employees   Employee[]
+}
+
+model ProvidentFund {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    percentage  Decimal
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model WorkingHoursPolicy {
+    id                           String     @id @default(uuid())
+    name                         String     @unique
+    startWorkingHours            String
+    endWorkingHours              String
+    shortDayMins                 Int?
+    startBreakTime               String?
+    endBreakTime                 String?
+    halfDayStartTime             String?
+    lateStartTime                String?
+    lateDeductionType            String?
+    applyDeductionAfterLates     Int?
+    lateDeductionPercent         Decimal?
+    halfDayDeductionType         String?
+    applyDeductionAfterHalfDays  Int?
+    halfDayDeductionAmount       Decimal?
+    shortDayDeductionType        String?
+    applyDeductionAfterShortDays Int?
+    shortDayDeductionAmount      Decimal?
+    overtimeRate                 Decimal?
+    gazzetedOvertimeRate         Decimal?
+    dayOverrides                 Json?
+    status                       String     @default("active")
+    isDefault                    Boolean    @default(false)
+    createdById                  String?
+    createdAt                    DateTime   @default(now())
+    updatedAt                    DateTime   @updatedAt
+    employees                    Employee[]
+}
+
+model FileUpload {
+    id          String   @id @default(uuid())
+    filename    String
+    mimetype    String
+    size        Int
+    path        String?
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Holiday {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    dateFrom    DateTime
+    dateTo      DateTime
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Bank {
+    id                  String   @id @default(uuid())
+    name                String   @unique
+    code                String?  @unique
+    accountNumberPrefix String?
+    status              String   @default("active")
+    createdById         String?
+    updatedById         String?
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
+}
+
+model TaxRate1 {
+    id        String   @id @default(uuid())
+    taxRate1  Float    @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model RebateNature {
+    id                      String   @id @default(uuid())
+    name                    String   @unique
+    type                    String   @default("other")
+    category                String?
+    status                  String   @default("active")
+    maxInvestmentPercentage Decimal? @db.Decimal(5, 2)
+    maxInvestmentAmount     Decimal? @db.Decimal(12, 2)
+    details                 String?
+    underSection            String?
+    isAgeDependent          Boolean  @default(false)
+    createdById             String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+}
+
+model SocialSecurityInstitution {
+    id               String   @id @default(uuid())
+    code             String   @unique
+    name             String   @unique
+    province         String?
+    description      String?
+    status           String   @default("active")
+    website          String?
+    contactNumber    String?
+    address          String?
+    contributionRate Decimal  @default(0) @db.Decimal(5, 2)
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+    createdById      String? // User in Master DB
+    updatedById      String? // User in Master DB
+
+    // Social Security Relations
+    employerRegistrations SocialSecurityEmployerRegistration[]
+    employeeRegistrations SocialSecurityEmployeeRegistration[]
+    contributions         SocialSecurityContribution[]
+
+    employees Employee[]
+
+    @@index([code])
+    @@index([status])
+}
+
+model SocialSecurityEmployerRegistration {
+    id                    String                               @id @default(uuid())
+    companyId             String
+    institutionId         String
+    registrationNumber    String                               @unique
+    employerName          String
+    employerType          String
+    businessAddress       String
+    businessCity          String?
+    businessState         String?
+    businessCountry       String?
+    contactPerson         String?
+    contactNumber         String?
+    email                 String?
+    registrationDate      DateTime
+    expiryDate            DateTime?
+    status                String                               @default("active")
+    totalEmployees        Int                                  @default(0)
+    monthlyContribution   Decimal?                             @db.Decimal(10, 2)
+    notes                 String?
+    documentUrls          Json?
+    createdAt             DateTime                             @default(now())
+    updatedAt             DateTime                             @updatedAt
+    createdById           String?
+    updatedById           String?
+    contributions         SocialSecurityContribution[]
+    employeeRegistrations SocialSecurityEmployeeRegistration[]
+    institution           SocialSecurityInstitution            @relation(fields: [institutionId], references: [id])
+
+    @@index([institutionId])
+    @@index([registrationNumber])
+    @@index([status])
+    @@index([registrationDate])
+    @@index([companyId])
+}
+
+model SocialSecurityEmployeeRegistration {
+    id                     String                             @id @default(uuid())
+    companyId              String
+    institutionId          String
+    employerRegistrationId String
+    employeeId             String // Refers to Employee in Tenant DB
+    registrationNumber     String                             @unique
+    cardNumber             String?                            @unique
+    registrationDate       DateTime
+    expiryDate             DateTime?
+    status                 String                             @default("active")
+    contributionRate       Decimal                            @db.Decimal(5, 2)
+    baseSalary             Decimal                            @db.Decimal(10, 2)
+    monthlyContribution    Decimal                            @db.Decimal(10, 2)
+    isEmployerContribution Boolean                            @default(true)
+    employeeContribution   Decimal?                           @db.Decimal(10, 2)
+    employerContribution   Decimal?                           @db.Decimal(10, 2)
+    cardIssueDate          DateTime?
+    cardExpiryDate         DateTime?
+    cardStatus             String?
+    documentUrls           Json?
+    notes                  String?
+    createdAt              DateTime                           @default(now())
+    updatedAt              DateTime                           @updatedAt
+    createdById            String?
+    updatedById            String?
+    contributions          SocialSecurityContribution[]
+    employerRegistration   SocialSecurityEmployerRegistration @relation(fields: [employerRegistrationId], references: [id])
+    institution            SocialSecurityInstitution          @relation(fields: [institutionId], references: [id])
+
+    @@unique([institutionId, employeeId])
+    @@index([institutionId])
+    @@index([employerRegistrationId])
+    @@index([employeeId])
+    @@index([registrationNumber])
+    @@index([cardNumber])
+    @@index([status])
+    @@index([registrationDate])
+    @@index([companyId])
+}
+
+model SocialSecurityContribution {
+    id                     String                             @id @default(uuid())
+    companyId              String
+    institutionId          String
+    employerRegistrationId String
+    employeeRegistrationId String
+    employeeId             String // Refers to Employee in Tenant DB
+    month                  String
+    year                   String
+    date                   DateTime
+    baseSalary             Decimal                            @db.Decimal(10, 2)
+    contributionRate       Decimal                            @db.Decimal(5, 2)
+    contributionAmount     Decimal                            @db.Decimal(10, 2)
+    employeeContribution   Decimal?                           @db.Decimal(10, 2)
+    employerContribution   Decimal?                           @db.Decimal(10, 2)
+    paymentStatus          String                             @default("pending")
+    paymentDate            DateTime?
+    paymentReference       String?
+    dueDate                DateTime?
+    lateFee                Decimal?                           @db.Decimal(10, 2)
+    notes                  String?
+    status                 String                             @default("active")
+    createdAt              DateTime                           @default(now())
+    updatedAt              DateTime                           @updatedAt
+    payrollDetailId        String? // Refers to PayrollDetail in Tenant DB
+    createdById            String?
+    updatedById            String?
+    employeeRegistration   SocialSecurityEmployeeRegistration @relation(fields: [employeeRegistrationId], references: [id])
+    employerRegistration   SocialSecurityEmployerRegistration @relation(fields: [employerRegistrationId], references: [id])
+    institution            SocialSecurityInstitution          @relation(fields: [institutionId], references: [id])
+
+    @@unique([institutionId, employeeRegistrationId, month, year])
+    @@index([institutionId])
+    @@index([employerRegistrationId])
+    @@index([employeeRegistrationId])
+    @@index([employeeId])
+    @@index([month, year])
+    @@index([paymentStatus])
+    @@index([status])
+    @@index([payrollDetailId])
+    @@index([companyId])
+}
+
+model CompanyGroup {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model SalePool {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model SaleType {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Salesman {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model StorageDimension {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Machine {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Brand {
+    id          String     @id @default(uuid())
+    name        String     @unique
+    status      String     @default("active")
+    createdById String?
+    createdAt   DateTime   @default(now())
+    updatedAt   DateTime   @updatedAt
+    divisions   Division[]
+}
+
+model Division {
+    id          String   @id @default(uuid())
+    name        String
+    brandId     String
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    brand       Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+    @@unique([name, brandId])
+}
+
+model Gender {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Size {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Silhouette {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model ChannelClass {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Color {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model Segment {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model ItemClass {
+    id          String         @id @default(uuid())
+    name        String         @unique
+    status      String         @default("active")
+    createdById String?
+    createdAt   DateTime       @default(now())
+    updatedAt   DateTime       @updatedAt
+    subclasses  ItemSubclass[]
+}
+
+model ItemSubclass {
+    id          String    @id @default(uuid())
+    name        String
+    itemClassId String
+    status      String    @default("active")
+    createdById String?
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    itemClass   ItemClass @relation(fields: [itemClassId], references: [id], onDelete: Cascade)
+
+    @@unique([name, itemClassId])
+}
+
+model Season {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+model OldSeason {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    status      String   @default("active")
+    createdById String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+}
+
+// ==================== POS & MODULE ==============================
+
+model Location {
+    id                 String   @id @default(uuid())
+    name               String   @unique
+    code               String   @unique @default(cuid()) // Unique code for identifying location (e.g. NYC-01)
+    phone              String?
+    geoFenceEnabled    Boolean  @default(false)
+    geoFenceRadius     Int      @default(100) // In meters
+    ipWhitelist        String? // Comma separated list of allowed IPs
+    ipWhitelistEnabled Boolean  @default(false)
+    address            String?
+    latitude           Decimal? @db.Decimal(10, 8) // For geolocation-based nearest location detection
+    longitude          Decimal? @db.Decimal(11, 8) // For geolocation-based nearest location detection
+    cityId             String? // Refers to City in Master DB
+    companyId          String? // Refers to Company in Master DB
+    status             String   @default("active")
+    createdById        String? // Refers to User in Master DB
+    createdAt          DateTime @default(now())
+    updatedAt          DateTime @updatedAt
+    pos                Pos[]
+
+    employees             Employee[]
+    transferHistoriesPrev EmployeeTransferHistory[] @relation("TransferPrevLoc")
+    transferHistoriesNew  EmployeeTransferHistory[] @relation("TransferNewLoc")
+}
+
+model Pos {
+    id           String   @id @default(uuid())
+    posId        String // 3-character unique ID for this location
+    terminalCode String   @unique // Unique code for cloud-based terminal identification (e.g., MAIN-01)
+    name         String
+    locationId   String
+    location     Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+    companyId    String? // Direct link for easier querying. Refers to Company 
+    terminalPin  String? // Hashed pin for specialized POS login
+    status       String   @default("active")
+    createdById  String? // Refers to User in Master DB
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    sessions PosSession[]
+
+    @@unique([locationId, posId])
+}
+
+model PosSession {
+    id       String    @id @default(uuid())
+    posId    String
+    pos      Pos       @relation(fields: [posId], references: [id], onDelete: Cascade)
+    userId   String? // The user who opened the session. Refers to User in Master DB
+    openedAt DateTime  @default(now())
+    closedAt DateTime?
+    status   String    @default("open") // open, closed
+    token    String? // Associated JWT for this session
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([posId])
+    @@index([status])
+}
