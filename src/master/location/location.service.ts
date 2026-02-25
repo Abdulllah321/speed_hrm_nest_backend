@@ -7,12 +7,11 @@ import { PrismaService } from '../../database/prisma.service';
 export class LocationService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) {}
 
   async listActive() {
-    return this.prismaMaster.location.findMany({
+    return this.prisma.location.findMany({
       where: { status: 'active' },
       select: {
         id: true,
@@ -23,7 +22,7 @@ export class LocationService {
   }
 
   async list() {
-    const items: any = await this.prismaMaster.location.findMany({
+    const items: any = await this.prisma.location.findMany({
       include: {
         pos: {
           select: {
@@ -39,7 +38,7 @@ export class LocationService {
     if (items?.length > 0) {
       for (const item of items) {
         if (item?.cityId) {
-          const updatedItem = await this.prismaMaster.city.findUnique({
+          const updatedItem = await this.prisma.city.findUnique({
             where: { id: item.cityId },
           });
           item.city = updatedItem;
@@ -50,11 +49,11 @@ export class LocationService {
   }
 
   async get(id: string) {
-    const item: any = await this.prismaMaster.location.findUnique({
+    const item: any = await this.prisma.location.findUnique({
       where: { id },
     });
     if (item?.cityId) {
-      const updatedItem = await this.prismaMaster.city.findUnique({
+      const updatedItem = await this.prisma.city.findUnique({
         where: { id: item.cityId },
       });
       item.city = updatedItem;
@@ -68,7 +67,7 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.location.create({
+      const created = await this.prisma.location.create({
         data: {
           name: body.name,
           address: body.address || null,
@@ -114,10 +113,10 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.location.findUnique({
+      const existing = await this.prisma.location.findUnique({
         where: { id },
       });
-      const updated = await this.prismaMaster.location.update({
+      const updated = await this.prisma.location.update({
         where: { id },
         data: {
           name: body.name ?? existing?.name,
@@ -172,10 +171,10 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.location.findUnique({
+      const existing = await this.prisma.location.findUnique({
         where: { id },
       });
-      const removed = await this.prismaMaster.location.delete({
+      const removed = await this.prisma.location.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -220,7 +219,7 @@ export class LocationService {
     if (!items?.length)
       return { status: false, message: 'No locations to create' };
     try {
-      const result = await this.prismaMaster.location.createMany({
+      const result = await this.prisma.location.createMany({
         data: items.map((i) => ({
           name: i.name,
           address: i.address || null,
@@ -273,10 +272,10 @@ export class LocationService {
       return { status: false, message: 'No locations to update' };
     try {
       for (const i of items) {
-        const existing = await this.prismaMaster.location.findUnique({
+        const existing = await this.prisma.location.findUnique({
           where: { id: i.id },
         });
-        await this.prismaMaster.location.update({
+        await this.prisma.location.update({
           where: { id: i.id },
           data: {
             name: i.name ?? existing?.name,
@@ -325,10 +324,10 @@ export class LocationService {
     if (!ids?.length)
       return { status: false, message: 'No locations to delete' };
     try {
-      const existing = await this.prismaMaster.location.findMany({
+      const existing = await this.prisma.location.findMany({
         where: { id: { in: ids } },
       });
-      const result = await this.prismaMaster.location.deleteMany({
+      const result = await this.prisma.location.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -364,7 +363,7 @@ export class LocationService {
    */
   async findNearestLocation(latitude: number, longitude: number) {
     try {
-      const locations = await this.prismaMaster.location.findMany({
+      const locations = await this.prisma.location.findMany({
         where: {
           status: 'active',
           latitude: { not: null },

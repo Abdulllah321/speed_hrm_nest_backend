@@ -7,19 +7,18 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 export class WorkingHoursPolicyService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
     private activityLogsService: ActivityLogsService,
   ) {}
 
   async list() {
-    const items = await this.prismaMaster.workingHoursPolicy.findMany({
+    const items = await this.prisma.workingHoursPolicy.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.workingHoursPolicy.findUnique({
+    const item = await this.prisma.workingHoursPolicy.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Policy not found' };
@@ -33,13 +32,13 @@ export class WorkingHoursPolicyService {
     try {
       // If setting as default, unset all other policies first
       if (body.isDefault) {
-        await this.prismaMaster.workingHoursPolicy.updateMany({
+        await this.prisma.workingHoursPolicy.updateMany({
           where: { isDefault: true },
           data: { isDefault: false },
         });
       }
 
-      const created = await this.prismaMaster.workingHoursPolicy.create({
+      const created = await this.prisma.workingHoursPolicy.create({
         data: {
           name: body.name,
           startWorkingHours: body.startWorkingHours,
@@ -108,7 +107,7 @@ export class WorkingHoursPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.workingHoursPolicy.findUnique({
+      const existing = await this.prisma.workingHoursPolicy.findUnique({
         where: { id },
       });
       if (!existing) {
@@ -117,13 +116,13 @@ export class WorkingHoursPolicyService {
 
       // If setting as default, unset all other policies first
       if (body.isDefault === true && !existing.isDefault) {
-        await this.prismaMaster.workingHoursPolicy.updateMany({
+        await this.prisma.workingHoursPolicy.updateMany({
           where: { isDefault: true },
           data: { isDefault: false },
         });
       }
 
-      const updated = await this.prismaMaster.workingHoursPolicy.update({
+      const updated = await this.prisma.workingHoursPolicy.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -245,10 +244,10 @@ export class WorkingHoursPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.workingHoursPolicy.findUnique({
+      const existing = await this.prisma.workingHoursPolicy.findUnique({
         where: { id },
       });
-      const removed = await this.prismaMaster.workingHoursPolicy.delete({
+      const removed = await this.prisma.workingHoursPolicy.delete({
         where: { id },
       });
 
@@ -291,7 +290,7 @@ export class WorkingHoursPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.workingHoursPolicy.findUnique({
+      const existing = await this.prisma.workingHoursPolicy.findUnique({
         where: { id },
       });
       if (!existing) {
@@ -299,13 +298,13 @@ export class WorkingHoursPolicyService {
       }
 
       // Unset all other policies as default
-      await this.prismaMaster.workingHoursPolicy.updateMany({
+      await this.prisma.workingHoursPolicy.updateMany({
         where: { isDefault: true },
         data: { isDefault: false },
       });
 
       // Set this policy as default
-      const updated = await this.prismaMaster.workingHoursPolicy.update({
+      const updated = await this.prisma.workingHoursPolicy.update({
         where: { id },
         data: { isDefault: true },
       });
@@ -374,7 +373,7 @@ export class WorkingHoursPolicyService {
     const policyIds = [
       ...new Set(assignments.map((a) => a.workingHoursPolicyId)),
     ];
-    const policies = await this.prismaMaster.workingHoursPolicy.findMany({
+    const policies = await this.prisma.workingHoursPolicy.findMany({
       where: { id: { in: policyIds } },
       select: {
         id: true,
@@ -413,7 +412,7 @@ export class WorkingHoursPolicyService {
     if (!assignment) return { status: false, message: 'Assignment not found' };
 
     // Fetch policy from Master DB
-    const policy = await this.prismaMaster.workingHoursPolicy.findUnique({
+    const policy = await this.prisma.workingHoursPolicy.findUnique({
       where: { id: assignment.workingHoursPolicyId },
       select: {
         id: true,
@@ -504,7 +503,7 @@ export class WorkingHoursPolicyService {
       });
 
       // Fetch policy from Master DB for logging
-      const policy = await this.prismaMaster.workingHoursPolicy.findUnique({
+      const policy = await this.prisma.workingHoursPolicy.findUnique({
         where: { id: created.workingHoursPolicyId },
         select: { name: true },
       });
@@ -677,7 +676,7 @@ export class WorkingHoursPolicyService {
       }
 
       // Fetch policy from Master DB for logging
-      const policy = await this.prismaMaster.workingHoursPolicy.findUnique({
+      const policy = await this.prisma.workingHoursPolicy.findUnique({
         where: { id: existing.workingHoursPolicyId },
         select: { name: true },
       });
@@ -729,7 +728,7 @@ export class WorkingHoursPolicyService {
     const policyIds = [
       ...new Set(assignments.map((a) => a.workingHoursPolicyId)),
     ];
-    const policies = await this.prismaMaster.workingHoursPolicy.findMany({
+    const policies = await this.prisma.workingHoursPolicy.findMany({
       where: { id: { in: policyIds } },
       select: {
         id: true,

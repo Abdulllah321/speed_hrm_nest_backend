@@ -26,7 +26,7 @@ export class SilhouetteService {
       return { status: true, data: cachedData };
     }
 
-    const silhouettes = await this.prismaMaster.silhouette.findMany({
+    const silhouettes = await this.prisma.silhouette.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -56,7 +56,7 @@ export class SilhouetteService {
   }
 
   async getSilhouetteById(id: string) {
-    const silhouette = await this.prismaMaster.silhouette.findUnique({
+    const silhouette = await this.prisma.silhouette.findUnique({
       where: { id },
     });
     if (!silhouette) return { status: false, message: 'Silhouette not found' };
@@ -75,7 +75,7 @@ export class SilhouetteService {
 
   async createSilhouettes(items: CreateSilhouetteDto[], createdById: string) {
     try {
-      const silhouettes = await this.prismaMaster.silhouette.createMany({
+      const silhouettes = await this.prisma.silhouette.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -110,10 +110,10 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.silhouette.findUnique({
+      const existing = await this.prisma.silhouette.findUnique({
         where: { id },
       });
-      const silhouette = await this.prismaMaster.silhouette.update({
+      const silhouette = await this.prisma.silhouette.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -151,7 +151,7 @@ export class SilhouetteService {
       const updated: any[] = [];
       for (const dto of validDtos) {
         updated.push(
-          await this.prismaMaster.silhouette.update({
+          await this.prisma.silhouette.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -185,7 +185,7 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.silhouette.deleteMany({
+      const result = await this.prisma.silhouette.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -215,10 +215,10 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.silhouette.findUnique({
+      const existing = await this.prisma.silhouette.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.silhouette.delete({
+      const result = await this.prisma.silhouette.delete({
         where: { id },
       });
 

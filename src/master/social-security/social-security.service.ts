@@ -23,7 +23,7 @@ export class SocialSecurityService {
 
   // ========== Social Security Institution CRUD ==========
   async listInstitutions() {
-    const items = await this.prismaMaster.socialSecurityInstitution.findMany({
+    const items = await this.prisma.socialSecurityInstitution.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -39,7 +39,7 @@ export class SocialSecurityService {
   }
 
   async getInstitution(id: string) {
-    const item = await this.prismaMaster.socialSecurityInstitution.findUnique({
+    const item = await this.prisma.socialSecurityInstitution.findUnique({
       where: { id },
       include: {
         employerRegistrations: true,
@@ -55,7 +55,7 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.socialSecurityInstitution.create({
+      const created = await this.prisma.socialSecurityInstitution.create({
         data: {
           code: body.code,
           name: body.name,
@@ -106,11 +106,11 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityInstitution.findUnique({
+        await this.prisma.socialSecurityInstitution.findUnique({
           where: { id },
         });
       if (!existing) return { status: false, message: 'Institution not found' };
-      const updated = await this.prismaMaster.socialSecurityInstitution.update({
+      const updated = await this.prisma.socialSecurityInstitution.update({
         where: { id },
         data: {
           code: body.code ?? existing.code,
@@ -164,11 +164,11 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityInstitution.findUnique({
+        await this.prisma.socialSecurityInstitution.findUnique({
           where: { id },
         });
       if (!existing) return { status: false, message: 'Institution not found' };
-      await this.prismaMaster.socialSecurityInstitution.delete({
+      await this.prisma.socialSecurityInstitution.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -206,7 +206,7 @@ export class SocialSecurityService {
     const where: any = { companyId };
     if (institutionId) where.institutionId = institutionId;
     const items =
-      await this.prismaMaster.socialSecurityEmployerRegistration.findMany({
+      await this.prisma.socialSecurityEmployerRegistration.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -224,7 +224,7 @@ export class SocialSecurityService {
 
   async getEmployerRegistration(id: string) {
     const item =
-      await this.prismaMaster.socialSecurityEmployerRegistration.findUnique({
+      await this.prisma.socialSecurityEmployerRegistration.findUnique({
         where: { id },
         include: {
           institution: true,
@@ -246,7 +246,7 @@ export class SocialSecurityService {
   ) {
     try {
       const created =
-        await this.prismaMaster.socialSecurityEmployerRegistration.create({
+        await this.prisma.socialSecurityEmployerRegistration.create({
           data: {
             institutionId: body.institutionId,
             companyId: body.companyId,
@@ -312,13 +312,13 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityEmployerRegistration.findUnique({
+        await this.prisma.socialSecurityEmployerRegistration.findUnique({
           where: { id },
         });
       if (!existing)
         return { status: false, message: 'Employer registration not found' };
       const updated =
-        await this.prismaMaster.socialSecurityEmployerRegistration.update({
+        await this.prisma.socialSecurityEmployerRegistration.update({
           where: { id },
           data: {
             registrationNumber:
@@ -391,12 +391,12 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityEmployerRegistration.findUnique({
+        await this.prisma.socialSecurityEmployerRegistration.findUnique({
           where: { id },
         });
       if (!existing)
         return { status: false, message: 'Employer registration not found' };
-      await this.prismaMaster.socialSecurityEmployerRegistration.delete({
+      await this.prisma.socialSecurityEmployerRegistration.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -446,7 +446,7 @@ export class SocialSecurityService {
       where.employerRegistrationId = employerRegistrationId;
 
     const items =
-      await this.prismaMaster.socialSecurityEmployeeRegistration.findMany({
+      await this.prisma.socialSecurityEmployeeRegistration.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -479,7 +479,7 @@ export class SocialSecurityService {
 
     // Fetch departments from Master DB for these employees
     const deptIds = employees.map((e) => e.departmentId).filter(Boolean);
-    const departments = await this.prismaMaster.department.findMany({
+    const departments = await this.prisma.department.findMany({
       where: { id: { in: deptIds } },
     });
     const deptMap = departments.reduce(
@@ -503,7 +503,7 @@ export class SocialSecurityService {
 
   async getEmployeeRegistration(id: string) {
     const item =
-      await this.prismaMaster.socialSecurityEmployeeRegistration.findUnique({
+      await this.prisma.socialSecurityEmployeeRegistration.findUnique({
         where: { id },
         include: {
           institution: true,
@@ -531,7 +531,7 @@ export class SocialSecurityService {
   ) {
     try {
       const created =
-        await this.prismaMaster.socialSecurityEmployeeRegistration.create({
+        await this.prisma.socialSecurityEmployeeRegistration.create({
           data: {
             institutionId: body.institutionId,
             employerRegistrationId: body.employerRegistrationId,
@@ -571,11 +571,11 @@ export class SocialSecurityService {
         body.contributionRate === null
       ) {
         const inst =
-          await this.prismaMaster.socialSecurityInstitution.findUnique({
+          await this.prisma.socialSecurityInstitution.findUnique({
             where: { id: body.institutionId },
           });
         if (inst) {
-          await this.prismaMaster.socialSecurityEmployeeRegistration.update({
+          await this.prisma.socialSecurityEmployeeRegistration.update({
             where: { id: created.id },
             data: {
               contributionRate: (inst as any).contributionRate,
@@ -628,13 +628,13 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityEmployeeRegistration.findUnique({
+        await this.prisma.socialSecurityEmployeeRegistration.findUnique({
           where: { id },
         });
       if (!existing)
         return { status: false, message: 'Employee registration not found' };
       const updated =
-        await this.prismaMaster.socialSecurityEmployeeRegistration.update({
+        await this.prisma.socialSecurityEmployeeRegistration.update({
           where: { id },
           data: {
             registrationNumber:
@@ -719,12 +719,12 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityEmployeeRegistration.findUnique({
+        await this.prisma.socialSecurityEmployeeRegistration.findUnique({
           where: { id },
         });
       if (!existing)
         return { status: false, message: 'Employee registration not found' };
-      await this.prismaMaster.socialSecurityEmployeeRegistration.delete({
+      await this.prisma.socialSecurityEmployeeRegistration.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -774,7 +774,7 @@ export class SocialSecurityService {
     if (month) where.month = month;
     if (year) where.year = year;
 
-    const items = await this.prismaMaster.socialSecurityContribution.findMany({
+    const items = await this.prisma.socialSecurityContribution.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -814,7 +814,7 @@ export class SocialSecurityService {
   }
 
   async getContribution(id: string) {
-    const item = await this.prismaMaster.socialSecurityContribution.findUnique({
+    const item = await this.prisma.socialSecurityContribution.findUnique({
       where: { id },
       include: {
         institution: true,
@@ -842,7 +842,7 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.socialSecurityContribution.create(
+      const created = await this.prisma.socialSecurityContribution.create(
         {
           data: {
             institutionId: body.institutionId,
@@ -911,12 +911,12 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityContribution.findUnique({
+        await this.prisma.socialSecurityContribution.findUnique({
           where: { id },
         });
       if (!existing)
         return { status: false, message: 'Contribution not found' };
-      const updated = await this.prismaMaster.socialSecurityContribution.update(
+      const updated = await this.prisma.socialSecurityContribution.update(
         {
           where: { id },
           data: {
@@ -988,12 +988,12 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prismaMaster.socialSecurityContribution.findUnique({
+        await this.prisma.socialSecurityContribution.findUnique({
           where: { id },
         });
       if (!existing)
         return { status: false, message: 'Contribution not found' };
-      await this.prismaMaster.socialSecurityContribution.delete({
+      await this.prisma.socialSecurityContribution.delete({
         where: { id },
       });
       await this.activityLogs.log({

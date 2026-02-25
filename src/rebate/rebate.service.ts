@@ -68,7 +68,7 @@ export class RebateService {
             subDepartmentId: true,
           },
         }),
-        this.prismaMaster.rebateNature.findMany({
+        this.prisma.rebateNature.findMany({
           where: { id: { in: rebateNatureIds } },
           select: { id: true, name: true, type: true, category: true },
         }),
@@ -87,11 +87,11 @@ export class RebateService {
       ] as string[];
 
       const [departments, subDepartments] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),
@@ -157,7 +157,7 @@ export class RebateService {
             subDepartmentId: true,
           },
         }),
-        this.prismaMaster.rebateNature.findUnique({
+        this.prisma.rebateNature.findUnique({
           where: { id: rebate.rebateNatureId },
           select: {
             id: true,
@@ -187,13 +187,13 @@ export class RebateService {
       if (employee) {
         const [dept, subDept] = await Promise.all([
           employee.departmentId
-            ? this.prismaMaster.department.findUnique({
+            ? this.prisma.department.findUnique({
                 where: { id: employee.departmentId },
                 select: { id: true, name: true },
               })
             : Promise.resolve(null),
           employee.subDepartmentId
-            ? this.prismaMaster.subDepartment.findUnique({
+            ? this.prisma.subDepartment.findUnique({
                 where: { id: employee.subDepartmentId },
                 select: { id: true, name: true },
               })
@@ -240,7 +240,7 @@ export class RebateService {
       }
 
       // Validate rebate nature exists (in Master DB)
-      const rebateNature = await this.prismaMaster.rebateNature.findUnique({
+      const rebateNature = await this.prisma.rebateNature.findUnique({
         where: { id: body.rebateNatureId },
       });
 
@@ -249,7 +249,7 @@ export class RebateService {
       }
 
       // Validate monthYear format
-      if (!/^\d{4}-\d{2}$/.test(body.monthYear)) {
+      if (!/^""d{4}-""d{2}$/.test(body.monthYear)) {
         return {
           status: false,
           message: 'Invalid monthYear format. Expected YYYY-MM',
@@ -292,13 +292,13 @@ export class RebateService {
       // Map relation data for response
       const [dept, subDept] = await Promise.all([
         employee.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: employee.departmentId },
               select: { id: true, name: true },
             })
           : Promise.resolve(null),
         employee.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: employee.subDepartmentId },
               select: { id: true, name: true },
             })
@@ -383,20 +383,20 @@ export class RebateService {
       // Validate rebate nature if provided (in Master DB)
       let rebateNature: any = null;
       if (body.rebateNatureId) {
-        rebateNature = await this.prismaMaster.rebateNature.findUnique({
+        rebateNature = await this.prisma.rebateNature.findUnique({
           where: { id: body.rebateNatureId },
         });
         if (!rebateNature) {
           return { status: false, message: 'Rebate nature not found' };
         }
       } else {
-        rebateNature = await this.prismaMaster.rebateNature.findUnique({
+        rebateNature = await this.prisma.rebateNature.findUnique({
           where: { id: existing.rebateNatureId },
         });
       }
 
       // Validate monthYear format if provided
-      if (body.monthYear && !/^\d{4}-\d{2}$/.test(body.monthYear)) {
+      if (body.monthYear && !/^""d{4}-""d{2}$/.test(body.monthYear)) {
         return {
           status: false,
           message: 'Invalid monthYear format. Expected YYYY-MM',
@@ -448,13 +448,13 @@ export class RebateService {
       // Map relation data for response
       const [dept, subDept] = await Promise.all([
         employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: employee.departmentId },
               select: { id: true, name: true },
             })
           : Promise.resolve(null),
         employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: employee.subDepartmentId },
               select: { id: true, name: true },
             })

@@ -56,7 +56,7 @@ export class LoanRequestService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -74,7 +74,7 @@ export class LoanRequestService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -123,19 +123,19 @@ export class LoanRequestService {
       updatedBy,
     ] = await Promise.all([
       loanRequest.loanTypeId
-        ? this.prismaMaster.loanType.findUnique({
+        ? this.prisma.loanType.findUnique({
             where: { id: loanRequest.loanTypeId },
             select: { id: true, name: true },
           })
         : null,
       loanRequest.employee?.departmentId
-        ? this.prismaMaster.department.findUnique({
+        ? this.prisma.department.findUnique({
             where: { id: loanRequest.employee.departmentId },
             select: { id: true, name: true },
           })
         : null,
       loanRequest.employee?.subDepartmentId
-        ? this.prismaMaster.subDepartment.findUnique({
+        ? this.prisma.subDepartment.findUnique({
             where: { id: loanRequest.employee.subDepartmentId },
             select: { id: true, name: true },
           })
@@ -276,15 +276,15 @@ export class LoanRequestService {
       // Fetch all required data in parallel
       const [loanTypes, departments, subDepartments, users, payrollAggregates] =
         await Promise.all([
-          this.prismaMaster.loanType.findMany({
+          this.prisma.loanType.findMany({
             where: { id: { in: loanTypeIds } },
             select: { id: true, name: true },
           }),
-          this.prismaMaster.department.findMany({
+          this.prisma.department.findMany({
             where: { id: { in: deptIds } },
             select: { id: true, name: true },
           }),
-          this.prismaMaster.subDepartment.findMany({
+          this.prisma.subDepartment.findMany({
             where: { id: { in: subDeptIds } },
             select: { id: true, name: true },
           }),
@@ -380,19 +380,19 @@ export class LoanRequestService {
         updatedBy,
       ] = await Promise.all([
         loanRequest.loanTypeId
-          ? this.prismaMaster.loanType.findUnique({
+          ? this.prisma.loanType.findUnique({
               where: { id: loanRequest.loanTypeId },
               select: { id: true, name: true },
             })
           : null,
         loanRequest.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: loanRequest.employee.departmentId },
               select: { id: true, name: true },
             })
           : null,
         loanRequest.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: loanRequest.employee.subDepartmentId },
               select: { id: true, name: true },
             })
@@ -497,7 +497,7 @@ export class LoanRequestService {
       const employeeById = new Map(employees.map((e) => [e.id, e]));
 
       const loanTypeIds = body.loanRequests.map((l) => l.loanTypeId);
-      const loanTypes = await this.prismaMaster.loanType.findMany({
+      const loanTypes = await this.prisma.loanType.findMany({
         where: { id: { in: loanTypeIds }, status: 'active' },
         select: { id: true, name: true },
       });
@@ -637,13 +637,13 @@ export class LoanRequestService {
         result.map(async (lr) => {
           const [department, subDepartment, createdBy] = await Promise.all([
             lr.employee?.departmentId
-              ? this.prismaMaster.department.findUnique({
+              ? this.prisma.department.findUnique({
                   where: { id: lr.employee.departmentId },
                   select: { id: true, name: true },
                 })
               : null,
             lr.employee?.subDepartmentId
-              ? this.prismaMaster.subDepartment.findUnique({
+              ? this.prisma.subDepartment.findUnique({
                   where: { id: lr.employee.subDepartmentId },
                   select: { id: true, name: true },
                 })
@@ -728,7 +728,7 @@ export class LoanRequestService {
 
       if (body.loanTypeId !== undefined) {
         // Validate loan type exists
-        const loanType = await this.prismaMaster.loanType.findUnique({
+        const loanType = await this.prisma.loanType.findUnique({
           where: { id: body.loanTypeId },
         });
         if (!loanType || loanType.status !== 'active') {
@@ -800,19 +800,19 @@ export class LoanRequestService {
         updatedBy,
       ] = await Promise.all([
         updated.loanTypeId
-          ? this.prismaMaster.loanType.findUnique({
+          ? this.prisma.loanType.findUnique({
               where: { id: updated.loanTypeId },
               select: { id: true, name: true },
             })
           : null,
         updated.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: updated.employee.departmentId },
               select: { id: true, name: true },
             })
           : null,
         updated.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: updated.employee.subDepartmentId },
               select: { id: true, name: true },
             })

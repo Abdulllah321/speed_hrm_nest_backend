@@ -16,7 +16,7 @@ export class AllocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.allocation.create({
+      const created = await this.prisma.allocation.create({
         data: {
           name,
           createdById: ctx.userId,
@@ -66,7 +66,7 @@ export class AllocationService {
   ) {
     if (!names?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prismaMaster.allocation.createMany({
+      const result = await this.prisma.allocation.createMany({
         data: names.map((name) => ({
           name,
           createdById: ctx.userId,
@@ -112,7 +112,7 @@ export class AllocationService {
 
   async list() {
     try {
-      const items = await this.prismaMaster.allocation.findMany({
+      const items = await this.prisma.allocation.findMany({
         orderBy: { createdAt: 'desc' },
       });
 
@@ -144,7 +144,7 @@ export class AllocationService {
 
   async get(id: string) {
     try {
-      const allocation = await this.prismaMaster.allocation.findUnique({
+      const allocation = await this.prisma.allocation.findUnique({
         where: { id },
       });
 
@@ -181,12 +181,12 @@ export class AllocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.allocation.findUnique({
+      const existing = await this.prisma.allocation.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Allocation not found' };
 
-      const updated = await this.prismaMaster.allocation.update({
+      const updated = await this.prisma.allocation.update({
         where: { id },
         data: { name },
       });
@@ -235,12 +235,12 @@ export class AllocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.allocation.findUnique({
+      const existing = await this.prisma.allocation.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Allocation not found' };
 
-      const removed = await this.prismaMaster.allocation.delete({
+      const removed = await this.prisma.allocation.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -287,7 +287,7 @@ export class AllocationService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const result = await this.prismaMaster.allocation.deleteMany({
+      const result = await this.prisma.allocation.deleteMany({
         where: {
           id: { in: ids },
         },
@@ -336,7 +336,7 @@ export class AllocationService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        await this.prismaMaster.allocation.update({
+        await this.prisma.allocation.update({
           where: { id: item.id },
           data: { name: item.name },
         });

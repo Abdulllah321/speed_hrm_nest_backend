@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import {
   CreateStorageDimensionDto,
   UpdateStorageDimensionDto,
@@ -7,10 +9,10 @@ import {
 
 @Injectable()
 export class StorageDimensionService {
-  constructor(private prismaMaster: PrismaMasterService) {}
+  constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateStorageDimensionDto, userId: string) {
-    const result = await this.prismaMaster.storageDimension.create({
+    const result = await this.prisma.storageDimension.create({
       data: {
         ...createDto,
         createdById: userId,
@@ -24,7 +26,7 @@ export class StorageDimensionService {
   }
 
   async findAll() {
-    const data = await this.prismaMaster.storageDimension.findMany({
+    const data = await this.prisma.storageDimension.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data };
@@ -32,7 +34,7 @@ export class StorageDimensionService {
 
   async findOne(id: string) {
     const storageDimension =
-      await this.prismaMaster.storageDimension.findUnique({
+      await this.prisma.storageDimension.findUnique({
         where: { id },
       });
     if (!storageDimension) {
@@ -42,7 +44,7 @@ export class StorageDimensionService {
   }
 
   async update(id: string, updateDto: UpdateStorageDimensionDto) {
-    const result = await this.prismaMaster.storageDimension.update({
+    const result = await this.prisma.storageDimension.update({
       where: { id },
       data: updateDto,
     });
@@ -54,7 +56,7 @@ export class StorageDimensionService {
   }
 
   async remove(id: string) {
-    await this.prismaMaster.storageDimension.delete({
+    await this.prisma.storageDimension.delete({
       where: { id },
     });
     return { status: true, message: 'Storage Dimension deleted successfully' };

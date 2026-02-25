@@ -98,7 +98,7 @@ export class AllowanceService {
 
       const [allowanceHeads, users, departments, subDepartments] =
         await Promise.all([
-          this.prismaMaster.allowanceHead.findMany({
+          this.prisma.allowanceHead.findMany({
             where: { id: { in: allowanceHeadIds } },
             select: { id: true, name: true },
           }),
@@ -106,11 +106,11 @@ export class AllowanceService {
             where: { id: { in: createdByIds } },
             select: { id: true, firstName: true, lastName: true, email: true },
           }),
-          this.prismaMaster.department.findMany({
+          this.prisma.department.findMany({
             where: { id: { in: deptIds } },
             select: { id: true, name: true },
           }),
-          this.prismaMaster.subDepartment.findMany({
+          this.prisma.subDepartment.findMany({
             where: { id: { in: subDeptIds } },
             select: { id: true, name: true },
           }),
@@ -178,7 +178,7 @@ export class AllowanceService {
 
       // Fetch Master Data
       const [head, creator, updator, dept, subDept] = await Promise.all([
-        this.prismaMaster.allowanceHead.findUnique({
+        this.prisma.allowanceHead.findUnique({
           where: { id: allowance.allowanceHeadId },
           select: { id: true, name: true },
         }),
@@ -205,13 +205,13 @@ export class AllowanceService {
             })
           : null,
         allowance.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: allowance.employee.departmentId },
               select: { id: true, name: true },
             })
           : null,
         allowance.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: allowance.employee.subDepartmentId },
               select: { id: true, name: true },
             })
@@ -273,7 +273,7 @@ export class AllowanceService {
       const allowanceHeadIds = Array.from(
         new Set(body.allowances.map((a) => a.allowanceHeadId)),
       );
-      const allowanceHeads = await this.prismaMaster.allowanceHead.findMany({
+      const allowanceHeads = await this.prisma.allowanceHead.findMany({
         where: { id: { in: allowanceHeadIds }, status: 'active' },
         select: { id: true },
       });
@@ -521,7 +521,7 @@ export class AllowanceService {
         where.status = status;
       }
 
-      const allowanceHeads = await this.prismaMaster.allowanceHead.findMany({
+      const allowanceHeads = await this.prisma.allowanceHead.findMany({
         where,
         orderBy: { name: 'asc' },
       });
@@ -541,7 +541,7 @@ export class AllowanceService {
 
   async getAllowanceHead(id: string) {
     try {
-      const allowanceHead = await this.prismaMaster.allowanceHead.findUnique({
+      const allowanceHead = await this.prisma.allowanceHead.findUnique({
         where: { id },
       });
 

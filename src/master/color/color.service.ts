@@ -26,7 +26,7 @@ export class ColorService {
       return { status: true, data: cachedData };
     }
 
-    const colors = await this.prismaMaster.color.findMany({
+    const colors = await this.prisma.color.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -54,7 +54,7 @@ export class ColorService {
   }
 
   async getColorById(id: string) {
-    const item = await this.prismaMaster.color.findUnique({
+    const item = await this.prisma.color.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Color not found' };
@@ -73,7 +73,7 @@ export class ColorService {
 
   async createColors(items: CreateColorDto[], createdById: string) {
     try {
-      const result = await this.prismaMaster.color.createMany({
+      const result = await this.prisma.color.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -108,10 +108,10 @@ export class ColorService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.color.findUnique({
+      const existing = await this.prisma.color.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.color.update({
+      const result = await this.prisma.color.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -148,7 +148,7 @@ export class ColorService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.color.update({
+          await this.prisma.color.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -182,7 +182,7 @@ export class ColorService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.color.deleteMany({
+      const result = await this.prisma.color.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -212,10 +212,10 @@ export class ColorService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.color.findUnique({
+      const existing = await this.prisma.color.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.color.delete({ where: { id } });
+      const result = await this.prisma.color.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

@@ -26,7 +26,7 @@ export class SizeService {
       return { status: true, data: cachedData };
     }
 
-    const sizes = await this.prismaMaster.size.findMany({
+    const sizes = await this.prisma.size.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -54,7 +54,7 @@ export class SizeService {
   }
 
   async getSizeById(id: string) {
-    const size = await this.prismaMaster.size.findUnique({
+    const size = await this.prisma.size.findUnique({
       where: { id },
     });
     if (!size) return { status: false, message: 'Size not found' };
@@ -73,7 +73,7 @@ export class SizeService {
 
   async createSizes(items: CreateSizeDto[], createdById: string) {
     try {
-      const sizes = await this.prismaMaster.size.createMany({
+      const sizes = await this.prisma.size.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -108,10 +108,10 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.size.findUnique({
+      const existing = await this.prisma.size.findUnique({
         where: { id },
       });
-      const size = await this.prismaMaster.size.update({
+      const size = await this.prisma.size.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -145,7 +145,7 @@ export class SizeService {
       const updated: any[] = [];
       for (const dto of validDtos) {
         updated.push(
-          await this.prismaMaster.size.update({
+          await this.prisma.size.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -179,7 +179,7 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.size.deleteMany({
+      const result = await this.prisma.size.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -209,10 +209,10 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.size.findUnique({
+      const existing = await this.prisma.size.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.size.delete({ where: { id } });
+      const result = await this.prisma.size.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

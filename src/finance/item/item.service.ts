@@ -6,7 +6,6 @@ import { CreateItemDto, UpdateItemDto } from './dto/item.dto';
 @Injectable()
 export class ItemService {
   constructor(
-    private prismaMaster: PrismaMasterService,
     private prisma: PrismaService,
   ) { }
 
@@ -31,7 +30,7 @@ export class ItemService {
       select: { itemId: true },
     });
     const lastNum =
-      last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+      last && /^""d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
     const next = lastNum + 1;
     if (next > 999999) {
       throw new Error('Item ID sequence exceeded maximum 999999');
@@ -99,15 +98,15 @@ export class ItemService {
       // First pass: find master-data IDs that match the search term
       const [matchingBrands, matchingCategories, matchingDivisions] =
         await Promise.all([
-          this.prismaMaster.brand.findMany({
+          this.prisma.brand.findMany({
             where: { name: { contains: searchTerm, mode: 'insensitive' } },
             select: { id: true },
           }),
-          this.prismaMaster.category.findMany({
+          this.prisma.category.findMany({
             where: { name: { contains: searchTerm, mode: 'insensitive' } },
             select: { id: true },
           }),
-          this.prismaMaster.division.findMany({
+          this.prisma.division.findMany({
             where: { name: { contains: searchTerm, mode: 'insensitive' } },
             select: { id: true },
           }),
@@ -278,62 +277,62 @@ export class ItemService {
         any[],
       ] = await Promise.all([
         brandIds.length
-          ? this.prismaMaster.brand.findMany({
+          ? this.prisma.brand.findMany({
             where: { id: { in: brandIds as string[] } },
           })
           : [],
         divisionIds.length
-          ? this.prismaMaster.division.findMany({
+          ? this.prisma.division.findMany({
             where: { id: { in: divisionIds as string[] } },
           })
           : [],
         categoryIds.length
-          ? this.prismaMaster.category.findMany({
+          ? this.prisma.category.findMany({
             where: { id: { in: categoryIds as string[] } },
           })
           : [],
         subCategoryIds.length
-          ? this.prismaMaster.category.findMany({
+          ? this.prisma.category.findMany({
             where: { id: { in: subCategoryIds as string[] } },
           })
           : [],
         seasonIds.length
-          ? this.prismaMaster.season.findMany({
+          ? this.prisma.season.findMany({
             where: { id: { in: seasonIds as string[] } },
           })
           : [],
         genderIds.length
-          ? this.prismaMaster.gender.findMany({
+          ? this.prisma.gender.findMany({
             where: { id: { in: genderIds as string[] } },
           })
           : [],
         sizeIds.length
-          ? this.prismaMaster.size.findMany({
+          ? this.prisma.size.findMany({
             where: { id: { in: sizeIds as string[] } },
           })
           : [],
         silhouetteIds.length
-          ? this.prismaMaster.silhouette.findMany({
+          ? this.prisma.silhouette.findMany({
             where: { id: { in: silhouetteIds as string[] } },
           })
           : [],
         channelClassIds.length
-          ? this.prismaMaster.channelClass.findMany({
+          ? this.prisma.channelClass.findMany({
             where: { id: { in: channelClassIds as string[] } },
           })
           : [],
         colorIds.length
-          ? this.prismaMaster.color.findMany({
+          ? this.prisma.color.findMany({
             where: { id: { in: colorIds as string[] } },
           })
           : [],
         itemClassIds.length
-          ? this.prismaMaster.itemClass.findMany({
+          ? this.prisma.itemClass.findMany({
             where: { id: { in: itemClassIds as string[] } },
           })
           : [],
         itemSubclassIds.length
-          ? this.prismaMaster.itemSubclass.findMany({
+          ? this.prisma.itemSubclass.findMany({
             where: { id: { in: itemSubclassIds as string[] } },
           })
           : [],

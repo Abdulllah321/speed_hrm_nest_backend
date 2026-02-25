@@ -14,8 +14,7 @@ import {
 export class ChannelClassService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
@@ -26,7 +25,7 @@ export class ChannelClassService {
       return { status: true, data: cachedData };
     }
 
-    const channelClasses = await this.prismaMaster.channelClass.findMany({
+    const channelClasses = await this.prisma.channelClass.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -54,7 +53,7 @@ export class ChannelClassService {
   }
 
   async getChannelClassById(id: string) {
-    const item = await this.prismaMaster.channelClass.findUnique({
+    const item = await this.prisma.channelClass.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Channel Class not found' };
@@ -76,7 +75,7 @@ export class ChannelClassService {
     createdById: string,
   ) {
     try {
-      const result = await this.prismaMaster.channelClass.createMany({
+      const result = await this.prisma.channelClass.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -111,10 +110,10 @@ export class ChannelClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.channelClass.findUnique({
+      const existing = await this.prisma.channelClass.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.channelClass.update({
+      const result = await this.prisma.channelClass.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -151,7 +150,7 @@ export class ChannelClassService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.channelClass.update({
+          await this.prisma.channelClass.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -185,7 +184,7 @@ export class ChannelClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.channelClass.deleteMany({
+      const result = await this.prisma.channelClass.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -215,10 +214,10 @@ export class ChannelClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.channelClass.findUnique({
+      const existing = await this.prisma.channelClass.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.channelClass.delete({
+      const result = await this.prisma.channelClass.delete({
         where: { id },
       });
 

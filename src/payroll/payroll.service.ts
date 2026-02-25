@@ -104,7 +104,7 @@ export class PayrollService {
       allTaxSlabs,
       policyAssignments,
     ] = await Promise.all([
-      this.prismaMaster.salaryBreakup.findMany({ where: { status: 'active' } }),
+      this.prisma.salaryBreakup.findMany({ where: { status: 'active' } }),
       this.prisma.allowance.findMany({
         where: {
           employeeId: { in: ids },
@@ -185,7 +185,7 @@ export class PayrollService {
         },
         orderBy: { promotionDate: 'asc' },
       }),
-      this.prismaMaster.socialSecurityEmployeeRegistration.findMany({
+      this.prisma.socialSecurityEmployeeRegistration.findMany({
         where: { employeeId: { in: ids }, status: 'active' },
         include: {
           institution: {
@@ -194,25 +194,25 @@ export class PayrollService {
         },
         orderBy: { registrationDate: 'desc' },
       }),
-      this.prismaMaster.workingHoursPolicy.findMany({
+      this.prisma.workingHoursPolicy.findMany({
         where: { status: 'active' },
       }),
-      this.prismaMaster.leavesPolicy.findMany({
+      this.prisma.leavesPolicy.findMany({
         where: { status: 'active' },
         include: { leaveTypes: true },
       }),
-      this.prismaMaster.allowanceHead.findMany({
+      this.prisma.allowanceHead.findMany({
         select: { id: true, name: true },
       }),
-      this.prismaMaster.deductionHead.findMany({
+      this.prisma.deductionHead.findMany({
         select: { id: true, name: true },
       }),
-      this.prismaMaster.bonusType.findMany({
+      this.prisma.bonusType.findMany({
         select: { id: true, name: true },
       }),
-      this.prismaMaster.rebateNature.findMany(),
-      this.prismaMaster.holiday.findMany({ where: { status: 'active' } }),
-      this.prismaMaster.taxSlab.findMany({ where: { status: 'active' } }),
+      this.prisma.rebateNature.findMany(),
+      this.prisma.holiday.findMany({ where: { status: 'active' } }),
+      this.prisma.taxSlab.findMany({ where: { status: 'active' } }),
       this.prisma.workingHoursPolicyAssignment.findMany({
         where: {
           employeeId: { in: ids },
@@ -831,10 +831,10 @@ export class PayrollService {
 
     // Fetch Master Data
     const [departments, designations, users] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: Array.from(departmentIds) } },
       }),
-      this.prismaMaster.designation.findMany({
+      this.prisma.designation.findMany({
         where: { id: { in: Array.from(designationIds) } },
       }),
       this.prismaMaster.user.findMany({
@@ -878,7 +878,7 @@ export class PayrollService {
 
         // Use NotificationsService to create a notification record (In-App only to avoid duplicate email)
         await this.notificationsService.create({
-          userId: user.id,
+          userId: user.id!,
           title: `Payslip for ${payroll.month}/${payroll.year}`,
           message: `Your payslip for ${payroll.month}/${payroll.year} is ready. Net Salary: ${detail.netSalary}`,
           category: 'payroll',
@@ -891,7 +891,7 @@ export class PayrollService {
 
         const emailSubject = `Payslip - ${payroll.month}/${payroll.year}`;
         await this.notificationsService.sendEmail({
-          userId: user.id,
+          userId: user.id!,
           subject: emailSubject,
           body: htmlContent,
         });
@@ -1099,25 +1099,25 @@ export class PayrollService {
       countries,
       locations,
     ] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: deptIds as string[] } },
       }),
-      this.prismaMaster.subDepartment.findMany({
+      this.prisma.subDepartment.findMany({
         where: { id: { in: subDeptIds as string[] } },
       }),
-      this.prismaMaster.designation.findMany({
+      this.prisma.designation.findMany({
         where: { id: { in: desIds as string[] } },
       }),
-      this.prismaMaster.city.findMany({
+      this.prisma.city.findMany({
         where: { id: { in: cityIds as string[] } },
       }),
-      this.prismaMaster.state.findMany({
+      this.prisma.state.findMany({
         where: { id: { in: stateIds as string[] } },
       }),
-      this.prismaMaster.country.findMany({
+      this.prisma.country.findMany({
         where: { id: { in: countryIds as string[] } },
       }),
-      this.prismaMaster.location.findMany({
+      this.prisma.location.findMany({
         where: { id: { in: locIds as string[] } },
       }),
     ]);
@@ -1263,11 +1263,11 @@ export class PayrollService {
     ];
 
     const [departments, subDepartments] = await Promise.all([
-      this.prismaMaster.department.findMany({
+      this.prisma.department.findMany({
         where: { id: { in: deptIds as string[] } },
         select: { id: true, name: true },
       }),
-      this.prismaMaster.subDepartment.findMany({
+      this.prisma.subDepartment.findMany({
         where: { id: { in: subDeptIds as string[] } },
         select: { id: true, name: true },
       }),
@@ -1306,22 +1306,22 @@ export class PayrollService {
     // Fetch Master data for the employee
     const [dept, subDept, des, grade] = await Promise.all([
       detail.employee.departmentId
-        ? this.prismaMaster.department.findUnique({
+        ? this.prisma.department.findUnique({
             where: { id: detail.employee.departmentId },
           })
         : null,
       detail.employee.subDepartmentId
-        ? this.prismaMaster.subDepartment.findUnique({
+        ? this.prisma.subDepartment.findUnique({
             where: { id: detail.employee.subDepartmentId },
           })
         : null,
       detail.employee.designationId
-        ? this.prismaMaster.designation.findUnique({
+        ? this.prisma.designation.findUnique({
             where: { id: detail.employee.designationId },
           })
         : null,
       detail.employee.employeeGradeId
-        ? this.prismaMaster.employeeGrade.findUnique({
+        ? this.prisma.employeeGrade.findUnique({
             where: { id: detail.employee.employeeGradeId },
           })
         : null,
@@ -1480,7 +1480,7 @@ export class PayrollService {
         const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
 
         // Fetch EOBI record for the payroll month/year
-        const eobiRecord = await this.prismaMaster.eOBI.findFirst({
+        const eobiRecord = await this.prisma.eOBI.findFirst({
           where: {
             OR: [{ yearMonth: yearMonth }, { yearMonth: yearMonthAlt }],
             status: 'active',
@@ -1508,7 +1508,7 @@ export class PayrollService {
     if (employee.providentFund) {
       try {
         // Fetch active ProvidentFund record from master table
-        const pfRecord = await this.prismaMaster.providentFund.findFirst({
+        const pfRecord = await this.prisma.providentFund.findFirst({
           where: {
             status: 'active',
           },
