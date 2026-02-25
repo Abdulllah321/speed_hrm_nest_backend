@@ -53,7 +53,7 @@ export class LeaveApplicationService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -71,7 +71,7 @@ export class LeaveApplicationService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -107,7 +107,7 @@ export class LeaveApplicationService {
       }
 
       // Get leaves policy from Master DB
-      const leavesPolicy = await this.prismaMaster.leavesPolicy.findUnique({
+      const leavesPolicy = await this.prisma.leavesPolicy.findUnique({
         where: { id: employee.leavesPolicyId },
         include: {
           leaveTypes: true, // Master relation
@@ -135,7 +135,7 @@ export class LeaveApplicationService {
         ]),
       ];
 
-      const masterLeaveTypes = await this.prismaMaster.leaveType.findMany({
+      const masterLeaveTypes = await this.prisma.leaveType.findMany({
         where: { id: { in: leaveTypeIds } },
         select: { id: true, name: true },
       });
@@ -235,7 +235,7 @@ export class LeaveApplicationService {
         return { status: false, message: 'Employee not found' };
       }
 
-      const leavesPolicy = await this.prismaMaster.leavesPolicy.findUnique({
+      const leavesPolicy = await this.prisma.leavesPolicy.findUnique({
         where: { id: employee.leavesPolicyId },
         include: {
           leaveTypes: true,
@@ -415,7 +415,7 @@ export class LeaveApplicationService {
       });
 
       // Fetch tags for response
-      const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+      const masterLeaveType = await this.prisma.leaveType.findUnique({
         where: { id: created.leaveTypeId },
         select: { name: true },
       });
@@ -560,7 +560,7 @@ export class LeaveApplicationService {
             subDepartmentId: true,
           },
         }),
-        this.prismaMaster.leaveType.findMany({
+        this.prisma.leaveType.findMany({
           where: { id: { in: leaveTypeIds } },
           select: { id: true, name: true },
         }),
@@ -574,11 +574,11 @@ export class LeaveApplicationService {
       ] as string[];
 
       const [departments, subDepartments] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),
@@ -751,7 +751,7 @@ export class LeaveApplicationService {
         });
 
         // Fetch labels for activity log and notifications
-        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+        const masterLeaveType = await this.prisma.leaveType.findUnique({
           where: { id: existing.leaveTypeId },
           select: { name: true },
         });
@@ -864,7 +864,7 @@ export class LeaveApplicationService {
         });
 
         // Fetch labels
-        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+        const masterLeaveType = await this.prisma.leaveType.findUnique({
           where: { id: existing.leaveTypeId },
           select: { name: true },
         });
@@ -1035,7 +1035,7 @@ export class LeaveApplicationService {
         });
 
         // Fetch labels
-        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+        const masterLeaveType = await this.prisma.leaveType.findUnique({
           where: { id: existing.leaveTypeId },
           select: { name: true },
         });
@@ -1127,7 +1127,7 @@ export class LeaveApplicationService {
         });
 
         // Fetch labels
-        const masterLeaveType = await this.prismaMaster.leaveType.findUnique({
+        const masterLeaveType = await this.prisma.leaveType.findUnique({
           where: { id: existing.leaveTypeId },
           select: { name: true },
         });

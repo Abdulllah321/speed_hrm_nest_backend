@@ -7,9 +7,8 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 export class AttendanceExemptionService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   private async resolveApproverUserId(args: {
     level: {
@@ -51,7 +50,7 @@ export class AttendanceExemptionService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -69,7 +68,7 @@ export class AttendanceExemptionService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -138,15 +137,15 @@ export class AttendanceExemptionService {
       });
 
       const [departments, subDepartments, designations] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: Array.from(deptIds) } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: Array.from(subDeptIds) } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.designation.findMany({
+        this.prisma.designation.findMany({
           where: { id: { in: Array.from(desgIds) } },
           select: { id: true, name: true },
         }),
@@ -201,22 +200,22 @@ export class AttendanceExemptionService {
 
       const [department, subDepartment, designation] = await Promise.all([
         exemption.department
-          ? this.prismaMaster.department.findUnique({
-              where: { id: exemption.department },
-              select: { name: true },
-            })
+          ? this.prisma.department.findUnique({
+            where: { id: exemption.department },
+            select: { name: true },
+          })
           : null,
         exemption.subDepartment
-          ? this.prismaMaster.subDepartment.findUnique({
-              where: { id: exemption.subDepartment },
-              select: { name: true },
-            })
+          ? this.prisma.subDepartment.findUnique({
+            where: { id: exemption.subDepartment },
+            select: { name: true },
+          })
           : null,
         exemption.employee?.designationId
-          ? this.prismaMaster.designation.findUnique({
-              where: { id: exemption.employee.designationId },
-              select: { name: true },
-            })
+          ? this.prisma.designation.findUnique({
+            where: { id: exemption.employee.designationId },
+            select: { name: true },
+          })
           : null,
       ]);
 

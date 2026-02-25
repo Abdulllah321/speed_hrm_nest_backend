@@ -29,7 +29,7 @@ export class BrandService {
       return { status: true, data: cachedData };
     }
 
-    const brands = await this.prismaMaster.brand.findMany({
+    const brands = await this.prisma.brand.findMany({
       include: {
         divisions: true,
       },
@@ -61,7 +61,7 @@ export class BrandService {
   }
 
   async getBrandById(id: string) {
-    const brand = await this.prismaMaster.brand.findUnique({
+    const brand = await this.prisma.brand.findUnique({
       where: { id },
       include: { divisions: true },
     });
@@ -81,7 +81,7 @@ export class BrandService {
 
   async createBrands(items: CreateBrandDto[], createdById: string) {
     try {
-      const brands = await this.prismaMaster.brand.createMany({
+      const brands = await this.prisma.brand.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -116,10 +116,10 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.brand.findUnique({
+      const existing = await this.prisma.brand.findUnique({
         where: { id },
       });
-      const brand = await this.prismaMaster.brand.update({
+      const brand = await this.prisma.brand.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -157,7 +157,7 @@ export class BrandService {
       const updated: any[] = [];
       for (const dto of validDtos) {
         updated.push(
-          await this.prismaMaster.brand.update({
+          await this.prisma.brand.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -191,7 +191,7 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.brand.deleteMany({
+      const result = await this.prisma.brand.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -221,10 +221,10 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.brand.findUnique({
+      const existing = await this.prisma.brand.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.brand.delete({ where: { id } });
+      const result = await this.prisma.brand.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -258,7 +258,7 @@ export class BrandService {
       return { status: true, data: cachedData };
     }
 
-    const divisions = await this.prismaMaster.division.findMany({
+    const divisions = await this.prisma.division.findMany({
       include: {
         brand: true,
       },
@@ -290,7 +290,7 @@ export class BrandService {
   }
 
   async getDivisionsByBrand(brandId: string) {
-    const divisions = await this.prismaMaster.division.findMany({
+    const divisions = await this.prisma.division.findMany({
       where: { brandId },
       include: { brand: true },
       orderBy: { createdAt: 'desc' },
@@ -302,7 +302,7 @@ export class BrandService {
 
   async createDivisions(items: CreateDivisionDto[], createdById: string) {
     try {
-      const divisions = await this.prismaMaster.division.createMany({
+      const divisions = await this.prisma.division.createMany({
         data: items.map((item) => ({
           name: item.name,
           brandId: item.brandId,
@@ -343,7 +343,7 @@ export class BrandService {
       const updated: any[] = [];
       for (const dto of validDtos) {
         updated.push(
-          await this.prismaMaster.division.update({
+          await this.prisma.division.update({
             where: { id: dto.id },
             data: { name: dto.name, brandId: dto.brandId },
           }),
@@ -379,10 +379,10 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.division.findUnique({
+      const existing = await this.prisma.division.findUnique({
         where: { id },
       });
-      const division = await this.prismaMaster.division.update({
+      const division = await this.prisma.division.update({
         where: { id },
         data: { name: dto.name, brandId: dto.brandId },
       });
@@ -417,7 +417,7 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.division.deleteMany({
+      const result = await this.prisma.division.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -448,10 +448,10 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.division.findUnique({
+      const existing = await this.prisma.division.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.division.delete({ where: { id } });
+      const result = await this.prisma.division.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

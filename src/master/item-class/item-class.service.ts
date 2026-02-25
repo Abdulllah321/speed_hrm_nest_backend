@@ -3,6 +3,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import {
   CreateItemClassDto,
   UpdateItemClassDto,
@@ -12,7 +14,8 @@ import {
 @Injectable()
 export class ItemClassService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,    private prismaMaster: PrismaMasterService,
+
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
@@ -24,7 +27,7 @@ export class ItemClassService {
       return { status: true, data: cachedData };
     }
 
-    const classes = await this.prismaMaster.itemClass.findMany({
+    const classes = await this.prisma.itemClass.findMany({
       include: {
         subclasses: true,
       },
@@ -58,7 +61,7 @@ export class ItemClassService {
   }
 
   async getById(id: string) {
-    const itemClass = await this.prismaMaster.itemClass.findUnique({
+    const itemClass = await this.prisma.itemClass.findUnique({
       where: { id },
       include: { subclasses: true },
     });
@@ -78,7 +81,7 @@ export class ItemClassService {
 
   async createMany(items: CreateItemClassDto[], createdById: string) {
     try {
-      const result = await this.prismaMaster.itemClass.createMany({
+      const result = await this.prisma.itemClass.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -113,12 +116,12 @@ export class ItemClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.itemClass.findUnique({
+      const existing = await this.prisma.itemClass.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Item Class not found' };
 
-      const itemClass = await this.prismaMaster.itemClass.update({
+      const itemClass = await this.prisma.itemClass.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -155,7 +158,7 @@ export class ItemClassService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.itemClass.update({
+          await this.prisma.itemClass.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -189,7 +192,7 @@ export class ItemClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.itemClass.deleteMany({
+      const result = await this.prisma.itemClass.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -219,10 +222,10 @@ export class ItemClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.itemClass.findUnique({
+      const existing = await this.prisma.itemClass.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.itemClass.delete({
+      const result = await this.prisma.itemClass.delete({
         where: { id },
       });
 

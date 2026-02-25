@@ -1,10 +1,11 @@
+import { PrismaService } from '../../database/prisma.service';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateTaxRateDto, UpdateTaxRateDto } from './tax-rate.dto';
 
 @Injectable()
 export class TaxRateService {
-  constructor(private readonly prisma: PrismaMasterService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateTaxRateDto) {
     const data = await this.prisma.taxRate1.create({

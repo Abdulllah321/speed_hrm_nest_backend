@@ -12,7 +12,7 @@ export class TransferService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-  ) {}
+  ) { }
 
   async create(createTransferDto: CreateTransferDto, userId: string) {
     const {
@@ -118,11 +118,11 @@ export class TransferService {
 
     // Fetch Master Data in parallel
     const [locations, cities, states, users] = await Promise.all([
-      this.prismaMaster.location.findMany({
+      this.prisma.location.findMany({
         where: { id: { in: locationIds } },
       }),
-      this.prismaMaster.city.findMany({ where: { id: { in: cityIds } } }),
-      this.prismaMaster.state.findMany({ where: { id: { in: stateIds } } }),
+      this.prisma.city.findMany({ where: { id: { in: cityIds } } }),
+      this.prisma.state.findMany({ where: { id: { in: stateIds } } }),
       this.prismaMaster.user.findMany({
         where: { id: { in: userIds } },
         select: { id: true, firstName: true, lastName: true },

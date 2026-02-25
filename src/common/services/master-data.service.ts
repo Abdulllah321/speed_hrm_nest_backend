@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 
 interface MasterDataCache {
     [key: string]: Map<string, string>; // Map<lowercase_name, id>
@@ -10,7 +12,7 @@ export class MasterDataService {
     private readonly logger = new Logger(MasterDataService.name);
     private cache: MasterDataCache = {};
 
-    constructor(private prismaMaster: PrismaMasterService) { }
+    constructor(private prisma: PrismaService) { }
 
     /**
      * Get cache key for a master type
@@ -44,14 +46,14 @@ export class MasterDataService {
         if (cachedId) return cachedId;
 
         // Check database
-        let record = await this.prismaMaster.size.findFirst({
+        let record = await this.prisma.size.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         // Create if not found
         if (!record) {
             this.logger.log(`Creating new Size: ${normalized}`);
-            record = await this.prismaMaster.size.create({
+            record = await this.prisma.size.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -74,13 +76,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.color.findFirst({
+        let record = await this.prisma.color.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Color: ${normalized}`);
-            record = await this.prismaMaster.color.create({
+            record = await this.prisma.color.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -102,13 +104,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.brand.findFirst({
+        let record = await this.prisma.brand.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Brand: ${normalized}`);
-            record = await this.prismaMaster.brand.create({
+            record = await this.prisma.brand.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -130,7 +132,7 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.division.findFirst({
+        let record = await this.prisma.division.findFirst({
             where: {
                 name: { equals: normalized, mode: 'insensitive' },
                 ...(brandId ? { brandId } : {}),
@@ -139,7 +141,7 @@ export class MasterDataService {
 
         if (!record && brandId) {
             this.logger.log(`Creating new Division: ${normalized} for brand: ${brandId}`);
-            record = await this.prismaMaster.division.create({
+            record = await this.prisma.division.create({
                 data: {
                     name: normalized,
                     brandId: brandId,
@@ -169,13 +171,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.gender.findFirst({
+        let record = await this.prisma.gender.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Gender: ${normalized}`);
-            record = await this.prismaMaster.gender.create({
+            record = await this.prisma.gender.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -197,13 +199,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.department.findFirst({
+        let record = await this.prisma.department.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Department: ${normalized}`);
-            record = await this.prismaMaster.department.create({
+            record = await this.prisma.department.create({
                 data: { name: normalized },
             });
         }
@@ -225,7 +227,7 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.category.findFirst({
+        let record = await this.prisma.category.findFirst({
             where: {
                 name: { equals: normalized, mode: 'insensitive' },
                 parentId: parentId || null,
@@ -234,7 +236,7 @@ export class MasterDataService {
 
         if (!record) {
             this.logger.log(`Creating new Category: ${normalized}`);
-            record = await this.prismaMaster.category.create({
+            record = await this.prisma.category.create({
                 data: {
                     name: normalized,
                     parentId: parentId || null,
@@ -267,13 +269,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.itemClass.findFirst({
+        let record = await this.prisma.itemClass.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new ItemClass: ${normalized}`);
-            record = await this.prismaMaster.itemClass.create({
+            record = await this.prisma.itemClass.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -295,7 +297,7 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.itemSubclass.findFirst({
+        let record = await this.prisma.itemSubclass.findFirst({
             where: {
                 name: { equals: normalized, mode: 'insensitive' },
                 itemClassId,
@@ -304,7 +306,7 @@ export class MasterDataService {
 
         if (!record) {
             this.logger.log(`Creating new ItemSubclass: ${normalized} for class: ${itemClassId}`);
-            record = await this.prismaMaster.itemSubclass.create({
+            record = await this.prisma.itemSubclass.create({
                 data: {
                     name: normalized,
                     itemClassId,
@@ -330,13 +332,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.silhouette.findFirst({
+        let record = await this.prisma.silhouette.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Silhouette: ${normalized}`);
-            record = await this.prismaMaster.silhouette.create({
+            record = await this.prisma.silhouette.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -358,13 +360,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.channelClass.findFirst({
+        let record = await this.prisma.channelClass.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new ChannelClass: ${normalized}`);
-            record = await this.prismaMaster.channelClass.create({
+            record = await this.prisma.channelClass.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -386,13 +388,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.season.findFirst({
+        let record = await this.prisma.season.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Season: ${normalized}`);
-            record = await this.prismaMaster.season.create({
+            record = await this.prisma.season.create({
                 data: { name: normalized, status: 'active' },
             });
         }
@@ -416,13 +418,13 @@ export class MasterDataService {
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prismaMaster.segment.findFirst({
+        let record = await this.prisma.segment.findFirst({
             where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (!record) {
             this.logger.log(`Creating new Segment: ${normalized}`);
-            record = await this.prismaMaster.segment.create({
+            record = await this.prisma.segment.create({
                 data: { name: normalized, status: 'active' },
             });
         }

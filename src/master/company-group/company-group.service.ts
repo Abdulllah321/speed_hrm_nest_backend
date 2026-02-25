@@ -1,3 +1,4 @@
+import { PrismaService } from '../../database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import {
@@ -7,7 +8,7 @@ import {
 
 @Injectable()
 export class CompanyGroupService {
-  constructor(private prisma: PrismaMasterService) {}
+  constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateCompanyGroupDto, userId: string) {
     const result = await this.prisma.companyGroup.create({

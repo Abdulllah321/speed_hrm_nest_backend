@@ -3,6 +3,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import {
   CreateSeasonDto,
   UpdateSeasonDto,
@@ -12,10 +14,11 @@ import {
 @Injectable()
 export class SeasonService {
   constructor(
+    private prisma: PrismaService, 
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) {}
+  ) { }
 
   async getAll() {
     const cacheKey = 'seasons_all';
@@ -24,7 +27,7 @@ export class SeasonService {
       return { status: true, data: cachedData };
     }
 
-    const seasons = await this.prismaMaster.season.findMany({
+    const seasons = await this.prisma.season.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
@@ -54,7 +57,7 @@ export class SeasonService {
   }
 
   async getById(id: string) {
-    const season = await this.prismaMaster.season.findUnique({
+    const season = await this.prisma.season.findUnique({
       where: { id },
     });
     if (!season) return { status: false, message: 'Season not found' };
@@ -73,7 +76,7 @@ export class SeasonService {
 
   async createMany(items: CreateSeasonDto[], createdById: string) {
     try {
-      const result = await this.prismaMaster.season.createMany({
+      const result = await this.prisma.season.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -108,12 +111,12 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.season.findUnique({
+      const existing = await this.prisma.season.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Season not found' };
 
-      const season = await this.prismaMaster.season.update({
+      const season = await this.prisma.season.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
@@ -150,7 +153,7 @@ export class SeasonService {
       const updated: any[] = [];
       for (const dto of dtos) {
         updated.push(
-          await this.prismaMaster.season.update({
+          await this.prisma.season.update({
             where: { id: dto.id },
             data: { name: dto.name, status: dto.status },
           }),
@@ -184,7 +187,7 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prismaMaster.season.deleteMany({
+      const result = await this.prisma.season.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({
@@ -214,10 +217,10 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.season.findUnique({
+      const existing = await this.prisma.season.findUnique({
         where: { id },
       });
-      const result = await this.prismaMaster.season.delete({ where: { id } });
+      const result = await this.prisma.season.delete({ where: { id } });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

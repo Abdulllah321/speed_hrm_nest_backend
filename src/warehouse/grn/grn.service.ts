@@ -3,7 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGrnDto } from './dto/grn.dto';
 import { MovementType, Prisma } from '@prisma/client';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';

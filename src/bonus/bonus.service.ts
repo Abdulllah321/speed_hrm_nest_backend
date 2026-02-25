@@ -22,19 +22,19 @@ export class BonusService {
     const [bonusType, department, subDepartment, createdBy, updatedBy] =
       await Promise.all([
         bonus.bonusTypeId
-          ? this.prismaMaster.bonusType.findUnique({
+          ? this.prisma.bonusType.findUnique({
               where: { id: bonus.bonusTypeId },
               select: { id: true, name: true, calculationType: true },
             })
           : null,
         bonus.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
+          ? this.prisma.department.findUnique({
               where: { id: bonus.employee.departmentId },
               select: { id: true, name: true },
             })
           : null,
         bonus.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
+          ? this.prisma.subDepartment.findUnique({
               where: { id: bonus.employee.subDepartmentId },
               select: { id: true, name: true },
             })
@@ -163,15 +163,15 @@ export class BonusService {
 
       const [bonusTypes, departments, subDepartments, users] =
         await Promise.all([
-          this.prismaMaster.bonusType.findMany({
+          this.prisma.bonusType.findMany({
             where: { id: { in: bonusTypeIds } },
             select: { id: true, name: true, calculationType: true },
           }),
-          this.prismaMaster.department.findMany({
+          this.prisma.department.findMany({
             where: { id: { in: deptIds } },
             select: { id: true, name: true },
           }),
-          this.prismaMaster.subDepartment.findMany({
+          this.prisma.subDepartment.findMany({
             where: { id: { in: subDeptIds } },
             select: { id: true, name: true },
           }),
@@ -275,7 +275,7 @@ export class BonusService {
       }
 
       // Validate bonus type exists (IN MASTER DB)
-      const bonusType = await this.prismaMaster.bonusType.findUnique({
+      const bonusType = await this.prisma.bonusType.findUnique({
         where: { id: body.bonusTypeId },
       });
 
@@ -670,15 +670,15 @@ export class BonusService {
       ] as string[];
 
       const [bonusTypes, departments, subDepartments] = await Promise.all([
-        this.prismaMaster.bonusType.findMany({
+        this.prisma.bonusType.findMany({
           where: { id: { in: bonusTypeIds } },
           select: { id: true, name: true, calculationType: true },
         }),
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),
