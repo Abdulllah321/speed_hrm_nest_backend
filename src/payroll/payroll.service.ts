@@ -25,7 +25,7 @@ export class PayrollService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
 
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -497,6 +497,7 @@ export class PayrollService {
           emp.workingHoursPolicy,
           emp.policyAssignments, // Pass assignments
           totalPackageAmount,
+          allHolidays,
         );
 
       // D. Calculate Bonuses
@@ -956,12 +957,12 @@ export class PayrollService {
               <div class="section-title">Earnings</div>
               <div class="table-row"><span>Basic Salary</span> <span>${formatCurrency(detail.basicSalary)}</span></div>
               ${(detail.allowanceBreakup || [])
-                .map(
-                  (a: any) => `
+        .map(
+          (a: any) => `
                 <div class="table-row"><span>${a.name}</span> <span>${formatCurrency(a.amount)}</span></div>
               `,
-                )
-                .join('')}
+        )
+        .join('')}
               ${detail.overtimeAmount > 0 ? `<div class="table-row"><span>Overtime</span> <span>${formatCurrency(detail.overtimeAmount)}</span></div>` : ''}
               ${detail.bonusAmount > 0 ? `<div class="table-row"><span>Bonus</span> <span>${formatCurrency(detail.bonusAmount)}</span></div>` : ''}
               <div class="total-row"><span>Total Earnings</span> <span>${formatCurrency(Number(detail.basicSalary) + Number(detail.totalAllowances) + Number(detail.overtimeAmount) + Number(detail.bonusAmount))}</span></div>
@@ -970,12 +971,12 @@ export class PayrollService {
             <div style="flex: 1;">
               <div class="section-title">Deductions</div>
               ${(detail.deductionBreakup || [])
-                .map(
-                  (d: any) => `
+        .map(
+          (d: any) => `
                 <div class="table-row"><span>${d.name}</span> <span>${formatCurrency(d.amount)}</span></div>
               `,
-                )
-                .join('')}
+        )
+        .join('')}
               ${detail.taxDeduction > 0 ? `<div class="table-row"><span>Tax</span> <span>${formatCurrency(detail.taxDeduction)}</span></div>` : ''}
               ${detail.eobiDeduction > 0 ? `<div class="table-row"><span>EOBI</span> <span>${formatCurrency(detail.eobiDeduction)}</span></div>` : ''}
               ${detail.providentFundDeduction > 0 ? `<div class="table-row"><span>Provident Fund</span> <span>${formatCurrency(detail.providentFundDeduction)}</span></div>` : ''}
@@ -1027,12 +1028,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-            departmentId: filters.departmentId,
-          }),
+          departmentId: filters.departmentId,
+        }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-            subDepartmentId: filters.subDepartmentId,
-          }),
+          subDepartmentId: filters.subDepartmentId,
+        }),
       };
     }
 
@@ -1218,12 +1219,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-            departmentId: filters.departmentId,
-          }),
+          departmentId: filters.departmentId,
+        }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-            subDepartmentId: filters.subDepartmentId,
-          }),
+          subDepartmentId: filters.subDepartmentId,
+        }),
       };
     }
 
@@ -1307,23 +1308,23 @@ export class PayrollService {
     const [dept, subDept, des, grade] = await Promise.all([
       detail.employee.departmentId
         ? this.prisma.department.findUnique({
-            where: { id: detail.employee.departmentId },
-          })
+          where: { id: detail.employee.departmentId },
+        })
         : null,
       detail.employee.subDepartmentId
         ? this.prisma.subDepartment.findUnique({
-            where: { id: detail.employee.subDepartmentId },
-          })
+          where: { id: detail.employee.subDepartmentId },
+        })
         : null,
       detail.employee.designationId
         ? this.prisma.designation.findUnique({
-            where: { id: detail.employee.designationId },
-          })
+          where: { id: detail.employee.designationId },
+        })
         : null,
       detail.employee.employeeGradeId
         ? this.prisma.employeeGrade.findUnique({
-            where: { id: detail.employee.employeeGradeId },
-          })
+          where: { id: detail.employee.employeeGradeId },
+        })
         : null,
     ]);
 
@@ -1583,7 +1584,7 @@ export class PayrollService {
         const matchesMonth =
           advance.deductionMonth === normalizedMonthForComparison ||
           String(Number(advance.deductionMonth)).padStart(2, '0') ===
-            normalizedMonthForComparison;
+          normalizedMonthForComparison;
         const matchesYear =
           advance.deductionYear === normalizedYearForComparison ||
           String(advance.deductionYear) === normalizedYearForComparison;
@@ -1697,7 +1698,7 @@ export class PayrollService {
           0,
           Math.floor(
             (incrementDate.getTime() - lastDate.getTime()) /
-              (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
           ),
         );
 
@@ -1737,7 +1738,7 @@ export class PayrollService {
         0,
         Math.floor(
           (monthEnd.getTime() - lastDate.getTime() + 1000 * 60 * 60 * 24) /
-            (1000 * 60 * 60 * 24),
+          (1000 * 60 * 60 * 24),
         ),
       );
       if (daysAfterLastIncrement > 0) {
@@ -1757,9 +1758,11 @@ export class PayrollService {
     defaultPolicy: any,
     policyAssignments: any[],
     totalSalary: Decimal,
+    allHolidays: any[],
   ): Promise<{ attendanceDeduction: Decimal; attendanceBreakup: any }> {
     const startDate = new Date(`${year}-${month}-01`);
     const endDate = new Date(Number(year), Number(month), 0);
+    const totalDaysInMonth = endDate.getDate();
 
     const attendances = await this.prisma.attendance.findMany({
       where: {
@@ -1770,6 +1773,10 @@ export class PayrollService {
         },
       },
     });
+
+    const attendanceMap = new Map<string, any>(
+      attendances.map((att) => [new Date(att.date).toDateString(), att]),
+    );
 
     let totalDeduction = new Decimal(0);
 
@@ -1818,7 +1825,6 @@ export class PayrollService {
     };
 
     // Buckets to track counts per policy
-    // Key: policyId (or 'default'), Value: { policy, stats: { late, absent, halfDay, shortDay } }
     const policyBuckets = new Map<
       string,
       {
@@ -1844,48 +1850,70 @@ export class PayrollService {
     };
 
     let leaveDaysCount = 0;
-    const totalDaysInMonth = endDate.getDate();
 
-    // 1. Process existing attendance records
-    if (attendances.length > 0) {
-      for (const att of attendances) {
-        const attDate = new Date(att.date);
-        const hasLeave = hasApprovedLeave(attDate);
-        const policy = getPolicyForDate(attDate);
-        const bucket = getBucket(policy);
+    // Day names for policy override checks
+    const dayNames = [
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ];
 
-        if (hasLeave) {
-          leaveDaysCount++;
-        }
+    // Iterate through EVERY day of the month to ensure complete coverage
+    for (let day = 1; day <= totalDaysInMonth; day++) {
+      const checkDate = new Date(Number(year), Number(month) - 1, day);
+      const dateStr = checkDate.toDateString();
+      const att = attendanceMap.get(dateStr);
+      const hasLeave = hasApprovedLeave(checkDate);
+      const policy = getPolicyForDate(checkDate);
+      const bucket = getBucket(policy);
 
-        if (bucket) {
-          if (att.status === 'absent' && !hasLeave) {
-            bucket.stats.absent++;
-          } else if (
-            att.status === 'late' ||
-            (att.lateMinutes && att.lateMinutes > 0)
-          ) {
-            bucket.stats.late++;
-          } else if (att.status === 'half-day' && !hasLeave) {
-            bucket.stats.halfDay++;
-          } else if (att.status === 'short-day' && !hasLeave) {
-            bucket.stats.shortDay++;
-          }
+      const dayName = dayNames[checkDate.getDay()];
+
+      // Check if it's a weekend or day-off based on policy
+      let isDayOff = dayName === 'saturday' || dayName === 'sunday';
+      if (policy?.dayOverrides && typeof policy.dayOverrides === 'object') {
+        const overrides = policy.dayOverrides as any;
+        if (overrides[dayName]) {
+          // If explicitly mentioned in overrides, use the enabled flag
+          // If enabled is true, it's a working day. If false, it's a day off.
+          isDayOff = !overrides[dayName].enabled;
         }
       }
-    } else {
-      // 2. Handle case with NO attendance records (treat all days as absent/leave)
-      // Iterate all days, find policy for each day, add to absent count if no leave
-      for (let day = 1; day <= totalDaysInMonth; day++) {
-        const checkDate = new Date(Number(year), Number(month) - 1, day);
-        const hasLeave = hasApprovedLeave(checkDate);
-        const policy = getPolicyForDate(checkDate);
-        const bucket = getBucket(policy);
 
-        if (hasLeave) {
-          leaveDaysCount++;
-        } else if (bucket) {
+      // Check if it's a holiday
+      const isHoliday = allHolidays?.some((holiday) => {
+        const holidayStart = new Date(holiday.dateFrom);
+        const holidayEnd = new Date(holiday.dateTo);
+        holidayStart.setHours(0, 0, 0, 0);
+        holidayEnd.setHours(23, 59, 59, 999);
+        return checkDate >= holidayStart && checkDate <= holidayEnd;
+      });
+
+      if (hasLeave) {
+        leaveDaysCount++;
+        continue; // Leaves don't count towards deductions
+      }
+
+      if (isHoliday || isDayOff) {
+        continue; // Holidays and weekends don't count towards deductions unless there's specific logic for them
+      }
+
+      if (bucket) {
+        if (!att || att.status === 'absent') {
           bucket.stats.absent++;
+        } else if (
+          att.status === 'late' ||
+          (att.lateMinutes && att.lateMinutes > 0)
+        ) {
+          bucket.stats.late++;
+        } else if (att.status === 'half-day') {
+          bucket.stats.halfDay++;
+        } else if (att.status === 'short-day') {
+          bucket.stats.shortDay++;
         }
       }
     }
@@ -1999,20 +2027,20 @@ export class PayrollService {
     const attendanceBreakup = {
       absent: {
         count: totalAbsentCount,
-        amount: perDaySalary.mul(totalAbsentCount).toNumber(),
+        amount: Math.round(perDaySalary.mul(totalAbsentCount).toNumber()),
       },
       late: {
         count: totalLateCount,
         chargeableCount: totalLateCount, // Simplified for UI
-        amount: totalLateDeductionAmount.toNumber(),
+        amount: Math.round(totalLateDeductionAmount.toNumber()),
       },
       halfDay: {
         count: totalHalfDayCount,
-        amount: totalHalfDayDeductionAmount.toNumber(),
+        amount: Math.round(totalHalfDayDeductionAmount.toNumber()),
       },
       shortDay: {
         count: totalShortDayCount,
-        amount: totalShortDayDeductionAmount.toNumber(),
+        amount: Math.round(totalShortDayDeductionAmount.toNumber()),
       },
       leave: {
         count: leaveDaysCount,
