@@ -3,6 +3,7 @@ import { PrismaMasterService } from './prisma-master.service';
 import { PrismaService } from './prisma.service';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import type { Company, Tenant } from '@prisma/management-client';
+import { EncryptionService } from '../common/utils/encryption.service';
 
 interface TenantCacheEntry {
   tenantId: string;
@@ -29,7 +30,10 @@ export class TenantMiddleware implements NestMiddleware {
   private readonly tenantCache = new Map<string, TenantCacheEntry>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  constructor(private readonly prismaMaster: PrismaMasterService) {}
+  constructor(
+    private readonly prismaMaster: PrismaMasterService,
+    private readonly encryptionService: EncryptionService,
+  ) { }
 
   async use(req: TenantRequest, res: FastifyReply, next: () => void) {
     try {
@@ -71,8 +75,8 @@ export class TenantMiddleware implements NestMiddleware {
         return (res as any).status(403).send({ message: 'Tenant is inactive' });
       }
 
-      // Use stored dbUrl (contains tenant-specific credentials)
-      const dbUrl = company.dbUrl;
+      // Use stored dbUrl and decrypt password dynamically
+      let dbUrl = company.dbUrl;
 
       if (!dbUrl) {
         this.logger.error(
@@ -81,6 +85,27 @@ export class TenantMiddleware implements NestMiddleware {
         return (res as any)
           .status(500)
           .send({ message: 'Database configuration error' });
+      }
+
+      // If company has dbPassword (encrypted), we decrypt it and rebuild the URL
+      // This prevents the plain password from being stored in the database
+      if (company.dbPassword) {
+        try {
+          const plainPassword = this.encryptionService.decrypt(company.dbPassword);
+          const encodedPassword = encodeURIComponent(plainPassword);
+          // Assuming dbUrl is stored as postgresql://user:password@host:port/dbName
+          // We can reconstruct it from the fields or do a string replace
+          // The safer way is to use the individual fields from the company record
+          if (company.dbUser && company.dbHost && company.dbName) {
+            const port = company.dbPort || 5432;
+            dbUrl = `postgresql://${company.dbUser}:${encodedPassword}@${company.dbHost}:${port}/${company.dbName}?schema=public`;
+          }
+        } catch (err: any) {
+          this.logger.error(`Failed to decrypt database password for company ${company.id}: ${err.message}`);
+          return (res as any)
+            .status(500)
+            .send({ message: 'Database configuration error' });
+        }
       }
 
       // Cache the tenant context
