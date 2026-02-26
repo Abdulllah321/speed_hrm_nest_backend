@@ -20,7 +20,7 @@ export class TenantDatabaseService implements OnModuleInit {
   constructor(
     private readonly prismaMaster: PrismaMasterService,
     private readonly encryptionService: EncryptionService,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
@@ -203,10 +203,10 @@ export class TenantDatabaseService implements OnModuleInit {
   private generateDatabaseUrl(
     dbName: string,
     dbUser: string,
-    dbPassword: string,
   ): string {
-    return `postgresql://${dbUser}:${dbPassword}@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
+    return `postgresql://${dbUser}:[password]@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
   }
+
 
   private async runMigrations(dbUrl: string): Promise<void> {
     this.logger.log('Running migrations on tenant database...');
@@ -262,11 +262,13 @@ export class TenantDatabaseService implements OnModuleInit {
       // 3. Grant necessary privileges
       await this.grantDatabasePrivileges(dbName, dbUser);
 
-      // 4. Generate connection URL
-      const dbUrl = this.generateDatabaseUrl(dbName, dbUser, dbPassword);
+      // 4. Generate connection URL for saving to DB (without password)
+      const dbUrl = this.generateDatabaseUrl(dbName, dbUser);
 
-      // 5. Run migrations
-      await this.runMigrations(dbUrl);
+      // 5. Run migrations (requires actual password)
+      const encodedPassword = encodeURIComponent(dbPassword);
+      const migrationDbUrl = `postgresql://${dbUser}:${encodedPassword}@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
+      await this.runMigrations(migrationDbUrl);
 
       // 6. Encrypt password for storage
       const encryptedPassword = this.encryptionService.encrypt(dbPassword);
