@@ -208,6 +208,20 @@ export class AuthController {
     return res.status(400).send(result);
   }
 
+  @Post('pos/global-context')
+  @ApiOperation({ summary: 'Get POS Login Context across all Tenants' })
+  async getGlobalPosContext(@Body() body: { code: string }, @Req() req: any, @Res() res: any) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+
+    const result = await this.service.getGlobalPosLoginContext(ipAddress, body.code);
+
+    if (result.status) {
+      return res.status(200).send(result);
+    }
+    return res.status(400).send(result);
+  }
+
   @Post('pos-login')
   @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
