@@ -14,6 +14,7 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 import { PrismaService } from '../database/prisma.service';
 import { CompanyService } from '../admin/company/company.service';
 import { PosService } from '../master/pos/pos.service';
+import { EncryptionService } from '../common/utils/encryption.service';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(""d+)([smhd])$/);
@@ -31,13 +32,16 @@ function parseExpiryToMs(expiry: string) {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => CompanyService))
     private companyService: CompanyService,
     private posService: PosService,
     @Optional() private prisma: PrismaService,
-  ) {}
+    private encryptionService: EncryptionService,
+  ) { }
 
   async login(
     email: string,
@@ -627,6 +631,95 @@ export class AuthService {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
+  }
+
+  async getGlobalPosLoginContext(ip: string, code: string) {
+    if (!code) {
+      return { status: false, message: 'Location Code is required' };
+    }
+
+    const companies = await this.prismaMaster.company.findMany({
+      where: { status: 'active' }
+    });
+
+    if (!companies.length) {
+      return { status: false, message: 'No active companies found' };
+    }
+
+    for (const company of companies) {
+      let dbUrl = company.dbUrl;
+      if (!dbUrl) continue;
+
+      if (company.dbPassword) {
+        try {
+          const plainPassword = this.encryptionService.decrypt(company.dbPassword);
+          const encodedPassword = encodeURIComponent(plainPassword);
+          if (company.dbUser && company.dbHost && company.dbName) {
+            const port = company.dbPort || 5432;
+            dbUrl = `postgresql://${company.dbUser}:${encodedPassword}@${company.dbHost}:${port}/${company.dbName}?schema=public`;
+          }
+        } catch (err) {
+          this.logger.error(`Failed to decrypt database password for company ${company.id}`);
+          continue;
+        }
+      }
+
+      try {
+        const { Pool } = require('pg');
+        const { PrismaPg } = require('@prisma/adapter-pg');
+        const { PrismaClient } = require('@prisma/client');
+        const tempPool = new Pool({ connectionString: dbUrl, max: 2, connectionTimeoutMillis: 2000 });
+        const adapter = new PrismaPg(tempPool);
+        const tempPrisma = new PrismaClient({ adapter });
+
+        try {
+          const location = await tempPrisma.location.findFirst({
+            where: { code: { equals: code, mode: 'insensitive' }, status: 'active' },
+            include: { pos: { where: { status: 'active' } } },
+          });
+
+          if (location) {
+            if (location.ipWhitelistEnabled && location.ipWhitelist) {
+              const allowedIps = location.ipWhitelist.split(',').map((i: string) => i.trim());
+              if (!allowedIps.includes(ip)) {
+                return { status: false, message: 'Access denied from this IP address on the identified location' };
+              }
+            }
+
+            const payload = {
+              status: true,
+              data: {
+                tenantContext: {
+                  tenantId: company.tenantId,
+                  companyCode: company.code
+                },
+                location: {
+                  id: location.id,
+                  name: location.name,
+                  code: location.code,
+                },
+                terminals: location.pos.map((p: any) => ({
+                  id: p.id,
+                  name: p.name,
+                  code: p.terminalCode,
+                  status: p.status,
+                })),
+              },
+            };
+
+            return payload;
+          }
+        } finally {
+          await tempPrisma.$disconnect();
+          await tempPool.end();
+        }
+      } catch (err) {
+        this.logger.error(`Error querying tenant DB for company ${company.code}:`, err);
+        continue;
+      }
+    }
+
+    return { status: false, message: 'Location Code not found anywhere in the system' };
   }
 
   async getPosLoginContext(
@@ -1579,6 +1672,36 @@ export class AuthService {
       const hasPosAccess = user.role?.isSystem || user.role?.permissions?.some(p => p.permission.module === 'POS');
       if (!hasPosAccess) {
         return { status: false, errorType: 'NO_POS_ACCESS', message: 'User does not have POS access. Please log in with a POS-authorized profile.' };
+      }
+
+      // ── Employee Location check in tenant DB (Bypassed for System Admins & Global ADMINs) ─
+      const isGlobalAdmin = user.role?.isSystem || user.role?.name === 'ADMIN';
+
+      if (!isGlobalAdmin && this.prisma && terminalDecoded.locationId) {
+        let employee: any = null;
+
+        if (user.id) {
+          employee = await this.prisma.employee.findFirst({
+            where: { userId: user.id },
+            select: { id: true, locationId: true, status: true, employeeName: true }
+          });
+        }
+
+        if (!employee && user.employeeId) {
+          employee = await this.prisma.employee.findFirst({
+            where: { employeeId: user.employeeId },
+            select: { id: true, locationId: true, status: true, employeeName: true }
+          });
+        }
+
+        if (employee) {
+          if (employee.status !== 'active') {
+            return { status: false, message: 'Your employee account is not active' };
+          }
+          if (employee.locationId && employee.locationId !== terminalDecoded.locationId) {
+            return { status: false, message: 'You are not assigned to this location. Please contact your administrator.' };
+          }
+        }
       }
 
       // Find or create POS session
