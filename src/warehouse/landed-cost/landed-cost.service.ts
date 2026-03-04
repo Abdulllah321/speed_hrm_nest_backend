@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
-import { PostLandedCostDtoWithRates } from './dto/landed-cost.dto';
+import { CreateLandedCostDto } from './dto/landed-cost.dto';
 import { Prisma, MovementType } from '@prisma/client';
 import { CreateChargeTypeDto } from './dto/charge-type.dto';
 
@@ -14,78 +14,141 @@ export class LandedCostService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
-  ) {}
+  ) { }
 
-  private async resolveInventoryAccountId(): Promise<string | null> {
-    const stockInTrade = await this.prisma.chartOfAccount.findFirst({
-      where: { name: { contains: 'STOCK IN TRADE', mode: 'insensitive' } },
-    });
-    if (stockInTrade) return stockInTrade.id;
-
-    const stockWarehouse = await this.prisma.chartOfAccount.findFirst({
-      where: { name: { contains: 'STOCK - WAREHOUSE', mode: 'insensitive' } },
-    });
-    if (stockWarehouse) return stockWarehouse.id;
-
-    const genericAsset = await this.prisma.chartOfAccount.findFirst({
-      where: { type: 'ASSET', isGroup: false },
-      orderBy: { code: 'asc' },
-    });
-    return genericAsset?.id ?? null;
-  }
-
-  async post(dto: PostLandedCostDtoWithRates) {
+  async create(dto: CreateLandedCostDto) {
     const grn = await this.prisma.goodsReceiptNote.findUnique({
       where: { id: dto.grnId },
-      include: { items: true, warehouse: true },
+      include: { items: true },
     });
     if (!grn) throw new NotFoundException('GRN not found');
     if (grn.status === 'VALUED') {
       throw new BadRequestException('GRN already valued');
     }
 
+    // Generate Landed Cost Number
+    const count = await this.prisma.landedCost.count();
+    const landedCostNumber = `LC-${(count + 1).toString().padStart(6, '0')}`;
+
     return this.prisma.$transaction(async (tx) => {
-      // 1) Create inbound stock ledger entries for each GRN item
-      for (const item of grn.items) {
+      // 1) Create Landed Cost Header
+      const landedCost = await tx.landedCost.create({
+        data: {
+          landedCostNumber,
+          date: new Date(),
+          grnId: dto.grnId,
+          purchaseOrderId: dto.purchaseOrderId,
+          supplierId: dto.supplierId,
+          lcNo: dto.lcNo,
+          blNo: dto.blNo,
+          blDate: dto.blDate ? new Date(dto.blDate) : null,
+          countryOfOrigin: dto.countryOfOrigin,
+          gdNo: dto.gdNo,
+          gdDate: dto.gdDate ? new Date(dto.gdDate) : null,
+          season: dto.season,
+          category: dto.category,
+          shippingInvoiceNo: dto.shippingInvoiceNo,
+          currency: dto.currency,
+          exchangeRate: dto.exchangeRate,
+          status: 'SUBMITTED',
+          items: {
+            create: dto.items.map((item) => ({
+              itemId: item.itemId,
+              hsCode: item.hsCode,
+              qty: item.qty,
+              unitFob: item.unitFob,
+              invoiceForeign: item.qty * item.unitFob,
+              freightForeign: item.freightForeign,
+              exchangeRate: dto.exchangeRate,
+              invoicePKR: item.qty * item.unitFob * dto.exchangeRate,
+              insuranceCharges: item.insuranceCharges,
+              landingCharges: item.landingCharges,
+              assessableValue: item.assessableValue,
+              customsDutyRate: (item as any).customsDutyRate || 0,
+              customsDutyAmount: (item as any).customsDutyAmount || 0,
+              regulatoryDutyRate: (item as any).regulatoryDutyRate || 0,
+              regulatoryDutyAmount: (item as any).regulatoryDutyAmount || 0,
+              additionalCustomsDutyRate: (item as any).additionalCustomsDutyRate || 0,
+              additionalCustomsDutyAmount: (item as any).additionalCustomsDutyAmount || 0,
+              salesTaxRate: (item as any).salesTaxRate || 0,
+              salesTaxAmount: (item as any).salesTaxAmount || 0,
+              additionalSalesTaxRate: (item as any).additionalSalesTaxRate || 0,
+              additionalSalesTaxAmount: (item as any).additionalSalesTaxAmount || 0,
+              incomeTaxRate: (item as any).incomeTaxRate || 0,
+              incomeTaxAmount: (item as any).incomeTaxAmount || 0,
+              otherChargesPKR: (item as any).otherChargesPKR || 0,
+              unitCostPKR: item.unitCostPKR,
+              totalCostPKR: item.totalCostPKR,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      // Calculate totals for header update (optional but good for denormalization)
+      let totalQuantity = 0;
+      let totalInvoiceForeign = 0;
+      let totalInvoicePKR = 0;
+      let totalLandedCost = 0;
+
+      for (const item of dto.items) {
+        totalQuantity += item.qty;
+        totalInvoiceForeign += item.qty * item.unitFob;
+        totalInvoicePKR += item.qty * item.unitFob * dto.exchangeRate;
+        totalLandedCost += item.totalCostPKR;
+      }
+
+      await tx.landedCost.update({
+        where: { id: landedCost.id },
+        data: {
+          totalQuantity,
+          totalInvoiceForeign,
+          totalInvoicePKR,
+          totalLandedCost,
+        },
+      });
+
+      // 2) Update Stock Ledger for each item with the new Landed Cost
+      for (const item of dto.items) {
         const itemRecord = await tx.item.findUnique({
           where: { itemId: item.itemId },
           select: { id: true },
         });
         if (!itemRecord) {
-          throw new BadRequestException(
-            `Item with ID ${item.itemId} not found in database master`,
-          );
+          throw new BadRequestException(`Item with code ${item.itemId} not found`);
         }
 
         await this.stockLedgerService.createEntry(
           {
             itemId: itemRecord.id,
             warehouseId: grn.warehouseId,
-            qty: new Prisma.Decimal(item.receivedQty),
+            qty: new Prisma.Decimal(item.qty),
             movementType: MovementType.INBOUND,
             referenceType: 'LANDED_COST',
-            referenceId: grn.id,
+            referenceId: landedCost.id,
+            rate: new Prisma.Decimal(item.unitCostPKR),
           },
           tx,
         );
       }
 
-      // Journal Voucher creation removed per requirement
-
-      // Mark GRN as VALUED
-      const updated = await tx.goodsReceiptNote.update({
+      // 3) Mark GRN as VALUED
+      await tx.goodsReceiptNote.update({
         where: { id: grn.id },
         data: { status: 'VALUED' },
-        include: { items: true },
       });
 
-      return {
-        status: true,
-        grnId: updated.id,
-        grnStatus: updated.status,
-        journalVoucherId: null,
-        stockEntriesCreated: updated.items.length,
-      };
+      return landedCost;
+    });
+  }
+
+  async list() {
+    return this.prisma.landedCost.findMany({
+      include: {
+        grn: true,
+        supplier: true,
+      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

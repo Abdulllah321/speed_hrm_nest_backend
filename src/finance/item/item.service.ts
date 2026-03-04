@@ -30,7 +30,7 @@ export class ItemService {
       select: { itemId: true },
     });
     const lastNum =
-      last && /^""d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+      last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
     const next = lastNum + 1;
     if (next > 999999) {
       throw new Error('Item ID sequence exceeded maximum 999999');
@@ -54,6 +54,19 @@ export class ItemService {
 
     if (!item) {
       return { status: false, message: `Item with ID ${id} not found` };
+    }
+
+    const enrichedItems = await this.enrichItems([item]);
+    return { status: true, data: enrichedItems[0] };
+  }
+
+  async findByCode(code: string) {
+    const item = await this.prisma.item.findUnique({
+      where: { itemId: code },
+    });
+
+    if (!item) {
+      return { status: false, message: `Item with code ${code} not found` };
     }
 
     const enrichedItems = await this.enrichItems([item]);
@@ -201,14 +214,14 @@ export class ItemService {
     try {
       const result = await this.prisma.item.findMany({
         where: {
-          hsCode: { not: null },
+          hsCodeId: { not: null },
         },
-        distinct: ['hsCode'],
+        distinct: ['hsCodeId'],
         select: {
-          hsCode: true,
+          hsCodeId: true,
         },
       });
-      return { status: true, data: result.map((i) => i.hsCode) };
+      return { status: true, data: result.map((i) => i.hsCodeId) };
     } catch (error: any) {
       return { status: false, message: error.message };
     }
@@ -247,6 +260,9 @@ export class ItemService {
     const itemSubclassIds = [
       ...new Set(items.map((i) => i.itemSubclassId).filter(Boolean)),
     ];
+    const hsCodeIds = [
+      ...new Set(items.map((i) => i.hsCodeId).filter(Boolean)),
+    ];
 
 
     const [
@@ -262,7 +278,9 @@ export class ItemService {
       colors,
       itemClasses,
       itemSubclasses,
+      hsCodes,
     ]: [
+        any[],
         any[],
         any[],
         any[],
@@ -336,6 +354,11 @@ export class ItemService {
             where: { id: { in: itemSubclassIds as string[] } },
           })
           : [],
+        hsCodeIds.length
+          ? this.prisma.hsCode.findMany({
+            where: { id: { in: hsCodeIds as string[] } },
+          })
+          : [],
 
       ]);
 
@@ -356,6 +379,7 @@ export class ItemService {
       itemClass: itemClasses.find((x) => x.id === item.itemClassId) || null,
       itemSubclass:
         itemSubclasses.find((x) => x.id === item.itemSubclassId) || null,
+      hsCode: hsCodes.find((x) => x.id === item.hsCodeId) || null,
 
     }));
   }
