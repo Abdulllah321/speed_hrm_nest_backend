@@ -294,6 +294,7 @@ export class UploadProcessor {
             channelClassId,
             seasonId,
             segmentId,
+            hsCodeId,
         ] = await Promise.all([
             this.masterData.getOrCreateBrand(data.concept as string),
             this.masterData.getOrCreateItemClass(data.class as string),
@@ -305,6 +306,7 @@ export class UploadProcessor {
             this.masterData.getOrCreateChannelClass(data.channelClass as string),
             this.masterData.getOrCreateSeason(data.season as string),
             this.masterData.getOrCreateSegment(data.segment as string),
+            this.masterData.getOrCreateHsCode(data.hsCode as string),
         ]);
 
         // Step 2: Resolve dependent master data
@@ -324,7 +326,8 @@ export class UploadProcessor {
                 itemId: String(data.itemId),
                 sku: String(data.sku),
                 barCode: data.barCode ? String(data.barCode) : null,
-                hsCode: data.hsCode ? String(data.hsCode) : null,
+                hsCodeId,
+                hsCodeStr: data.hsCode ? String(data.hsCode) : null,
                 description: data.description ? String(data.description) : null,
                 status: data.isActive === false ? 'inactive' : 'active',
                 isActive: data.isActive !== false,

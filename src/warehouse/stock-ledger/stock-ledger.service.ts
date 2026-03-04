@@ -4,7 +4,7 @@ import { MovementType, Prisma } from '@prisma/client';
 
 @Injectable()
 export class StockLedgerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async findAll(options?: {
     warehouseId?: string;
@@ -85,6 +85,7 @@ export class StockLedgerService {
       referenceType: string;
       referenceId: string;
       locationId?: string;
+      rate?: number | Prisma.Decimal;
     },
     tx?: Prisma.TransactionClient,
   ) {
@@ -96,6 +97,7 @@ export class StockLedgerService {
       referenceType,
       referenceId,
       locationId,
+      rate,
     } = data;
     const quantity = new Prisma.Decimal(qty);
 
@@ -149,6 +151,7 @@ export class StockLedgerService {
           referenceType,
           referenceId,
           locationId,
+          rate: rate ? new Prisma.Decimal(rate) : null,
         },
       });
     };

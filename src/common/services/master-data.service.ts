@@ -434,6 +434,34 @@ export class MasterDataService {
     }
 
     /**
+     * Get or create HS Code master record
+     */
+    async getOrCreateHsCode(code: string): Promise<string | null> {
+        if (!code) return null;
+
+        const normalized = code.trim();
+        const cacheKey = this.getCacheKey('hscode');
+        this.initCache('hscode');
+
+        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
+        if (cachedId) return cachedId;
+
+        let record = await this.prisma.hsCode.findFirst({
+            where: { hsCode: { equals: normalized, mode: 'insensitive' } },
+        });
+
+        if (!record) {
+            this.logger.log(`Creating new HS Code: ${normalized}`);
+            record = await this.prisma.hsCode.create({
+                data: { hsCode: normalized },
+            });
+        }
+
+        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
+        return record.id;
+    }
+
+    /**
      * Clear cache (useful for testing or long-running processes)
      */
     clearCache(): void {
