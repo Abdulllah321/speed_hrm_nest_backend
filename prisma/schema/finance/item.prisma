@@ -1,9 +1,11 @@
 model Item {
   id                 String        @id @default(uuid())
   itemId             String        @unique
-  sku                String        
+  sku                String
   barCode            String?
-  hsCode             String?
+  hsCodeId           String?       @map("hs_code_id")
+  hsCode             HsCode?       @relation(fields: [hsCodeId], references: [id])
+  hsCodeStr          String?       @map("hs_code") // Keep original field for compatibility if needed
   description        String?
   imageUrl           String?
   status             String        @default("active")

@@ -64,6 +64,13 @@ export class ItemController {
     return this.itemService.nextItemId();
   }
 
+  @Get('code/:code')
+  @Permissions('erp.item.read')
+  @ApiOperation({ summary: 'Get item by code (itemId)' })
+  async findByCode(@Param('code') code: string) {
+    return this.itemService.findByCode(code);
+  }
+
   @Get(':id')
   @Permissions('erp.item.read')
   @ApiOperation({ summary: 'Get item by id' })

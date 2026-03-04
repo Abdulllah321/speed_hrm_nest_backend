@@ -1,20 +1,26 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { LandedCostService } from './landed-cost.service';
-import { PostLandedCostDtoWithRates } from './dto/landed-cost.dto';
+import { CreateLandedCostDto } from './dto/landed-cost.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CreateChargeTypeDto } from './dto/charge-type.dto';
 
 @ApiTags('Landed Cost')
 @Controller('api/landed-cost')
 export class LandedCostController {
-  constructor(private readonly service: LandedCostService) {}
+  constructor(private readonly service: LandedCostService) { }
 
-  @Post('post')
+  @Post()
   @ApiOperation({
-    summary: 'Post Landed Cost: move stock to warehouse and value GRN',
+    summary: 'Create Landed Cost: update stock ledger and value GRN',
   })
-  post(@Body() dto: PostLandedCostDtoWithRates) {
-    return this.service.post(dto);
+  create(@Body() dto: CreateLandedCostDto) {
+    return this.service.create(dto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List Landed Cost records' })
+  list() {
+    return this.service.list();
   }
 
   @Get('charge-types')

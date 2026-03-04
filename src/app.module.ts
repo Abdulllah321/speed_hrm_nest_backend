@@ -99,6 +99,7 @@ import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.mo
 import { GrnModule } from './warehouse/grn/grn.module';
 import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
+import { HsCodeModule } from './master/hs-code/hs-code.module';
 
 import { SearchModule } from './search/search.module';
 import { WebhookModule } from './webhook/webhook.module';
@@ -212,6 +213,7 @@ import { WebhookModule } from './webhook/webhook.module';
     GrnModule,
     LandedCostModule,
     PosModule,
+    HsCodeModule,
     SearchModule,
     CustomerModule,
     WebhookModule,
@@ -219,4 +221,4 @@ import { WebhookModule } from './webhook/webhook.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
