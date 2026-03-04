@@ -30,6 +30,7 @@ model Supplier {
   purchaseOrders   PurchaseOrder[]
   rfqVendors       RequestForQuotationVendor[]
   vendorQuotations VendorQuotation[]
+  landedCosts      LandedCost[]
 
   // @@index([chartOfAccountId]) removed
   @@index([nature])

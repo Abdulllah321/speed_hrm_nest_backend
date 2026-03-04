@@ -18,9 +18,13 @@ export class CreateItemDto {
   @IsOptional()
   barCode?: string;
 
+  @IsUUID()
+  @IsOptional()
+  hsCodeId?: string;
+
   @IsString()
   @IsOptional()
-  hsCode?: string;
+  hsCodeStr?: string;
 
   @IsString()
   @IsOptional()

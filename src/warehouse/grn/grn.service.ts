@@ -13,13 +13,14 @@ export class GrnService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
-  ) {}
+  ) { }
 
   async findAll() {
     return this.prisma.goodsReceiptNote.findMany({
       include: {
+        items: true,
         purchaseOrder: {
-          select: { poNumber: true },
+          select: { poNumber: true, vendorId: true, items: true },
         },
         warehouse: {
           select: { name: true },

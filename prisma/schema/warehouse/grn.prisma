@@ -11,6 +11,7 @@ model GoodsReceiptNote {
   items           GoodsReceiptNoteItem[]
   purchaseOrder   PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
   warehouse       Warehouse              @relation(fields: [warehouseId], references: [id])
+  landedCosts     LandedCost[]
 
   @@map("goods_receipt_notes")
 }
