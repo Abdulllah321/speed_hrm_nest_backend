@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { LandedCostService } from './landed-cost.service';
 import { CreateLandedCostDto } from './dto/landed-cost.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -21,6 +21,12 @@ export class LandedCostController {
   @ApiOperation({ summary: 'List Landed Cost records' })
   list() {
     return this.service.list();
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a single Landed Cost record by ID' })
+  getById(@Param('id') id: string) {
+    return this.service.getById(id);
   }
 
   @Get('charge-types')
