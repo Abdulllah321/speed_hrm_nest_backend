@@ -146,6 +146,7 @@ export class GrnService {
               movementType: MovementType.INBOUND,
               referenceType: 'GRN',
               referenceId: grn.id,
+              rate: poItem.unitPrice ? new Prisma.Decimal(poItem.unitPrice) : undefined,
             },
             tx,
           );
