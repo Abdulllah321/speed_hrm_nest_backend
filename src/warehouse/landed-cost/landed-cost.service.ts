@@ -44,7 +44,6 @@ export class LandedCostService {
           blDate: dto.blDate ? new Date(dto.blDate) : null,
           countryOfOrigin: dto.countryOfOrigin,
           gdNo: dto.gdNo,
-          gdDate: dto.gdDate ? new Date(dto.gdDate) : null,
           season: dto.season,
           category: dto.category,
           shippingInvoiceNo: dto.shippingInvoiceNo,
@@ -54,6 +53,8 @@ export class LandedCostService {
           items: {
             create: dto.items.map((item) => ({
               itemId: item.itemId,
+              sku: item.sku,
+              description: item.description,
               hsCode: item.hsCode,
               qty: item.qty,
               unitFob: item.unitFob,
@@ -76,9 +77,29 @@ export class LandedCostService {
               additionalSalesTaxAmount: (item as any).additionalSalesTaxAmount || 0,
               incomeTaxRate: (item as any).incomeTaxRate || 0,
               incomeTaxAmount: (item as any).incomeTaxAmount || 0,
-              otherChargesPKR: (item as any).otherChargesPKR || 0,
+              exciseChargesAmount: (item as any).exciseChargesAmount || 0,
               unitCostPKR: item.unitCostPKR,
               totalCostPKR: item.totalCostPKR,
+              // MIS Proportional Breakdown
+              misFreightUSD: item.misFreightUSD || 0,
+              misFreightPKR: item.misFreightPKR || 0,
+              misDoThcPKR: item.misDoThcPKR || 0,
+              misBankPKR: item.misBankPKR || 0,
+              misInsurancePKR: item.misInsurancePKR || 0,
+              misClgFwdPKR: item.misClgFwdPKR || 0,
+              totalOtherCharges:
+                (item.misFreightPKR || 0) +
+                (item.misDoThcPKR || 0) +
+                (item.misBankPKR || 0) +
+                (item.misInsurancePKR || 0) +
+                (item.misClgFwdPKR || 0),
+              // MIS Metadata Snapshot
+              misFreightInvNo: item.misFreightInvNo,
+              misFreightDate: item.misFreightDate,
+              misDoThcPoNo: item.misDoThcPoNo,
+              misDoThcDate: item.misDoThcDate,
+              misInsurancePolicyNo: item.misInsurancePolicyNo,
+              misClgFwdBillNo: item.misClgFwdBillNo,
             })),
           },
         },
@@ -105,6 +126,20 @@ export class LandedCostService {
           totalInvoiceForeign,
           totalInvoicePKR,
           totalLandedCost,
+          // MIS Totals Snapshot (Header)
+          freightUSD: dto.freightUSD || 0,
+          freightExRate: dto.freightExRate || 1,
+          freightPKR: dto.freightPKR || 0,
+          freightInvNo: dto.freightInvNo,
+          freightDate: dto.freightDate,
+          doThcCharges: dto.doThcCharges || 0,
+          doThcPoNo: dto.doThcPoNo,
+          doThcDate: dto.doThcDate,
+          bankCharges: dto.bankCharges || 0,
+          insuranceChargesH: dto.insuranceChargesH || 0,
+          insurancePolicyNo: dto.insurancePolicyNo,
+          clgFwdCharges: dto.clgFwdCharges || 0,
+          clgFwdBillNo: dto.clgFwdBillNo,
         },
       });
 
@@ -150,6 +185,32 @@ export class LandedCostService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getById(id: string) {
+    const landedCost = await this.prisma.landedCost.findUnique({
+      where: { id },
+      include: {
+        grn: {
+          include: {
+            items: true,
+            purchaseOrder: {
+              include: {
+                items: true,
+              },
+            },
+          },
+        },
+        supplier: true,
+        items: true,
+      },
+    });
+
+    if (!landedCost) {
+      throw new NotFoundException(`Landed Cost record with ID ${id} not found`);
+    }
+
+    return landedCost;
   }
 
   async listChargeTypes() {

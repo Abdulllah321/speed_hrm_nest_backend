@@ -36,6 +36,11 @@ export class CreateHsCodeDto {
     incomeTax?: number;
 
     @IsOptional()
+    @IsNumber()
+    @Min(0)
+    exciseCharges?: number;
+
+    @IsOptional()
     @IsString()
     status?: string;
 }
@@ -74,6 +79,11 @@ export class UpdateHsCodeDto {
     @IsNumber()
     @Min(0)
     incomeTax?: number;
+
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    exciseCharges?: number;
 
     @IsOptional()
     @IsString()

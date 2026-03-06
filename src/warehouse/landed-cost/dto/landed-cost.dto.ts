@@ -30,6 +30,14 @@ export class LandedCostItemDto {
 
   @IsString()
   @IsOptional()
+  sku?: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
   hsCode?: string;
 
   @IsNumber()
@@ -114,6 +122,58 @@ export class LandedCostItemDto {
 
   @IsNumber()
   @IsOptional()
+  exciseChargesAmount?: number;
+
+  @IsNumber()
+  @IsOptional()
+  misFreightUSD?: number;
+
+  @IsNumber()
+  @IsOptional()
+  misFreightPKR?: number;
+
+  @IsNumber()
+  @IsOptional()
+  misDoThcPKR?: number;
+
+  @IsNumber()
+  @IsOptional()
+  misBankPKR?: number;
+
+  @IsNumber()
+  @IsOptional()
+  misInsurancePKR?: number;
+
+  @IsNumber()
+  @IsOptional()
+  misClgFwdPKR?: number;
+
+  @IsString()
+  @IsOptional()
+  misFreightInvNo?: string;
+
+  @IsString()
+  @IsOptional()
+  misFreightDate?: string;
+
+  @IsString()
+  @IsOptional()
+  misDoThcPoNo?: string;
+
+  @IsString()
+  @IsOptional()
+  misDoThcDate?: string;
+
+  @IsString()
+  @IsOptional()
+  misInsurancePolicyNo?: string;
+
+  @IsString()
+  @IsOptional()
+  misClgFwdBillNo?: string;
+
+  @IsNumber()
+  @IsOptional()
   otherChargesPKR?: number;
 }
 
@@ -149,9 +209,6 @@ export class CreateLandedCostDto {
   @IsOptional()
   gdNo?: string;
 
-  @IsOptional()
-  gdDate?: Date;
-
   @IsString()
   @IsOptional()
   season?: string;
@@ -171,6 +228,58 @@ export class CreateLandedCostDto {
   @IsNumber()
   @Min(0)
   exchangeRate: number;
+
+  @IsNumber()
+  @IsOptional()
+  freightUSD?: number;
+
+  @IsNumber()
+  @IsOptional()
+  freightExRate?: number;
+
+  @IsNumber()
+  @IsOptional()
+  freightPKR?: number;
+
+  @IsString()
+  @IsOptional()
+  freightInvNo?: string;
+
+  @IsString()
+  @IsOptional()
+  freightDate?: string;
+
+  @IsNumber()
+  @IsOptional()
+  doThcCharges?: number;
+
+  @IsString()
+  @IsOptional()
+  doThcPoNo?: string;
+
+  @IsString()
+  @IsOptional()
+  doThcDate?: string;
+
+  @IsNumber()
+  @IsOptional()
+  bankCharges?: number;
+
+  @IsNumber()
+  @IsOptional()
+  insuranceChargesH?: number;
+
+  @IsString()
+  @IsOptional()
+  insurancePolicyNo?: string;
+
+  @IsNumber()
+  @IsOptional()
+  clgFwdCharges?: number;
+
+  @IsString()
+  @IsOptional()
+  clgFwdBillNo?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

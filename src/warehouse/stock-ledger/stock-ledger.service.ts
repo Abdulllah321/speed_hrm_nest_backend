@@ -22,7 +22,18 @@ export class StockLedgerService {
       orderBy: {
         createdAt: 'desc',
       },
-      include: {
+      select: {
+        id: true,
+        itemId: true,
+        warehouseId: true,
+        qty: true,
+        rate: true,
+        unitCost: true,
+        movementType: true,
+        referenceType: true,
+        referenceId: true,
+        locationId: true,
+        createdAt: true,
         item: {
           select: {
             itemId: true,
@@ -152,6 +163,7 @@ export class StockLedgerService {
           referenceId,
           locationId,
           rate: rate ? new Prisma.Decimal(rate) : null,
+          unitCost: rate ? new Prisma.Decimal(rate) : null,
         },
       });
     };

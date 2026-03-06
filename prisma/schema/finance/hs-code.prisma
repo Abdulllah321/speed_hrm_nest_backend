@@ -7,6 +7,7 @@ model HsCode {
     salesTax                 Decimal  @default(0) @map("sales_tax") @db.Decimal(10, 2)
     additionalSalesTax       Decimal  @default(0) @map("additional_sales_tax") @db.Decimal(10, 2)
     incomeTax                Decimal  @default(0) @map("income_tax") @db.Decimal(10, 2)
+    exciseCharges            Decimal  @default(0) @map("excise_charges") @db.Decimal(10, 2)
     status                   String   @default("active")
     createdAt                DateTime @default(now()) @map("created_at")
     updatedAt                DateTime @updatedAt @map("updated_at")
