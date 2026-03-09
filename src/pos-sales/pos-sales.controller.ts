@@ -1,0 +1,127 @@
+import {
+    Controller,
+    Get,
+    Post,
+    Body,
+    Param,
+    Query,
+    Req,
+    UseGuards,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { PosSalesService } from './pos-sales.service';
+import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
+import * as jwt from 'jsonwebtoken';
+
+@ApiTags('POS Sales')
+@Controller('api/pos-sales')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
+export class PosSalesController {
+    constructor(private readonly posSalesService: PosSalesService) { }
+
+    // ─── Item lookup for POS (search by barcode, SKU, description) ────
+    @Get('lookup')
+    @ApiOperation({ summary: 'Search items for POS by barcode/SKU/name' })
+    async lookupItem(@Query('q') query: string) {
+        return this.posSalesService.lookupItem(query);
+    }
+
+    // ─── Barcode scan — exact match, single item ──────────────────────
+    @Get('scan')
+    @ApiOperation({ summary: 'Scan barcode — exact match single item' })
+    async scanBarcode(@Query('barcode') barcode: string) {
+        return this.posSalesService.scanBarcode(barcode);
+    }
+
+    // ─── Create a sales order (checkout) ──────────────────────────────
+    @Post('orders')
+    @ApiOperation({ summary: 'Create a sales order / checkout' })
+    async createOrder(@Body() dto: CreateSalesOrderDto, @Req() req: any) {
+        const cashierUserId = req.user?.id;
+
+        // 1. Context from req.user (Preferred - comes from combined cashier token)
+        if (req.user?.isPosUser || req.user?.isTerminal) {
+            if (!dto.terminalId) dto.terminalId = req.user.terminalId;
+            if (!dto.posId) dto.posId = req.user.posId;
+            if (!dto.locationId) dto.locationId = req.user.locationId;
+        }
+
+        // 2. Fallback: Extract from specialized terminal cookie if still missing
+        if ((!dto.terminalId || !dto.posId) && req.cookies?.posTerminalToken) {
+            try {
+                const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+                if (decoded) {
+                    if (!dto.terminalId) dto.terminalId = decoded.terminalId;
+                    if (!dto.posId) dto.posId = decoded.posId;
+                    if (!dto.locationId) dto.locationId = decoded.locationId;
+                }
+            } catch (e) {
+                // Ignore decoding errors
+            }
+        }
+
+        return this.posSalesService.createOrder(dto, cashierUserId);
+    }
+
+    // ─── List orders (Sales History) ───────────────────────────────────
+    @Get('orders')
+    @Permissions('pos.sales.history.view')
+    @ApiOperation({ summary: 'List sales orders / Sales History' })
+    async listOrders(
+        @Req() req: any,
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('posId') posId?: string, // This could be Code or UUID from frontend filter
+        @Query('status') status?: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('search') search?: string,
+    ) {
+        // Determine effective filtering context
+        let effectivePosId = posId; // The ID/Code to filter by
+        let effectiveLocationId: string | undefined = undefined;
+
+        // 1. Context from logged-in user
+        if (req.user?.isPosUser || req.user?.isTerminal) {
+            if (!effectivePosId) effectivePosId = req.user.posId || req.user.terminalId;
+            effectiveLocationId = req.user.locationId;
+        }
+
+        // 2. Fallback to terminal cookie
+        if (!effectivePosId && req.cookies?.posTerminalToken) {
+            try {
+                const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+                effectivePosId = decoded?.posId || decoded?.terminalId;
+                effectiveLocationId = decoded?.locationId;
+            } catch (e) { }
+        }
+
+        return this.posSalesService.listOrders(
+            req.user,
+            page ? Number(page) : 1,
+            limit ? Number(limit) : 20,
+            effectivePosId,
+            status,
+            { startDate, endDate, search },
+            effectiveLocationId,
+        );
+    }
+
+    // ─── Get single order ─────────────────────────────────────────────
+    @Get('orders/:id')
+    @ApiOperation({ summary: 'Get sales order by ID' })
+    async getOrder(@Param('id') id: string) {
+        return this.posSalesService.getOrder(id);
+    }
+
+    // ─── Void order ───────────────────────────────────────────────────
+    @Post('orders/:id/void')
+    @ApiOperation({ summary: 'Void a sales order' })
+    async voidOrder(@Param('id') id: string) {
+        return this.posSalesService.voidOrder(id);
+    }
+}
