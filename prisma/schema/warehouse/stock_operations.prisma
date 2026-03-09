@@ -33,14 +33,21 @@ model TransferRequest {
   requestNo       String                @unique
   fromWarehouseId String
   toWarehouseId   String
+  fromLocationId  String?
+  toLocationId    String?
   status          String                @default("DRAFT")
   requestDate     DateTime              @default(now())
   expectedDate    DateTime?
   createdById     String?
   approvedById    String?
+  notes           String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
   items           TransferRequestItem[]
+  fromLocation    WarehouseLocation?    @relation("TransferRequestFrom", fields: [fromLocationId], references: [id])
+  toLocation      WarehouseLocation?    @relation("TransferRequestTo", fields: [toLocationId], references: [id])
+  fromWarehouse   Warehouse             @relation("TransferRequestFromWH", fields: [fromWarehouseId], references: [id])
+  toWarehouse     Warehouse             @relation("TransferRequestToWH", fields: [toWarehouseId], references: [id])
 }
 
 model TransferRequestItem {
@@ -51,6 +58,7 @@ model TransferRequestItem {
   batchNumber       String?
   fulfilledQty      Decimal         @default(0) @db.Decimal(15, 4)
   transferRequest   TransferRequest @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+  item              Item            @relation(fields: [itemId], references: [id])
 
   @@unique([transferRequestId, itemId, batchNumber])
 }
