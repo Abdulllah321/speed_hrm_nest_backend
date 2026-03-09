@@ -6,13 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer-dto';
 
 @Controller('api/sales/customers')
 export class CustomerController {
-  constructor(private readonly service: CustomerService) {}
+  constructor(private readonly service: CustomerService) { }
 
   @Post()
   create(@Body() dto: CreateCustomerDto) {
@@ -20,8 +21,8 @@ export class CustomerController {
   }
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query('search') search?: string) {
+    return this.service.findAll(search);
   }
 
   @Get(':id')

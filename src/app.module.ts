@@ -102,19 +102,35 @@ import { PosModule } from './master/pos/pos.module';
 
 import { SearchModule } from './search/search.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { PosSalesModule } from './pos-sales/pos-sales.module';
+import { PosConfigModule } from './pos-config/pos-config.module';
+import { PosSessionModule } from './pos-session/pos-session.module';
 
 @Module({
   imports: [
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: async () => ({
-        store: await redisStore({
-          socket: {
-            host: process.env.REDIS_HOST || '127.0.0.1',
-            port: parseInt(process.env.REDIS_PORT || '6379'),
-          },
-        }),
-      }),
+      useFactory: async () => {
+        try {
+          // If we explicitly want no redis in this dev environment, return memory store implicitly
+          if (process.env.NO_REDIS === 'true') {
+            console.log('Redis disabled via NO_REDIS, using memory cache instead');
+            return {};
+          }
+
+          const store = await redisStore({
+            socket: {
+              host: process.env.REDIS_HOST || '127.0.0.1',
+              port: parseInt(process.env.REDIS_PORT || '6379'),
+            },
+            pingInterval: 1000 * 60,
+          });
+          return { store };
+        } catch (error) {
+          console.warn('Failed to connect to Redis. Using fallback memory cache.');
+          return {}; // fallback memory cache
+        }
+      },
     }),
     EventEmitterModule.forRoot(),
     QueueModule,
@@ -215,8 +231,11 @@ import { WebhookModule } from './webhook/webhook.module';
     SearchModule,
     CustomerModule,
     WebhookModule,
+    PosSalesModule,
+    PosConfigModule,
+    PosSessionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

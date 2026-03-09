@@ -3,6 +3,21 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateItemDto, UpdateItemDto } from './dto/item.dto';
 
+const includeMasterData = {
+  brand: true,
+  division: true,
+  category: true,
+  subCategory: true,
+  season: true,
+  gender: true,
+  size: true,
+  silhouette: true,
+  channelClass: true,
+  color: true,
+  itemClass: true,
+  itemSubclass: true,
+};
+
 @Injectable()
 export class ItemService {
   constructor(
@@ -50,14 +65,14 @@ export class ItemService {
   async findOne(id: string) {
     const item = await this.prisma.item.findUnique({
       where: { id },
+      include: includeMasterData,
     });
 
     if (!item) {
       return { status: false, message: `Item with ID ${id} not found` };
     }
 
-    const enrichedItems = await this.enrichItems([item]);
-    return { status: true, data: enrichedItems[0] };
+    return { status: true, data: item };
   }
 
   async findAll(
@@ -95,37 +110,14 @@ export class ItemService {
     if (search) {
       const searchTerm = search.trim();
 
-      // First pass: find master-data IDs that match the search term
-      const [matchingBrands, matchingCategories, matchingDivisions] =
-        await Promise.all([
-          this.prisma.brand.findMany({
-            where: { name: { contains: searchTerm, mode: 'insensitive' } },
-            select: { id: true },
-          }),
-          this.prisma.category.findMany({
-            where: { name: { contains: searchTerm, mode: 'insensitive' } },
-            select: { id: true },
-          }),
-          this.prisma.division.findMany({
-            where: { name: { contains: searchTerm, mode: 'insensitive' } },
-            select: { id: true },
-          }),
-        ]);
-
       where.OR = [
         { itemId: { contains: searchTerm, mode: 'insensitive' } },
         { sku: { contains: searchTerm, mode: 'insensitive' } },
         { description: { contains: searchTerm, mode: 'insensitive' } },
         { barCode: { contains: searchTerm, mode: 'insensitive' } },
-        ...(matchingBrands.length
-          ? [{ brandId: { in: matchingBrands.map((b) => b.id) } }]
-          : []),
-        ...(matchingCategories.length
-          ? [{ categoryId: { in: matchingCategories.map((c) => c.id) } }]
-          : []),
-        ...(matchingDivisions.length
-          ? [{ divisionId: { in: matchingDivisions.map((d) => d.id) } }]
-          : []),
+        { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
+        { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+        { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
       ];
     }
 
@@ -149,14 +141,14 @@ export class ItemService {
         skip,
         take: limit,
         orderBy,
+        include: includeMasterData,
       }),
       this.prisma.item.count({ where }),
     ]);
 
-    const enrichedItems = await this.enrichItems(items);
     return {
       status: true,
-      data: enrichedItems,
+      data: items,
       meta: {
         total,
         page,
@@ -212,151 +204,5 @@ export class ItemService {
     } catch (error: any) {
       return { status: false, message: error.message };
     }
-  }
-
-  private async enrichItems(items: any[]) {
-    if (!items.length) return [];
-
-    const brandIds = [...new Set(items.map((i) => i.brandId).filter(Boolean))];
-    const divisionIds = [
-      ...new Set(items.map((i) => i.divisionId).filter(Boolean)),
-    ];
-    const categoryIds = [
-      ...new Set(items.map((i) => i.categoryId).filter(Boolean)),
-    ];
-    const subCategoryIds = [
-      ...new Set(items.map((i) => i.subCategoryId).filter(Boolean)),
-    ];
-    const seasonIds = [
-      ...new Set(items.map((i) => i.seasonId).filter(Boolean)),
-    ];
-    const genderIds = [
-      ...new Set(items.map((i) => i.genderId).filter(Boolean)),
-    ];
-    const sizeIds = [...new Set(items.map((i) => i.sizeId).filter(Boolean))];
-    const silhouetteIds = [
-      ...new Set(items.map((i) => i.silhouetteId).filter(Boolean)),
-    ];
-    const channelClassIds = [
-      ...new Set(items.map((i) => i.channelClassId).filter(Boolean)),
-    ];
-    const colorIds = [...new Set(items.map((i) => i.colorId).filter(Boolean))];
-    const itemClassIds = [
-      ...new Set(items.map((i) => i.itemClassId).filter(Boolean)),
-    ];
-    const itemSubclassIds = [
-      ...new Set(items.map((i) => i.itemSubclassId).filter(Boolean)),
-    ];
-
-
-    const [
-      brands,
-      divisions,
-      categories,
-      subCategories,
-      seasons,
-      genders,
-      sizes,
-      silhouettes,
-      channelClasses,
-      colors,
-      itemClasses,
-      itemSubclasses,
-    ]: [
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-      ] = await Promise.all([
-        brandIds.length
-          ? this.prisma.brand.findMany({
-            where: { id: { in: brandIds as string[] } },
-          })
-          : [],
-        divisionIds.length
-          ? this.prisma.division.findMany({
-            where: { id: { in: divisionIds as string[] } },
-          })
-          : [],
-        categoryIds.length
-          ? this.prisma.category.findMany({
-            where: { id: { in: categoryIds as string[] } },
-          })
-          : [],
-        subCategoryIds.length
-          ? this.prisma.category.findMany({
-            where: { id: { in: subCategoryIds as string[] } },
-          })
-          : [],
-        seasonIds.length
-          ? this.prisma.season.findMany({
-            where: { id: { in: seasonIds as string[] } },
-          })
-          : [],
-        genderIds.length
-          ? this.prisma.gender.findMany({
-            where: { id: { in: genderIds as string[] } },
-          })
-          : [],
-        sizeIds.length
-          ? this.prisma.size.findMany({
-            where: { id: { in: sizeIds as string[] } },
-          })
-          : [],
-        silhouetteIds.length
-          ? this.prisma.silhouette.findMany({
-            where: { id: { in: silhouetteIds as string[] } },
-          })
-          : [],
-        channelClassIds.length
-          ? this.prisma.channelClass.findMany({
-            where: { id: { in: channelClassIds as string[] } },
-          })
-          : [],
-        colorIds.length
-          ? this.prisma.color.findMany({
-            where: { id: { in: colorIds as string[] } },
-          })
-          : [],
-        itemClassIds.length
-          ? this.prisma.itemClass.findMany({
-            where: { id: { in: itemClassIds as string[] } },
-          })
-          : [],
-        itemSubclassIds.length
-          ? this.prisma.itemSubclass.findMany({
-            where: { id: { in: itemSubclassIds as string[] } },
-          })
-          : [],
-
-      ]);
-
-    return items.map((item) => ({
-      ...item,
-      brand: brands.find((x) => x.id === item.brandId) || null,
-      division: divisions.find((x) => x.id === item.divisionId) || null,
-      category: categories.find((x) => x.id === item.categoryId) || null,
-      subCategory:
-        subCategories.find((x) => x.id === item.subCategoryId) || null,
-      season: seasons.find((x) => x.id === item.seasonId) || null,
-      gender: genders.find((x) => x.id === item.genderId) || null,
-      size: sizes.find((x) => x.id === item.sizeId) || null,
-      silhouette: silhouettes.find((x) => x.id === item.silhouetteId) || null,
-      channelClass:
-        channelClasses.find((x) => x.id === item.channelClassId) || null,
-      color: colors.find((x) => x.id === item.colorId) || null,
-      itemClass: itemClasses.find((x) => x.id === item.itemClassId) || null,
-      itemSubclass:
-        itemSubclasses.find((x) => x.id === item.itemSubclassId) || null,
-
-    }));
   }
 }
