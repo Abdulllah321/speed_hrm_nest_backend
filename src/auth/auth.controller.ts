@@ -28,7 +28,7 @@ import {
   LoginDto,
   RefreshTokenDto,
   ChangePasswordDto,
-  UpdateUserDto,
+  UpdateUserProfileDto,
 } from './dto/login.dto';
 
 @ApiTags('Auth')
@@ -233,10 +233,6 @@ export class AuthController {
     @Req() req: any,
     @Res() res: any,
   ) {
-    const ipAddress =
-      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-
     // 1. Verify Terminal PIN
     const validation = await this.service.posTerminalLogin(
       body.terminalCode,
@@ -248,53 +244,14 @@ export class AuthController {
     }
 
     const terminalData = validation.data as any;
-    const deviceInfo = {
-      ip: ipAddress,
-      userAgent: userAgent,
-      deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal',
-    };
 
-    // 2. Check if we have an existing user session to link
-    // req.user will be populated if a valid accessToken was provided
-    if (req.user && req.user.userId) {
-      // Auto-link existing user session
-      const linkResult = await this.service.posUserLinkSession(
-        req.user.userId,
-        terminalData.accessToken,
-        deviceInfo
-      );
-
-      if (linkResult.status && linkResult.data) {
-        const cookieOptions = this.getCookieOptions(req);
-        res.setCookie('accessToken', linkResult.data.accessToken, { ...cookieOptions, maxAge: 8 * 60 * 60 });
-        res.setCookie('user', JSON.stringify(linkResult.data.user), { ...cookieOptions, maxAge: 8 * 60 * 60 });
-        res.setCookie('userRole', linkResult.data.user.role || '', { ...cookieOptions, maxAge: 8 * 60 * 60 });
-        // NOTE: sessionId, terminal, and terminalId were deliberately removed to clean up cookies. 
-        // Their context is intrinsically provided by the `/me` API via access token embedding.
-
-        return res.send(linkResult);
-      }
-
-      if (linkResult.errorType === 'NO_POS_ACCESS') {
-        // The user was logged in, but they don't have POS permissions.
-        // We still consider the terminal unlock successful (so we issue the terminal-only token)
-        // and tell the frontend to prompt for profile selection.
-        const cookieOptions = this.getCookieOptions(req);
-        res.setCookie('accessToken', terminalData.accessToken, { ...cookieOptions, maxAge: 8 * 60 * 60 });
-
-        return res.send({
-          status: true,
-          errorType: 'NO_POS_ACCESS',
-          message: linkResult.message,
-          data: terminalData
-        });
-      }
-    }
-
-    // 3. Otherwise, just set terminal-only token
+    // 2. Set strict terminal-only token (posTerminalToken)
+    // This token proves the DEVICE is a registered, trusted POS screen.
     const cookieOptions = this.getCookieOptions(req);
-    res.setCookie('accessToken', terminalData.accessToken, { ...cookieOptions, maxAge: 8 * 60 * 60 });
-    // NOTE: terminal, terminalId, posSessionId cookies were removed. The access token carries this state.
+    res.setCookie('posTerminalToken', terminalData.accessToken, {
+      ...cookieOptions,
+      maxAge: 365 * 24 * 60 * 60 // 1 year cookie for physical terminal registration 
+    });
 
     return res.send(validation);
   }
@@ -308,42 +265,44 @@ export class AuthController {
     @Req() req: any,
     @Res() res: any,
   ) {
-    const terminalId = req.user?.terminalId;
-    if (!terminalId) {
-      return res.status(401).send({ status: false, message: 'Terminal not authenticated. Complete the terminal PIN step first.' });
+    const posTerminalToken = req.cookies?.['posTerminalToken'];
+    if (!posTerminalToken) {
+      return res.status(401).send({ status: false, message: 'Terminal not authenticated. Complete the terminal setup first.' });
     }
 
-    // Find the latest open terminal session to get the terminal token
-    const terminalSession = await this.prisma.posSession.findFirst({
-      where: { posId: terminalId, status: 'open' },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!terminalSession?.token) {
-      return res.status(401).send({ status: false, message: 'Terminal session not found or expired. Please re-enter PIN.' });
-    }
-
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-
-    // Decode terminal token to extract POS context (terminalId, posId, locationId, tenantId)
     let terminalContext: any;
     try {
       const jwt = require('jsonwebtoken');
-      terminalContext = jwt.decode(terminalSession.token);
+      terminalContext = jwt.decode(posTerminalToken);
     } catch {
       return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
     }
 
+    if (!terminalContext || !terminalContext.terminalId) {
+      return res.status(401).send({ status: false, message: 'Invalid terminal context.' });
+    }
+
+    const terminalSession = await this.prisma.posSession.findFirst({
+      where: { posId: terminalContext.terminalId, status: 'open' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!terminalSession?.token) {
+      return res.status(401).send({ status: false, message: 'Terminal session not found or expired. Please re-setup terminal.' });
+    }
+
     const context = {
-      terminalId: terminalContext?.terminalId || terminalId,
-      posId: terminalContext?.posId || terminalId,
-      locationId: terminalContext?.locationId || '',
+      terminalId: terminalContext.terminalId,
+      posId: terminalContext.posId || terminalContext.terminalId,
+      locationId: terminalContext.locationId || '',
       posSessionId: terminalSession.id,
-      tenantId: terminalContext?.tenantId || '',
+      tenantId: terminalContext.tenantId || '',
     };
 
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
     const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
+
     const result = await this.service.posUserLoginStandard(body.email, body.password, context, deviceInfo);
 
     if (result.status && result.data) {
@@ -362,19 +321,21 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Link an active user session to a POS terminal' })
   async posSwitchSession(@Req() req: any, @Res() res: any) {
-    // Current terminal comes from the authenticated terminal token context
-    const terminalId = req.user?.terminalId;
-    if (!terminalId) {
+    const posTerminalToken = req.cookies?.['posTerminalToken'];
+    if (!posTerminalToken) {
       return res.status(401).send({ status: false, message: 'Terminal not authenticated' });
     }
 
-    // We also need the terminalAccessToken to verify the terminal officially if needed,
-    // but since we're using one accessToken, if req.user is a USER, we lost the terminal context 
-    // unless we stored a terminalToken specifically.
+    let terminalContext: any;
+    try {
+      const jwt = require('jsonwebtoken');
+      terminalContext = jwt.decode(posTerminalToken);
+    } catch {
+      return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
+    }
 
-    // For now, let's assume if terminalId cookie is there, we find the latest session for that terminal
     const terminalSession = await this.prisma.posSession.findFirst({
-      where: { posId: terminalId, status: 'open' },
+      where: { posId: terminalContext?.terminalId, status: 'open' },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -384,11 +345,7 @@ export class AuthController {
 
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    const deviceInfo = {
-      ip: ipAddress,
-      userAgent: userAgent,
-      deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal',
-    };
+    const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
 
     const result = await this.service.posUserLinkSession(req.user.userId || req.user.id, terminalSession.token, deviceInfo);
 
@@ -649,31 +606,50 @@ export class AuthController {
   async me(@Req() req: any) {
     const result = await this.service.me(req.user.id || req.user.userId);
     if (result.status && result.data) {
-      // Enrich with POS context from current token if present
-      if (req.user.isPosUser) {
-        (result.data as any).isPosUser = true;
-        (result.data as any).terminalId = req.user.terminalId;
-        (result.data as any).locationId = req.user.locationId;
-        (result.data as any).posSessionId = req.user.posSessionId;
 
-        // Fetch full terminal details natively instead of parsing cookies
-        if (req.user.terminalId) {
-          const terminalRaw = await this.prisma.pos.findUnique({
-            where: { id: req.user.terminalId },
-            include: { location: true },
-          });
-          if (terminalRaw) {
-            (result.data as any).terminal = {
-              id: terminalRaw.id,
-              code: terminalRaw.terminalCode,
-              name: terminalRaw.name,
-              location: terminalRaw.location ? {
-                id: terminalRaw.location.id,
-                code: terminalRaw.location.code,
-                name: terminalRaw.location.name,
-              } : null
-            };
+      let terminalId = req.user.terminalId;
+      let locationId = req.user.locationId;
+      let isPosUser = req.user.isPosUser;
+
+      // Extract raw POS Terminal reality straight from the browser's persistent device cookie
+      const posTerminalToken = req.cookies?.['posTerminalToken'];
+      if (posTerminalToken) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.decode(posTerminalToken);
+          if (decoded && decoded.terminalId) {
+            terminalId = decoded.terminalId;
+            locationId = decoded.locationId;
+            isPosUser = true;
           }
+        } catch { } // Ignore decoding errors
+      }
+
+      // Enrich with POS context
+      if (isPosUser && terminalId) {
+        (result.data as any).isPosUser = true;
+        (result.data as any).terminalId = terminalId;
+        (result.data as any).locationId = locationId;
+
+        if (this.prisma) {
+          try {
+            const terminalRaw = await this.prisma.pos.findUnique({
+              where: { id: terminalId },
+              include: { location: true },
+            });
+            if (terminalRaw) {
+              (result.data as any).terminal = {
+                id: terminalRaw.id,
+                code: terminalRaw.terminalCode,
+                name: terminalRaw.name,
+                location: terminalRaw.location ? {
+                  id: terminalRaw.location.id,
+                  code: terminalRaw.location.code,
+                  name: terminalRaw.location.name,
+                } : null
+              };
+            }
+          } catch (e) { }
         }
       }
       // Enrich with impersonation context from current token
@@ -697,11 +673,19 @@ export class AuthController {
     return this.service.checkSession(req.user.userId, accessToken);
   }
 
+  @Get('pos/verify-session')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify POS Session validity' })
+  async verifyPosSession(@Req() req: any) {
+    return this.service.verifyPosSession(req.user.userId || req.user.id);
+  }
+
   @Post('update-profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update current user profile' })
-  async updateProfile(@Req() req: any, @Body() body: UpdateUserDto) {
+  async updateProfile(@Req() req: any, @Body() body: UpdateUserProfileDto) {
     return this.service.updateMe(req.user.userId, body);
   }
 

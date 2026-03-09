@@ -1,7 +1,8 @@
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { PrismaMasterService } from './prisma-master.service';
 import { PrismaService } from './prisma.service';
-import { FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyRequest } from 'fastify';
+import { ServerResponse } from 'http';
 import type { Company, Tenant } from '@prisma/management-client';
 import { EncryptionService } from '../common/utils/encryption.service';
 
@@ -35,7 +36,7 @@ export class TenantMiddleware implements NestMiddleware {
     private readonly encryptionService: EncryptionService,
   ) { }
 
-  async use(req: TenantRequest, res: FastifyReply, next: () => void) {
+  async use(req: TenantRequest, res: ServerResponse, next: () => void) {
     try {
       const tenantIdentifier = this.extractTenantIdentifier(req);
       const companyIdentifier = this.extractCompanyIdentifier(req);
@@ -65,14 +66,18 @@ export class TenantMiddleware implements NestMiddleware {
         this.logger.warn(
           `No active company found for tenant=${tenantIdentifier}, company=${companyIdentifier}`,
         );
-        return (res as any)
-          .status(404)
-          .send({ message: 'Company not found or inactive' });
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Company not found or inactive' }));
+        return;
       }
 
       if (!company.tenant || !company.tenant.isActive) {
         this.logger.warn(`Tenant is inactive for company: ${company.id}`);
-        return (res as any).status(403).send({ message: 'Tenant is inactive' });
+        res.statusCode = 403;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Tenant is inactive' }));
+        return;
       }
 
       // Use stored dbUrl and decrypt password dynamically
@@ -82,9 +87,10 @@ export class TenantMiddleware implements NestMiddleware {
         this.logger.error(
           `Company ${company.id} has no database URL configured`,
         );
-        return (res as any)
-          .status(500)
-          .send({ message: 'Database configuration error' });
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Database configuration error' }));
+        return;
       }
 
       // If company has dbPassword (encrypted), we decrypt it and rebuild the URL
@@ -102,9 +108,10 @@ export class TenantMiddleware implements NestMiddleware {
           }
         } catch (err: any) {
           this.logger.error(`Failed to decrypt database password for company ${company.id}: ${err.message}`);
-          return (res as any)
-            .status(500)
-            .send({ message: 'Database configuration error' });
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ message: 'Database configuration error' }));
+          return;
         }
       }
 
@@ -131,10 +138,15 @@ export class TenantMiddleware implements NestMiddleware {
       this.logger.error(`Error in TenantMiddleware: ${error}`);
       // Don't throw - send error response instead to prevent server crash
       try {
-        return (res as any).status(500).send({
-          status: false,
-          message: 'Internal server error in tenant middleware',
-        });
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            status: false,
+            message: 'Internal server error in tenant middleware',
+          }),
+        );
+        return;
       } catch (sendError) {
         // If we can't send response, just log and call next to prevent crash
         this.logger.error(`Failed to send error response: ${sendError}`);
