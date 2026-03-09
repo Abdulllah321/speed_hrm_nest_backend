@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { StockMovement, InventoryItem } from '@prisma/client';
+import { StockMovement, InventoryItem, MovementType } from '@prisma/client';
+import { StockLedgerService } from './stock-ledger/stock-ledger.service';
 
 interface CreateStockMovementDto {
   itemId: string;
@@ -19,14 +20,17 @@ interface CreateStockMovementDto {
 
 @Injectable()
 export class StockMovementService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private stockLedgerService: StockLedgerService
+  ) { }
 
   async executeMovement(dto: CreateStockMovementDto) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Create Stock Movement Log
       const movement = await tx.stockMovement.create({
         data: {
-          movementNo: `MV-${Date.now()}`, // Simple generation logic
+          movementNo: `MV-${Date.now()}`,
           itemId: dto.itemId,
           fromLocationId: dto.fromLocationId,
           toLocationId: dto.toLocationId,
@@ -42,51 +46,67 @@ export class StockMovementService {
         },
       });
 
-      // 2. Update Inventory - DECREASE Source
+      // 2. Handle Source (DECREASE)
       if (dto.fromLocationId) {
-        // Find existing inventory item at source
-        // Note: For batch items, we match batchNumber. For general items, batchNumber is null.
+        // Update Inventory Item
         const sourceItem = await tx.inventoryItem.findFirst({
           where: {
             locationId: dto.fromLocationId,
             itemId: dto.itemId,
             batchNumber: dto.batchNumber,
             serialNumber: dto.serialNumber,
-            status: 'AVAILABLE', // Assuming we move available stock
+            status: 'AVAILABLE',
           },
         });
 
-        if (!sourceItem || Number(sourceItem.quantity) < Number(dto.quantity)) {
-          throw new BadRequestException(
-            'Insufficient stock at source location',
-          );
+        if (sourceItem) {
+          await tx.inventoryItem.update({
+            where: { id: sourceItem.id },
+            data: { quantity: { decrement: dto.quantity } },
+          });
         }
 
-        if (Number(sourceItem.quantity) === Number(dto.quantity)) {
-          // Delete if zero? Or keep as 0? Usually keep as 0 or delete.
-          // Let's decrement for now.
-          await tx.inventoryItem.update({
-            where: { id: sourceItem.id },
-            data: { quantity: { decrement: dto.quantity } },
-          });
-          // Cleanup zero records could be a separate job or strictly managed
-        } else {
-          await tx.inventoryItem.update({
-            where: { id: sourceItem.id },
-            data: { quantity: { decrement: dto.quantity } },
-          });
+        // Update Ledger
+        const location = await tx.warehouseLocation.findUnique({ where: { id: dto.fromLocationId } });
+        if (location) {
+          await this.stockLedgerService.createEntry({
+            itemId: dto.itemId,
+            warehouseId: location.warehouseId,
+            locationId: dto.fromLocationId,
+            qty: -dto.quantity,
+            movementType: MovementType.OUTBOUND,
+            referenceType: dto.referenceType || 'STOCK_MOVEMENT',
+            referenceId: movement.id,
+          }, tx);
+        }
+      } else {
+        // Moving from "Central Pool" (location null)
+        // We still need to create a ledger entry if we know the warehouse.
+        // For now, if location is null, we might not know the warehouse from the DTO.
+        // Usually, internal transfers are in the same warehouse.
+        if (dto.toLocationId) {
+          const destLoc = await tx.warehouseLocation.findUnique({ where: { id: dto.toLocationId } });
+          if (destLoc) {
+            await this.stockLedgerService.createEntry({
+              itemId: dto.itemId,
+              warehouseId: destLoc.warehouseId,
+              locationId: undefined, // Central Pool
+              qty: -dto.quantity,
+              movementType: MovementType.OUTBOUND,
+              referenceType: dto.referenceType || 'STOCK_MOVEMENT',
+              referenceId: movement.id,
+            }, tx);
+          }
         }
       }
 
-      // 3. Update Inventory - INCREASE Destination
+      // 3. Handle Destination (INCREASE)
       if (dto.toLocationId) {
         const destLocation = await tx.warehouseLocation.findUnique({
           where: { id: dto.toLocationId },
         });
-        if (!destLocation)
-          throw new BadRequestException('Destination location not found');
+        if (!destLocation) throw new BadRequestException('Destination location not found');
 
-        // Check if item exists at destination
         const destItem = await tx.inventoryItem.findFirst({
           where: {
             locationId: dto.toLocationId,
@@ -116,6 +136,17 @@ export class StockMovementService {
             },
           });
         }
+
+        // Update Ledger
+        await this.stockLedgerService.createEntry({
+          itemId: dto.itemId,
+          warehouseId: destLocation.warehouseId,
+          locationId: dto.toLocationId,
+          qty: dto.quantity,
+          movementType: MovementType.INBOUND,
+          referenceType: dto.referenceType || 'STOCK_MOVEMENT',
+          referenceId: movement.id,
+        }, tx);
       }
 
       return movement;
