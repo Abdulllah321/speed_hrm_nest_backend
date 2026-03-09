@@ -3,6 +3,21 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateItemDto, UpdateItemDto } from './dto/item.dto';
 
+const includeMasterData = {
+  brand: true,
+  division: true,
+  category: true,
+  subCategory: true,
+  season: true,
+  gender: true,
+  size: true,
+  silhouette: true,
+  channelClass: true,
+  color: true,
+  itemClass: true,
+  itemSubclass: true,
+};
+
 @Injectable()
 export class ItemService {
   constructor(
@@ -50,14 +65,14 @@ export class ItemService {
   async findOne(id: string) {
     const item = await this.prisma.item.findUnique({
       where: { id },
+      include: includeMasterData,
     });
 
     if (!item) {
       return { status: false, message: `Item with ID ${id} not found` };
     }
 
-    const enrichedItems = await this.enrichItems([item]);
-    return { status: true, data: enrichedItems[0] };
+    return { status: true, data: item };
   }
 
   async findByCode(code: string) {
@@ -108,37 +123,14 @@ export class ItemService {
     if (search) {
       const searchTerm = search.trim();
 
-      // First pass: find master-data IDs that match the search term
-      const [matchingBrands, matchingCategories, matchingDivisions] =
-        await Promise.all([
-          this.prisma.brand.findMany({
-            where: { name: { contains: searchTerm, mode: 'insensitive' } },
-            select: { id: true },
-          }),
-          this.prisma.category.findMany({
-            where: { name: { contains: searchTerm, mode: 'insensitive' } },
-            select: { id: true },
-          }),
-          this.prisma.division.findMany({
-            where: { name: { contains: searchTerm, mode: 'insensitive' } },
-            select: { id: true },
-          }),
-        ]);
-
       where.OR = [
         { itemId: { contains: searchTerm, mode: 'insensitive' } },
         { sku: { contains: searchTerm, mode: 'insensitive' } },
         { description: { contains: searchTerm, mode: 'insensitive' } },
         { barCode: { contains: searchTerm, mode: 'insensitive' } },
-        ...(matchingBrands.length
-          ? [{ brandId: { in: matchingBrands.map((b) => b.id) } }]
-          : []),
-        ...(matchingCategories.length
-          ? [{ categoryId: { in: matchingCategories.map((c) => c.id) } }]
-          : []),
-        ...(matchingDivisions.length
-          ? [{ divisionId: { in: matchingDivisions.map((d) => d.id) } }]
-          : []),
+        { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
+        { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+        { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
       ];
     }
 
@@ -162,14 +154,14 @@ export class ItemService {
         skip,
         take: limit,
         orderBy,
+        include: includeMasterData,
       }),
       this.prisma.item.count({ where }),
     ]);
 
-    const enrichedItems = await this.enrichItems(items);
     return {
       status: true,
-      data: enrichedItems,
+      data: items,
       meta: {
         total,
         page,
