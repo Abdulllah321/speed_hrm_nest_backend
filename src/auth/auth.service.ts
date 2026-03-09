@@ -15,6 +15,7 @@ import { PrismaService } from '../database/prisma.service';
 import { CompanyService } from '../admin/company/company.service';
 import { PosService } from '../master/pos/pos.service';
 import { EncryptionService } from '../common/utils/encryption.service';
+import { PosSessionService } from '../pos-session/pos-session.service';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(""d+)([smhd])$/);
@@ -41,6 +42,7 @@ export class AuthService {
     private posService: PosService,
     @Optional() private prisma: PrismaService,
     private encryptionService: EncryptionService,
+    private posSessionService: PosSessionService,
   ) { }
 
   async login(
@@ -865,14 +867,28 @@ export class AuthService {
       accessOpts,
     );
 
-    // Create a PosSession record
-    const session = await this.prisma.posSession.create({
-      data: {
-        posId: terminalId,
-        status: 'open',
-        token: accessToken,
-      },
+    // ── Check for existing active session ──
+    let session = await this.prisma.posSession.findFirst({
+      where: { posId: terminalId, status: 'open' },
+      orderBy: { openedAt: 'desc' },
     });
+
+    if (!session) {
+      // Create a new PosSession record
+      session = await this.prisma.posSession.create({
+        data: {
+          posId: terminalId,
+          status: 'open',
+          token: accessToken,
+        },
+      });
+    } else {
+      // Update the existing session with the new token
+      session = await this.prisma.posSession.update({
+        where: { id: session.id },
+        data: { token: accessToken },
+      });
+    }
 
     return {
       status: true,
@@ -1046,6 +1062,46 @@ export class AuthService {
     return { status: true, data: user };
   }
 
+  async verifyPosSession(userId: string) {
+    if (!this.prisma) return { status: false, message: 'Tenant database not available' };
+    try {
+      const activeSession = await this.prisma.posSession.findFirst({
+        where: { userId, status: 'open' },
+        orderBy: { updatedAt: 'desc' },
+        include: { pos: { include: { location: true } } }
+      });
+      if (!activeSession) return { status: false, message: 'No active POS session found' };
+
+      const terminal = activeSession.pos;
+      if (!terminal || terminal.status !== 'active') {
+        await this.prisma.posSession.update({
+          where: { id: activeSession.id },
+          data: { status: 'closed' }
+        });
+        return { status: false, message: 'POS terminal is deactivated or deleted. Session closed.' };
+      }
+
+      // Get full session metrics using PosSessionService
+      const sessionStatus = await this.posSessionService.getCurrentSession(terminal.id, terminal.posId, terminal.locationId);
+
+      return {
+        status: true,
+        message: 'POS Session is valid',
+        data: {
+          sessionId: activeSession.id,
+          terminalId: terminal.id,
+          terminalCode: terminal.terminalCode,
+          locationCode: terminal.location?.code,
+          locationId: terminal.locationId,
+          isDrawerOpen: sessionStatus?.isDrawerOpen ?? false,
+          metrics: sessionStatus?.metrics || null
+        }
+      };
+    } catch (e) {
+      return { status: false, message: 'Failed to verify POS session' };
+    }
+  }
+
   async logout(userId: string, accessToken?: string) {
     // Simply return success since there is no server-side token state to clear.
     // Cookies are cleared in the controller.
@@ -1053,16 +1109,27 @@ export class AuthService {
   }
 
   async checkSession(userId: string, accessToken?: string) {
+    if (!userId) {
+      return {
+        status: false,
+        message: 'No active user session',
+        valid: false,
+        resetCookies: true,
+      };
+    }
+
     const user = await this.prismaMaster.user.findUnique({
       where: { id: userId },
     });
-    if (!user)
+
+    if (!user) {
       return {
         status: false,
         message: 'User not found',
         valid: false,
         resetCookies: true,
       };
+    }
     if (user.status !== 'active')
       return {
         status: false,
