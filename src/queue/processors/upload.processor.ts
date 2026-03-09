@@ -6,6 +6,7 @@ import { CsvParserService, ParsedRecord } from '../../common/services/csv-parser
 import { MasterDataService } from '../../common/services/master-data.service';
 import { ItemValidatorService, ValidationError } from '../../common/services/item-validator.service';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -37,9 +38,9 @@ export class UploadProcessor {
 
     constructor(
         private readonly csvParser: CsvParserService,
-        private readonly masterData: MasterDataService,
         private readonly validator: ItemValidatorService,
         private readonly eventsService: UploadEventsService,
+        private readonly notificationsService: NotificationsService,
     ) { }
 
     @Process()
@@ -68,6 +69,7 @@ export class UploadProcessor {
         }
 
         const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+        const tenantMasterData = new MasterDataService(prisma);
         this.logger.log(`[Job ${job.id}] Connected to tenant DB: ${tenantId}`);
 
         try {
@@ -105,20 +107,33 @@ export class UploadProcessor {
                 data: { progress: 15, totalRecords: records.length, processedRecords: 0 }
             });
 
-            // Validation (always run validation even in import mode to ensure data integrity)
-            this.eventsService.emit({ uploadId, type: 'status', data: { message: `Scanning ${records.length} records...` } });
-            await job.progress(20);
+            let allValidationErrors: any[] = [];
 
-            const validationErrors = await this.validator.validateRecords(records);
-            await job.progress(40);
+            if (mode === 'import') {
+                const uploadRecord = await prisma.bulkUpload.findUnique({
+                    where: { id: uploadId },
+                    select: { errors: true }
+                });
+                if (uploadRecord && uploadRecord.errors) {
+                    allValidationErrors = (Array.isArray(uploadRecord.errors) ? uploadRecord.errors : []) as any[];
+                    this.logger.log(`[Job ${job.id}] Skipping validation in import mode. Loaded ${allValidationErrors.length} known errors.`);
+                }
+            } else {
+                // Validation (only run in validate mode)
+                this.eventsService.emit({ uploadId, type: 'status', data: { message: `Scanning ${records.length} records...` } });
+                await job.progress(20);
 
-            const duplicateItemIDErrors = this.validator.checkDuplicateItemIDs(records);
-            await job.progress(50);
+                const validationErrors = await this.validator.validateRecords(records);
+                await job.progress(40);
 
-            const allValidationErrors = [
-                ...validationErrors,
-                ...duplicateItemIDErrors,
-            ];
+                const duplicateItemIDErrors = this.validator.checkDuplicateItemIDs(records);
+                await job.progress(50);
+
+                allValidationErrors = [
+                    ...validationErrors,
+                    ...duplicateItemIDErrors,
+                ];
+            }
 
             const invalidRows = new Set(allValidationErrors.map(e => e.row));
             const validRecords = records.filter(r => !invalidRows.has(r.row));
@@ -153,6 +168,15 @@ export class UploadProcessor {
                     },
                 });
 
+                await this.notificationsService.create({
+                    userId,
+                    title: 'Validation Completed',
+                    message: `Bulk validation finished: ${validRecords.length} valid rows, ${allValidationErrors.length} invalid.`,
+                    category: 'system',
+                    priority: 'normal',
+                    channels: ['inApp']
+                });
+
                 await job.progress(100);
                 this.eventsService.emit({
                     uploadId,
@@ -175,7 +199,7 @@ export class UploadProcessor {
 
             for (let i = 0; i < validRecords.length; i += batchSize) {
                 const batch = validRecords.slice(i, i + batchSize);
-                await this.processBatch(batch, progress, uploadId, prisma);
+                await this.processBatch(batch, progress, uploadId, prisma, tenantMasterData);
 
                 await prisma.bulkUpload.update({
                     where: { id: uploadId },
@@ -212,6 +236,15 @@ export class UploadProcessor {
                 },
             });
 
+            await this.notificationsService.create({
+                userId,
+                title: 'Import Completed',
+                message: `Bulk import finished: ${progress.successRecords} added, ${progress.failedRecords} failed.`,
+                category: 'system',
+                priority: 'high',
+                channels: ['inApp']
+            });
+
             this.logger.log(`[Job ${job.id}] Import COMPLETED: ${progress.successRecords} success, ${progress.failedRecords} failed`);
 
             this.eventsService.emit({
@@ -235,6 +268,16 @@ export class UploadProcessor {
                     message: `Error: ${error.message}`,
                 },
             });
+
+            await this.notificationsService.create({
+                userId,
+                title: 'Bulk Job Failed',
+                message: `The requested ${mode} job failed unexpectedly: ${error.message}`,
+                category: 'system',
+                priority: 'urgent',
+                channels: ['inApp']
+            });
+
             this.eventsService.emit({ uploadId, type: 'failed', data: { message: error.message } });
         } finally {
             if (prisma) await prisma.$disconnect();
@@ -244,11 +287,11 @@ export class UploadProcessor {
     /**
      * Process a batch of records with individual error isolation
      */
-    private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService): Promise<void> {
+    private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
         for (const record of batch) {
             try {
                 // Individual record processing wrapped in try-catch
-                await this.processRecord(record, prisma);
+                await this.processRecord(record, prisma, tenantMasterData);
                 progress.successRecords++;
             } catch (error) {
                 // Log error but continue processing
@@ -265,10 +308,7 @@ export class UploadProcessor {
         }
     }
 
-    /**
-     * Process a single record
-     */
-    private async processRecord(record: ParsedRecord, prisma: PrismaService): Promise<void> {
+    private async processRecord(record: ParsedRecord, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
         const { data } = record;
 
         // Check if item already exists (by ItemID)
@@ -282,41 +322,22 @@ export class UploadProcessor {
             throw new Error(`Item with ItemID "${data.itemId}" already exists`);
         }
 
-        // Step 1: Resolve high-level master data
-        const [
-            brandId,
-            itemClassId,
-            categoryId,
-            sizeId,
-            colorId,
-            genderId,
-            silhouetteId,
-            channelClassId,
-            seasonId,
-            segmentId,
-        ] = await Promise.all([
-            this.masterData.getOrCreateBrand(data.concept as string),
-            this.masterData.getOrCreateItemClass(data.class as string),
-            this.masterData.getOrCreateCategory(data.productCategory as string),
-            this.masterData.getOrCreateSize(data.size as string),
-            this.masterData.getOrCreateColor(data.color as string),
-            this.masterData.getOrCreateGender(data.gender as string),
-            this.masterData.getOrCreateSilhouette(data.silhouette as string),
-            this.masterData.getOrCreateChannelClass(data.channelClass as string),
-            this.masterData.getOrCreateSeason(data.season as string),
-            this.masterData.getOrCreateSegment(data.segment as string),
-        ]);
+        // Step 1: Resolve high-level master data (Sequentially to populate cache and avoid connection burst)
+        const brandId = await tenantMasterData.getOrCreateBrand(data.concept as string);
+        const itemClassId = await tenantMasterData.getOrCreateItemClass(data.class as string);
+        const categoryId = await tenantMasterData.getOrCreateCategory(data.productCategory as string);
+        const sizeId = await tenantMasterData.getOrCreateSize(data.size as string);
+        const colorId = await tenantMasterData.getOrCreateColor(data.color as string);
+        const genderId = await tenantMasterData.getOrCreateGender(data.gender as string);
+        const silhouetteId = await tenantMasterData.getOrCreateSilhouette(data.silhouette as string);
+        const channelClassId = await tenantMasterData.getOrCreateChannelClass(data.channelClass as string);
+        const seasonId = await tenantMasterData.getOrCreateSeason(data.season as string);
+        const segmentId = await tenantMasterData.getOrCreateSegment(data.segment as string);
 
         // Step 2: Resolve dependent master data
-        const [
-            divisionId,
-            itemSubclassId,
-            subCategoryId,
-        ] = await Promise.all([
-            this.masterData.getOrCreateDivision(data.division as string, brandId),
-            this.masterData.getOrCreateItemSubclass(data.subclass as string, itemClassId),
-            this.masterData.getOrCreateSubCategory(data.subclass as string, categoryId),
-        ]);
+        const divisionId = await tenantMasterData.getOrCreateDivision(data.division as string, brandId);
+        const itemSubclassId = await tenantMasterData.getOrCreateItemSubclass(data.subclass as string, itemClassId);
+        const subCategoryId = await tenantMasterData.getOrCreateSubCategory(data.subclass as string, categoryId);
 
         // Create item
         await prisma.item.create({

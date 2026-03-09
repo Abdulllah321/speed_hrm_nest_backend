@@ -4,7 +4,7 @@ import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer-dto';
 
 @Injectable()
 export class CustomerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createDto: CreateCustomerDto) {
     try {
@@ -21,9 +21,18 @@ export class CustomerService {
     }
   }
 
-  async findAll() {
+  async findAll(search?: string) {
     try {
       const customers = await this.prisma.customer.findMany({
+        where: search
+          ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { code: { contains: search, mode: 'insensitive' } },
+              { contactNo: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+          : {},
         orderBy: { createdAt: 'desc' },
       });
       return { status: true, data: customers };

@@ -2793,18 +2793,30 @@ async function main() {
   const management = new ManagementClient({ adapter } as any);
 
   try {
+    const tenantArgIdx = process.argv.indexOf('--tenant');
+    const specificTenant = tenantArgIdx !== -1 ? process.argv[tenantArgIdx + 1] : null;
+
     const companies = await management.company.findMany({
-      where: { status: 'active' },
+      where: {
+        status: 'active',
+        ...(specificTenant ? { dbName: specificTenant } : {})
+      },
     });
 
     if (companies.length === 0) {
-      console.log('ℹ️ No active companies found in Master DB.');
+      if (specificTenant) {
+        console.log(`ℹ️ No active company found with database name: ${specificTenant}`);
+      } else {
+        console.log('ℹ️ No active companies found in Master DB.');
+      }
       return;
     }
 
-    console.log(
-      `📡 Found ${companies.length} active companies. Seeding data...`,
-    );
+    if (specificTenant) {
+      console.log(`📡 Targeting tenant: ${specificTenant}. Seeding chart of accounts...`);
+    } else {
+      console.log(`📡 Found ${companies.length} active companies. Syncing chart of accounts...`);
+    }
 
     for (const company of companies) {
       console.log(`\n👉 Processing tenant: ${company.name} (${company.code})`);

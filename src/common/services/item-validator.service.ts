@@ -20,7 +20,7 @@ export class ItemValidatorService {
     /**
      * Validate a single item record
      */
-    async validateRecord(record: ParsedRecord): Promise<ValidationResult> {
+    validateRecord(record: ParsedRecord): ValidationResult {
         const errors: ValidationError[] = [];
         const { row, data } = record;
 
@@ -130,11 +130,11 @@ export class ItemValidatorService {
     /**
      * Validate multiple records
      */
-    async validateRecords(records: ParsedRecord[]): Promise<ValidationError[]> {
+    validateRecords(records: ParsedRecord[]): ValidationError[] {
         const allErrors: ValidationError[] = [];
 
         for (const record of records) {
-            const result = await this.validateRecord(record);
+            const result = this.validateRecord(record);
             allErrors.push(...result.errors);
         }
 

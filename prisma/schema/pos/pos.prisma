@@ -1,0 +1,164 @@
+model SalesOrder {
+  id             String  @id @default(uuid())
+  orderNumber    String  @unique
+  posId          String? @map("pos_id") // Terminal Code (e.g. 001)
+  terminalId     String? @map("terminal_id") // Terminal UUID
+  locationId     String? @map("location_id") // Location UUID
+  customerId     String? @map("customer_id")
+  cashierUserId  String? @map("cashier_user_id")
+  subtotal       Decimal @default(0) @db.Decimal(15, 2)
+  discountAmount Decimal @default(0) @db.Decimal(15, 2)
+  taxAmount      Decimal @default(0) @db.Decimal(15, 2)
+  grandTotal     Decimal @default(0) @db.Decimal(15, 2)
+  paymentMethod  String? @map("payment_method") // cash, card, split
+  paymentStatus  String  @default("unpaid") @map("payment_status") // unpaid, paid, partial
+  status         String  @default("draft") // draft, completed, voided, refunded
+  notes          String?
+
+  // ── Discount tracking ──────────────────────────────────────────
+  globalDiscountPercent Decimal? @map("global_discount_percent") @db.Decimal(5, 2)
+  globalDiscountAmount  Decimal? @map("global_discount_amount") @db.Decimal(15, 2)
+  promoId               String?  @map("promo_id")
+  couponId              String?  @map("coupon_id")
+  allianceId            String?  @map("alliance_id")
+
+  // ── Tender details ─────────────────────────────────────────────
+  tenderType   String?  @map("tender_type") // cash, card, partial
+  cashAmount   Decimal? @map("cash_amount") @db.Decimal(15, 2)
+  cardAmount   Decimal? @map("card_amount") @db.Decimal(15, 2)
+  changeAmount Decimal? @map("change_amount") @db.Decimal(15, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items    SalesOrderItem[]
+  promo    PromoCampaign?    @relation(fields: [promoId], references: [id])
+  coupon   CouponCode?       @relation(fields: [couponId], references: [id])
+  alliance AllianceDiscount? @relation(fields: [allianceId], references: [id])
+
+  @@index([posId])
+  @@index([terminalId])
+  @@index([locationId])
+  @@index([customerId])
+  @@index([status])
+  @@index([orderNumber])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id              String   @id @default(uuid())
+  salesOrderId    String   @map("sales_order_id")
+  itemId          String   @map("item_id")
+  quantity        Int      @default(1)
+  unitPrice       Decimal  @db.Decimal(15, 2)
+  discountPercent Decimal  @default(0) @db.Decimal(5, 2)
+  discountAmount  Decimal  @default(0) @db.Decimal(15, 2)
+  taxPercent      Decimal  @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal  @default(0) @db.Decimal(15, 2)
+  lineTotal       Decimal  @db.Decimal(15, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  item       Item       @relation(fields: [itemId], references: [id])
+
+  @@index([salesOrderId])
+  @@index([itemId])
+  @@map("sales_order_items")
+}
+
+// ══════════════════════════════════════════════════════════════════
+// POS Configuration Masters (managed in Admin, consumed by POS)
+// ══════════════════════════════════════════════════════════════════
+
+model PromoCampaign {
+  id             String   @id @default(uuid())
+  name           String
+  code           String   @unique
+  type           String // percent, fixed, buy_x_get_y
+  value          Decimal  @db.Decimal(15, 2)
+  minOrderAmount Decimal? @map("min_order_amount") @db.Decimal(15, 2)
+  maxDiscount    Decimal? @map("max_discount") @db.Decimal(15, 2)
+  startDate      DateTime @map("start_date")
+  endDate        DateTime @map("end_date")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  locations   PromoCampaignLocation[]
+  salesOrders SalesOrder[]
+
+  @@map("promo_campaigns")
+}
+
+model PromoCampaignLocation {
+  id         String @id @default(uuid())
+  promoId    String @map("promo_id")
+  locationId String @map("location_id")
+
+  promo    PromoCampaign @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  location Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, locationId])
+  @@map("promo_campaign_locations")
+}
+
+model CouponCode {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  description    String?
+  discountType   String    @map("discount_type") // percent, fixed
+  discountValue  Decimal   @map("discount_value") @db.Decimal(15, 2)
+  maxUses        Int?      @map("max_uses")
+  usedCount      Int       @default(0) @map("used_count")
+  minOrderAmount Decimal?  @map("min_order_amount") @db.Decimal(15, 2)
+  maxDiscount    Decimal?  @map("max_discount") @db.Decimal(15, 2)
+  expiresAt      DateTime? @map("expires_at")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  locations   CouponCodeLocation[]
+  salesOrders SalesOrder[]
+
+  @@map("coupon_codes")
+}
+
+model CouponCodeLocation {
+  id         String @id @default(uuid())
+  couponId   String @map("coupon_id")
+  locationId String @map("location_id")
+
+  coupon   CouponCode @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  location Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, locationId])
+  @@map("coupon_code_locations")
+}
+
+model AllianceDiscount {
+  id              String   @id @default(uuid())
+  partnerName     String   @map("partner_name")
+  code            String   @unique
+  discountPercent Decimal  @map("discount_percent") @db.Decimal(5, 2)
+  description     String?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  locations   AllianceDiscountLocation[]
+  salesOrders SalesOrder[]
+
+  @@map("alliance_discounts")
+}
+
+model AllianceDiscountLocation {
+  id         String @id @default(uuid())
+  allianceId String @map("alliance_id")
+  locationId String @map("location_id")
+
+  alliance AllianceDiscount @relation(fields: [allianceId], references: [id], onDelete: Cascade)
+  location Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([allianceId, locationId])
+  @@map("alliance_discount_locations")
+}
