@@ -4,7 +4,7 @@ import { Warehouse, WarehouseLocation } from '@prisma/client';
 
 @Injectable()
 export class WarehouseService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async createWarehouse(data: any): Promise<Warehouse> {
     return this.prisma.warehouse.create({ data });
@@ -54,6 +54,13 @@ export class WarehouseService {
     return this.prisma.warehouseLocation.findMany({
       where: { warehouseId },
       orderBy: { code: 'asc' },
+    });
+  }
+
+  async updateLocationStatus(id: string, isActive: boolean): Promise<WarehouseLocation> {
+    return this.prisma.warehouseLocation.update({
+      where: { id },
+      data: { isActive },
     });
   }
 }
