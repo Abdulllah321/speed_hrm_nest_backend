@@ -4,7 +4,7 @@ import { InventoryItem } from '@prisma/client';
 
 @Injectable()
 export class InventoryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async getStockLevel(itemId: string, warehouseId: string): Promise<any> {
     const inventory = await this.prisma.inventoryItem.groupBy({
@@ -44,5 +44,48 @@ export class InventoryService {
     return this.prisma.inventoryItem.findMany({
       where: { itemId, batchNumber },
     });
+  }
+
+  async searchInventory(query: string = '') {
+    const items = await this.prisma.item.findMany({
+      where: {
+        OR: [
+          { sku: { contains: query, mode: 'insensitive' } },
+          { description: { contains: query, mode: 'insensitive' } },
+        ],
+        isActive: true,
+      },
+      take: 50,
+      select: {
+        id: true,
+        sku: true,
+        description: true,
+        unitPrice: true,
+        imageUrl: true,
+      },
+    });
+
+    const itemIds = items.map((i) => i.id);
+
+    // Get aggregated stock for these items
+    const stockAggregations = await this.prisma.inventoryItem.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        status: 'AVAILABLE',
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const stockMap = new Map(
+      stockAggregations.map((a) => [a.itemId, a._sum.quantity || 0]),
+    );
+
+    return items.map((item) => ({
+      ...item,
+      totalQuantity: stockMap.get(item.id) || 0,
+    }));
   }
 }
