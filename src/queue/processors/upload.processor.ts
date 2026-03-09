@@ -333,6 +333,7 @@ export class UploadProcessor {
         const channelClassId = await tenantMasterData.getOrCreateChannelClass(data.channelClass as string);
         const seasonId = await tenantMasterData.getOrCreateSeason(data.season as string);
         const segmentId = await tenantMasterData.getOrCreateSegment(data.segment as string);
+        const hsCodeId = data.hsCode ? await tenantMasterData.getOrCreateHsCode(String(data.hsCode)) : null;
 
         // Step 2: Resolve dependent master data
         const divisionId = await tenantMasterData.getOrCreateDivision(data.division as string, brandId);
