@@ -2826,7 +2826,7 @@ async function main() {
 
         if (company.dbPassword) {
           try {
-            const decPassword = decrypt(company.dbPassword, masterKey);
+            const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
             connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
           } catch (e) {
             console.warn(
