@@ -87,10 +87,13 @@ export class StockLedgerService {
 
         let location: { name: string; code: string; type: string } | null = null;
         if (entry.locationId) {
-          location = await this.prisma.warehouseLocation.findUnique({
+          const masterLoc = await this.prisma.location.findUnique({
             where: { id: entry.locationId },
-            select: { name: true, code: true, type: true },
+            select: { name: true, code: true },
           });
+          if (masterLoc) {
+            location = { ...masterLoc, type: 'SHOP' };
+          }
         }
 
         return {
@@ -158,6 +161,9 @@ export class StockLedgerService {
           where: {
             itemId,
             warehouseId,
+            // If locationId is provided, check location-specific stock (outlet)
+            // Otherwise check warehouse-wide stock
+            ...(locationId ? { locationId } : { locationId: null }),
           },
           _sum: {
             qty: true,

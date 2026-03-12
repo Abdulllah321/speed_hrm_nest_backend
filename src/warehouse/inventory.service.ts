@@ -26,27 +26,57 @@ export class InventoryService {
     };
   }
 
-  async getDetailedStock(itemId: string): Promise<InventoryItem[]> {
-    return this.prisma.inventoryItem.findMany({
-      where: { itemId },
-      include: {
-        location: {
-          include: { warehouse: true },
-        },
-      },
+  async getDetailedStock(itemId: string): Promise<any[]> {
+    const items = await this.prisma.inventoryItem.findMany({
+      where: { itemId, status: 'AVAILABLE' },
     });
+
+    const enriched = await Promise.all(
+      items.map(async (item) => {
+        const warehouse = await this.prisma.warehouse.findUnique({
+          where: { id: item.warehouseId },
+          select: { id: true, name: true },
+        });
+
+        let locationData: any = {};
+        if (item.locationId) {
+          // Check Master Location (Shop/Outlet)
+          const masterLoc = await this.prisma.location.findUnique({
+            where: { id: item.locationId },
+            select: { id: true, name: true },
+          });
+          if (masterLoc) locationData = masterLoc;
+        }
+
+        return {
+          ...item,
+          quantity: Number(item.quantity),
+          location: {
+            ...locationData,
+            warehouse: warehouse,
+          },
+        };
+      }),
+    );
+
+    return enriched;
   }
 
   async findSpecificBatch(
     itemId: string,
-    batchNumber: string,
   ): Promise<InventoryItem[]> {
     return this.prisma.inventoryItem.findMany({
-      where: { itemId, batchNumber },
+      where: { itemId },
     });
   }
 
-  async searchInventory(query: string = '') {
+  async searchInventory(query: string = '', warehouseId?: string) {
+    console.log('Search called with:', { query, warehouseId });
+    
+    if (!warehouseId) {
+      throw new Error('Warehouse ID is required for stock search');
+    }
+
     const items = await this.prisma.item.findMany({
       where: {
         OR: [
@@ -65,27 +95,36 @@ export class InventoryService {
       },
     });
 
+    console.log('Found items:', items.length);
+
     const itemIds = items.map((i) => i.id);
 
-    // Get aggregated stock for these items
-    const stockAggregations = await this.prisma.inventoryItem.groupBy({
+    // Get warehouse stock (locationId = null means warehouse stock)
+    const warehouseStock = await this.prisma.inventoryItem.groupBy({
       by: ['itemId'],
       where: {
         itemId: { in: itemIds },
         status: 'AVAILABLE',
+        warehouseId: warehouseId,
+        locationId: null, // Only warehouse stock (no outlet locations)
       },
       _sum: {
         quantity: true,
       },
     });
 
+    console.log('Warehouse stock results:', warehouseStock);
+
     const stockMap = new Map(
-      stockAggregations.map((a) => [a.itemId, a._sum.quantity || 0]),
+      warehouseStock.map((a) => [a.itemId, Number(a._sum.quantity) || 0]),
     );
 
-    return items.map((item) => ({
+    const result = items.map((item) => ({
       ...item,
       totalQuantity: stockMap.get(item.id) || 0,
     }));
+
+    console.log('Final result:', result);
+    return result;
   }
 }
