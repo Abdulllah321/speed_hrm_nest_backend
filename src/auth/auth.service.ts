@@ -941,15 +941,31 @@ export class AuthService {
           roleName: user.role?.name || null,
           impersonatorId: decoded.impersonatorId,
           isImpersonating: decoded.isImpersonating,
+          sessionId: decoded.sessionId, // Keep sessionId in the new access token
         },
         authConfig.jwt.accessSecret,
         accessOpts,
       );
 
-      // Return the same refresh token (no rotation required in simple stateless)
+      // Generate a new refresh token (Refresh Token Rotation)
+      const refreshOpts: jwt.SignOptions = {
+        expiresIn: authConfig.jwt.refreshExpiresIn as any,
+        issuer: authConfig.jwt.issuer,
+      };
+      const newRefreshToken = jwt.sign(
+        {
+          userId: user.id,
+          sessionId: decoded.sessionId,
+          impersonatorId: decoded.impersonatorId,
+          isImpersonating: decoded.isImpersonating
+        },
+        authConfig.jwt.refreshSecret,
+        refreshOpts,
+      );
+
       return {
         status: true,
-        data: { accessToken, refreshToken: token },
+        data: { accessToken, refreshToken: newRefreshToken },
       };
     } catch (error) {
       return { status: false, message: 'Invalid refresh token' };
