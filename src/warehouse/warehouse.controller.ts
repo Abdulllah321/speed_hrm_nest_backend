@@ -44,22 +44,4 @@ export class WarehouseController {
   remove(@Param('id') id: string) {
     return this.warehouseService.removeWarehouse(id);
   }
-
-  @Post('location')
-  @ApiOperation({ summary: 'Create a location/bin' })
-  createLocation(@Body() createLocationDto: any) {
-    return this.warehouseService.createLocation(createLocationDto);
-  }
-
-  @Get(':id/locations')
-  @ApiOperation({ summary: 'Get all locations in a warehouse' })
-  getLocations(@Param('id') id: string) {
-    return this.warehouseService.findLocationsByWarehouse(id);
-  }
-
-  @Patch('location/:id')
-  @ApiOperation({ summary: 'Update location status' })
-  updateLocationStatus(@Param('id') id: string, @Body() dto: { isActive: boolean }) {
-    return this.warehouseService.updateLocationStatus(id, dto.isActive);
-  }
 }
