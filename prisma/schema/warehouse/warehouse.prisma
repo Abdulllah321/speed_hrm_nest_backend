@@ -3,7 +3,6 @@ model Warehouse {
   code               String              @unique
   name               String
   address            String?
-  type               String              @default("GENERAL")
   description        String?
   isActive           Boolean             @default(true)
   managerId          String?
@@ -12,38 +11,12 @@ model Warehouse {
   updatedAt          DateTime            @updatedAt
   createdById        String?
   updatedById        String?
-  locations          WarehouseLocation[]
+  inventoryItems     InventoryItem[]
   goodsReceiptNotes  GoodsReceiptNote[]
   stockLedgerEntries StockLedger[]
+  transfersFrom      TransferRequest[]   @relation("TransferRequestFromWH")
 
   @@index([companyId])
-  @@index([type])
 }
 
-model WarehouseLocation {
-  id            String              @id @default(uuid())
-  warehouseId   String
-  code          String
-  name          String
-  type          String              @default("BIN")
-  barcode       String?             @unique
-  parentId      String?
-  length        Decimal?            @db.Decimal(10, 2)
-  width         Decimal?            @db.Decimal(10, 2)
-  height        Decimal?            @db.Decimal(10, 2)
-  maxWeight     Decimal?            @db.Decimal(10, 2)
-  volume        Decimal?            @db.Decimal(10, 2)
-  isActive      Boolean             @default(true)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  inventory     InventoryItem[]
-  movementsFrom StockMovement[]     @relation("MovementFrom")
-  movementsTo   StockMovement[]     @relation("MovementTo")
-  parent        WarehouseLocation?  @relation("LocationHierarchy", fields: [parentId], references: [id])
-  children      WarehouseLocation[] @relation("LocationHierarchy")
-  warehouse     Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-
-  @@unique([warehouseId, code])
-  @@index([parentId])
-  @@index([barcode])
-}
+// WarehouseLocation model removed - not needed for simple warehouse setup

@@ -27,8 +27,11 @@ export class InventoryController {
 
   @Get('search')
   @ApiOperation({ summary: 'Search generic inventory items and aggregated stock' })
-  async searchInventory(@Query('q') query: string) {
-    const data = await this.inventoryService.searchInventory(query);
+  async searchInventory(
+    @Query('q') query: string,
+    @Query('warehouseId') warehouseId?: string,
+  ) {
+    const data = await this.inventoryService.searchInventory(query, warehouseId);
     return { status: true, data };
   }
 }
