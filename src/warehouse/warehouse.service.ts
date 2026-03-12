@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Warehouse, WarehouseLocation } from '@prisma/client';
+import { Warehouse } from '@prisma/client';
 
 @Injectable()
 export class WarehouseService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async createWarehouse(data: any): Promise<Warehouse> {
     return this.prisma.warehouse.create({ data });
@@ -14,7 +14,7 @@ export class WarehouseService {
     return this.prisma.warehouse.findMany({
       include: {
         _count: {
-          select: { locations: true },
+          select: { inventoryItems: true },
         },
       },
     });
@@ -24,7 +24,7 @@ export class WarehouseService {
     const warehouse = await this.prisma.warehouse.findUnique({
       where: { id },
       include: {
-        locations: true,
+        inventoryItems: true,
       },
     });
     if (!warehouse)
@@ -41,19 +41,5 @@ export class WarehouseService {
 
   async removeWarehouse(id: string): Promise<Warehouse> {
     return this.prisma.warehouse.delete({ where: { id } });
-  }
-
-  // Location Management
-  async createLocation(data: any): Promise<WarehouseLocation> {
-    return this.prisma.warehouseLocation.create({ data });
-  }
-
-  async findLocationsByWarehouse(
-    warehouseId: string,
-  ): Promise<WarehouseLocation[]> {
-    return this.prisma.warehouseLocation.findMany({
-      where: { warehouseId },
-      orderBy: { code: 'asc' },
-    });
   }
 }

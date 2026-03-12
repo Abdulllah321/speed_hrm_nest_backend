@@ -1,124 +1,198 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { StockMovement, InventoryItem } from '@prisma/client';
+import { StockMovement, InventoryItem, MovementType } from '@prisma/client';
+import { StockLedgerService } from './stock-ledger/stock-ledger.service';
 
 interface CreateStockMovementDto {
   itemId: string;
-  fromLocationId?: string;
-  toLocationId?: string;
+  fromWarehouseId?: string;  // Source warehouse (optional for outlet-to-warehouse)
+  fromLocationId?: string;   // Source outlet location (for returns)
+  toLocationId?: string;     // Destination outlet location (optional for returns)
+  toWarehouseId?: string;    // Destination warehouse (for returns)
   quantity: number;
-  type: 'INBOUND' | 'OUTBOUND' | 'TRANSFER' | 'ADJUSTMENT';
+  type: 'INBOUND' | 'OUTBOUND' | 'TRANSFER' | 'RETURN_TRANSFER' | 'ADJUSTMENT';
   referenceType?: string;
   referenceId?: string;
-  batchNumber?: string;
-  serialNumber?: string;
-  expiryDate?: Date;
   notes?: string;
   userId?: string;
 }
 
 @Injectable()
 export class StockMovementService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private stockLedgerService: StockLedgerService
+  ) { }
 
   async executeMovement(dto: CreateStockMovementDto) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Create Stock Movement Log
       const movement = await tx.stockMovement.create({
         data: {
-          movementNo: `MV-${Date.now()}`, // Simple generation logic
+          movementNo: `MV-${Date.now()}`,
           itemId: dto.itemId,
-          fromLocationId: dto.fromLocationId,
-          toLocationId: dto.toLocationId,
+          fromLocationId: dto.fromLocationId || null,
+          toLocationId: dto.toLocationId || null,
           quantity: dto.quantity,
           type: dto.type,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
-          batchNumber: dto.batchNumber,
-          serialNumber: dto.serialNumber,
-          expiryDate: dto.expiryDate,
           notes: dto.notes,
           createdById: dto.userId,
         },
       });
 
-      // 2. Update Inventory - DECREASE Source
-      if (dto.fromLocationId) {
-        // Find existing inventory item at source
-        // Note: For batch items, we match batchNumber. For general items, batchNumber is null.
-        const sourceItem = await tx.inventoryItem.findFirst({
-          where: {
-            locationId: dto.fromLocationId,
-            itemId: dto.itemId,
-            batchNumber: dto.batchNumber,
-            serialNumber: dto.serialNumber,
-            status: 'AVAILABLE', // Assuming we move available stock
-          },
-        });
-
-        if (!sourceItem || Number(sourceItem.quantity) < Number(dto.quantity)) {
-          throw new BadRequestException(
-            'Insufficient stock at source location',
-          );
-        }
-
-        if (Number(sourceItem.quantity) === Number(dto.quantity)) {
-          // Delete if zero? Or keep as 0? Usually keep as 0 or delete.
-          // Let's decrement for now.
-          await tx.inventoryItem.update({
-            where: { id: sourceItem.id },
-            data: { quantity: { decrement: dto.quantity } },
-          });
-          // Cleanup zero records could be a separate job or strictly managed
-        } else {
-          await tx.inventoryItem.update({
-            where: { id: sourceItem.id },
-            data: { quantity: { decrement: dto.quantity } },
-          });
-        }
-      }
-
-      // 3. Update Inventory - INCREASE Destination
-      if (dto.toLocationId) {
-        const destLocation = await tx.warehouseLocation.findUnique({
-          where: { id: dto.toLocationId },
-        });
-        if (!destLocation)
-          throw new BadRequestException('Destination location not found');
-
-        // Check if item exists at destination
-        const destItem = await tx.inventoryItem.findFirst({
-          where: {
-            locationId: dto.toLocationId,
-            itemId: dto.itemId,
-            batchNumber: dto.batchNumber,
-            serialNumber: dto.serialNumber,
-            status: 'AVAILABLE',
-          },
-        });
-
-        if (destItem) {
-          await tx.inventoryItem.update({
-            where: { id: destItem.id },
-            data: { quantity: { increment: dto.quantity } },
-          });
-        } else {
-          await tx.inventoryItem.create({
-            data: {
-              warehouseId: destLocation.warehouseId,
-              locationId: dto.toLocationId,
-              itemId: dto.itemId,
-              quantity: dto.quantity,
-              batchNumber: dto.batchNumber,
-              serialNumber: dto.serialNumber,
-              expiryDate: dto.expiryDate,
-              status: 'AVAILABLE',
-            },
-          });
-        }
+      if (dto.type === 'TRANSFER') {
+        // Normal Transfer: Warehouse → Outlet
+        await this.executeWarehouseToOutletTransfer(dto, tx, movement.id);
+      } else if (dto.type === 'RETURN_TRANSFER') {
+        // Return Transfer: Outlet → Warehouse
+        await this.executeOutletToWarehouseTransfer(dto, tx, movement.id);
       }
 
       return movement;
     });
+  }
+
+  private async executeWarehouseToOutletTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
+    // 2. WAREHOUSE SIDE - Decrease Stock
+    const sourceItem = await tx.inventoryItem.findFirst({
+      where: {
+        warehouseId: dto.fromWarehouseId,
+        locationId: null, // Warehouse stock (no location)
+        itemId: dto.itemId,
+        status: 'AVAILABLE',
+      },
+    });
+
+    if (sourceItem) {
+      await tx.inventoryItem.update({
+        where: { id: sourceItem.id },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+
+      // Warehouse Ledger Entry (OUTBOUND)
+      await this.stockLedgerService.createEntry({
+        itemId: dto.itemId,
+        warehouseId: dto.fromWarehouseId!,
+        qty: -dto.quantity,
+        movementType: MovementType.OUTBOUND,
+        referenceType: dto.referenceType || 'STOCK_MOVEMENT',
+        referenceId: movementId,
+      }, tx);
+    } else {
+      throw new BadRequestException(`Insufficient warehouse stock for item ${dto.itemId}`);
+    }
+
+    // 3. OUTLET SIDE - Increase Stock
+    if (dto.toLocationId) {
+      const destItem = await tx.inventoryItem.findFirst({
+        where: {
+          locationId: dto.toLocationId,
+          itemId: dto.itemId,
+          status: 'AVAILABLE',
+        },
+      });
+
+      if (destItem) {
+        // Update existing stock at outlet
+        await tx.inventoryItem.update({
+          where: { id: destItem.id },
+          data: { quantity: { increment: dto.quantity } },
+        });
+      } else {
+        // Create new stock entry at outlet
+        await tx.inventoryItem.create({
+          data: {
+            warehouseId: dto.fromWarehouseId!,
+            locationId: dto.toLocationId,
+            itemId: dto.itemId,
+            quantity: dto.quantity,
+            status: 'AVAILABLE',
+          },
+        });
+      }
+
+      // Outlet Ledger Entry (INBOUND)
+      await this.stockLedgerService.createEntry({
+        itemId: dto.itemId,
+        warehouseId: dto.fromWarehouseId!,
+        locationId: dto.toLocationId,
+        qty: dto.quantity,
+        movementType: MovementType.INBOUND,
+        referenceType: dto.referenceType || 'STOCK_MOVEMENT',
+        referenceId: movementId,
+      }, tx);
+    }
+  }
+
+  private async executeOutletToWarehouseTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
+    // 1. OUTLET SIDE - Decrease Stock
+    const sourceItem = await tx.inventoryItem.findFirst({
+      where: {
+        locationId: dto.fromLocationId,
+        itemId: dto.itemId,
+        status: 'AVAILABLE',
+      },
+    });
+
+    if (sourceItem) {
+      await tx.inventoryItem.update({
+        where: { id: sourceItem.id },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+
+      // Outlet Ledger Entry (OUTBOUND)
+      await this.stockLedgerService.createEntry({
+        itemId: dto.itemId,
+        warehouseId: dto.toWarehouseId!,
+        locationId: dto.fromLocationId!,
+        qty: -dto.quantity,
+        movementType: MovementType.OUTBOUND,
+        referenceType: dto.referenceType || 'RETURN_MOVEMENT',
+        referenceId: movementId,
+      }, tx);
+    } else {
+      throw new BadRequestException(`Insufficient outlet stock for item ${dto.itemId}`);
+    }
+
+    // 2. WAREHOUSE SIDE - Increase Stock
+    const destItem = await tx.inventoryItem.findFirst({
+      where: {
+        warehouseId: dto.toWarehouseId,
+        locationId: null, // Warehouse stock
+        itemId: dto.itemId,
+        status: 'AVAILABLE',
+      },
+    });
+
+    if (destItem) {
+      // Update existing warehouse stock
+      await tx.inventoryItem.update({
+        where: { id: destItem.id },
+        data: { quantity: { increment: dto.quantity } },
+      });
+    } else {
+      // Create new warehouse stock entry
+      await tx.inventoryItem.create({
+        data: {
+          warehouseId: dto.toWarehouseId!,
+          locationId: null, // NULL = warehouse stock
+          itemId: dto.itemId,
+          quantity: dto.quantity,
+          status: 'AVAILABLE',
+        },
+      });
+    }
+
+    // Warehouse Ledger Entry (INBOUND)
+    await this.stockLedgerService.createEntry({
+      itemId: dto.itemId,
+      warehouseId: dto.toWarehouseId!,
+      qty: dto.quantity,
+      movementType: MovementType.INBOUND,
+      referenceType: dto.referenceType || 'RETURN_MOVEMENT',
+      referenceId: movementId,
+    }, tx);
   }
 }
