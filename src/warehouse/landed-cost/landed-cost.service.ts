@@ -165,6 +165,37 @@ export class LandedCostService {
           },
           tx,
         );
+
+        // Update InventoryItem (warehouse stock)
+        const existingStock = await tx.inventoryItem.findFirst({
+          where: {
+            warehouseId: grn.warehouseId,
+            locationId: null, // Warehouse stock
+            itemId: itemRecord.id,
+            status: 'AVAILABLE',
+          },
+        });
+
+        if (existingStock) {
+          // Update existing warehouse stock
+          await tx.inventoryItem.update({
+            where: { id: existingStock.id },
+            data: { 
+              quantity: { increment: new Prisma.Decimal(item.qty) }
+            },
+          });
+        } else {
+          // Create new warehouse stock entry
+          await tx.inventoryItem.create({
+            data: {
+              warehouseId: grn.warehouseId,
+              locationId: null, // NULL = warehouse stock
+              itemId: itemRecord.id,
+              quantity: new Prisma.Decimal(item.qty),
+              status: 'AVAILABLE',
+            },
+          });
+        }
       }
 
       // 3) Mark GRN as VALUED

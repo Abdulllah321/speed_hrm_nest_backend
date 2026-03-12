@@ -50,18 +50,29 @@ export class StockLedgerService {
     });
   }
 
-  async getStockLevels(warehouseId?: string) {
+  async getStockLevels(options?: { warehouseId?: string; locationId?: string } | string) {
+    let warehouseId: string | undefined;
+    let locationId: string | undefined;
+
+    if (typeof options === 'string') {
+      warehouseId = options;
+    } else if (options) {
+      warehouseId = options.warehouseId;
+      locationId = options.locationId;
+    }
+
     const groupBy = await this.prisma.stockLedger.groupBy({
-      by: ['itemId', 'warehouseId'],
+      by: ['itemId', 'warehouseId', 'locationId'],
       where: {
         warehouseId,
+        locationId,
       },
       _sum: {
         qty: true,
       },
     });
 
-    // Enrich with Item and Warehouse details
+    // Enrich with Item, Warehouse, and Location details
     const enriched = await Promise.all(
       groupBy.map(async (entry) => {
         const item = await this.prisma.item.findUnique({
@@ -74,12 +85,25 @@ export class StockLedgerService {
           select: { name: true, code: true },
         });
 
+        let location: { name: string; code: string; type: string } | null = null;
+        if (entry.locationId) {
+          const masterLoc = await this.prisma.location.findUnique({
+            where: { id: entry.locationId },
+            select: { name: true, code: true },
+          });
+          if (masterLoc) {
+            location = { ...masterLoc, type: 'SHOP' };
+          }
+        }
+
         return {
           itemId: entry.itemId,
           warehouseId: entry.warehouseId,
+          locationId: entry.locationId,
           totalQty: entry._sum.qty || new Prisma.Decimal(0),
           item,
           warehouse,
+          location,
         };
       }),
     );
@@ -137,6 +161,9 @@ export class StockLedgerService {
           where: {
             itemId,
             warehouseId,
+            // If locationId is provided, check location-specific stock (outlet)
+            // Otherwise check warehouse-wide stock
+            ...(locationId ? { locationId } : { locationId: null }),
           },
           _sum: {
             qty: true,

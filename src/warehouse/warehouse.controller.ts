@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Warehouse')
 @Controller('api/warehouse')
 export class WarehouseController {
-  constructor(private readonly warehouseService: WarehouseService) {}
+  constructor(private readonly warehouseService: WarehouseService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new warehouse' })
@@ -43,17 +43,5 @@ export class WarehouseController {
   @ApiOperation({ summary: 'Delete warehouse' })
   remove(@Param('id') id: string) {
     return this.warehouseService.removeWarehouse(id);
-  }
-
-  @Post('location')
-  @ApiOperation({ summary: 'Create a location/bin' })
-  createLocation(@Body() createLocationDto: any) {
-    return this.warehouseService.createLocation(createLocationDto);
-  }
-
-  @Get(':id/locations')
-  @ApiOperation({ summary: 'Get all locations in a warehouse' })
-  getLocations(@Param('id') id: string) {
-    return this.warehouseService.findLocationsByWarehouse(id);
   }
 }
