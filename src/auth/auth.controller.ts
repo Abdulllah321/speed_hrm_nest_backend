@@ -705,6 +705,13 @@ export class AuthController {
     res.clearCookie('terminal', clearCookieOptions);
     res.clearCookie('terminalId', clearCookieOptions);
 
+    // Clear Tenant and Company context
+    res.clearCookie('currentCompany', clearCookieOptions);
+    res.clearCookie('companyCode', clearCookieOptions);
+    res.clearCookie('companyId', clearCookieOptions);
+    res.clearCookie('tenantCode', clearCookieOptions);
+    res.clearCookie('tenantId', clearCookieOptions);
+
     return res.send({
       status: true,
       message: 'Logged out successfully',
