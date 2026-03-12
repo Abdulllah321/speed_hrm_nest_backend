@@ -150,6 +150,37 @@ export class GrnService {
             },
             tx,
           );
+
+          // 5. Update InventoryItem (warehouse stock)
+          const existingStock = await tx.inventoryItem.findFirst({
+            where: {
+              warehouseId: dto.warehouseId,
+              locationId: null, // Warehouse stock
+              itemId: itemRecord.id,
+              status: 'AVAILABLE',
+            },
+          });
+
+          if (existingStock) {
+            // Update existing warehouse stock
+            await tx.inventoryItem.update({
+              where: { id: existingStock.id },
+              data: { 
+                quantity: { increment: new Prisma.Decimal(grnItem.receivedQty) }
+              },
+            });
+          } else {
+            // Create new warehouse stock entry
+            await tx.inventoryItem.create({
+              data: {
+                warehouseId: dto.warehouseId,
+                locationId: null, // NULL = warehouse stock
+                itemId: itemRecord.id,
+                quantity: new Prisma.Decimal(grnItem.receivedQty),
+                status: 'AVAILABLE',
+              },
+            });
+          }
         }
       }
 
