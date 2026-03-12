@@ -18,7 +18,7 @@ RUN bun install
 
 # Generate Prisma client
 RUN bun run prisma:master:generate
-RUN bun run prisma:tenant:generate
+RUN bun run prisma:tenant:generate 
 
 # Copy source code and build
 COPY . .
