@@ -655,10 +655,15 @@ export class AuthService {
       if (company.dbPassword) {
         try {
           const plainPassword = this.encryptionService.decrypt(company.dbPassword);
-          const encodedPassword = encodeURIComponent(plainPassword);
+          const encodedPassword = encodeURIComponent(String(plainPassword));
           if (company.dbUser && company.dbHost && company.dbName) {
+            const encodedUser = encodeURIComponent(company.dbUser);
+            const encodedHost = company.dbHost;
+            const encodedDbName = encodeURIComponent(company.dbName);
             const port = company.dbPort || 5432;
-            dbUrl = `postgresql://${company.dbUser}:${encodedPassword}@${company.dbHost}:${port}/${company.dbName}?schema=public`;
+            dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
+
+            this.logger.debug(`Reconstructed DB URL for global context company ${company.code} (password masked)`);
           }
         } catch (err) {
           this.logger.error(`Failed to decrypt database password for company ${company.id}`);
@@ -730,6 +735,7 @@ export class AuthService {
     lat?: number,
     lng?: number,
   ) {
+    this.prisma.ensureTenantContext();
     let location: any = null;
 
     if (code) {

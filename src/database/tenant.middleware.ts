@@ -98,13 +98,19 @@ export class TenantMiddleware implements NestMiddleware {
       if (company.dbPassword) {
         try {
           const plainPassword = this.encryptionService.decrypt(company.dbPassword);
-          const encodedPassword = encodeURIComponent(plainPassword);
-          // Assuming dbUrl is stored as postgresql://user:password@host:port/dbName
-          // We can reconstruct it from the fields or do a string replace
-          // The safer way is to use the individual fields from the company record
+          const encodedPassword = encodeURIComponent(String(plainPassword));
+
           if (company.dbUser && company.dbHost && company.dbName) {
             const port = company.dbPort || 5432;
-            dbUrl = `postgresql://${company.dbUser}:${encodedPassword}@${company.dbHost}:${port}/${company.dbName}?schema=public`;
+            const encodedUser = encodeURIComponent(company.dbUser);
+            const encodedHost = company.dbHost; // Host usually doesn't need encoding unless it's a domain with special chars
+            const encodedDbName = encodeURIComponent(company.dbName);
+
+            dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
+
+            // Mask password in debug log
+            const maskedUrl = `postgresql://${encodedUser}:****@${encodedHost}:${port}/${encodedDbName}`;
+            this.logger.debug(`Constructed DB URL for company ${company.id}: ${maskedUrl}`);
           }
         } catch (err: any) {
           this.logger.error(`Failed to decrypt database password for company ${company.id}: ${err.message}`);
