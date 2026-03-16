@@ -238,6 +238,7 @@ export class PosService {
   }
 
   async validateTerminal(terminalCode: string, pin: string) {
+    this.prisma.ensureTenantContext();
     const terminal = await this.prisma.pos.findUnique({
       where: {
         terminalCode,
