@@ -4,7 +4,6 @@ model PurchaseOrder {
   vendorQuotationId     String?              @map("vendor_quotation_id")
   vendorId              String               @map("vendor_id")
   rfqId                 String?              @map("rfq_id")
-  purchaseRequisitionId String?              @map("purchase_requisition_id")
   orderDate             DateTime             @default(now()) @map("order_date")
   expectedDeliveryDate  DateTime?            @map("expected_delivery_date")
   status                String               @default("DRAFT")
@@ -13,15 +12,18 @@ model PurchaseOrder {
   discountAmount        Decimal              @default(0) @map("discount_amount") @db.Decimal(15, 2)
   totalAmount           Decimal              @default(0) @map("total_amount") @db.Decimal(15, 2)
   notes                 String?
+  orderType             String?              @map("order_type") // IMPORT, LOCAL
+  goodsType             String?              @map("goods_type") // CONSUMABLE, FRESH
   createdAt             DateTime             @default(now()) @map("created_at")
   updatedAt             DateTime             @updatedAt @map("updated_at")
+  purchaseRequisitionId String?              @map("purchase_requisition_id")
   goodsReceiptNotes     GoodsReceiptNote[]
+  landedCosts           LandedCost[]
   items                 PurchaseOrderItem[]
-  rfq                   RequestForQuotation? @relation(fields: [rfqId], references: [id])
   purchaseRequisition   PurchaseRequisition? @relation(fields: [purchaseRequisitionId], references: [id])
+  rfq                   RequestForQuotation? @relation(fields: [rfqId], references: [id])
   vendor                Supplier             @relation(fields: [vendorId], references: [id])
   vendorQuotation       VendorQuotation?     @relation(fields: [vendorQuotationId], references: [id])
-  landedCosts           LandedCost[]
 
   @@map("purchase_orders")
 }

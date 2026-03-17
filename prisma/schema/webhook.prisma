@@ -1,15 +1,14 @@
 model Webhook {
-  id        String   @id @default(uuid())
+  id        String       @id @default(uuid())
   url       String
   name      String?
-  secret    String? // For HMAC signatures
-  events    String[] // Array of events like "employee.created", "employee.updated", "employee.deleted"
-  isActive  Boolean  @default(true)
+  secret    String?
+  events    String[]
+  isActive  Boolean      @default(true)
   metadata  Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  logs WebhookLog[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  logs      WebhookLog[]
 }
 
 model WebhookLog {
@@ -21,10 +20,9 @@ model WebhookLog {
   statusCode Int?
   error      String?
   attempts   Int      @default(1)
-  status     String // "success", "failure", "pending"
+  status     String
   createdAt  DateTime @default(now())
-
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
 
   @@index([webhookId])
   @@index([createdAt])

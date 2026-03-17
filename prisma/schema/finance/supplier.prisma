@@ -17,7 +17,6 @@ model Supplier {
   srbNo            String?
   praNo            String?
   ictNo            String?
-  chartOfAccounts  ChartOfAccount[]
   paymentTerms     String?
   creditLimit      Decimal?                    @db.Decimal(15, 2)
   openingBalance   Decimal                     @default(0.0) @db.Decimal(15, 2)
@@ -26,13 +25,13 @@ model Supplier {
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
   paymentVouchers  PaymentVoucher[]
-  // relations updated to many-to-many
+  landedCosts      LandedCost[]
   purchaseOrders   PurchaseOrder[]
+  purchaseInvoices PurchaseInvoice[]
   rfqVendors       RequestForQuotationVendor[]
   vendorQuotations VendorQuotation[]
-  landedCosts      LandedCost[]
+  chartOfAccounts  ChartOfAccount[]            @relation("ChartOfAccountToSupplier")
 
-  // @@index([chartOfAccountId]) removed
   @@index([nature])
   @@index([type])
 }
