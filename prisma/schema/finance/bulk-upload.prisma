@@ -7,7 +7,7 @@ model BulkUpload {
   successRecords   Int       @default(0)
   failedRecords    Int       @default(0)
   skippedRecords   Int       @default(0)
-  status           String    @default("pending") // pending, processing, completed, failed, cancelled
+  status           String    @default("pending")
   message          String?
   errors           Json?
   uploadedBy       String

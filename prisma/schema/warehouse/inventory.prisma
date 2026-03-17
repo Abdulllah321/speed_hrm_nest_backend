@@ -1,19 +1,24 @@
 model InventoryItem {
-  id          String    @id @default(uuid())
-  warehouseId String
-  locationId  String?   // Optional - for outlets only
-  itemId      String
-  quantity    Decimal   @default(0) @db.Decimal(15, 4)
-  status      String    @default("AVAILABLE")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  item        Item      @relation(fields: [itemId], references: [id])
+  id                String            @id @default(uuid())
+  warehouseId       String
+  locationId        String?
+  itemId            String
+  batchNumber       String?
+  serialNumber      String?
+  expiryDate        DateTime?
+  manufacturingDate DateTime?
+  quantity          Decimal           @default(0) @db.Decimal(15, 4)
+  status            String            @default("AVAILABLE")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  WarehouseLocation WarehouseLocation? @relation(fields: [locationId], references: [id])
+  warehouse         Warehouse         @relation(fields: [warehouseId], references: [id])
 
-  @@unique([warehouseId, locationId, itemId, status])
+  @@unique([locationId, itemId, batchNumber, serialNumber, status])
   @@index([itemId])
   @@index([warehouseId])
-  @@index([locationId])
+  @@index([batchNumber])
+  @@index([expiryDate])
 }
 
 model StockReserve {

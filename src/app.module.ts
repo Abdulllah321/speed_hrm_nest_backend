@@ -96,6 +96,7 @@ import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purch
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
+import { PurchaseInvoiceModule } from './purchase/purchase-invoice/purchase-invoice.module';
 import { GrnModule } from './warehouse/grn/grn.module';
 import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
@@ -226,6 +227,7 @@ import { PosSessionModule } from './pos-session/pos-session.module';
     RfqModule,
     VendorQuotationModule,
     PurchaseOrderModule,
+    PurchaseInvoiceModule,
     GrnModule,
     LandedCostModule,
     PosModule,

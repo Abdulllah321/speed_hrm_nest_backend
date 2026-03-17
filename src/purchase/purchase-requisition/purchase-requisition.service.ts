@@ -19,6 +19,7 @@ export class PurchaseRequisitionService {
         prNumber,
         department: createDto.department,
         type: createDto.type || 'local',
+        goodsType: createDto.goodsType || 'CONSUMABLE', // Default to CONSUMABLE
         requestDate: createDto.requestDate || new Date(),
         notes: createDto.notes,
         status: 'SUBMITTED',
