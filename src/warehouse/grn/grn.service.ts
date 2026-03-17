@@ -50,7 +50,11 @@ export class GrnService {
   async create(dto: CreateGrnDto) {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id: dto.purchaseOrderId },
-      include: { items: true, vendorQuotation: true },
+      include: { 
+        items: true, 
+        vendorQuotation: true,
+        purchaseRequisition: true // Include PR to check goods type
+      },
     });
 
     if (!po) {
@@ -68,25 +72,25 @@ export class GrnService {
     }
 
     const grnNumber = `GRN-${Date.now()}`;
-    const isProcurementLinkedFlow = Boolean(
-      (po as any).vendorQuotationId ||
-      (po as any).rfqId ||
-      (po as any).purchaseRequisitionId,
-    );
+    
+    // Determine goods type and inventory update logic
+    const goodsType = po.goodsType || po.purchaseRequisition?.goodsType || 'CONSUMABLE';
+    const isConsumable = goodsType === 'CONSUMABLE';
+
+    const shouldUpdateInventory = isConsumable;
+    const grnStatus = isConsumable ? 'VALUED' : 'RECEIVED_UNVALUED';
 
     return this.prisma.$transaction(async (tx) => {
-      // Fetch Item ID mapping
-      // GRN Item uses itemId as the string ID (e.g. "2121"), but StockLedger needs the internal UUID of the Item
-      // We need to find the Item UUID based on the itemId string provided in dto.items
-
       // 1. Create GRN
       const grn = await tx.goodsReceiptNote.create({
         data: {
           grnNumber,
           purchaseOrderId: dto.purchaseOrderId,
           warehouseId: dto.warehouseId,
-          status: isProcurementLinkedFlow ? 'VALUED' : 'RECEIVED_UNVALUED',
+          status: grnStatus,
           notes: dto.notes,
+          orderType: po.orderType || null,
+          goodsType: po.goodsType || po.purchaseRequisition?.goodsType || null,
           items: {
             create: dto.items.map((item) => ({
               itemId: item.itemId,
@@ -136,8 +140,8 @@ export class GrnService {
           },
         });
 
-        // 4. Create stock ledger entry immediately for RFQ/VQ/PR-linked PO
-        if (isProcurementLinkedFlow) {
+        // 4. Create stock ledger entry only if shouldUpdateInventory is true
+        if (shouldUpdateInventory) {
           await this.stockLedgerService.createEntry(
             {
               itemId: itemRecord.id,
@@ -151,7 +155,7 @@ export class GrnService {
             tx,
           );
 
-          // 5. Update InventoryItem (warehouse stock)
+          // 5. Update InventoryItem (warehouse stock) only if shouldUpdateInventory is true
           const existingStock = await tx.inventoryItem.findFirst({
             where: {
               warehouseId: dto.warehouseId,
@@ -182,9 +186,10 @@ export class GrnService {
             });
           }
         }
+        // For FRESH goods or Direct PO, inventory will be updated later via Landed Cost
       }
 
-      // 5. Update PO Status
+      // 6. Update PO Status
       const updatedPo = await tx.purchaseOrder.findUnique({
         where: { id: dto.purchaseOrderId },
         include: { items: true },
@@ -200,10 +205,22 @@ export class GrnService {
         ),
       );
 
+      // Determine PO status based on flow and goods type
+      let poStatus = 'PARTIALLY_RECEIVED';
+      if (allReceived) {
+        if (shouldUpdateInventory) {
+          // CONSUMABLE goods or flows that update inventory immediately
+          poStatus = 'CLOSED';
+        } else {
+          // FRESH goods or Direct PO - wait for Landed Cost
+          poStatus = 'RECEIVED';
+        }
+      }
+
       await tx.purchaseOrder.update({
         where: { id: dto.purchaseOrderId },
         data: {
-          status: allReceived ? 'CLOSED' : 'PARTIALLY_RECEIVED',
+          status: poStatus,
         },
       });
 
