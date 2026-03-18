@@ -690,6 +690,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout user' })
@@ -709,6 +710,8 @@ export class AuthController {
     res.clearCookie('currentCompany', clearCookieOptions);
     res.clearCookie('companyCode', clearCookieOptions);
     res.clearCookie('companyId', clearCookieOptions);
+    res.clearCookie('posTerminalToken', clearCookieOptions);
+    res.clearCookie('bid', clearCookieOptions);
     res.clearCookie('tenantCode', clearCookieOptions);
     res.clearCookie('tenantId', clearCookieOptions);
 
