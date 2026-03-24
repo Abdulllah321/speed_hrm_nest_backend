@@ -1,59 +1,58 @@
 model Item {
-  id                   String                @id @default(uuid())
-  itemId               String                @unique
-  sku                  String
-  barCode              String?
-  hsCodeId             String?               @map("hs_code_id")
-  hsCode               HsCode?               @relation(fields: [hsCodeId], references: [id])
-  hsCodeStr            String?               @map("hs_code") // Keep original field for compatibility if needed
-  description          String?
-  imageUrl             String?
-  status               String                @default("active")
-  isActive             Boolean               @default(true)
-  unitPrice            Float                 @default(0)
-  taxRate1             Float?                @default(0)
-  taxRate2             Float?                @default(0)
-  discountRate         Float?                @default(0)
-  discountAmount       Float?                @default(0)
-  discountStartDate    DateTime?
-  discountEndDate      DateTime?
-  fob                  Float                 @default(0)
-  unitCost             Float                 @default(0) @map("unit_cost")
-  case                 String?
-  band                 String?
-  movementType         String?
-  heelHeight           String?
-  width                String?
-  brandId              String?
-  brand                Brand?                @relation(fields: [brandId], references: [id])
-  divisionId           String?
-  division             Division?             @relation(fields: [divisionId], references: [id])
-  genderId             String?
-  gender               Gender?               @relation(fields: [genderId], references: [id])
-  sizeId               String?
-  size                 Size?                 @relation(fields: [sizeId], references: [id])
-  silhouetteId         String?
-  silhouette           Silhouette?           @relation(fields: [silhouetteId], references: [id])
-  channelClassId       String?
-  channelClass         ChannelClass?         @relation(fields: [channelClassId], references: [id])
-  colorId              String?
-  color                Color?                @relation(fields: [colorId], references: [id])
-  categoryId           String?
-  category             Category?             @relation("ItemCategory", fields: [categoryId], references: [id])
-  subCategoryId        String?
-  subCategory          Category?             @relation("ItemSubCategory", fields: [subCategoryId], references: [id])
-  itemClassId          String?
-  itemClass            ItemClass?            @relation(fields: [itemClassId], references: [id])
-  itemSubclassId       String?
-  itemSubclass         ItemSubclass?         @relation(fields: [itemSubclassId], references: [id])
-  seasonId             String?
-  season               Season?               @relation(fields: [seasonId], references: [id])
-  segmentId            String?
-  segment              Segment?              @relation(fields: [segmentId], references: [id])
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  id                 String           @id @default(uuid())
+  itemId             String           @unique
+  sku                String
+  barCode            String?
+  description        String?
+  imageUrl           String?
+  status             String           @default("active")
+  isActive           Boolean          @default(true)
+  unitPrice          Float            @default(0)
+  taxRate1           Float?           @default(0)
+  taxRate2           Float?           @default(0)
+  discountRate       Float?           @default(0)
+  discountAmount     Float?           @default(0)
+  discountStartDate  DateTime?
+  discountEndDate    DateTime?
+  case               String?
+  band               String?
+  movementType       String?
+  heelHeight         String?
+  width              String?
+  brandId            String?
+  divisionId         String?
+  genderId           String?
+  sizeId             String?
+  silhouetteId       String?
+  channelClassId     String?
+  colorId            String?
+  categoryId         String?
+  subCategoryId      String?
+  itemClassId        String?
+  itemSubclassId     String?
+  seasonId           String?
+  segmentId          String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  fob                Float            @default(0)
+  unitCost           Float            @default(0) @map("unit_cost")
+  hsCodeStr          String?          @map("hs_code")
+  hsCodeId           String?          @map("hs_code_id")
+  brand              Brand?           @relation(fields: [brandId], references: [id])
+  category           Category?        @relation("ItemCategory", fields: [categoryId], references: [id])
+  channelClass       ChannelClass?    @relation(fields: [channelClassId], references: [id])
+  color              Color?           @relation(fields: [colorId], references: [id])
+  division           Division?        @relation(fields: [divisionId], references: [id])
+  gender             Gender?          @relation(fields: [genderId], references: [id])
+  hsCode             HsCode?          @relation(fields: [hsCodeId], references: [id])
+  itemClass          ItemClass?       @relation(fields: [itemClassId], references: [id])
+  itemSubclass       ItemSubclass?    @relation(fields: [itemSubclassId], references: [id])
+  season             Season?          @relation(fields: [seasonId], references: [id])
+  segment            Segment?         @relation(fields: [segmentId], references: [id])
+  silhouette         Silhouette?      @relation(fields: [silhouetteId], references: [id])
+  size               Size?            @relation(fields: [sizeId], references: [id])
+  subCategory        Category?        @relation("ItemSubCategory", fields: [subCategoryId], references: [id])
+  salesOrderItems      SalesOrderItem[]
   stockLedgerEntries   StockLedger[]
   transferRequestItems TransferRequestItem[]
-  salesOrderItems      SalesOrderItem[]
-  inventoryItems       InventoryItem[]
 }

@@ -13,13 +13,27 @@ model PaymentVoucher {
   isAdvance       Boolean                @default(false)
   isTaxApplicable Boolean                @default(false)
   description     String
-  status          String                 @default("pending")
+  status          String                 @default("approved")
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   createdBy       String?
   creditAccount   ChartOfAccount         @relation("CreditAccountRelation", fields: [creditAccountId], references: [id])
   supplier        Supplier?              @relation(fields: [supplierId], references: [id])
   details         PaymentVoucherDetail[]
+  invoices        PaymentVoucherToInvoice[]
+}
+
+model PaymentVoucherToInvoice {
+  id                String          @id @default(uuid())
+  paymentVoucherId  String          @map("payment_voucher_id")
+  purchaseInvoiceId String          @map("purchase_invoice_id")
+  paidAmount        Decimal         @map("paid_amount") @db.Decimal(15, 2)
+  paymentVoucher    PaymentVoucher  @relation(fields: [paymentVoucherId], references: [id], onDelete: Cascade)
+  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+
+  @@index([paymentVoucherId])
+  @@index([purchaseInvoiceId])
+  @@map("payment_voucher_to_invoices")
 }
 
 model PaymentVoucherDetail {

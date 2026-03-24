@@ -3,6 +3,7 @@ model Warehouse {
   code               String              @unique
   name               String
   address            String?
+  type               String              @default("GENERAL")
   description        String?
   isActive           Boolean             @default(true)
   managerId          String?
@@ -11,12 +12,13 @@ model Warehouse {
   updatedAt          DateTime            @updatedAt
   createdById        String?
   updatedById        String?
-  inventoryItems     InventoryItem[]
+  WarehouseLocation  WarehouseLocation[]
   goodsReceiptNotes  GoodsReceiptNote[]
   stockLedgerEntries StockLedger[]
-  transfersFrom      TransferRequest[]   @relation("TransferRequestFromWH")
+  inventoryItems     InventoryItem[]
+  fromTransferRequests TransferRequest[] @relation("TransferRequest_fromWarehouse")
+  toTransferRequests   TransferRequest[] @relation("TransferRequest_toWarehouse")
 
   @@index([companyId])
+  @@index([type])
 }
-
-// WarehouseLocation model removed - not needed for simple warehouse setup
