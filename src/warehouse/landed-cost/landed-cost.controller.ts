@@ -17,6 +17,22 @@ export class LandedCostController {
     return this.service.create(dto);
   }
 
+  @Post('local')
+  @ApiOperation({
+    summary: 'Create Local Landed Cost: simple posting for local purchases',
+  })
+  createLocal(@Body() dto: any) {
+    return this.service.createLocal(dto);
+  }
+
+  @Post('post')
+  @ApiOperation({
+    summary: 'Post Landed Cost with charges',
+  })
+  post(@Body() dto: { grnId: string; charges: { accountId: string; amount: number }[] }) {
+    return this.service.post(dto);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List Landed Cost records' })
   list() {

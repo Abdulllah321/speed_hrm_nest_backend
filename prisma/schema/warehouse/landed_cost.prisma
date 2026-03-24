@@ -1,120 +1,95 @@
 model LandedCost {
-  id               String   @id @default(uuid())
-  landedCostNumber String   @unique @map("landed_cost_number")
-  date             DateTime @default(now())
-  grnId            String   @map("grn_id")
-  purchaseOrderId  String?  @map("purchase_order_id")
-  supplierId       String   @map("supplier_id")
-
-  // MIS Fields from screenshot
-  lcNo                String?   @map("lc_no")
-  blNo                String?   @map("bl_no")
-  blDate              DateTime? @map("bl_date")
-  countryOfOrigin     String?   @map("country_of_origin")
-  gdNo                String?   @map("gd_no")
+  id                  String           @id @default(uuid())
+  landedCostNumber    String           @unique @map("landed_cost_number")
+  date                DateTime         @default(now())
+  grnId               String           @map("grn_id")
+  purchaseOrderId     String?          @map("purchase_order_id")
+  supplierId          String           @map("supplier_id")
+  lcNo                String?          @map("lc_no")
+  blNo                String?          @map("bl_no")
+  blDate              DateTime?        @map("bl_date")
+  countryOfOrigin     String?          @map("country_of_origin")
+  gdNo                String?          @map("gd_no")
   season              String?
   category            String?
-  shippingInvoiceNo   String?   @map("shipping_invoice_no")
-  shippingInvoiceDate DateTime? @map("shipping_invoice_date")
-
-  // MIS Charges Totals (Header)
-  freightUSD    Decimal @default(0) @map("freight_usd") @db.Decimal(15, 2)
-  freightExRate Decimal @default(1) @map("freight_ex_rate") @db.Decimal(15, 4)
-  freightPKR    Decimal @default(0) @map("freight_pkr") @db.Decimal(15, 2)
-  freightInvNo  String? @map("freight_inv_no")
-  freightDate   String? @map("freight_date")
-
-  doThcCharges Decimal @default(0) @map("do_thc_charges") @db.Decimal(15, 2)
-  doThcPoNo    String? @map("do_thc_po_no")
-  doThcDate    String? @map("do_thc_date")
-
-  bankCharges Decimal @default(0) @map("bank_charges") @db.Decimal(15, 2)
-
-  insuranceChargesH Decimal @default(0) @map("insurance_charges_h") @db.Decimal(15, 2)
-  insurancePolicyNo String? @map("insurance_policy_no")
-
-  clgFwdCharges Decimal @default(0) @map("clg_fwd_charges") @db.Decimal(15, 2)
-  clgFwdBillNo  String? @map("clg_fwd_bill_no")
-
-  currency     String  @default("USD")
-  exchangeRate Decimal @default(1) @map("exchange_rate") @db.Decimal(15, 4)
-
-  // Totals
-  totalQuantity       Decimal @default(0) @map("total_quantity") @db.Decimal(15, 4)
-  totalInvoiceForeign Decimal @default(0) @map("total_invoice_foreign") @db.Decimal(15, 2)
-  totalInvoicePKR     Decimal @default(0) @map("total_invoice_pkr") @db.Decimal(15, 2)
-  totalLandedCost     Decimal @default(0) @map("total_landed_cost") @db.Decimal(15, 2)
-
-  status    String   @default("DRAFT")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  grn           GoodsReceiptNote @relation(fields: [grnId], references: [id])
-  purchaseOrder PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
-  supplier      Supplier         @relation(fields: [supplierId], references: [id])
-  items         LandedCostItem[]
+  shippingInvoiceNo   String?          @map("shipping_invoice_no")
+  shippingInvoiceDate DateTime?        @map("shipping_invoice_date")
+  currency            String           @default("USD")
+  exchangeRate        Decimal          @default(1) @map("exchange_rate") @db.Decimal(15, 4)
+  totalQuantity       Decimal          @default(0) @map("total_quantity") @db.Decimal(15, 4)
+  totalInvoiceForeign Decimal          @default(0) @map("total_invoice_foreign") @db.Decimal(15, 2)
+  totalInvoicePKR     Decimal          @default(0) @map("total_invoice_pkr") @db.Decimal(15, 2)
+  totalLandedCost     Decimal          @default(0) @map("total_landed_cost") @db.Decimal(15, 2)
+  status              String           @default("DRAFT")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  bankCharges         Decimal          @default(0) @map("bank_charges") @db.Decimal(15, 2)
+  clgFwdBillNo        String?          @map("clg_fwd_bill_no")
+  clgFwdCharges       Decimal          @default(0) @map("clg_fwd_charges") @db.Decimal(15, 2)
+  doThcCharges        Decimal          @default(0) @map("do_thc_charges") @db.Decimal(15, 2)
+  doThcDate           String?          @map("do_thc_date")
+  doThcPoNo           String?          @map("do_thc_po_no")
+  freightDate         String?          @map("freight_date")
+  freightExRate       Decimal          @default(1) @map("freight_ex_rate") @db.Decimal(15, 4)
+  freightInvNo        String?          @map("freight_inv_no")
+  freightPKR          Decimal          @default(0) @map("freight_pkr") @db.Decimal(15, 2)
+  freightUSD          Decimal          @default(0) @map("freight_usd") @db.Decimal(15, 2)
+  insuranceChargesH   Decimal          @default(0) @map("insurance_charges_h") @db.Decimal(15, 2)
+  insurancePolicyNo   String?          @map("insurance_policy_no")
+  items               LandedCostItem[]
+  grn                 GoodsReceiptNote @relation(fields: [grnId], references: [id])
+  purchaseOrder       PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
+  supplier            Supplier         @relation(fields: [supplierId], references: [id])
+  purchaseInvoices    PurchaseInvoice[]
 
   @@map("landed_costs")
 }
 
 model LandedCostItem {
-  id           String  @id @default(uuid())
-  landedCostId String  @map("landed_cost_id")
-  itemId       String  @map("item_id")
-  sku          String?
-  description  String?
-  hsCode       String? @map("hs_code")
-
-  qty            Decimal @default(0) @db.Decimal(15, 4)
-  unitFob        Decimal @default(0) @map("unit_fob") @db.Decimal(15, 2)
-  invoiceForeign Decimal @default(0) @map("invoice_foreign") @db.Decimal(15, 2)
-  freightForeign Decimal @default(0) @map("freight_foreign") @db.Decimal(15, 2)
-  exchangeRate   Decimal @default(1) @map("exchange_rate") @db.Decimal(15, 4)
-  invoicePKR     Decimal @default(0) @map("invoice_pkr") @db.Decimal(15, 2)
-
-  // Calculation fields for Assessable Value
-  insuranceCharges Decimal @default(0) @map("insurance_charges") @db.Decimal(15, 2)
-  landingCharges   Decimal @default(0) @map("landing_charges") @db.Decimal(15, 2)
-  assessableValue  Decimal @default(0) @map("assessable_value") @db.Decimal(15, 2)
-
-  // Detailed Tax Breakdown
-  customsDutyRate             Decimal @default(0) @map("customs_duty_rate") @db.Decimal(10, 2)
-  customsDutyAmount           Decimal @default(0) @map("customs_duty_amount") @db.Decimal(15, 2)
-  regulatoryDutyRate          Decimal @default(0) @map("regulatory_duty_rate") @db.Decimal(10, 2)
-  regulatoryDutyAmount        Decimal @default(0) @map("regulatory_duty_amount") @db.Decimal(15, 2)
-  additionalCustomsDutyRate   Decimal @default(0) @map("additional_customs_duty_rate") @db.Decimal(10, 2)
-  additionalCustomsDutyAmount Decimal @default(0) @map("additional_customs_duty_amount") @db.Decimal(15, 2)
-  salesTaxRate                Decimal @default(0) @map("sales_tax_rate") @db.Decimal(10, 2)
-  salesTaxAmount              Decimal @default(0) @map("sales_tax_amount") @db.Decimal(15, 2)
-  additionalSalesTaxRate      Decimal @default(0) @map("additional_sales_tax_rate") @db.Decimal(10, 2)
-  additionalSalesTaxAmount    Decimal @default(0) @map("additional_sales_tax_amount") @db.Decimal(15, 2)
-  incomeTaxRate               Decimal @default(0) @map("income_tax_rate") @db.Decimal(10, 2)
-  incomeTaxAmount             Decimal @default(0) @map("income_tax_amount") @db.Decimal(15, 2)
-
-  exciseChargesAmount Decimal @default(0) @map("excise_charges_amount") @db.Decimal(15, 2)
-
-  // MIS Proportional Shares (Item)
-  misFreightUSD     Decimal @default(0) @map("mis_freight_usd") @db.Decimal(15, 2)
-  misFreightPKR     Decimal @default(0) @map("mis_freight_pkr") @db.Decimal(15, 2)
-  misDoThcPKR       Decimal @default(0) @map("mis_do_thc_pkr") @db.Decimal(15, 2)
-  misBankPKR        Decimal @default(0) @map("mis_bank_pkr") @db.Decimal(15, 2)
-  misInsurancePKR   Decimal @default(0) @map("mis_insurance_pkr") @db.Decimal(15, 2)
-  misClgFwdPKR      Decimal @default(0) @map("mis_clg_fwd_pkr") @db.Decimal(15, 2)
-  totalOtherCharges Decimal @default(0) @map("total_other_charges") @db.Decimal(15, 2)
-
-  // MIS Metadata Snapshot (Item)
-  misFreightInvNo      String? @map("mis_freight_inv_no")
-  misFreightDate       String? @map("mis_freight_date")
-  misDoThcPoNo         String? @map("mis_do_thc_po_no")
-  misDoThcDate         String? @map("mis_do_thc_date")
-  misInsurancePolicyNo String? @map("mis_insurance_policy_no")
-  misClgFwdBillNo      String? @map("mis_clg_fwd_bill_no")
-
-  unitCostPKR  Decimal @default(0) @map("unit_cost_pkr") @db.Decimal(15, 2)
-  totalCostPKR Decimal @default(0) @map("total_cost_pkr") @db.Decimal(15, 2)
-
-  landedCost LandedCost @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
+  id                          String     @id @default(uuid())
+  landedCostId                String     @map("landed_cost_id")
+  itemId                      String     @map("item_id")
+  hsCode                      String?    @map("hs_code")
+  qty                         Decimal    @default(0) @db.Decimal(15, 4)
+  unitFob                     Decimal    @default(0) @map("unit_fob") @db.Decimal(15, 2)
+  invoiceForeign              Decimal    @default(0) @map("invoice_foreign") @db.Decimal(15, 2)
+  freightForeign              Decimal    @default(0) @map("freight_foreign") @db.Decimal(15, 2)
+  exchangeRate                Decimal    @default(1) @map("exchange_rate") @db.Decimal(15, 4)
+  invoicePKR                  Decimal    @default(0) @map("invoice_pkr") @db.Decimal(15, 2)
+  insuranceCharges            Decimal    @default(0) @map("insurance_charges") @db.Decimal(15, 2)
+  landingCharges              Decimal    @default(0) @map("landing_charges") @db.Decimal(15, 2)
+  assessableValue             Decimal    @default(0) @map("assessable_value") @db.Decimal(15, 2)
+  customsDutyRate             Decimal    @default(0) @map("customs_duty_rate") @db.Decimal(10, 2)
+  customsDutyAmount           Decimal    @default(0) @map("customs_duty_amount") @db.Decimal(15, 2)
+  regulatoryDutyRate          Decimal    @default(0) @map("regulatory_duty_rate") @db.Decimal(10, 2)
+  regulatoryDutyAmount        Decimal    @default(0) @map("regulatory_duty_amount") @db.Decimal(15, 2)
+  additionalCustomsDutyRate   Decimal    @default(0) @map("additional_customs_duty_rate") @db.Decimal(10, 2)
+  additionalCustomsDutyAmount Decimal    @default(0) @map("additional_customs_duty_amount") @db.Decimal(15, 2)
+  salesTaxRate                Decimal    @default(0) @map("sales_tax_rate") @db.Decimal(10, 2)
+  salesTaxAmount              Decimal    @default(0) @map("sales_tax_amount") @db.Decimal(15, 2)
+  additionalSalesTaxRate      Decimal    @default(0) @map("additional_sales_tax_rate") @db.Decimal(10, 2)
+  additionalSalesTaxAmount    Decimal    @default(0) @map("additional_sales_tax_amount") @db.Decimal(15, 2)
+  incomeTaxRate               Decimal    @default(0) @map("income_tax_rate") @db.Decimal(10, 2)
+  incomeTaxAmount             Decimal    @default(0) @map("income_tax_amount") @db.Decimal(15, 2)
+  unitCostPKR                 Decimal    @default(0) @map("unit_cost_pkr") @db.Decimal(15, 2)
+  totalCostPKR                Decimal    @default(0) @map("total_cost_pkr") @db.Decimal(15, 2)
+  description                 String?
+  exciseChargesAmount         Decimal    @default(0) @map("excise_charges_amount") @db.Decimal(15, 2)
+  misBankPKR                  Decimal    @default(0) @map("mis_bank_pkr") @db.Decimal(15, 2)
+  misClgFwdBillNo             String?    @map("mis_clg_fwd_bill_no")
+  misClgFwdPKR                Decimal    @default(0) @map("mis_clg_fwd_pkr") @db.Decimal(15, 2)
+  misDoThcDate                String?    @map("mis_do_thc_date")
+  misDoThcPKR                 Decimal    @default(0) @map("mis_do_thc_pkr") @db.Decimal(15, 2)
+  misDoThcPoNo                String?    @map("mis_do_thc_po_no")
+  misFreightDate              String?    @map("mis_freight_date")
+  misFreightInvNo             String?    @map("mis_freight_inv_no")
+  misFreightPKR               Decimal    @default(0) @map("mis_freight_pkr") @db.Decimal(15, 2)
+  misFreightUSD               Decimal    @default(0) @map("mis_freight_usd") @db.Decimal(15, 2)
+  misInsurancePKR             Decimal    @default(0) @map("mis_insurance_pkr") @db.Decimal(15, 2)
+  misInsurancePolicyNo        String?    @map("mis_insurance_policy_no")
+  sku                         String?
+  totalOtherCharges           Decimal    @default(0) @map("total_other_charges") @db.Decimal(15, 2)
+  landedCost                  LandedCost @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
 
   @@map("landed_cost_items")
 }
@@ -123,10 +98,10 @@ model LandedCostChargeType {
   id        String         @id @default(uuid())
   name      String         @unique
   accountId String
-  account   ChartOfAccount @relation(fields: [accountId], references: [id])
   isActive  Boolean        @default(true)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+  account   ChartOfAccount @relation(fields: [accountId], references: [id])
 
   @@map("landed_cost_charge_types")
 }

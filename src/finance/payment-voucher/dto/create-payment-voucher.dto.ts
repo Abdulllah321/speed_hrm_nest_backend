@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -19,6 +19,21 @@ export class CreatePaymentVoucherDetailDto {
   @IsNumber()
   @Min(0)
   debit: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  credit?: number;
+}
+
+export class CreatePaymentVoucherInvoiceDto {
+  @IsString()
+  @IsNotEmpty()
+  purchaseInvoiceId: string;
+
+  @IsNumber()
+  @Min(0)
+  paidAmount: number;
 }
 
 export class CreatePaymentVoucherDto {
@@ -56,6 +71,11 @@ export class CreatePaymentVoucherDto {
   @IsNotEmpty()
   creditAccountId: string;
 
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? undefined : value)
+  @IsString()
+  supplierId?: string;
+
   @IsNumber()
   @Min(0)
   creditAmount: number;
@@ -80,4 +100,10 @@ export class CreatePaymentVoucherDto {
   @ValidateNested({ each: true })
   @Type(() => CreatePaymentVoucherDetailDto)
   details: CreatePaymentVoucherDetailDto[];
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePaymentVoucherInvoiceDto)
+  invoices?: CreatePaymentVoucherInvoiceDto[];
 }

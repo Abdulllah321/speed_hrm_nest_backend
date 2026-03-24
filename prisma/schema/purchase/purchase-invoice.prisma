@@ -1,0 +1,47 @@
+model PurchaseInvoice {
+  id              String                @id @default(uuid())
+  invoiceNumber   String                @unique @map("invoice_number")
+  invoiceDate     DateTime              @map("invoice_date")
+  dueDate         DateTime?             @map("due_date")
+  supplierId      String                @map("supplier_id")
+  grnId           String?               @map("grn_id")
+  landedCostId    String?               @map("landed_cost_id")
+  subtotal        Decimal               @default(0.0) @db.Decimal(15, 2)
+  taxAmount       Decimal               @default(0.0) @map("tax_amount") @db.Decimal(15, 2)
+  discountAmount  Decimal               @default(0.0) @map("discount_amount") @db.Decimal(15, 2)
+  totalAmount     Decimal               @default(0.0) @map("total_amount") @db.Decimal(15, 2)
+  paidAmount      Decimal               @default(0.0) @map("paid_amount") @db.Decimal(15, 2)
+  remainingAmount Decimal               @default(0.0) @map("remaining_amount") @db.Decimal(15, 2)
+  paymentStatus   String                @default("UNPAID") @map("payment_status")
+  status          String                @default("DRAFT")
+  notes           String?
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  items           PurchaseInvoiceItem[]
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  grn             GoodsReceiptNote?     @relation(fields: [grnId], references: [id])
+  landedCost      LandedCost?           @relation(fields: [landedCostId], references: [id])
+  paymentVouchers PaymentVoucherToInvoice[]
+
+  @@map("purchase_invoices")
+}
+
+model PurchaseInvoiceItem {
+  id                String           @id @default(uuid())
+  purchaseInvoiceId String           @map("purchase_invoice_id")
+  itemId            String           @map("item_id")
+  grnItemId         String?          @map("grn_item_id")
+  landedCostItemId  String?          @map("landed_cost_item_id")
+  description       String?
+  quantity          Decimal          @db.Decimal(15, 4)
+  unitPrice         Decimal          @map("unit_price") @db.Decimal(15, 2)
+  lineTotal         Decimal          @map("line_total") @db.Decimal(15, 2)
+  taxRate           Decimal          @default(0.0) @map("tax_rate") @db.Decimal(10, 2)
+  taxAmount         Decimal          @default(0.0) @map("tax_amount") @db.Decimal(15, 2)
+  discountRate      Decimal          @default(0.0) @map("discount_rate") @db.Decimal(10, 2)
+  discountAmount    Decimal          @default(0.0) @map("discount_amount") @db.Decimal(15, 2)
+  purchaseInvoice   PurchaseInvoice  @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  grnItem           GoodsReceiptNoteItem? @relation(fields: [grnItemId], references: [id])
+
+  @@map("purchase_invoice_items")
+}
