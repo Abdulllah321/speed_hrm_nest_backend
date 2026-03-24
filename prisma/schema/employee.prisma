@@ -64,6 +64,21 @@ model Employee {
   attendanceRequestQueries        AttendanceRequestQuery[]
   bonuses                         Bonus[]                          @relation("BonusEmployee")
   deductions                      Deduction[]
+  headedDepartment                Department?                      @relation("DepartmentHead")
+  allocation                      Allocation?                      @relation(fields: [allocationId], references: [id])
+  city                            City                             @relation(fields: [cityId], references: [id])
+  country                         Country                          @relation(fields: [countryId], references: [id])
+  department                      Department                       @relation(fields: [departmentId], references: [id])
+  designation                     Designation                      @relation(fields: [designationId], references: [id])
+  employeeGrade                   EmployeeGrade                    @relation(fields: [employeeGradeId], references: [id])
+  employmentStatus                EmployeeStatus?                  @relation(fields: [employmentStatusId], references: [id])
+  leavesPolicy                    LeavesPolicy                     @relation(fields: [leavesPolicyId], references: [id])
+  location                        Location?                        @relation(fields: [locationId], references: [id])
+  maritalStatus                   MaritalStatus?                   @relation(fields: [maritalStatusId], references: [id])
+  socialSecurityInstitution       SocialSecurityInstitution?       @relation(fields: [socialSecurityInstitutionId], references: [id])
+  state                           State                            @relation(fields: [stateId], references: [id])
+  subDepartment                   SubDepartment?                   @relation(fields: [subDepartmentId], references: [id])
+  workingHoursPolicy              WorkingHoursPolicy               @relation(fields: [workingHoursPolicyId], references: [id])
   equipmentAssignments            EmployeeEquipment[]
   qualifications                  EmployeeQualification[]
   rejoiningHistory                EmployeeRejoiningHistory[]
@@ -80,29 +95,12 @@ model Employee {
   payrollDetails                  PayrollDetail[]
   rebates                         Rebate[]
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
+  headedSubDepartment             SubDepartment?                   @relation("SubDepartmentHead")
   policyAssignments               WorkingHoursPolicyAssignment[]
-
-  // Relations to Master Data
-  department                Department                 @relation(fields: [departmentId], references: [id])
-  subDepartment             SubDepartment?             @relation(fields: [subDepartmentId], references: [id])
-  headedDepartment          Department?                @relation("DepartmentHead")
-  headedSubDepartment       SubDepartment?             @relation("SubDepartmentHead")
-  employeeGrade             EmployeeGrade              @relation(fields: [employeeGradeId], references: [id])
-  designation               Designation                @relation(fields: [designationId], references: [id])
-  maritalStatus             MaritalStatus?             @relation(fields: [maritalStatusId], references: [id])
-  employmentStatus          EmployeeStatus?            @relation(fields: [employmentStatusId], references: [id])
-  country                   Country                    @relation(fields: [countryId], references: [id])
-  state                     State                      @relation(fields: [stateId], references: [id])
-  city                      City                       @relation(fields: [cityId], references: [id])
-  workingHoursPolicy        WorkingHoursPolicy         @relation(fields: [workingHoursPolicyId], references: [id])
-  location                  Location?                  @relation(fields: [locationId], references: [id])
-  allocation                Allocation?                @relation(fields: [allocationId], references: [id])
-  leavesPolicy              LeavesPolicy               @relation(fields: [leavesPolicyId], references: [id])
-  socialSecurityInstitution SocialSecurityInstitution? @relation(fields: [socialSecurityInstitutionId], references: [id])
 }
 
 model EmployeeRejoiningHistory {
-  id                    String   @id @default(uuid())
+  id                    String       @id @default(uuid())
   employeeId            String
   previousEmployeeId    String
   newEmployeeId         String
@@ -121,21 +119,19 @@ model EmployeeRejoiningHistory {
   changedFields         Json?
   remarks               String?
   createdById           String?
-  createdAt             DateTime @default(now())
-  employee              Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  // Master Data Relations
-  previousDepartment  Department?  @relation("HistoryPrevDept", fields: [previousDepartmentId], references: [id])
-  newDepartment       Department?  @relation("HistoryNewDept", fields: [newDepartmentId], references: [id])
-  previousDesignation Designation? @relation("HistoryPrevDesig", fields: [previousDesignationId], references: [id])
-  newDesignation      Designation? @relation("HistoryNewDesig", fields: [newDesignationId], references: [id])
+  createdAt             DateTime     @default(now())
+  employee              Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  newDepartment         Department?  @relation("HistoryNewDept", fields: [newDepartmentId], references: [id])
+  newDesignation        Designation? @relation("HistoryNewDesig", fields: [newDesignationId], references: [id])
+  previousDepartment    Department?  @relation("HistoryPrevDept", fields: [previousDepartmentId], references: [id])
+  previousDesignation   Designation? @relation("HistoryPrevDesig", fields: [previousDesignationId], references: [id])
 
   @@index([employeeId])
   @@index([rejoiningDate])
 }
 
 model EmployeeTransferHistory {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   employeeId         String
   transferDate       DateTime
   previousLocationId String?
@@ -146,23 +142,21 @@ model EmployeeTransferHistory {
   newStateId         String?
   reason             String?
   createdById        String?
-  createdAt          DateTime @default(now())
-  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  // Master Data Relations
-  previousLocation Location? @relation("TransferPrevLoc", fields: [previousLocationId], references: [id])
-  newLocation      Location? @relation("TransferNewLoc", fields: [newLocationId], references: [id])
-  previousCity     City?     @relation("TransferPrevCity", fields: [previousCityId], references: [id])
-  newCity          City?     @relation("TransferNewCity", fields: [newCityId], references: [id])
-  previousState    State?    @relation("TransferPrevState", fields: [previousStateId], references: [id])
-  newState         State?    @relation("TransferNewState", fields: [newStateId], references: [id])
+  createdAt          DateTime  @default(now())
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  newCity            City?     @relation("TransferNewCity", fields: [newCityId], references: [id])
+  newLocation        Location? @relation("TransferNewLoc", fields: [newLocationId], references: [id])
+  newState           State?    @relation("TransferNewState", fields: [newStateId], references: [id])
+  previousCity       City?     @relation("TransferPrevCity", fields: [previousCityId], references: [id])
+  previousLocation   Location? @relation("TransferPrevLoc", fields: [previousLocationId], references: [id])
+  previousState      State?    @relation("TransferPrevState", fields: [previousStateId], references: [id])
 
   @@index([employeeId])
   @@index([transferDate])
 }
 
 model EmployeeQualification {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   employeeId      String
   qualificationId String
   instituteId     String?
@@ -170,15 +164,13 @@ model EmployeeQualification {
   stateId         String?
   year            Int?
   grade           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  // Master Data Relations
-  qualification Qualification @relation(fields: [qualificationId], references: [id])
-  institute     Institute?    @relation(fields: [instituteId], references: [id])
-  city          City?         @relation(fields: [cityId], references: [id])
-  state         State?        @relation(fields: [stateId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  city            City?         @relation(fields: [cityId], references: [id])
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  institute       Institute?    @relation(fields: [instituteId], references: [id])
+  qualification   Qualification @relation(fields: [qualificationId], references: [id])
+  state           State?        @relation(fields: [stateId], references: [id])
 
   @@index([employeeId])
 }
@@ -198,9 +190,7 @@ model EmployeeEquipment {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  // Master Data Relations
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  equipment    Equipment @relation(fields: [equipmentId], references: [id])
 
   @@index([employeeId])
   @@index([status])

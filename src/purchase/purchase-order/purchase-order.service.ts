@@ -131,6 +131,8 @@ export class PurchaseOrderService {
           expectedDeliveryDate: createDto.expectedDeliveryDate
             ? new Date(createDto.expectedDeliveryDate)
             : null,
+          orderType: createDto.orderType || null,
+          goodsType: createDto.goodsType || null,
           status: 'OPEN',
           subtotal,
           taxAmount,
@@ -154,7 +156,11 @@ export class PurchaseOrderService {
       include: {
         items: true,
         vendor: true,
-        rfq: true,
+        rfq: {
+          include: {
+            purchaseRequisition: true,
+          },
+        },
       },
     });
 
@@ -198,6 +204,8 @@ export class PurchaseOrderService {
           expectedDeliveryDate: createDto.expectedDeliveryDate
             ? new Date(createDto.expectedDeliveryDate)
             : null,
+          orderType: createDto.orderType || null,
+          goodsType: createDto.goodsType || quotation.rfq?.purchaseRequisition?.goodsType || null,
           status: 'OPEN',
           subtotal: quotation.subtotal,
           taxAmount: quotation.taxAmount,
@@ -336,6 +344,8 @@ export class PurchaseOrderService {
             expectedDeliveryDate: group.expectedDeliveryDate
               ? new Date(group.expectedDeliveryDate)
               : null,
+            orderType: group.orderType || null,
+            goodsType: group.goodsType || rfq.purchaseRequisition?.goodsType || null,
             status: 'OPEN',
             subtotal,
             taxAmount,
@@ -416,6 +426,8 @@ export class PurchaseOrderService {
             expectedDeliveryDate: group.expectedDeliveryDate
               ? new Date(group.expectedDeliveryDate)
               : null,
+            orderType: group.orderType || null,
+            goodsType: group.goodsType || null,
             status: 'OPEN',
             subtotal,
             taxAmount,

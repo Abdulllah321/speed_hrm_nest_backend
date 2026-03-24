@@ -25,6 +25,10 @@ export class CreatePurchaseRequisitionDto {
   @IsOptional()
   type?: string;
 
+  @IsString()
+  @IsOptional()
+  goodsType?: string; // CONSUMABLE, FRESH
+
   @IsDate()
   @Type(() => Date)
   @IsOptional()

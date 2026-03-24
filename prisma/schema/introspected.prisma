@@ -1,0 +1,29 @@
+model WarehouseLocation {
+  id                                                                String              @id
+  warehouseId                                                       String
+  code                                                              String
+  name                                                              String
+  type                                                              String              @default("BIN")
+  barcode                                                           String?             @unique
+  parentId                                                          String?
+  length                                                            Decimal?            @db.Decimal(10, 2)
+  width                                                             Decimal?            @db.Decimal(10, 2)
+  height                                                            Decimal?            @db.Decimal(10, 2)
+  maxWeight                                                         Decimal?            @db.Decimal(10, 2)
+  volume                                                            Decimal?            @db.Decimal(10, 2)
+  isActive                                                          Boolean             @default(true)
+  createdAt                                                         DateTime            @default(now())
+  updatedAt                                                         DateTime
+  InventoryItem                                                     InventoryItem[]
+  StockMovement_StockMovement_fromLocationIdToWarehouseLocation     StockMovement[]     @relation("StockMovement_fromLocationIdToWarehouseLocation")
+  StockMovement_StockMovement_toLocationIdToWarehouseLocation       StockMovement[]     @relation("StockMovement_toLocationIdToWarehouseLocation")
+  TransferRequest_TransferRequest_fromLocationIdToWarehouseLocation TransferRequest[]   @relation("TransferRequest_fromLocationIdToWarehouseLocation")
+  TransferRequest_TransferRequest_toLocationIdToWarehouseLocation   TransferRequest[]   @relation("TransferRequest_toLocationIdToWarehouseLocation")
+  WarehouseLocation                                                 WarehouseLocation?  @relation("WarehouseLocationToWarehouseLocation", fields: [parentId], references: [id])
+  other_WarehouseLocation                                           WarehouseLocation[] @relation("WarehouseLocationToWarehouseLocation")
+  Warehouse                                                         Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, code])
+  @@index([barcode])
+  @@index([parentId])
+}

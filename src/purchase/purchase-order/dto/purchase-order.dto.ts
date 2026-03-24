@@ -59,6 +59,14 @@ export class CreatePurchaseOrderDto {
   @IsDateString()
   @IsOptional()
   expectedDeliveryDate?: string;
+
+  @IsString()
+  @IsOptional()
+  orderType?: string; // IMPORT, LOCAL
+
+  @IsString()
+  @IsOptional()
+  goodsType?: string; // CONSUMABLE, FRESH
 }
 
 export class PurchaseOrderResponseDto {
@@ -98,6 +106,14 @@ export class AwardGroupDto {
   @IsDateString()
   @IsOptional()
   expectedDeliveryDate?: string;
+
+  @IsString()
+  @IsOptional()
+  orderType?: string; // IMPORT, LOCAL
+
+  @IsString()
+  @IsOptional()
+  goodsType?: string; // CONSUMABLE, FRESH
 }
 
 export class AwardFromRfqDto {
@@ -152,6 +168,14 @@ export class MultiDirectGroupDto {
   @IsDateString()
   @IsOptional()
   expectedDeliveryDate?: string;
+
+  @IsString()
+  @IsOptional()
+  orderType?: string; // IMPORT, LOCAL
+
+  @IsString()
+  @IsOptional()
+  goodsType?: string; // CONSUMABLE, FRESH
 }
 
 export class CreateMultiDirectPurchaseOrderDto {
