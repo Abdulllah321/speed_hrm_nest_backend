@@ -6,12 +6,15 @@ model GoodsReceiptNote {
   receivedDate    DateTime               @default(now()) @map("received_date")
   status          String                 @default("SUBMITTED")
   notes           String?
+  orderType       String?                @map("order_type") // IMPORT, LOCAL (copied from PO)
+  goodsType       String?                @map("goods_type") // CONSUMABLE, FRESH (copied from PO)
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
   items           GoodsReceiptNoteItem[]
-  purchaseOrder   PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
-  warehouse       Warehouse              @relation(fields: [warehouseId], references: [id])
-  landedCosts     LandedCost[]
+  purchaseOrder      PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
+  warehouse          Warehouse              @relation(fields: [warehouseId], references: [id])
+  landedCosts        LandedCost[]
+  purchaseInvoices   PurchaseInvoice[]
 
   @@map("goods_receipt_notes")
 }
@@ -24,7 +27,8 @@ model GoodsReceiptNoteItem {
   receivedQty        Decimal          @map("received_qty") @db.Decimal(15, 4)
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
-  goodsReceiptNote   GoodsReceiptNote @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+  goodsReceiptNote     GoodsReceiptNote      @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+  purchaseInvoiceItems PurchaseInvoiceItem[]
 
   @@map("goods_receipt_note_items")
 }

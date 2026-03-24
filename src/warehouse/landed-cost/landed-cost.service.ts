@@ -277,4 +277,145 @@ export class LandedCostService {
     });
     return { status: true, data: created };
   }
+
+  async createLocal(dto: any) {
+    const grn = await this.prisma.goodsReceiptNote.findUnique({
+      where: { id: dto.grnId },
+      include: { 
+        items: true, 
+        purchaseOrder: {
+          include: {
+            purchaseRequisition: true
+          }
+        }
+      },
+    });
+    if (!grn) throw new NotFoundException('GRN not found');
+    if (grn.status === 'VALUED') {
+      throw new BadRequestException('GRN already valued');
+    }
+
+    // Check if this needs landed cost
+    const po = grn.purchaseOrder;
+    const goodsType = po?.goodsType || po?.purchaseRequisition?.goodsType;
+    const isFresh = goodsType === 'FRESH';
+    const isDirectPo = !po?.purchaseRequisitionId && !po?.vendorQuotationId && !po?.rfqId;
+    
+    if (!isDirectPo && !isFresh) {
+      throw new BadRequestException('This GRN does not require landed cost processing.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update stock ledger for fresh goods or direct PO
+      for (const item of dto.items) {
+        const itemRecord = await tx.item.findUnique({
+          where: { itemId: item.itemId },
+          select: { id: true },
+        });
+        if (!itemRecord) {
+          throw new BadRequestException(`Item with code ${item.itemId} not found`);
+        }
+
+        await this.stockLedgerService.createEntry(
+          {
+            itemId: itemRecord.id,
+            warehouseId: grn.warehouseId,
+            qty: new Prisma.Decimal(item.qty),
+            movementType: MovementType.INBOUND,
+            referenceType: 'LANDED_COST',
+            referenceId: grn.id,
+            rate: new Prisma.Decimal(item.unitPrice),
+          },
+          tx,
+        );
+
+        // Update InventoryItem (warehouse stock)
+        const existingStock = await tx.inventoryItem.findFirst({
+          where: {
+            warehouseId: grn.warehouseId,
+            locationId: null,
+            itemId: itemRecord.id,
+            status: 'AVAILABLE',
+          },
+        });
+
+        if (existingStock) {
+          await tx.inventoryItem.update({
+            where: { id: existingStock.id },
+            data: { 
+              quantity: { increment: new Prisma.Decimal(item.qty) }
+            },
+          });
+        } else {
+          await tx.inventoryItem.create({
+            data: {
+              warehouseId: grn.warehouseId,
+              locationId: null,
+              itemId: itemRecord.id,
+              quantity: new Prisma.Decimal(item.qty),
+              status: 'AVAILABLE',
+            },
+          });
+        }
+      }
+
+      // Mark GRN as VALUED
+      await tx.goodsReceiptNote.update({
+        where: { id: grn.id },
+        data: { status: 'VALUED' },
+      });
+
+      // Update PO status to CLOSED
+      if (grn.purchaseOrder) {
+        await tx.purchaseOrder.update({
+          where: { id: grn.purchaseOrder.id },
+          data: { status: 'CLOSED' },
+        });
+      }
+
+      return { success: true, grnStatus: 'VALUED' };
+    });
+  }
+
+  async post(dto: { grnId: string; charges: { accountId: string; amount: number }[] }) {
+    const grn = await this.prisma.goodsReceiptNote.findUnique({
+      where: { id: dto.grnId },
+      include: { items: true },
+    });
+    if (!grn) throw new NotFoundException('GRN not found');
+    if (grn.status === 'VALUED') {
+      throw new BadRequestException('GRN already valued');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Simple posting logic - just mark GRN as valued and create stock entries
+      for (const grnItem of grn.items) {
+        const itemRecord = await tx.item.findUnique({
+          where: { itemId: grnItem.itemId },
+          select: { id: true },
+        });
+        if (!itemRecord) continue;
+
+        await this.stockLedgerService.createEntry(
+          {
+            itemId: itemRecord.id,
+            warehouseId: grn.warehouseId,
+            qty: grnItem.receivedQty,
+            movementType: MovementType.INBOUND,
+            referenceType: 'LANDED_COST',
+            referenceId: grn.id,
+            rate: new Prisma.Decimal(0), // Will be updated with actual cost
+          },
+          tx,
+        );
+      }
+
+      await tx.goodsReceiptNote.update({
+        where: { id: grn.id },
+        data: { status: 'VALUED' },
+      });
+
+      return { success: true, grnStatus: 'VALUED' };
+    });
+  }
 }

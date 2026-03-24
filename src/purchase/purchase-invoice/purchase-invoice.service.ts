@@ -1,0 +1,696 @@
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreatePurchaseInvoiceDto, UpdatePurchaseInvoiceDto } from './dto';
+
+@Injectable()
+export class PurchaseInvoiceService {
+  constructor(private prisma: PrismaService) {}
+
+  async create(createDto: CreatePurchaseInvoiceDto) {
+    // Validate business rules
+    await this.validateBusinessRules(createDto);
+
+    // Calculate totals
+    const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+
+    return this.prisma.purchaseInvoice.create({
+      data: {
+        invoiceNumber: createDto.invoiceNumber,
+        invoiceDate: new Date(createDto.invoiceDate),
+        dueDate: createDto.dueDate ? new Date(createDto.dueDate) : null,
+        supplierId: createDto.supplierId,
+        grnId: createDto.grnId,
+        landedCostId: createDto.landedCostId,
+        subtotal,
+        taxAmount,
+        discountAmount: createDto.discountAmount || 0,
+        totalAmount,
+        remainingAmount: totalAmount,
+        notes: createDto.notes,
+        status: createDto.status || 'DRAFT',
+        items: {
+          create: createDto.items.map(item => {
+            const lineTotal = item.quantity * item.unitPrice;
+            const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
+            const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
+            
+            return {
+              itemId: item.itemId,
+              grnItemId: item.grnItemId,
+              landedCostItemId: item.landedCostItemId,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              lineTotal: lineTotal - itemDiscountAmount + itemTaxAmount,
+              taxRate: item.taxRate || 0,
+              taxAmount: itemTaxAmount,
+              discountRate: item.discountRate || 0,
+              discountAmount: itemDiscountAmount,
+            };
+          }),
+        },
+      },
+      include: {
+        supplier: true,
+        grn: true,
+        landedCost: true,
+        items: true,
+      },
+    });
+  }
+
+  async findAll(page = 1, limit = 10, filters?: any) {
+    const skip = (page - 1) * limit;
+    
+    const where: any = {};
+    if (filters?.supplierId) where.supplierId = filters.supplierId;
+    if (filters?.status) where.status = filters.status;
+    if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
+    
+    if (filters?.search) {
+      where.OR = [
+        { invoiceNumber: { contains: filters.search, mode: 'insensitive' } },
+        { notes: { contains: filters.search, mode: 'insensitive' } },
+        { supplier: { name: { contains: filters.search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [invoices, total] = await Promise.all([
+      this.prisma.purchaseInvoice.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          supplier: true,
+          grn: true,
+          landedCost: true,
+          items: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.purchaseInvoice.count({ where }),
+    ]);
+
+    return {
+      data: invoices,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findOne(id: string) {
+    const invoice = await this.prisma.purchaseInvoice.findUnique({
+      where: { id },
+      include: {
+        supplier: true,
+        grn: {
+          include: {
+            items: true,
+          },
+        },
+        landedCost: {
+          include: {
+            items: true,
+          },
+        },
+        items: true,
+        paymentVouchers: {
+          include: {
+            paymentVoucher: true,
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Purchase Invoice not found');
+    }
+
+    return invoice;
+  }
+
+  async update(id: string, updateDto: UpdatePurchaseInvoiceDto) {
+    const existingInvoice = await this.findOne(id);
+
+    if (existingInvoice.status === 'APPROVED' && updateDto.status !== 'CANCELLED') {
+      throw new BadRequestException('Cannot modify approved invoice');
+    }
+
+    // If updating items, recalculate totals
+    let updateData: any = { ...updateDto };
+    
+    if (updateDto.items) {
+      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto as CreatePurchaseInvoiceDto);
+      updateData = {
+        ...updateData,
+        subtotal,
+        taxAmount,
+        totalAmount,
+        remainingAmount: totalAmount - Number(existingInvoice.paidAmount),
+      };
+
+      // Delete existing items and create new ones
+      await this.prisma.purchaseInvoiceItem.deleteMany({
+        where: { purchaseInvoiceId: id },
+      });
+    }
+
+    return this.prisma.purchaseInvoice.update({
+      where: { id },
+      data: {
+        ...updateData,
+        items: updateDto.items ? {
+          create: updateDto.items.map(item => {
+            const lineTotal = item.quantity * item.unitPrice;
+            const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
+            const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
+            
+            return {
+              itemId: item.itemId,
+              grnItemId: item.grnItemId,
+              landedCostItemId: item.landedCostItemId,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              lineTotal: lineTotal - itemDiscountAmount + itemTaxAmount,
+              taxRate: item.taxRate || 0,
+              taxAmount: itemTaxAmount,
+              discountRate: item.discountRate || 0,
+              discountAmount: itemDiscountAmount,
+            };
+          }),
+        } : undefined,
+      },
+      include: {
+        supplier: true,
+        grn: true,
+        landedCost: true,
+        items: true,
+      },
+    });
+  }
+
+  async remove(id: string) {
+    const invoice = await this.findOne(id);
+
+    if (invoice.status === 'APPROVED') {
+      throw new BadRequestException('Cannot delete approved invoice');
+    }
+
+    if (Number(invoice.paidAmount) > 0) {
+      throw new BadRequestException('Cannot delete invoice with payments');
+    }
+
+    return this.prisma.purchaseInvoice.delete({
+      where: { id },
+    });
+  }
+
+  // Get VALUED GRNs for invoice creation (excluding those that went through Landed Cost)
+  async getValuedGrns() {
+    console.log('Fetching valued GRNs...');
+    
+    // First, let's check what GRNs exist in the database
+    const allGrns = await this.prisma.goodsReceiptNote.findMany({
+      select: {
+        id: true,
+        grnNumber: true,
+        status: true,
+        landedCosts: {
+          select: {
+            id: true,
+            landedCostNumber: true,
+          },
+        },
+      },
+    });
+    
+    console.log(`Total GRNs in database: ${allGrns.length}`);
+    console.log('All GRNs:', allGrns.map(grn => ({
+      number: grn.grnNumber,
+      status: grn.status,
+      hasLandedCosts: grn.landedCosts.length > 0,
+    })));
+    
+    // Get GRNs that are VALUED and don't have Landed Cost (direct flows: RFQ→VQ→PO→GRN or PR→Direct PO→GRN)
+    let grns = await this.prisma.goodsReceiptNote.findMany({
+      where: {
+        status: 'VALUED',
+        // Only include GRNs that were directly valued (not through Landed Cost)
+        // This means GRNs from RFQ→VQ→PO→GRN or PR→Direct PO→GRN flows
+        landedCosts: {
+          none: {}, // GRNs that don't have any Landed Cost records
+        },
+      },
+      include: {
+        items: {
+          include: {
+            purchaseInvoiceItems: true, // Include existing invoice items to calculate available qty
+          },
+        },
+        purchaseOrder: {
+          include: {
+            vendor: true, // Include vendor through purchase order
+            items: true, // Include PO items to get unit prices
+          },
+        },
+      },
+    });
+
+    console.log(`Found ${grns.length} valued GRNs (without Landed Cost) - These are from direct flows`);
+
+    // If no VALUED GRNs found, let's also check for RECEIVED status
+    // Sometimes GRNs might be in RECEIVED status but still need to be invoiced
+    if (grns.length === 0) {
+      console.log('No VALUED GRNs found, checking RECEIVED GRNs as well...');
+      
+      grns = await this.prisma.goodsReceiptNote.findMany({
+        where: {
+          status: 'RECEIVED',
+          landedCosts: {
+            none: {}, // GRNs that don't have any Landed Cost records
+          },
+        },
+        include: {
+          items: {
+            include: {
+              purchaseInvoiceItems: true,
+            },
+          },
+          purchaseOrder: {
+            include: {
+              vendor: true,
+              items: true,
+            },
+          },
+        },
+      });
+      
+      console.log(`Found ${grns.length} RECEIVED GRNs (without Landed Cost) - These are also from direct flows`);
+    }
+
+    // If still no GRNs found, let's be more flexible and show all GRNs without Landed Cost
+    if (grns.length === 0) {
+      console.log('No VALUED or RECEIVED GRNs found, checking all GRNs without Landed Cost...');
+      
+      grns = await this.prisma.goodsReceiptNote.findMany({
+        where: {
+          status: {
+            in: ['RECEIVED', 'VALUED', 'APPROVED'], // Include multiple statuses
+          },
+          landedCosts: {
+            none: {}, // GRNs that don't have any Landed Cost records
+          },
+        },
+        include: {
+          items: {
+            include: {
+              purchaseInvoiceItems: true,
+            },
+          },
+          purchaseOrder: {
+            include: {
+              vendor: true,
+              items: true,
+            },
+          },
+        },
+      });
+      
+      console.log(`Found ${grns.length} GRNs with flexible status (without Landed Cost)`);
+    }
+
+    // Debug: Log GRN details
+    if (grns.length > 0) {
+      const grnSummary = grns.map(grn => ({
+        number: grn.grnNumber,
+        status: grn.status,
+        itemsCount: grn.items?.length || 0,
+        vendor: grn.purchaseOrder?.vendor?.name || 'Unknown',
+      }));
+      console.log('Direct flow GRNs found:', grnSummary);
+    } else {
+      console.log('No direct flow GRNs found, checking all VALUED GRNs...');
+      
+      const allValuedGrns = await this.prisma.goodsReceiptNote.findMany({
+        where: { status: 'VALUED' },
+        select: {
+          grnNumber: true,
+          status: true,
+          landedCosts: {
+            select: {
+              landedCostNumber: true,
+            },
+          },
+        },
+      });
+      
+      console.log('All VALUED GRNs (including those with Landed Cost):', allValuedGrns);
+    }
+    const processedGrns = grns.map(grn => ({
+      ...grn,
+      items: grn.items.map(item => {
+        // Calculate total invoiced quantity for this GRN item
+        const invoicedQty = item.purchaseInvoiceItems.reduce(
+          (sum, invoiceItem) => sum + Number(invoiceItem.quantity), 
+          0
+        );
+        const availableQty = Number(item.receivedQty) - invoicedQty;
+
+        // Find corresponding PO item to get unit price
+        const poItem = grn.purchaseOrder?.items.find(poi => poi.itemId === item.itemId);
+        const unitPrice = poItem ? Number(poItem.unitPrice) : 0;
+
+        return {
+          ...item,
+          availableQty: Math.max(0, availableQty), // Ensure non-negative
+          unitPrice, // Add unit price from PO
+        };
+      }).filter(item => item.availableQty > 0), // Only return items with available quantity
+    })).filter(grn => grn.items.length > 0); // Only return GRNs with available items
+
+    console.log(`Processed GRNs with available items: ${processedGrns.length}`);
+    
+    return processedGrns;
+  }
+
+  // Get available Landed Costs for invoice creation
+  async getAvailableLandedCosts() {
+    console.log('Fetching available landed costs...');
+    
+    // First, let's check what Landed Costs exist in the database
+    const allLandedCosts = await this.prisma.landedCost.findMany({
+      select: {
+        id: true,
+        landedCostNumber: true,
+        status: true,
+        items: {
+          select: {
+            id: true,
+            qty: true,
+          },
+        },
+      },
+    });
+    
+    console.log(`Total Landed Costs in database: ${allLandedCosts.length}`);
+    console.log('All Landed Costs:', allLandedCosts.map(lc => ({
+      number: lc.landedCostNumber,
+      status: lc.status,
+      itemsCount: lc.items.length,
+    })));
+    
+    const landedCosts = await this.prisma.landedCost.findMany({
+      where: {
+        status: {
+          in: ['APPROVED', 'POSTED', 'SUBMITTED', 'DRAFT'], // Allow all statuses for now
+        },
+      },
+      include: {
+        items: true, // Simplified include
+        supplier: true,
+      },
+    });
+
+    console.log(`Found ${landedCosts.length} landed costs`);
+
+    // Debug: Log all landed costs with their statuses
+    if (landedCosts.length > 0) {
+      const lcSummary = landedCosts.map(lc => ({
+        number: lc.landedCostNumber,
+        status: lc.status,
+        itemsCount: lc.items?.length || 0,
+      }));
+      console.log('Landed costs found:', lcSummary);
+    } else {
+      console.log('No landed costs found, checking database...');
+      
+      const allLandedCosts = await this.prisma.landedCost.findMany({
+        select: {
+          id: true,
+          landedCostNumber: true,
+          status: true,
+          grn: {
+            select: {
+              status: true,
+              grnNumber: true,
+            },
+          },
+        },
+      });
+      
+      console.log('All landed costs in database:', allLandedCosts);
+    }
+
+    // Calculate available quantities for each Landed Cost item (simplified)
+    const processedLandedCosts = landedCosts.map(lc => ({
+      ...lc,
+      items: lc.items.map(item => ({
+        ...item,
+        availableQty: Number(item.qty), // Use full quantity for now
+      })),
+    }));
+
+    console.log(`Final processed landed costs: ${processedLandedCosts.length}`);
+    console.log('Returning landed costs:', processedLandedCosts.map(lc => ({ 
+      id: lc.id, 
+      number: lc.landedCostNumber, 
+      itemsCount: lc.items.length 
+    })));
+
+    return processedLandedCosts;
+  }
+
+  private async validateBusinessRules(createDto: CreatePurchaseInvoiceDto) {
+    // Check if GRN exists and has correct status
+    if (createDto.grnId) {
+      const grn = await this.prisma.goodsReceiptNote.findUnique({
+        where: { id: createDto.grnId },
+        include: { items: true },
+      });
+
+      if (!grn) {
+        throw new BadRequestException('GRN not found');
+      }
+
+      if (grn.status !== 'VALUED') {
+        throw new BadRequestException('GRN must be VALUED to create invoice');
+      }
+
+      // Validate quantities against GRN items
+      for (const item of createDto.items) {
+        if (item.grnItemId) {
+          const grnItem = grn.items.find(gi => gi.id === item.grnItemId);
+          if (!grnItem) {
+            throw new BadRequestException(`GRN item ${item.grnItemId} not found`);
+          }
+
+          // Check if quantity exceeds available quantity
+          const existingInvoiceQty = await this.getInvoicedQuantity(item.grnItemId, 'grn');
+          const availableQty = Number(grnItem.receivedQty) - existingInvoiceQty;
+          
+          if (item.quantity > availableQty) {
+            throw new BadRequestException(
+              `Invoice quantity ${item.quantity} exceeds available quantity ${availableQty} for item ${item.itemId}`
+            );
+          }
+        }
+      }
+    }
+
+    // Check if Landed Cost exists and validate
+    if (createDto.landedCostId) {
+      const landedCost = await this.prisma.landedCost.findUnique({
+        where: { id: createDto.landedCostId },
+        include: { items: true },
+      });
+
+      if (!landedCost) {
+        throw new BadRequestException('Landed Cost not found');
+      }
+
+      if (!landedCost.status || !['APPROVED', 'POSTED', 'SUBMITTED', 'DRAFT'].includes(landedCost.status)) {
+        throw new BadRequestException('Landed Cost must have a valid status to create invoice');
+      }
+
+      // Validate quantities against Landed Cost items
+      for (const item of createDto.items) {
+        if (item.landedCostItemId) {
+          const lcItem = landedCost.items.find(lci => lci.id === item.landedCostItemId);
+          if (!lcItem) {
+            throw new BadRequestException(`Landed Cost item ${item.landedCostItemId} not found`);
+          }
+
+          const existingInvoiceQty = await this.getInvoicedQuantity(item.landedCostItemId, 'landedCost');
+          const availableQty = Number(lcItem.qty) - existingInvoiceQty;
+          
+          if (item.quantity > availableQty) {
+            throw new BadRequestException(
+              `Invoice quantity ${item.quantity} exceeds available quantity ${availableQty} for item ${item.itemId}`
+            );
+          }
+        }
+      }
+    }
+
+    // Check for duplicate invoice number
+    const existingInvoice = await this.prisma.purchaseInvoice.findUnique({
+      where: { invoiceNumber: createDto.invoiceNumber },
+    });
+
+    if (existingInvoice) {
+      throw new BadRequestException('Invoice number already exists');
+    }
+  }
+
+  private async getInvoicedQuantity(itemId: string, type: 'grn' | 'landedCost'): Promise<number> {
+    const whereClause = type === 'grn' 
+      ? { grnItemId: itemId }
+      : { landedCostItemId: itemId };
+
+    const result = await this.prisma.purchaseInvoiceItem.aggregate({
+      where: whereClause,
+      _sum: { quantity: true },
+    });
+
+    return Number(result._sum.quantity) || 0;
+  }
+
+  private calculateTotals(dto: CreatePurchaseInvoiceDto) {
+    let subtotal = 0;
+    let taxAmount = 0;
+
+    for (const item of dto.items) {
+      const lineTotal = item.quantity * item.unitPrice;
+      const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
+      const discountedAmount = lineTotal - itemDiscountAmount;
+      const itemTaxAmount = discountedAmount * (item.taxRate || 0) / 100;
+
+      subtotal = subtotal + discountedAmount;
+      taxAmount = taxAmount + itemTaxAmount;
+    }
+
+    const totalDiscountAmount = dto.discountAmount || 0;
+    const totalAmount = subtotal + taxAmount - totalDiscountAmount;
+
+    return {
+      subtotal,
+      taxAmount,
+      totalAmount,
+    };
+  }
+
+  async getNextInvoiceNumber(): Promise<{ nextInvoiceNumber: string }> {
+    const currentYear = new Date().getFullYear();
+    const prefix = 'PI';
+    
+    const lastInvoice = await this.prisma.purchaseInvoice.findFirst({
+      where: {
+        invoiceNumber: {
+          startsWith: `${prefix}-${currentYear}`,
+        },
+      },
+      orderBy: {
+        invoiceNumber: 'desc',
+      },
+    });
+
+    let nextNumber = 1;
+    if (lastInvoice) {
+      const lastNumber = parseInt(lastInvoice.invoiceNumber.split('-').pop() || '0');
+      nextNumber = lastNumber + 1;
+    }
+
+    const nextInvoiceNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    return { nextInvoiceNumber };
+  }
+
+  async getSummary(supplierId?: string) {
+    const where = supplierId ? { supplierId } : {};
+    
+    const [
+      totalInvoices,
+      draftInvoices,
+      approvedInvoices,
+      totalAmount,
+      paidAmount,
+      pendingAmount,
+    ] = await Promise.all([
+      this.prisma.purchaseInvoice.count({ where }),
+      this.prisma.purchaseInvoice.count({ where: { ...where, status: 'DRAFT' } }),
+      this.prisma.purchaseInvoice.count({ where: { ...where, status: 'APPROVED' } }),
+      this.prisma.purchaseInvoice.aggregate({
+        where,
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.purchaseInvoice.aggregate({
+        where,
+        _sum: { paidAmount: true },
+      }),
+      this.prisma.purchaseInvoice.aggregate({
+        where,
+        _sum: { remainingAmount: true },
+      }),
+    ]);
+
+    return {
+      totalInvoices,
+      draftInvoices,
+      approvedInvoices,
+      totalAmount: totalAmount._sum.totalAmount || 0,
+      paidAmount: paidAmount._sum.paidAmount || 0,
+      pendingAmount: pendingAmount._sum.remainingAmount || 0,
+    };
+  }
+
+  async approve(id: string) {
+    const invoice = await this.findOne(id);
+    
+    if (invoice.status === 'APPROVED' || invoice.status === 'CANCELLED') {
+      throw new BadRequestException('Invoice is already approved or cancelled');
+    }
+
+    return this.prisma.purchaseInvoice.update({
+      where: { id },
+      data: { 
+        status: 'APPROVED',
+      },
+      include: {
+        supplier: true,
+        grn: true,
+        landedCost: true,
+        items: true,
+      },
+    });
+  }
+
+  async cancel(id: string, reason?: string) {
+    const invoice = await this.findOne(id);
+    
+    if (invoice.status === 'CANCELLED') {
+      throw new BadRequestException('Invoice is already cancelled');
+    }
+
+    if (Number(invoice.paidAmount) > 0) {
+      throw new BadRequestException('Cannot cancel invoice with payments');
+    }
+
+    return this.prisma.purchaseInvoice.update({
+      where: { id },
+      data: { 
+        status: 'CANCELLED',
+        ...(reason && { notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}` }),
+      },
+      include: {
+        supplier: true,
+        grn: true,
+        landedCost: true,
+        items: true,
+      },
+    });
+  }
+}

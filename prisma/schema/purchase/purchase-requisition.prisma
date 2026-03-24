@@ -2,15 +2,16 @@ model PurchaseRequisition {
   id             String                    @id @default(uuid())
   prNumber       String                    @unique @map("pr_number")
   department     String?
-  type           String?                   @default("local")
   requestDate    DateTime                  @default(now()) @map("request_date")
   status         String                    @default("DRAFT")
   notes          String?
   createdAt      DateTime                  @default(now()) @map("created_at")
   updatedAt      DateTime                  @updatedAt @map("updated_at")
+  type           String?                   @default("local")
+  goodsType      String?                   @map("goods_type") // CONSUMABLE, FRESH
+  purchaseOrders PurchaseOrder[]
   items          PurchaseRequisitionItem[]
   rfqs           RequestForQuotation[]
-  purchaseOrders PurchaseOrder[]
 
   @@map("purchase_requisitions")
 }
