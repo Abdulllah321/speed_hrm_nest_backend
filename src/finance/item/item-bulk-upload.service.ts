@@ -25,10 +25,13 @@ export class ItemBulkUploadService {
         filename: string,
         userId: string,
     ): Promise<{ uploadId: string; jobId: string }> {
+        // Generate a temporary unique jobId to avoid constraint violation
+        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
         // Create upload record with status 'validating'
         const upload = await this.prisma.bulkUpload.create({
             data: {
-                jobId: '', // Will update after job creation
+                jobId: tempJobId, // Temporary unique ID
                 filename,
                 totalRecords: 0,
                 uploadedBy: userId,
