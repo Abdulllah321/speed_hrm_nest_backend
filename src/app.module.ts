@@ -5,8 +5,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
-import { BrandModule } from './master/brand/brand.module';
-import { GenderModule } from './master/gender/gender.module';
+import { BrandModule } from './master/erp/brand/brand.module';
+import { GenderModule } from './master/erp/gender/gender.module';
 import { EmployeeModule } from './employee/employee.module';
 import { CityModule } from './master/city/city.module';
 import { DepartmentModule } from './master/department/department.module';
@@ -58,10 +58,10 @@ import { PFModule } from './pf/pf.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { RoleModule } from './role/role.module';
 import { PermissionModule } from './permission/permission.module';
-import { SizeModule } from './master/size/size.module';
-import { SilhouetteModule } from './master/silhouette/silhouette.module';
-import { ChannelClassModule } from './master/channel-class/channel-class.module';
-import { ColorModule } from './master/color/color.module';
+import { SizeModule } from './master/erp/size/size.module';
+import { SilhouetteModule } from './master/erp/silhouette/silhouette.module';
+import { ChannelClassModule } from './master/erp/channel-class/channel-class.module';
+import { ColorModule } from './master/erp/color/color.module';
 import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
@@ -71,6 +71,7 @@ import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
+<<<<<<< Updated upstream
 import { CompanyGroupModule } from './master/company-group/company-group.module';
 import { SalePoolModule } from './master/sale-pool/sale-pool.module';
 import { SaleTypeModule } from './master/sale-type/sale-type.module';
@@ -83,6 +84,15 @@ import { ItemClassModule } from './master/item-class/item-class.module';
 import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
 import { SeasonModule } from './master/season/season.module';
 import { SegmentModule } from './master/segment/segment.module';
+=======
+import { CategoryModule } from './master/erp/category/category.module';
+import { TaxRateModule } from './master/erp/tax-rate/tax-rate.module';
+import { ItemClassModule } from './master/erp/item-class/item-class.module';
+import { ItemSubclassModule } from './master/erp/item-subclass/item-subclass.module';
+import { SeasonModule } from './master/erp/season/season.module';
+import { OldSeasonModule } from './master/erp/old-season/old-season.module';
+import { SegmentModule } from './master/erp/segment/segment.module';
+>>>>>>> Stashed changes
 import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
 
@@ -93,6 +103,10 @@ import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purch
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
 import { PosModule } from './master/pos/pos.module';
+<<<<<<< Updated upstream
+=======
+import { HsCodeModule } from './master/erp/hs-code/hs-code.module';
+>>>>>>> Stashed changes
 
 import { SearchModule } from './search/search.module';
 
@@ -172,12 +186,6 @@ import { SearchModule } from './search/search.module';
     ReceiptVoucherModule,
     TransferModule,
     CompanyModule,
-    CompanyGroupModule,
-    SalePoolModule,
-    SaleTypeModule,
-    SalesmanModule,
-    StorageDimensionModule,
-    MachineModule,
     BrandModule,
     GenderModule,
     SizeModule,
