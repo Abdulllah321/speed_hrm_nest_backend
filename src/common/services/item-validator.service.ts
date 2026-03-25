@@ -72,6 +72,25 @@ export class ItemValidatorService {
             }
         }
 
+        if (data.unitCost !== null && data.unitCost !== undefined) {
+            const cost = Number(data.unitCost);
+            if (isNaN(cost)) {
+                errors.push({
+                    row,
+                    field: 'UnitCost',
+                    value: data.unitCost,
+                    reason: 'UnitCost must be a valid number.',
+                });
+            } else if (cost < 0) {
+                errors.push({
+                    row,
+                    field: 'UnitCost',
+                    value: data.unitCost,
+                    reason: 'UnitCost must be zero or a positive value.',
+                });
+            }
+        }
+
         if (data.taxRate1 !== null && data.taxRate1 !== undefined) {
             const tr1 = Number(data.taxRate1);
             if (isNaN(tr1)) {

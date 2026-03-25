@@ -25,6 +25,8 @@ export interface HsCodeUploadProgress {
     successRecords: number;
     failedRecords: number;
     skippedRecords: number;
+    recsPerSec?: number;
+    memoryUsageMB?: number;
     errors: Array<{
         row: number;
         reason: string;
@@ -69,7 +71,6 @@ export class HsCodeUploadProcessor {
         }
 
         const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
-        this.logger.log(`[Job ${job.id}] Connected to tenant DB: ${tenantId}`);
 
         try {
             await prisma.bulkUpload.update({
@@ -83,86 +84,166 @@ export class HsCodeUploadProcessor {
                 data: { status: mode === 'validate' ? 'validating' : 'processing', message: mode === 'validate' ? 'Starting HS Code Validation...' : 'Starting HS Code Import...' }
             });
 
-            // Parsing
-            this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Parsing HS Code records...' } });
-            await job.progress(5);
-            const records = await this.csvParser.parseFile(fileBuffer, filename);
-            await job.progress(15);
-
-            if (records.length === 0) {
-                throw new Error('No valid HS Code records found in file');
-            }
-
-            this.logger.log(`[Job ${job.id}] Parsed ${records.length} HS Code records`);
-
-            await prisma.bulkUpload.update({
-                where: { id: uploadId },
-                data: { totalRecords: records.length },
-            });
-
-            this.eventsService.emit({
-                uploadId,
-                type: 'progress',
-                data: { progress: 15, totalRecords: records.length, processedRecords: 0 }
-            });
-
-            let allValidationErrors: any[] = [];
-
-            if (mode === 'import') {
-                const uploadRecord = await prisma.bulkUpload.findUnique({
-                    where: { id: uploadId },
-                    select: { errors: true }
-                });
-                if (uploadRecord && uploadRecord.errors) {
-                    allValidationErrors = (Array.isArray(uploadRecord.errors) ? uploadRecord.errors : []) as any[];
-                    this.logger.log(`[Job ${job.id}] Skipping validation in import mode. Loaded ${allValidationErrors.length} known errors.`);
-                }
-            } else {
-                // Validation (only run in validate mode)
-                this.eventsService.emit({ uploadId, type: 'status', data: { message: `Scanning ${records.length} HS Code records...` } });
-                await job.progress(20);
-
-                const validationErrors = await this.validator.validateRecords(records);
-                await job.progress(40);
-
-                const duplicateHsCodeErrors = this.validator.checkDuplicateHsCodes(records);
-                await job.progress(50);
-
-                allValidationErrors = [
-                    ...validationErrors,
-                    ...duplicateHsCodeErrors,
-                ];
-            }
-
-            const invalidRows = new Set(allValidationErrors.map(e => e.row));
-            const validRecords = records.filter(r => !invalidRows.has(r.row));
-
-            this.logger.log(`[Job ${job.id}] Validation result: ${validRecords.length} valid, ${allValidationErrors.length} invalid`);
-
             const progress: HsCodeUploadProgress = {
-                totalRecords: records.length,
+                totalRecords: 0,
                 processedRecords: 0,
                 successRecords: 0,
-                failedRecords: allValidationErrors.length,
+                failedRecords: 0,
                 skippedRecords: 0,
-                errors: allValidationErrors.map(e => ({
+                errors: [],
+            };
+
+            let totalRecordsCount = 0;
+            let successRecordsCount = 0;
+            let lastEmitTime = Date.now();
+            const hsCodeSet = new Set<string>(); // For duplicate detection in memory
+
+            if (mode === 'import') {
+                // Stage 2: Streaming Batch Import
+                this.logger.log(`[Job ${job.id}] Starting Streaming HS Code Import for ${uploadId}`);
+                
+                // Load existing validation errors from DB to know which rows to skip
+                const uploadRecord = await prisma.bulkUpload.findUnique({
+                    where: { id: uploadId },
+                    select: { errors: true, totalRecords: true }
+                });
+                
+                const allValidationErrors = (Array.isArray(uploadRecord?.errors) ? uploadRecord.errors : []) as any[];
+                const invalidRows = new Set(allValidationErrors.map(e => e.row));
+                const totalToBeProcessed = (uploadRecord?.totalRecords || 0) - invalidRows.size;
+
+                progress.totalRecords = uploadRecord?.totalRecords || 0;
+                progress.failedRecords = invalidRows.size;
+                progress.errors = allValidationErrors.map(e => ({
                     row: e.row,
                     reason: `${e.field}: ${e.reason}`,
                     data: { field: e.field, value: e.value },
-                })),
-            };
+                }));
 
-            if (mode === 'validate') {
-                // Just save validation results
+                const startTime = Date.now();
+                let importBatch: HsCodeParsedRecord[] = [];
+                
+                await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
+                    totalRecordsCount++;
+                    if (invalidRows.has(record.row)) return;
+
+                    importBatch.push(record);
+
+                    if (importBatch.length >= 1000) {
+                        await this.processBatch(importBatch, progress, uploadId, prisma);
+                        importBatch = []; // Clear memory
+
+                        // Yield to event loop
+                        await new Promise(resolve => setImmediate(resolve));
+
+                        // Throttled Progress Update (10Hz / 100ms)
+                        const now = Date.now();
+                        if (now - lastEmitTime > 100) {
+                            lastEmitTime = now;
+                            const elapsedSec = (now - startTime) / 1000;
+                            const recsPerSec = Math.round(progress.processedRecords / (elapsedSec || 1));
+                            const memoryUsageMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+                            const currentProgress = totalToBeProcessed > 0 ? Math.round((progress.processedRecords / totalToBeProcessed) * 100) : 0;
+                            
+                            if (now % 5000 < 100) {
+                                await prisma.bulkUpload.update({
+                                    where: { id: uploadId },
+                                    data: {
+                                        processedRecords: progress.processedRecords,
+                                        successRecords: progress.successRecords,
+                                        failedRecords: progress.failedRecords,
+                                        message: `Importing HS Codes: ${progress.processedRecords} @ ${recsPerSec} recs/s (Mem: ${memoryUsageMB}MB)`,
+                                    },
+                                });
+                            }
+
+                            await job.progress(currentProgress);
+                            this.eventsService.emit({
+                                uploadId,
+                                type: 'progress',
+                                data: {
+                                    progress: currentProgress,
+                                    processedRecords: progress.processedRecords,
+                                    successRecords: progress.successRecords,
+                                    failedRecords: progress.failedRecords,
+                                    recsPerSec,
+                                    memoryUsageMB,
+                                    status: 'processing'
+                                }
+                            });
+                        }
+                    }
+                });
+
+                // Final small batch
+                if (importBatch.length > 0) {
+                    await this.processBatch(importBatch, progress, uploadId, prisma);
+                }
+            } else {
+                // Stage 1: Validation Mode - Truly Streaming
+                this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Streaming HS Code validation scan...' } });
+
+                let validationBatch: HsCodeParsedRecord[] = [];
+                const allValidationErrors: any[] = [];
+
+                await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
+                    totalRecordsCount++;
+                    
+                    // Track duplicates in memory (lightweight compared to full records)
+                    if (record.data.hsCode) {
+                        const normalized = String(record.data.hsCode).trim().toLowerCase();
+                        if (hsCodeSet.has(normalized)) {
+                            allValidationErrors.push({
+                                row: record.row,
+                                field: 'HSCode',
+                                value: record.data.hsCode,
+                                reason: 'Duplicate HS Code found within file.'
+                            });
+                        } else {
+                            hsCodeSet.add(normalized);
+                        }
+                    }
+
+                    validationBatch.push(record);
+
+                    if (validationBatch.length >= 1000) {
+                        const batchErrors = await this.validator.validateRecords(validationBatch);
+                        allValidationErrors.push(...batchErrors);
+                        successRecordsCount += (validationBatch.length - batchErrors.length);
+                        validationBatch = []; // Clear memory
+
+                        // Throttled Progress
+                        const now = Date.now();
+                        if (now - lastEmitTime > 2000) {
+                            lastEmitTime = now;
+                            await job.progress(10);
+                            this.eventsService.emit({
+                                uploadId,
+                                type: 'progress',
+                                data: { progress: 10, status: 'validating', message: `Validating HS Codes: ${totalRecordsCount} rows scanned...` }
+                            });
+                        }
+                    }
+                });
+
+                if (validationBatch.length > 0) {
+                    const batchErrors = await this.validator.validateRecords(validationBatch);
+                    allValidationErrors.push(...batchErrors);
+                    successRecordsCount += (validationBatch.length - batchErrors.length);
+                }
+                
+                hsCodeSet.clear(); // Free memory
+
+                // Update DB with validation results
                 await prisma.bulkUpload.update({
                     where: { id: uploadId },
                     data: {
                         status: 'validated',
-                        totalRecords: records.length,
+                        totalRecords: totalRecordsCount,
                         failedRecords: allValidationErrors.length,
-                        successRecords: validRecords.length,
-                        errors: progress.errors as any,
-                        message: `HS Code validation complete: ${validRecords.length} valid, ${allValidationErrors.length} invalid.`,
+                        successRecords: successRecordsCount,
+                        errors: allValidationErrors as any,
+                        message: `HS Code validation complete: ${successRecordsCount} valid, ${allValidationErrors.length} invalid.`,
                         completedAt: new Date(),
                     },
                 });
@@ -170,7 +251,7 @@ export class HsCodeUploadProcessor {
                 await this.notificationsService.create({
                     userId,
                     title: 'HS Code Validation Completed',
-                    message: `HS Code bulk validation finished: ${validRecords.length} valid rows, ${allValidationErrors.length} invalid.`,
+                    message: `HS Code bulk validation finished: ${successRecordsCount} valid rows, ${allValidationErrors.length} invalid.`,
                     category: 'system',
                     priority: 'normal',
                     channels: ['inApp']
@@ -182,48 +263,14 @@ export class HsCodeUploadProcessor {
                     type: 'completed',
                     data: {
                         status: 'validated',
-                        totalRecords: records.length,
-                        successRecords: validRecords.length,
+                        totalRecords: totalRecordsCount,
+                        successRecords: successRecordsCount,
                         failedRecords: allValidationErrors.length,
-                        errors: progress.errors,
+                        errors: allValidationErrors,
                         progress: 100
                     }
                 });
                 return;
-            }
-
-            // Mode is 'import'
-            this.logger.log(`[Job ${job.id}] Importing ${validRecords.length} HS Codes`);
-            const batchSize = 50; // Smaller batches for HS Codes
-
-            for (let i = 0; i < validRecords.length; i += batchSize) {
-                const batch = validRecords.slice(i, i + batchSize);
-                await this.processBatch(batch, progress, uploadId, prisma);
-
-                await prisma.bulkUpload.update({
-                    where: { id: uploadId },
-                    data: {
-                        processedRecords: progress.processedRecords,
-                        successRecords: progress.successRecords,
-                        failedRecords: progress.failedRecords,
-                        message: `Importing: ${progress.processedRecords} of ${validRecords.length} HS Codes...`,
-                    },
-                });
-
-                const currentProgress = Math.round((progress.processedRecords / validRecords.length) * 100);
-                await job.progress(currentProgress);
-
-                this.eventsService.emit({
-                    uploadId,
-                    type: 'progress',
-                    data: {
-                        progress: currentProgress,
-                        processedRecords: progress.processedRecords,
-                        successRecords: progress.successRecords,
-                        failedRecords: progress.failedRecords,
-                        status: 'processing'
-                    }
-                });
             }
 
             await prisma.bulkUpload.update({
@@ -244,8 +291,6 @@ export class HsCodeUploadProcessor {
                 channels: ['inApp']
             });
 
-            this.logger.log(`[Job ${job.id}] HS Code Import COMPLETED: ${progress.successRecords} success, ${progress.failedRecords} failed`);
-
             this.eventsService.emit({
                 uploadId,
                 type: 'completed',
@@ -259,81 +304,95 @@ export class HsCodeUploadProcessor {
 
         } catch (error) {
             this.logger.error(`[Job ${job.id}] FAILED: ${error.message}`, error.stack);
-            await prisma.bulkUpload.update({
-                where: { id: uploadId },
-                data: {
-                    status: 'failed',
-                    completedAt: new Date(),
-                    message: `Error: ${error.message}`,
-                },
-            });
+            try {
+                await prisma.bulkUpload.update({
+                    where: { id: uploadId },
+                    data: {
+                        status: 'failed',
+                        completedAt: new Date(),
+                        message: `Error: ${error.message}`,
+                    },
+                });
 
-            await this.notificationsService.create({
-                userId,
-                title: 'HS Code Bulk Job Failed',
-                message: `The requested HS Code ${mode} job failed unexpectedly: ${error.message}`,
-                category: 'system',
-                priority: 'urgent',
-                channels: ['inApp']
-            });
+                await this.notificationsService.create({
+                    userId,
+                    title: 'HS Code Bulk Job Failed',
+                    message: `The requested HS Code ${mode} job failed unexpectedly: ${error.message}`,
+                    category: 'system',
+                    priority: 'urgent',
+                    channels: ['inApp']
+                });
 
-            this.eventsService.emit({ uploadId, type: 'failed', data: { message: error.message } });
+                this.eventsService.emit({ uploadId, type: 'failed', data: { message: error.message } });
+            } catch (e) {
+                this.logger.error(`Failed to update failure status in DB: ${e.message}`);
+            }
         } finally {
-            if (prisma) await prisma.$disconnect();
+            await prisma.$disconnect();
         }
     }
 
     /**
-     * Process a batch of HS Code records with individual error isolation
+     * Process a batch of HS Code records with individual error isolation and bulk operations
      */
     private async processBatch(batch: HsCodeParsedRecord[], progress: HsCodeUploadProgress, uploadId: string, prisma: PrismaService): Promise<void> {
+        // Bulk existence check for this batch
+        const hsCodes = batch.map(r => String(r.data.hsCode)).filter(Boolean);
+        const existingHsCodes = await prisma.hsCode.findMany({
+            where: { hsCode: { in: hsCodes } },
+            select: { hsCode: true }
+        });
+        const existingSet = new Set(existingHsCodes.map(i => i.hsCode));
+
+        const toCreate: any[] = [];
+        
         for (const record of batch) {
-            try {
-                // Individual record processing wrapped in try-catch
-                await this.processRecord(record, prisma);
-                progress.successRecords++;
-            } catch (error) {
-                // Log error but continue processing
-                this.logger.warn(`Failed to process HS Code row ${record.row}: ${error.message}`);
+            const hsCode = String(record.data.hsCode);
+            if (existingSet.has(hsCode)) {
+                // Log warning for existing HS Code and count as skipped/failed
+                this.logger.warn(`HS Code "${hsCode}" already exists at row ${record.row}. Skipping.`);
                 progress.failedRecords++;
                 progress.errors.push({
                     row: record.row,
-                    reason: error.message,
+                    reason: `HS Code "${hsCode}" already exists`,
                     data: record.data,
                 });
+            } else {
+                toCreate.push({
+                    hsCode: hsCode,
+                    customsDutyCd: Number(record.data.customsDutyCd) || 0,
+                    regulatoryDutyRd: Number(record.data.regulatoryDutyRd) || 0,
+                    additionalCustomsDutyAcd: Number(record.data.additionalCustomsDutyAcd) || 0,
+                    salesTax: Number(record.data.salesTax) || 0,
+                    additionalSalesTax: 0,
+                    incomeTax: Number(record.data.incomeTax) || 0,
+                    exciseCharges: 0,
+                    status: 'active',
+                });
             }
-
             progress.processedRecords++;
         }
-    }
 
-    private async processRecord(record: HsCodeParsedRecord, prisma: PrismaService): Promise<void> {
-        const { data } = record;
-
-        // Check if HS Code already exists
-        const existing = await prisma.hsCode.findFirst({
-            where: {
-                hsCode: String(data.hsCode),
-            },
-        });
-
-        if (existing) {
-            throw new Error(`HS Code "${data.hsCode}" already exists`);
+        // Execute Bulk Creation
+        if (toCreate.length > 0) {
+            try {
+                await prisma.hsCode.createMany({
+                    data: toCreate,
+                    skipDuplicates: true
+                });
+                progress.successRecords += toCreate.length;
+            } catch (error) {
+                this.logger.error(`Bulk create of HS Codes failed: ${error.message}`);
+                // Fallback to individual
+                for (const item of toCreate) {
+                    try {
+                        await prisma.hsCode.create({ data: item });
+                        progress.successRecords++;
+                    } catch (e) {
+                        progress.failedRecords++;
+                    }
+                }
+            }
         }
-
-        // Create HS Code record
-        await prisma.hsCode.create({
-            data: {
-                hsCode: String(data.hsCode),
-                customsDutyCd: data.customsDutyCd || 0,
-                regulatoryDutyRd: data.regulatoryDutyRd || 0,
-                additionalCustomsDutyAcd: data.additionalCustomsDutyAcd || 0,
-                salesTax: data.salesTax || 0,
-                additionalSalesTax: 0, // Not in upload data
-                incomeTax: data.incomeTax || 0,
-                exciseCharges: 0, // Not in upload data
-                status: 'active',
-            },
-        });
     }
-}
+}
