@@ -119,7 +119,7 @@ export class StockLedgerService {
       movementType: MovementType;
       referenceType: string;
       referenceId: string;
-      locationId?: string;
+      locationId?: string | null;
       rate?: number | Prisma.Decimal;
     },
     tx?: Prisma.TransactionClient,

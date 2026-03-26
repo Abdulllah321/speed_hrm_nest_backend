@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
+import { MovementType, Prisma } from '@prisma/client';
 
 
 @Injectable()
@@ -9,6 +11,7 @@ export class PosSalesService {
     constructor(
         private prisma: PrismaService,
         private prismaMaster: PrismaMasterService,
+        private stockLedgerService: StockLedgerService,
     ) { }
 
     // ─── Generate next SO number ──────────────────────────────────────
@@ -30,7 +33,7 @@ export class PosSalesService {
     }
 
     // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
-    async lookupItem(query: string) {
+    async lookupItem(query: string, locationId: string) {
         const searchTerm = query.trim();
         if (!searchTerm) return { status: false, message: 'Search query is required' };
 
@@ -55,12 +58,12 @@ export class PosSalesService {
         });
 
         // Enrich with master data names + stock levels
-        const enriched = await this.enrichForPos(items);
+        const enriched = await this.enrichForPos(items, locationId);
         return { status: true, data: enriched };
     }
 
     // ─── Quick barcode scan (exact match only, returns single item) ───
-    async scanBarcode(barcode: string) {
+    async scanBarcode(barcode: string, locationId: string) {
         const item = await this.prisma.item.findFirst({
             where: {
                 isActive: true,
@@ -78,146 +81,192 @@ export class PosSalesService {
 
         if (!item) return { status: false, message: 'Item not found for this barcode/SKU' };
 
-        const enriched = await this.enrichForPos([item]);
+        const enriched = await this.enrichForPos([item], locationId);
         return { status: true, data: enriched[0] };
     }
 
     // ─── Create sales order ───────────────────────────────────────────
     async createOrder(dto: CreateSalesOrderDto, cashierUserId?: string) {
         try {
-            const orderNumber = await this.generateOrderNumber();
+            return await this.prisma.$transaction(async (tx) => {
+                const orderNumber = await this.generateOrderNumber();
+                const locationId = dto.locationId;
 
-            // ── Resolve tenders ─────────────────────────────────────
-            const tenders = dto.tenders && dto.tenders.length > 0
-                ? dto.tenders
-                : dto.paymentMethod
-                    ? [{ method: dto.paymentMethod, amount: dto.cashAmount || dto.cardAmount || 0 }]
-                    : [{ method: 'cash', amount: 0 }];
+                // ── Resolve default warehouse ───────────────────────────
+                const warehouse = await tx.warehouse.findFirst({
+                    where: { isActive: true },
+                });
+                if (!warehouse) throw new Error('No active warehouse found');
 
-            const totalPaid = tenders.reduce((acc, t) => acc + Number(t.amount), 0);
-            const tenderMethods = [...new Set(tenders.map(t => t.method))];
-            const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
-            const cashAmount = tenders.filter(t => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
-            const cardAmount = tenders.filter(t => t.method !== 'cash').reduce((a, t) => a + Number(t.amount), 0);
+                // ── Resolve tenders ─────────────────────────────────────
+                const tenders = dto.tenders && dto.tenders.length > 0
+                    ? dto.tenders
+                    : dto.paymentMethod
+                        ? [{ method: dto.paymentMethod, amount: dto.cashAmount || dto.cardAmount || 0 }]
+                        : [{ method: 'cash', amount: 0 }];
 
-            // ── Resolve promo scope ──────────────────────────────────
-            const promoItemIds = dto.promoScope?.type === 'items' && dto.promoScope.itemIds?.length
-                ? new Set(dto.promoScope.itemIds)
-                : null; // null = apply to all
+                const totalPaid = tenders.reduce((acc, t) => acc + Number(t.amount), 0);
+                const tenderMethods = [...new Set(tenders.map(t => t.method))];
+                const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
+                const cashAmount = tenders.filter(t => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
+                const cardAmount = tenders.filter(t => t.method !== 'cash').reduce((a, t) => a + Number(t.amount), 0);
 
-            // ── Calculate line items ─────────────────────────────────
-            const itemsData = dto.items.map((lineItem) => {
-                const subtotal = lineItem.unitPrice * lineItem.quantity;
-                const discPct = lineItem.discountPercent || 0;
-                const discAmt = Math.round(subtotal * (discPct / 100) * 100) / 100;
-                const afterDisc = subtotal - discAmt;
-                const taxPct = lineItem.taxPercent || 0;
-                const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
+                // ── Resolve promo scope ──────────────────────────────────
+                const promoItemIds = dto.promoScope?.type === 'items' && dto.promoScope.itemIds?.length
+                    ? new Set(dto.promoScope.itemIds)
+                    : null; // null = apply to all
 
-                // Per-item promo discount (from frontend pre-calculated promoDiscountAmount)
-                const promoDisc = (promoItemIds === null || promoItemIds.has(lineItem.itemId))
-                    ? (lineItem.promoDiscountAmount || 0)
-                    : 0;
+                // ── Calculate line items ─────────────────────────────────
+                const itemsData = dto.items.map((lineItem) => {
+                    const subtotal = lineItem.unitPrice * lineItem.quantity;
+                    const discPct = lineItem.discountPercent || 0;
+                    const discAmt = Math.round(subtotal * (discPct / 100) * 100) / 100;
+                    const afterDisc = subtotal - discAmt;
+                    const taxPct = lineItem.taxPercent || 0;
+                    const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
 
-                const lineTotal = Math.round((afterDisc + taxAmt - promoDisc) * 100) / 100;
+                    const promoDisc = (promoItemIds === null || promoItemIds.has(lineItem.itemId))
+                        ? (lineItem.promoDiscountAmount || 0)
+                        : 0;
+
+                    const lineTotal = Math.round((afterDisc + taxAmt - promoDisc) * 100) / 100;
+
+                    return {
+                        itemId: lineItem.itemId,
+                        quantity: lineItem.quantity,
+                        unitPrice: lineItem.unitPrice,
+                        discountPercent: discPct,
+                        discountAmount: discAmt + promoDisc,
+                        taxPercent: taxPct,
+                        taxAmount: taxAmt,
+                        lineTotal: Math.max(0, lineTotal),
+                    };
+                });
+
+                const subtotal = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
+                const lineItemDiscount = itemsData.reduce((acc, i) => acc + i.discountAmount, 0);
+                const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
+                const lineItemTotal = itemsData.reduce((acc, i) => acc + i.lineTotal, 0);
+
+                let globalDiscAmt = 0;
+                if (dto.globalDiscountPercent) {
+                    globalDiscAmt = Math.round(lineItemTotal * (dto.globalDiscountPercent / 100) * 100) / 100;
+                } else if (dto.globalDiscountAmount) {
+                    globalDiscAmt = Math.min(dto.globalDiscountAmount, lineItemTotal);
+                }
+
+                const totalDiscount = lineItemDiscount + globalDiscAmt;
+                const grandTotal = Math.max(0, Math.round((lineItemTotal - globalDiscAmt) * 100) / 100);
+                const changeAmount = Math.max(0, totalPaid - grandTotal);
+
+                const notesParts: string[] = [];
+                if (dto.notes) notesParts.push(dto.notes);
+                if (dto.allianceMeta) {
+                    const m = dto.allianceMeta;
+                    const parts: string[] = [];
+                    if (m.cardholderName) parts.push(`Cardholder: ${m.cardholderName}`);
+                    if (m.cardLast4) parts.push(`Card: ****${m.cardLast4}`);
+                    if (m.merchantSlip) parts.push(`Slip: ${m.merchantSlip}`);
+                    if (parts.length) notesParts.push(`[Alliance] ${parts.join(' | ')}`);
+                }
+
+                const order = await tx.salesOrder.create({
+                    data: {
+                        orderNumber,
+                        posId: dto.posId,
+                        terminalId: dto.terminalId,
+                        locationId: dto.locationId,
+                        customerId: dto.customerId,
+                        cashierUserId,
+                        paymentMethod,
+                        notes: notesParts.join(' | ') || undefined,
+                        subtotal,
+                        discountAmount: totalDiscount,
+                        taxAmount: totalTax,
+                        grandTotal,
+                        status: 'completed',
+                        paymentStatus: totalPaid >= grandTotal ? 'paid' : 'partial',
+                        globalDiscountPercent: dto.globalDiscountPercent,
+                        globalDiscountAmount: globalDiscAmt || undefined,
+                        promoId: dto.promoId,
+                        couponId: dto.couponId,
+                        allianceId: dto.allianceId,
+                        tenderType: paymentMethod,
+                        cashAmount: cashAmount || undefined,
+                        cardAmount: cardAmount || undefined,
+                        changeAmount: changeAmount || undefined,
+                        items: {
+                            create: itemsData,
+                        },
+                    },
+                    include: {
+                        items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                        promo: { select: { name: true, code: true } },
+                        coupon: { select: { code: true, description: true } },
+                        alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                    },
+                });
+
+                // ── Update Stock (Deduct) ───────────────────────────────
+                for (const item of itemsData) {
+                    await this.stockLedgerService.createEntry({
+                        itemId: item.itemId,
+                        warehouseId: warehouse.id,
+                        locationId: locationId,
+                        qty: -item.quantity, // Negative for OUTBOUND
+                        movementType: MovementType.OUTBOUND,
+                        referenceType: 'POS_SALE',
+                        referenceId: order.id,
+                    }, tx);
+
+                    // ── Sync InventoryItem (for ERP visibility) ─────────
+                    // Find existing inventory item first
+                    const existingInventory = await tx.inventoryItem.findFirst({
+                        where: {
+                            itemId: item.itemId,
+                            locationId: locationId,
+                            status: 'AVAILABLE',
+                        },
+                    });
+
+                    if (existingInventory) {
+                        // Update existing inventory item
+                        await tx.inventoryItem.update({
+                            where: { id: existingInventory.id },
+                            data: { quantity: { decrement: item.quantity } },
+                        });
+                    } else {
+                        // If no record exists at this outlet, create one to reflect the sale
+                        // This ensures that ERP views (which read InventoryItem) see the deduction
+                        await tx.inventoryItem.create({
+                            data: {
+                                itemId: item.itemId,
+                                locationId: locationId,
+                                warehouseId: warehouse.id,
+                                quantity: -item.quantity,
+                                status: 'AVAILABLE',
+                            }
+                        });
+                    }
+                }
+
+                if (dto.couponId) {
+                    await tx.couponCode.update({
+                        where: { id: dto.couponId },
+                        data: { usedCount: { increment: 1 } },
+                    });
+                }
 
                 return {
-                    itemId: lineItem.itemId,
-                    quantity: lineItem.quantity,
-                    unitPrice: lineItem.unitPrice,
-                    discountPercent: discPct,
-                    discountAmount: discAmt + promoDisc,
-                    taxPercent: taxPct,
-                    taxAmount: taxAmt,
-                    lineTotal: Math.max(0, lineTotal),
+                    status: true,
+                    data: {
+                        ...order,
+                        tenders,
+                        changeAmount,
+                    },
+                    message: `Order ${orderNumber} created successfully`,
                 };
             });
-
-            const subtotal = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
-            const lineItemDiscount = itemsData.reduce((acc, i) => acc + i.discountAmount, 0);
-            const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
-            const lineItemTotal = itemsData.reduce((acc, i) => acc + i.lineTotal, 0);
-
-            // ── Apply global discount on top ─────────────────────────
-            let globalDiscAmt = 0;
-            if (dto.globalDiscountPercent) {
-                globalDiscAmt = Math.round(lineItemTotal * (dto.globalDiscountPercent / 100) * 100) / 100;
-            } else if (dto.globalDiscountAmount) {
-                globalDiscAmt = Math.min(dto.globalDiscountAmount, lineItemTotal);
-            }
-
-            const totalDiscount = lineItemDiscount + globalDiscAmt;
-            const grandTotal = Math.max(0, Math.round((lineItemTotal - globalDiscAmt) * 100) / 100);
-            const changeAmount = Math.max(0, totalPaid - grandTotal);
-
-            // ── Build notes — include alliance meta ──────────────────
-            const notesParts: string[] = [];
-            if (dto.notes) notesParts.push(dto.notes);
-            if (dto.allianceMeta) {
-                const m = dto.allianceMeta;
-                const parts: string[] = [];
-                if (m.cardholderName) parts.push(`Cardholder: ${m.cardholderName}`);
-                if (m.cardLast4) parts.push(`Card: ****${m.cardLast4}`);
-                if (m.merchantSlip) parts.push(`Slip: ${m.merchantSlip}`);
-                if (parts.length) notesParts.push(`[Alliance] ${parts.join(' | ')}`);
-            }
-
-            const order = await this.prisma.salesOrder.create({
-                data: {
-                    orderNumber,
-                    posId: dto.posId,
-                    terminalId: dto.terminalId,
-                    locationId: dto.locationId,
-                    customerId: dto.customerId,
-                    cashierUserId,
-                    paymentMethod,
-                    notes: notesParts.join(' | ') || undefined,
-                    subtotal,
-                    discountAmount: totalDiscount,
-                    taxAmount: totalTax,
-                    grandTotal,
-                    status: 'completed',
-                    paymentStatus: totalPaid >= grandTotal ? 'paid' : 'partial',
-                    // Discount tracking
-                    globalDiscountPercent: dto.globalDiscountPercent,
-                    globalDiscountAmount: globalDiscAmt || undefined,
-                    promoId: dto.promoId,
-                    couponId: dto.couponId,
-                    allianceId: dto.allianceId,
-                    // Tender summary
-                    tenderType: paymentMethod,
-                    cashAmount: cashAmount || undefined,
-                    cardAmount: cardAmount || undefined,
-                    changeAmount: changeAmount || undefined,
-                    items: {
-                        create: itemsData,
-                    },
-                },
-                include: {
-                    items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
-                    promo: { select: { name: true, code: true } },
-                    coupon: { select: { code: true, description: true } },
-                    alliance: { select: { partnerName: true, code: true, discountPercent: true } },
-                },
-            });
-
-            // Increment coupon usage if used
-            if (dto.couponId) {
-                await this.prisma.couponCode.update({
-                    where: { id: dto.couponId },
-                    data: { usedCount: { increment: 1 } },
-                });
-            }
-
-            return {
-                status: true,
-                data: {
-                    ...order,
-                    tenders, // include tenders in response for receipt
-                    changeAmount,
-                },
-                message: `Order ${orderNumber} created successfully`,
-            };
         } catch (error: any) {
             return { status: false, message: error.message };
         }
@@ -314,25 +363,94 @@ export class PosSalesService {
     // ─── Void order ───────────────────────────────────────────────────
     async voidOrder(id: string) {
         try {
-            const order = await this.prisma.salesOrder.update({
-                where: { id },
-                data: { status: 'voided' },
+            return await this.prisma.$transaction(async (tx) => {
+                // Get the order with items first
+                const order = await tx.salesOrder.findUnique({
+                    where: { id },
+                    include: { items: true },
+                });
+
+                if (!order) {
+                    return { status: false, message: 'Order not found' };
+                }
+
+                if (order.status === 'voided') {
+                    return { status: false, message: 'Order is already voided' };
+                }
+
+                // Update order status to voided
+                const voidedOrder = await tx.salesOrder.update({
+                    where: { id },
+                    data: { status: 'voided' },
+                });
+
+                // Resolve default warehouse
+                const warehouse = await tx.warehouse.findFirst({
+                    where: { isActive: true },
+                });
+                if (!warehouse) throw new Error('No active warehouse found');
+
+                // Restore inventory for each item
+                for (const item of order.items) {
+                    // Create stock ledger entry to restore stock
+                    await this.stockLedgerService.createEntry({
+                        itemId: item.itemId,
+                        warehouseId: warehouse.id,
+                        locationId: order.locationId,
+                        qty: item.quantity, // Positive to restore stock
+                        movementType: MovementType.INBOUND,
+                        referenceType: 'POS_VOID',
+                        referenceId: order.id,
+                    }, tx);
+
+                    // Restore InventoryItem quantity
+                    const existingInventory = await tx.inventoryItem.findFirst({
+                        where: {
+                            itemId: item.itemId,
+                            locationId: order.locationId,
+                            status: 'AVAILABLE',
+                        },
+                    });
+
+                    if (existingInventory) {
+                        // Update existing inventory item
+                        await tx.inventoryItem.update({
+                            where: { id: existingInventory.id },
+                            data: { quantity: { increment: item.quantity } },
+                        });
+                    } else {
+                        // Create new inventory item if none exists
+                        await tx.inventoryItem.create({
+                            data: {
+                                itemId: item.itemId,
+                                locationId: order.locationId,
+                                warehouseId: warehouse.id,
+                                quantity: item.quantity,
+                                status: 'AVAILABLE',
+                            }
+                        });
+                    }
+                }
+
+                return { status: true, data: voidedOrder, message: 'Order voided and inventory restored' };
             });
-            return { status: true, data: order, message: 'Order voided' };
         } catch (error: any) {
             return { status: false, message: error.message };
         }
     }
 
     // ─── Enrich items with master data + stock for POS display ────────
-    private async enrichForPos(items: any[]) {
+    private async enrichForPos(items: any[], locationId: string) {
         if (!items.length) return [];
 
         const itemIds = items.map((i) => i.id);
 
         const stockEntries = await this.prisma.stockLedger.groupBy({
             by: ['itemId'],
-            where: { itemId: { in: itemIds } },
+            where: {
+                itemId: { in: itemIds },
+                locationId: locationId,
+            },
             _sum: { qty: true },
         });
 

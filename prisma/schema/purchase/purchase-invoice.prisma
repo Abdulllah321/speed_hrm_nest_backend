@@ -12,6 +12,7 @@ model PurchaseInvoice {
   totalAmount     Decimal               @default(0.0) @map("total_amount") @db.Decimal(15, 2)
   paidAmount      Decimal               @default(0.0) @map("paid_amount") @db.Decimal(15, 2)
   remainingAmount Decimal               @default(0.0) @map("remaining_amount") @db.Decimal(15, 2)
+  returnAmount    Decimal               @default(0.0) @map("return_amount") @db.Decimal(15, 2)
   paymentStatus   String                @default("UNPAID") @map("payment_status")
   status          String                @default("DRAFT")
   notes           String?
@@ -22,6 +23,7 @@ model PurchaseInvoice {
   grn             GoodsReceiptNote?     @relation(fields: [grnId], references: [id])
   landedCost      LandedCost?           @relation(fields: [landedCostId], references: [id])
   paymentVouchers PaymentVoucherToInvoice[]
+  debitNotes      DebitNote[]
 
   @@map("purchase_invoices")
 }

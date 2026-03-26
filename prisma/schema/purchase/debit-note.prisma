@@ -1,0 +1,20 @@
+model DebitNote {
+  id                String          @id @default(uuid())
+  debitNoteNo       String          @unique @map("debit_note_no")
+  date              DateTime        @default(now())
+  amount            Decimal         @db.Decimal(15, 2)
+  status            String          @default("APPROVED") // DRAFT, APPROVED, CANCELLED
+  
+  purchaseReturnId  String?         @unique @map("purchase_return_id")
+  purchaseInvoiceId String?         @map("purchase_invoice_id")
+  supplierId        String          @map("supplier_id")
+  
+  purchaseReturn    PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  supplier          Supplier        @relation(fields: [supplierId], references: [id])
+  
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  @@map("debit_notes")
+}
