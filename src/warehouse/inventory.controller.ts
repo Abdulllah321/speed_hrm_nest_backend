@@ -30,8 +30,9 @@ export class InventoryController {
   async searchInventory(
     @Query('q') query: string,
     @Query('warehouseId') warehouseId?: string,
+    @Query('locationId') locationId?: string,
   ) {
-    const data = await this.inventoryService.searchInventory(query, warehouseId);
+    const data = await this.inventoryService.searchInventory(query, warehouseId, locationId);
     return { status: true, data };
   }
 }

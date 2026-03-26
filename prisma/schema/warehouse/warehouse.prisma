@@ -16,6 +16,7 @@ model Warehouse {
   goodsReceiptNotes  GoodsReceiptNote[]
   stockLedgerEntries StockLedger[]
   inventoryItems     InventoryItem[]
+  purchaseReturns    PurchaseReturn[]
   fromTransferRequests TransferRequest[] @relation("TransferRequest_fromWarehouse")
   toTransferRequests   TransferRequest[] @relation("TransferRequest_toWarehouse")
 
