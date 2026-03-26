@@ -106,7 +106,9 @@ import { SearchModule } from './search/search.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PosSalesModule } from './pos-sales/pos-sales.module';
 import { PosConfigModule } from './pos-config/pos-config.module';
+import { PurchaseReturnModule } from './purchase/purchase-return/purchase-return.module';
 import { PosSessionModule } from './pos-session/pos-session.module';
+import { DebitNoteModule } from './purchase/debit-note/debit-note.module';
 
 @Module({
   imports: [
@@ -228,6 +230,7 @@ import { PosSessionModule } from './pos-session/pos-session.module';
     VendorQuotationModule,
     PurchaseOrderModule,
     PurchaseInvoiceModule,
+    PurchaseReturnModule,
     GrnModule,
     LandedCostModule,
     PosModule,
@@ -238,6 +241,7 @@ import { PosSessionModule } from './pos-session/pos-session.module';
     PosSalesModule,
     PosConfigModule,
     PosSessionModule,
+    DebitNoteModule,
   ],
   controllers: [AppController],
   providers: [AppService],

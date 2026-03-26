@@ -28,9 +28,12 @@ model Supplier {
   landedCosts      LandedCost[]
   purchaseOrders   PurchaseOrder[]
   purchaseInvoices PurchaseInvoice[]
+  purchaseReturns  PurchaseReturn[]
   rfqVendors       RequestForQuotationVendor[]
   vendorQuotations VendorQuotation[]
   chartOfAccounts  ChartOfAccount[]            @relation("ChartOfAccountToSupplier")
+  debitNotes      DebitNote[]
+
 
   @@index([nature])
   @@index([type])

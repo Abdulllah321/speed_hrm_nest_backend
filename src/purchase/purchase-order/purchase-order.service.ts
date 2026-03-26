@@ -90,38 +90,41 @@ export class PurchaseOrderService {
     const poNumber = `PO-${Date.now()}`;
 
     let subtotal = new Decimal(0);
-    let taxAmount = new Decimal(0);
-    let discountAmount = new Decimal(0);
 
     const itemsData = createDto.items.map((item) => {
       const qty = new Decimal(item.quantity);
       const price = new Decimal(item.unitPrice);
-      const tax = new Decimal(item.taxPercent || 0);
-      const discount = new Decimal(item.discountPercent || 0);
 
-      const baseLine = qty.mul(price);
-      const lineTax = baseLine.mul(tax).div(100);
-      const lineDiscount = baseLine.mul(discount).div(100);
-      const lineTotal = baseLine.add(lineTax).sub(lineDiscount);
-
-      subtotal = subtotal.add(baseLine);
-      taxAmount = taxAmount.add(lineTax);
-      discountAmount = discountAmount.add(lineDiscount);
+      const lineTotal = qty.mul(price);
+      subtotal = subtotal.add(lineTotal);
 
       return {
         itemId: item.itemId,
         description: item.description,
         quantity: qty,
         unitPrice: price,
-        taxPercent: tax,
-        discountPercent: discount,
+        taxPercent: new Decimal(0),
+        discountPercent: new Decimal(0),
         lineTotal: lineTotal,
       };
     });
 
-    const totalAmount = subtotal.add(taxAmount).sub(discountAmount);
+    const totalAmount = subtotal;
 
     return this.prisma.$transaction(async (tx) => {
+      let finalOrderType = createDto.orderType;
+      let finalGoodsType = createDto.goodsType;
+
+      if ((!finalOrderType || !finalGoodsType) && createDto.purchaseRequisitionId) {
+        const pr = await tx.purchaseRequisition.findUnique({
+          where: { id: createDto.purchaseRequisitionId },
+        });
+        if (pr) {
+          if (!finalOrderType) finalOrderType = pr.type?.toUpperCase();
+          if (!finalGoodsType) finalGoodsType = pr.goodsType?.toUpperCase();
+        }
+      }
+
       return tx.purchaseOrder.create({
         data: {
           poNumber,
@@ -131,12 +134,12 @@ export class PurchaseOrderService {
           expectedDeliveryDate: createDto.expectedDeliveryDate
             ? new Date(createDto.expectedDeliveryDate)
             : null,
-          orderType: createDto.orderType || null,
-          goodsType: createDto.goodsType || null,
+          orderType: finalOrderType || null,
+          goodsType: finalGoodsType || null,
           status: 'OPEN',
           subtotal,
-          taxAmount,
-          discountAmount,
+          taxAmount: new Decimal(0),
+          discountAmount: new Decimal(0),
           totalAmount,
           items: {
             create: itemsData,
@@ -204,7 +207,7 @@ export class PurchaseOrderService {
           expectedDeliveryDate: createDto.expectedDeliveryDate
             ? new Date(createDto.expectedDeliveryDate)
             : null,
-          orderType: createDto.orderType || null,
+          orderType: createDto.orderType || quotation.rfq?.purchaseRequisition?.type?.toUpperCase() || null,
           goodsType: createDto.goodsType || quotation.rfq?.purchaseRequisition?.goodsType || null,
           status: 'OPEN',
           subtotal: quotation.subtotal,
@@ -344,7 +347,7 @@ export class PurchaseOrderService {
             expectedDeliveryDate: group.expectedDeliveryDate
               ? new Date(group.expectedDeliveryDate)
               : null,
-            orderType: group.orderType || null,
+            orderType: group.orderType || rfq.purchaseRequisition?.type?.toUpperCase() || null,
             goodsType: group.goodsType || rfq.purchaseRequisition?.goodsType || null,
             status: 'OPEN',
             subtotal,
@@ -386,36 +389,26 @@ export class PurchaseOrderService {
         }
 
         let subtotal = new Decimal(0);
-        let taxAmount = new Decimal(0);
-        let discountAmount = new Decimal(0);
 
         const itemsData = group.items.map((item) => {
           const qty = new Decimal(item.quantity);
           const price = new Decimal(item.unitPrice);
-          const tax = new Decimal(item.taxPercent || 0);
-          const discount = new Decimal(item.discountPercent || 0);
 
-          const baseLine = qty.mul(price);
-          const lineTax = baseLine.mul(tax).div(100);
-          const lineDiscount = baseLine.mul(discount).div(100);
-          const lineTotal = baseLine.add(lineTax).sub(lineDiscount);
-
-          subtotal = subtotal.add(baseLine);
-          taxAmount = taxAmount.add(lineTax);
-          discountAmount = discountAmount.add(lineDiscount);
+          const lineTotal = qty.mul(price);
+          subtotal = subtotal.add(lineTotal);
 
           return {
             itemId: item.itemId,
             description: item.description,
             quantity: qty,
             unitPrice: price,
-            taxPercent: tax,
-            discountPercent: discount,
+            taxPercent: new Decimal(0),
+            discountPercent: new Decimal(0),
             lineTotal,
           };
         });
 
-        const totalAmount = subtotal.add(taxAmount).sub(discountAmount);
+        const totalAmount = subtotal;
         const poNumber = `PO-${Date.now()}`;
 
         const po = await tx.purchaseOrder.create({
@@ -430,8 +423,8 @@ export class PurchaseOrderService {
             goodsType: group.goodsType || null,
             status: 'OPEN',
             subtotal,
-            taxAmount,
-            discountAmount,
+            taxAmount: new Decimal(0),
+            discountAmount: new Decimal(0),
             totalAmount,
             items: { create: itemsData },
           },
