@@ -15,6 +15,7 @@ model GoodsReceiptNote {
   warehouse          Warehouse              @relation(fields: [warehouseId], references: [id])
   landedCosts        LandedCost[]
   purchaseInvoices   PurchaseInvoice[]
+  purchaseReturns    PurchaseReturn[]
 
   @@map("goods_receipt_notes")
 }
@@ -29,6 +30,7 @@ model GoodsReceiptNoteItem {
   updatedAt          DateTime         @updatedAt @map("updated_at")
   goodsReceiptNote     GoodsReceiptNote      @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
   purchaseInvoiceItems PurchaseInvoiceItem[]
+  purchaseReturnItems  PurchaseReturnItem[]
 
   @@map("goods_receipt_note_items")
 }

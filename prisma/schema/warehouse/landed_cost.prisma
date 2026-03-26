@@ -41,6 +41,7 @@ model LandedCost {
   purchaseOrder       PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
   supplier            Supplier         @relation(fields: [supplierId], references: [id])
   purchaseInvoices    PurchaseInvoice[]
+  purchaseReturns     PurchaseReturn[]
 
   @@map("landed_costs")
 }
@@ -90,6 +91,7 @@ model LandedCostItem {
   sku                         String?
   totalOtherCharges           Decimal    @default(0) @map("total_other_charges") @db.Decimal(15, 2)
   landedCost                  LandedCost @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
+  purchaseReturnItems         PurchaseReturnItem[]
 
   @@map("landed_cost_items")
 }
