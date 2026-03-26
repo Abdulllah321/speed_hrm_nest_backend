@@ -16,6 +16,9 @@ import { CompanyService } from '../admin/company/company.service';
 import { PosService } from '../master/pos/pos.service';
 import { EncryptionService } from '../common/utils/encryption.service';
 import { PosSessionService } from '../pos-session/pos-session.service';
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(""d+)([smhd])$/);
@@ -874,26 +877,69 @@ export class AuthService {
     );
 
     // ── Check for existing active session ──
-    let session = await this.prisma.posSession.findFirst({
-      where: { posId: terminalId, status: 'open' },
-      orderBy: { openedAt: 'desc' },
-    });
+    // Determine which prisma client to use for session management
+    let sessionPrisma: any = this.prisma;
+    let tempPool: any = null;
+    let isTemp = false;
+    let session: any = null;
 
-    if (!session) {
-      // Create a new PosSession record
-      session = await this.prisma.posSession.create({
-        data: {
-          posId: terminalId,
-          status: 'open',
-          token: accessToken,
-        },
+    if (!this.prisma.getTenantId()) {
+      // If no context, we must create a temporary one for this specific company
+      if (company?.dbUrl) {
+        let dbUrl = company.dbUrl;
+        let dbPassword = '';
+        if (company.dbPassword) {
+          try {
+            dbPassword = this.encryptionService.decrypt(company.dbPassword);
+          } catch (e) { }
+        }
+
+        try {
+          tempPool = new Pool({
+            user: company.dbUser || undefined,
+            host: company.dbHost || undefined,
+            database: company.dbName || undefined,
+            password: dbPassword || undefined,
+            port: company.dbPort || 5432,
+            max: 1,
+            connectionTimeoutMillis: 2000,
+          });
+          const adapter = new PrismaPg(tempPool);
+          sessionPrisma = new PrismaClient({ adapter: adapter as any });
+          isTemp = true;
+        } catch (e) {
+          this.logger.error(`Failed to create temporary session prisma: ${e.message}`);
+        }
+      }
+    }
+
+    try {
+      session = await sessionPrisma.posSession.findFirst({
+        where: { posId: terminalId, status: 'open' },
+        orderBy: { openedAt: 'desc' },
       });
-    } else {
-      // Update the existing session with the new token
-      session = await this.prisma.posSession.update({
-        where: { id: session.id },
-        data: { token: accessToken },
-      });
+
+      if (!session) {
+        // Create a new PosSession record
+        session = await sessionPrisma.posSession.create({
+          data: {
+            posId: terminalId,
+            status: 'open',
+            token: accessToken,
+          },
+        });
+      } else {
+        // Update the existing session with the new token
+        session = await sessionPrisma.posSession.update({
+          where: { id: session.id },
+          data: { token: accessToken },
+        });
+      }
+    } finally {
+      if (isTemp && sessionPrisma) {
+        await sessionPrisma.$disconnect();
+        if (tempPool) await tempPool.end();
+      }
     }
 
     return {
