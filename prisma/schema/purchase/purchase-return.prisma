@@ -1,0 +1,52 @@
+model PurchaseReturn {
+  id                String                @id @default(uuid())
+  returnNumber      String                @unique @map("return_number")
+  sourceType        String                @map("source_type") // GRN, LANDED_COST
+  grnId             String?               @map("grn_id")
+  landedCostId      String?               @map("landed_cost_id")
+  supplierId        String                @map("supplier_id")
+  warehouseId       String                @map("warehouse_id")
+  returnDate        DateTime              @default(now()) @map("return_date")
+  returnType        String                @default("DEFECTIVE") // DEFECTIVE, EXCESS, WRONG_ITEM, DAMAGED
+  reason            String?
+  status            String                @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
+  subtotal          Decimal               @default(0) @db.Decimal(15, 2)
+  taxAmount         Decimal               @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  totalAmount       Decimal               @default(0) @map("total_amount") @db.Decimal(15, 2)
+  notes             String?
+  approvedBy        String?               @map("approved_by")
+  approvedAt        DateTime?             @map("approved_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  
+  items             PurchaseReturnItem[]
+  grn               GoodsReceiptNote?     @relation(fields: [grnId], references: [id])
+  landedCost        LandedCost?           @relation(fields: [landedCostId], references: [id])
+  supplier          Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse         Warehouse             @relation(fields: [warehouseId], references: [id])
+  debitNote         DebitNote?
+  
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnItem {
+  id                String         @id @default(uuid())
+  purchaseReturnId  String         @map("purchase_return_id")
+  sourceItemType    String         @map("source_item_type") // GRN_ITEM, LANDED_COST_ITEM
+  grnItemId         String?        @map("grn_item_id")
+  landedCostItemId  String?        @map("landed_cost_item_id")
+  itemId            String         @map("item_id")
+  description       String?
+  returnQty         Decimal        @map("return_qty") @db.Decimal(15, 4)
+  unitPrice         Decimal        @map("unit_price") @db.Decimal(15, 2)
+  lineTotal         Decimal        @map("line_total") @db.Decimal(15, 2)
+  reason            String?
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  
+  purchaseReturn    PurchaseReturn       @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
+  grnItem           GoodsReceiptNoteItem? @relation(fields: [grnItemId], references: [id])
+  landedCostItem    LandedCostItem?      @relation(fields: [landedCostItemId], references: [id])
+  
+  @@map("purchase_return_items")
+}
