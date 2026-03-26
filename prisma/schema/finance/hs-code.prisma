@@ -1,0 +1,17 @@
+model HsCode {
+  id                       String   @id @default(uuid())
+  hsCode                   String   @unique @map("hs_code")
+  customsDutyCd            Decimal  @default(0) @map("customs_duty_cd") @db.Decimal(10, 2)
+  regulatoryDutyRd         Decimal  @default(0) @map("regulatory_duty_rd") @db.Decimal(10, 2)
+  additionalCustomsDutyAcd Decimal  @default(0) @map("additional_customs_duty_acd") @db.Decimal(10, 2)
+  salesTax                 Decimal  @default(0) @map("sales_tax") @db.Decimal(10, 2)
+  additionalSalesTax       Decimal  @default(0) @map("additional_sales_tax") @db.Decimal(10, 2)
+  incomeTax                Decimal  @default(0) @map("income_tax") @db.Decimal(10, 2)
+  status                   String   @default("active")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  exciseCharges            Decimal  @default(0) @map("excise_charges") @db.Decimal(10, 2)
+  items                    Item[]
+
+  @@map("hs_codes")
+}

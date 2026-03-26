@@ -20,7 +20,7 @@ export class ChartOfAccountService {
     const { code, parentId } = createDto;
 
     // Check for unique code
-    const existing = await this.prisma.chartOfAccount.findUnique({
+    const existing = await this.prisma.chartOfAccount.findFirst({
       where: { code },
     });
     if (existing) {
@@ -91,7 +91,7 @@ export class ChartOfAccountService {
 
     // If changing code, check uniqueness
     if (updateDto.code && updateDto.code !== account.code) {
-      const existing = await this.prisma.chartOfAccount.findUnique({
+      const existing = await this.prisma.chartOfAccount.findFirst({
         where: { code: updateDto.code },
       });
       if (existing) {

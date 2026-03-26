@@ -7,7 +7,6 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 export class AttendanceRequestQueryService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -51,7 +50,7 @@ export class AttendanceRequestQueryService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -69,7 +68,7 @@ export class AttendanceRequestQueryService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -107,7 +106,6 @@ export class AttendanceRequestQueryService {
   }
 
   async list() {
-
     const queries = await this.prisma.attendanceRequestQuery.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
@@ -123,10 +121,10 @@ export class AttendanceRequestQueryService {
     });
 
     // Fetch all departments and designations for mapping from Master DB
-    const departments = await this.prismaMaster.department.findMany({
+    const departments = await this.prisma.department.findMany({
       include: { subDepartments: true },
     });
-    const designations = await this.prismaMaster.designation.findMany();
+    const designations = await this.prisma.designation.findMany();
 
     // Map IDs to names
     const mappedQueries = queries.map((query) => {
@@ -158,7 +156,6 @@ export class AttendanceRequestQueryService {
   }
 
   async get(id: string) {
-
     const query = await this.prisma.attendanceRequestQuery.findUnique({
       where: { id },
       include: {
@@ -179,7 +176,7 @@ export class AttendanceRequestQueryService {
 
     // Fetch department and designation for mapping from Master DB
     const department = query.department
-      ? await this.prismaMaster.department.findUnique({
+      ? await this.prisma.department.findUnique({
         where: { id: query.department },
         include: { subDepartments: true },
       })
@@ -191,7 +188,7 @@ export class AttendanceRequestQueryService {
         : null;
 
     const designation = query.employee?.designationId
-      ? await this.prismaMaster.designation.findUnique({
+      ? await this.prisma.designation.findUnique({
         where: { id: query.employee.designationId },
       })
       : null;
@@ -213,7 +210,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!body.employeeId) {
         return {
           status: false,
@@ -399,7 +395,6 @@ export class AttendanceRequestQueryService {
     }
 
     try {
-
       const existing = await this.prisma.attendanceRequestQuery.findUnique({
         where: { id },
       });
@@ -506,7 +501,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -813,7 +807,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.attendanceRequestQuery.findUnique({
         where: { id },
       });
@@ -865,7 +858,6 @@ export class AttendanceRequestQueryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       await this.prisma.attendanceRequestQuery.deleteMany({
         where: { id: { in: ids } },
       });

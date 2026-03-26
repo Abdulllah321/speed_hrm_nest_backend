@@ -8,8 +8,15 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PrismaMasterService } from '../database/prisma-master.service';
+import { PrismaService } from '../database/prisma.service';
+
+import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export const OptionalJwtAuth = () => SetMetadata('isOptional', true);
 import {
   ApiTags,
   ApiOperation,
@@ -21,13 +28,16 @@ import {
   LoginDto,
   RefreshTokenDto,
   ChangePasswordDto,
-  UpdateUserDto,
+  UpdateUserProfileDto,
 } from './dto/login.dto';
 
 @ApiTags('Auth')
 @Controller('api/auth')
 export class AuthController {
-  constructor(private service: AuthService) { }
+  constructor(
+    private service: AuthService,
+    private prisma: PrismaService,
+  ) { }
 
   private getCookieOptions(req: any) {
     const isProd = process.env.NODE_ENV === 'production';
@@ -110,15 +120,28 @@ export class AuthController {
     const ipAddress =
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
+
+    // Get Browser ID from cookie or generate new one
+    let browserId = req.cookies?.bid;
+    const cookieOptions = this.getCookieOptions(req);
+
     const result = await this.service.login(
       body.email,
       body.password,
       ipAddress,
       userAgent,
+      browserId
     );
 
     if (result.status && result.data) {
-      const cookieOptions = this.getCookieOptions(req);
+      // If no browserId existed, set one now
+      if (!browserId) {
+        browserId = uuidv4();
+        res.setCookie('bid', browserId, {
+          ...cookieOptions,
+          maxAge: 365 * 24 * 60 * 60 * 10, // 10 years
+        });
+      }
 
       // Set access token (7 days to match JWT expiry)
       res.setCookie('accessToken', result.data.accessToken, {
@@ -144,10 +167,19 @@ export class AuthController {
         maxAge: 30 * 24 * 60 * 60,
       });
 
+      // Set session ID
+      res.setCookie('sessionId', result.data.sessionId, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
       return res.send({
         status: true,
         message: 'Login successful',
-        data: { user: result.data.user },
+        data: {
+          user: result.data.user,
+          sessionId: result.data.sessionId
+        },
       });
     }
 
@@ -155,6 +187,177 @@ export class AuthController {
       status: false,
       message: result.message || 'Login failed',
     });
+  }
+
+  @Post('pos/context')
+  @ApiOperation({ summary: 'Get POS Login Context' })
+  async getPosContext(@Body() body: any, @Req() req: any, @Res() res: any) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+
+    const result = await this.service.getPosLoginContext(
+      ipAddress,
+      body.code,
+      body.lat,
+      body.lng,
+    );
+
+    if (result.status) {
+      return res.status(200).send(result);
+    }
+    return res.status(400).send(result);
+  }
+
+  @Post('pos/global-context')
+  @ApiOperation({ summary: 'Get POS Login Context across all Tenants' })
+  async getGlobalPosContext(@Body() body: { code: string }, @Req() req: any, @Res() res: any) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+
+    const result = await this.service.getGlobalPosLoginContext(ipAddress, body.code);
+
+    if (result.status) {
+      return res.status(200).send(result);
+    }
+    return res.status(400).send(result);
+  }
+
+  @Post('pos-login')
+  @OptionalJwtAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Login for POS Terminal' })
+  @ApiResponse({ status: 200, description: 'POS Terminal Login successful' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async posLogin(
+    @Body() body: { terminalCode: string, pin: string },
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    // 1. Verify Terminal PIN
+    const validation = await this.service.posTerminalLogin(
+      body.terminalCode,
+      body.pin,
+    );
+
+    if (!validation.status || !validation.data) {
+      return res.status(401).send(validation);
+    }
+
+    const terminalData = validation.data as any;
+
+    // 2. Set strict terminal-only token (posTerminalToken)
+    // This token proves the DEVICE is a registered, trusted POS screen.
+    const cookieOptions = this.getCookieOptions(req);
+    res.setCookie('posTerminalToken', terminalData.accessToken, {
+      ...cookieOptions,
+      maxAge: 365 * 24 * 60 * 60 // 1 year cookie for physical terminal registration 
+    });
+
+    return res.send(validation);
+  }
+
+  @Post('pos/user-login')
+  @OptionalJwtAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Login a user into an already-authenticated POS terminal' })
+  async posUserLogin(
+    @Body() body: { email: string; password: string },
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const posTerminalToken = req.cookies?.['posTerminalToken'];
+    if (!posTerminalToken) {
+      return res.status(401).send({ status: false, message: 'Terminal not authenticated. Complete the terminal setup first.' });
+    }
+
+    let terminalContext: any;
+    try {
+      const jwt = require('jsonwebtoken');
+      terminalContext = jwt.decode(posTerminalToken);
+    } catch {
+      return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
+    }
+
+    if (!terminalContext || !terminalContext.terminalId) {
+      return res.status(401).send({ status: false, message: 'Invalid terminal context.' });
+    }
+
+    const terminalSession = await this.prisma.posSession.findFirst({
+      where: { posId: terminalContext.terminalId, status: 'open' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!terminalSession?.token) {
+      return res.status(401).send({ status: false, message: 'Terminal session not found or expired. Please re-setup terminal.' });
+    }
+
+    const context = {
+      terminalId: terminalContext.terminalId,
+      posId: terminalContext.posId || terminalContext.terminalId,
+      locationId: terminalContext.locationId || '',
+      posSessionId: terminalSession.id,
+      tenantId: terminalContext.tenantId || '',
+    };
+
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
+
+    const result = await this.service.posUserLoginStandard(body.email, body.password, context, deviceInfo);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+      res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      return res.send(result);
+    }
+
+    return res.status(401).send(result);
+  }
+
+  @Post('pos/switch-session')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Link an active user session to a POS terminal' })
+  async posSwitchSession(@Req() req: any, @Res() res: any) {
+    const posTerminalToken = req.cookies?.['posTerminalToken'];
+    if (!posTerminalToken) {
+      return res.status(401).send({ status: false, message: 'Terminal not authenticated' });
+    }
+
+    let terminalContext: any;
+    try {
+      const jwt = require('jsonwebtoken');
+      terminalContext = jwt.decode(posTerminalToken);
+    } catch {
+      return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
+    }
+
+    const terminalSession = await this.prisma.posSession.findFirst({
+      where: { posId: terminalContext?.terminalId, status: 'open' },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!terminalSession || !terminalSession.token) {
+      return res.status(401).send({ status: false, message: 'Terminal session not found' });
+    }
+
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
+
+    const result = await this.service.posUserLinkSession(req.user.userId || req.user.id, terminalSession.token, deviceInfo);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+      res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+
+      return res.send(result);
+    }
+    return res.status(400).send(result);
   }
 
   /**
@@ -295,6 +498,60 @@ export class AuthController {
     });
   }
 
+  @Post('stop-impersonating')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Stop impersonating and return to original admin session' })
+  async stopImpersonating(@Req() req: any, @Res() res: any) {
+    if (!req.user.isImpersonating || !req.user.impersonatorId) {
+      return res.status(400).send({
+        status: false,
+        message: 'You are not currenty impersonating anyone',
+      });
+    }
+
+    const result = await this.service.stopImpersonating(req.user.impersonatorId);
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+
+      // Set access token
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      // Set refresh token
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user role
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      // Set user summary data
+      res.setCookie('user', JSON.stringify(result.data.user), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      return res.send({
+        status: true,
+        message: 'Returned to original session',
+        data: { user: result.data.user },
+      });
+    }
+
+    return res.status(400).send({
+      status: false,
+      message: result.message || 'Failed to stop impersonating',
+    });
+  }
+
   @Post('refresh-token')
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed' })
@@ -347,7 +604,61 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile' })
   async me(@Req() req: any) {
-    return this.service.me(req.user.userId);
+    const result = await this.service.me(req.user.id || req.user.userId);
+    if (result.status && result.data) {
+
+      let terminalId = req.user.terminalId;
+      let locationId = req.user.locationId;
+      let isPosUser = req.user.isPosUser;
+
+      // Extract raw POS Terminal reality straight from the browser's persistent device cookie
+      const posTerminalToken = req.cookies?.['posTerminalToken'];
+      if (posTerminalToken) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.decode(posTerminalToken);
+          if (decoded && decoded.terminalId) {
+            terminalId = decoded.terminalId;
+            locationId = decoded.locationId;
+            isPosUser = true;
+          }
+        } catch { } // Ignore decoding errors
+      }
+
+      // Enrich with POS context
+      if (isPosUser && terminalId) {
+        (result.data as any).isPosUser = true;
+        (result.data as any).terminalId = terminalId;
+        (result.data as any).locationId = locationId;
+
+        if (this.prisma) {
+          try {
+            const terminalRaw = await this.prisma.pos.findUnique({
+              where: { id: terminalId },
+              include: { location: true },
+            });
+            if (terminalRaw) {
+              (result.data as any).terminal = {
+                id: terminalRaw.id,
+                code: terminalRaw.terminalCode,
+                name: terminalRaw.name,
+                location: terminalRaw.location ? {
+                  id: terminalRaw.location.id,
+                  code: terminalRaw.location.code,
+                  name: terminalRaw.location.name,
+                } : null
+              };
+            }
+          } catch (e) { }
+        }
+      }
+      // Enrich with impersonation context from current token
+      if (req.user.isImpersonating) {
+        (result.data as any).isImpersonating = true;
+        (result.data as any).impersonatorId = req.user.impersonatorId;
+      }
+    }
+    return result;
   }
 
   @Get('check-session')
@@ -362,15 +673,24 @@ export class AuthController {
     return this.service.checkSession(req.user.userId, accessToken);
   }
 
+  @Get('pos/verify-session')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify POS Session validity' })
+  async verifyPosSession(@Req() req: any) {
+    return this.service.verifyPosSession(req.user.userId || req.user.id);
+  }
+
   @Post('update-profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update current user profile' })
-  async updateProfile(@Req() req: any, @Body() body: UpdateUserDto) {
+  async updateProfile(@Req() req: any, @Body() body: UpdateUserProfileDto) {
     return this.service.updateMe(req.user.userId, body);
   }
 
   @Post('logout')
+  @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout user' })
@@ -381,6 +701,19 @@ export class AuthController {
     res.clearCookie('refreshToken', clearCookieOptions);
     res.clearCookie('userRole', clearCookieOptions);
     res.clearCookie('user', clearCookieOptions);
+    res.clearCookie('posSessionId', clearCookieOptions);
+    res.clearCookie('sessionId', clearCookieOptions);
+    res.clearCookie('terminal', clearCookieOptions);
+    res.clearCookie('terminalId', clearCookieOptions);
+
+    // Clear Tenant and Company context
+    res.clearCookie('currentCompany', clearCookieOptions);
+    res.clearCookie('companyCode', clearCookieOptions);
+    res.clearCookie('companyId', clearCookieOptions);
+    res.clearCookie('posTerminalToken', clearCookieOptions);
+    res.clearCookie('bid', clearCookieOptions);
+    res.clearCookie('tenantCode', clearCookieOptions);
+    res.clearCookie('tenantId', clearCookieOptions);
 
     return res.send({
       status: true,
@@ -399,8 +732,6 @@ export class AuthController {
       body.newPassword,
     );
   }
-
-
 
   @Get('login-history')
   @UseGuards(JwtAuthGuard)
@@ -465,5 +796,23 @@ export class AuthController {
   @ApiOperation({ summary: 'Get activity logs' })
   async activityLogs() {
     return this.service.getAllActivityLogs();
+  }
+
+  @Post('verify-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify current user password' })
+  async verifyPassword(@Req() req: any, @Body() body: { password: string }) {
+    const isValid = await this.service.verifyPassword(req.user.userId, body.password);
+    return { status: isValid, message: isValid ? 'Password verified' : 'Invalid password' };
+  }
+
+  @Get('profiles')
+  @ApiOperation({ summary: 'Get all active profiles on this browser' })
+  async getProfiles(@Req() req: any) {
+    const browserId = req.cookies?.bid;
+    if (!browserId) return { status: true, data: [] };
+    const profiles = await this.service.getAvailableProfiles(browserId);
+    return { status: true, data: profiles };
   }
 }

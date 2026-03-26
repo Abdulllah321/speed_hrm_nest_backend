@@ -1,3 +1,4 @@
+import { PrismaService } from '../../database/prisma.service';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateRebateNatureDto } from './dto/create-rebate-nature.dto';
@@ -5,7 +6,7 @@ import { UpdateRebateNatureDto } from './dto/update-rebate-nature.dto';
 
 @Injectable()
 export class RebateNatureService {
-  constructor(private readonly prisma: PrismaMasterService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createRebateNatureDto: CreateRebateNatureDto, userId: string) {
     return this.prisma.rebateNature.create({

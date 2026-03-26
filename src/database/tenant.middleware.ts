@@ -1,8 +1,10 @@
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { PrismaMasterService } from './prisma-master.service';
 import { PrismaService } from './prisma.service';
-import { FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyRequest } from 'fastify';
+import { ServerResponse } from 'http';
 import type { Company, Tenant } from '@prisma/management-client';
+import { EncryptionService } from '../common/utils/encryption.service';
 
 interface TenantCacheEntry {
   tenantId: string;
@@ -29,9 +31,12 @@ export class TenantMiddleware implements NestMiddleware {
   private readonly tenantCache = new Map<string, TenantCacheEntry>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  constructor(private readonly prismaMaster: PrismaMasterService) { }
+  constructor(
+    private readonly prismaMaster: PrismaMasterService,
+    private readonly encryptionService: EncryptionService,
+  ) { }
 
-  async use(req: TenantRequest, res: FastifyReply, next: () => void) {
+  async use(req: TenantRequest, res: ServerResponse, next: () => void) {
     try {
       const tenantIdentifier = this.extractTenantIdentifier(req);
       const companyIdentifier = this.extractCompanyIdentifier(req);
@@ -52,26 +57,68 @@ export class TenantMiddleware implements NestMiddleware {
       }
 
       // Fetch company with tenant from database
-      const company = await this.findCompany(tenantIdentifier, companyIdentifier);
+      const company = await this.findCompany(
+        tenantIdentifier,
+        companyIdentifier,
+      );
 
       if (!company) {
         this.logger.warn(
           `No active company found for tenant=${tenantIdentifier}, company=${companyIdentifier}`,
         );
-        return (res as any).status(404).send({ message: 'Company not found or inactive' });
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Company not found or inactive' }));
+        return;
       }
 
       if (!company.tenant || !company.tenant.isActive) {
         this.logger.warn(`Tenant is inactive for company: ${company.id}`);
-        return (res as any).status(403).send({ message: 'Tenant is inactive' });
+        res.statusCode = 403;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Tenant is inactive' }));
+        return;
       }
 
-      // Use stored dbUrl (contains tenant-specific credentials)
-      const dbUrl = company.dbUrl;
+      // Use stored dbUrl and decrypt password dynamically
+      let dbUrl = company.dbUrl;
 
       if (!dbUrl) {
-        this.logger.error(`Company ${company.id} has no database URL configured`);
-        return (res as any).status(500).send({ message: 'Database configuration error' });
+        this.logger.error(
+          `Company ${company.id} has no database URL configured`,
+        );
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Database configuration error' }));
+        return;
+      }
+
+      // If company has dbPassword (encrypted), we decrypt it and rebuild the URL
+      // This prevents the plain password from being stored in the database
+      if (company.dbPassword) {
+        try {
+          const plainPassword = this.encryptionService.decrypt(company.dbPassword);
+          const encodedPassword = encodeURIComponent(String(plainPassword));
+
+          if (company.dbUser && company.dbHost && company.dbName) {
+            const port = company.dbPort || 5432;
+            const encodedUser = encodeURIComponent(company.dbUser);
+            const encodedHost = company.dbHost; // Host usually doesn't need encoding unless it's a domain with special chars
+            const encodedDbName = encodeURIComponent(company.dbName);
+
+            dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
+
+            // Mask password in debug log
+            const maskedUrl = `postgresql://${encodedUser}:****@${encodedHost}:${port}/${encodedDbName}`;
+            this.logger.debug(`Constructed DB URL for company ${company.id}: ${maskedUrl}`);
+          }
+        } catch (err: any) {
+          this.logger.error(`Failed to decrypt database password for company ${company.id}: ${err.message}`);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ message: 'Database configuration error' }));
+          return;
+        }
       }
 
       // Cache the tenant context
@@ -97,10 +144,15 @@ export class TenantMiddleware implements NestMiddleware {
       this.logger.error(`Error in TenantMiddleware: ${error}`);
       // Don't throw - send error response instead to prevent server crash
       try {
-        return (res as any).status(500).send({ 
-          status: false, 
-          message: 'Internal server error in tenant middleware' 
-        });
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            status: false,
+            message: 'Internal server error in tenant middleware',
+          }),
+        );
+        return;
       } catch (sendError) {
         // If we can't send response, just log and call next to prevent crash
         this.logger.error(`Failed to send error response: ${sendError}`);
@@ -160,7 +212,10 @@ export class TenantMiddleware implements NestMiddleware {
   /**
    * Attach tenant context to request object
    */
-  private attachTenantContext(req: TenantRequest, context: TenantCacheEntry): void {
+  private attachTenantContext(
+    req: TenantRequest,
+    context: TenantCacheEntry,
+  ): void {
     req.tenantId = context.tenantId;
     req.companyId = context.companyId;
     req.tenantDbName = context.dbName;
@@ -181,7 +236,10 @@ export class TenantMiddleware implements NestMiddleware {
     const host = req.headers.host as string | undefined;
     if (host) {
       const subdomain = host.split('.')[0];
-      if (subdomain && !['www', 'api', 'admin', 'localhost'].includes(subdomain)) {
+      if (
+        subdomain &&
+        !['www', 'api', 'admin', 'localhost'].includes(subdomain)
+      ) {
         return subdomain;
       }
     }
@@ -193,7 +251,8 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     // 4. Check cookies
-    const cookieTenantId = this.getCookieValue(req, 'tenantId') ||
+    const cookieTenantId =
+      this.getCookieValue(req, 'tenantId') ||
       this.getCookieValue(req, 'tenantCode') ||
       this.getCookieValue(req, 'companyCode');
     if (cookieTenantId) {
@@ -226,7 +285,8 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     // 3. Check cookies
-    const cookieCompanyId = this.getCookieValue(req, 'companyId') ||
+    const cookieCompanyId =
+      this.getCookieValue(req, 'companyId') ||
       this.getCookieValue(req, 'companyCode') ||
       this.getCookieValue(req, 'tenantCode');
     if (cookieCompanyId) {
@@ -254,13 +314,16 @@ export class TenantMiddleware implements NestMiddleware {
     // Manual parse from header as fallback
     const cookieHeader = req.headers.cookie;
     if (cookieHeader) {
-      const cookies = cookieHeader.split(';').reduce((acc, c) => {
-        const parts = c.trim().split('=');
-        if (parts.length >= 2) {
-          acc[parts[0]] = parts.slice(1).join('=');
-        }
-        return acc;
-      }, {} as Record<string, string>);
+      const cookies = cookieHeader.split(';').reduce(
+        (acc, c) => {
+          const parts = c.trim().split('=');
+          if (parts.length >= 2) {
+            acc[parts[0]] = parts.slice(1).join('=');
+          }
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
 
       const value = cookies[name];
       if (value) {
@@ -284,7 +347,10 @@ export class TenantMiddleware implements NestMiddleware {
       const keysToDelete: string[] = [];
 
       for (const [key, value] of this.tenantCache.entries()) {
-        if ((tenantId && value.tenantId === tenantId) || (companyId && value.companyId === companyId)) {
+        if (
+          (tenantId && value.tenantId === tenantId) ||
+          (companyId && value.companyId === companyId)
+        ) {
           keysToDelete.push(key);
           // Cleanup pool for this company
           await PrismaService.cleanupTenantPool(value.companyId);
@@ -292,7 +358,9 @@ export class TenantMiddleware implements NestMiddleware {
       }
 
       keysToDelete.forEach((key) => this.tenantCache.delete(key));
-      this.logger.log(`Cleared cache for tenant=${tenantId}, company=${companyId}`);
+      this.logger.log(
+        `Cleared cache for tenant=${tenantId}, company=${companyId}`,
+      );
     } else {
       // Clear all
       this.tenantCache.clear();

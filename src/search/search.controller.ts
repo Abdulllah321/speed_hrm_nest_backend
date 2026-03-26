@@ -7,16 +7,16 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @Controller('api/search')
 @UseGuards(JwtAuthGuard)
 export class SearchController {
-    constructor(private readonly searchService: SearchService) { }
+  constructor(private readonly searchService: SearchService) {}
 
-    @Get()
-    @ApiOperation({ summary: 'Global search across multiple entities' })
-    @ApiQuery({ name: 'q', description: 'Search query string' })
-    async search(@Query('q') query: string) {
-        if (!query || query.length < 2) {
-            return { status: true, data: [] };
-        }
-        const results = await this.searchService.globalSearch(query);
-        return { status: true, data: results };
+  @Get()
+  @ApiOperation({ summary: 'Global search across multiple entities' })
+  @ApiQuery({ name: 'q', description: 'Search query string' })
+  async search(@Query('q') query: string) {
+    if (!query || query.length < 2) {
+      return { status: true, data: [] };
     }
+    const results = await this.searchService.globalSearch(query);
+    return { status: true, data: results };
+  }
 }

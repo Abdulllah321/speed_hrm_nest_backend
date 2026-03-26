@@ -4,9 +4,9 @@ import { SegmentController } from './segment.controller';
 import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
 
 @Module({
-    imports: [ActivityLogsModule],
-    controllers: [SegmentController],
-    providers: [SegmentService],
-    exports: [SegmentService],
+  imports: [ActivityLogsModule],
+  controllers: [SegmentController],
+  providers: [SegmentService],
+  exports: [SegmentService],
 })
-export class SegmentModule { }
+export class SegmentModule {}

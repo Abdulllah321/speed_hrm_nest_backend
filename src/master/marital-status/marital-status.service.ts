@@ -5,23 +5,25 @@ import {
   BulkUpdateMaritalStatusItemDto,
 } from './dto/marital-status.dto';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 
 @Injectable()
 export class MaritalStatusService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prismaMaster.maritalStatus.findMany({
+    const items = await this.prisma.maritalStatus.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.maritalStatus.findUnique({
+    const item = await this.prisma.maritalStatus.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Marital status not found' };
@@ -48,7 +50,7 @@ export class MaritalStatusService {
         return { status: false, message: 'No valid data provided' };
       }
 
-      const result = await this.prismaMaster.maritalStatus.createMany({
+      const result = await this.prisma.maritalStatus.createMany({
         data: validData,
         skipDuplicates: true,
       });
@@ -96,14 +98,14 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.maritalStatus.findUnique({
+      const existing = await this.prisma.maritalStatus.findUnique({
         where: { id },
       });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
 
-      const updated = await this.prismaMaster.maritalStatus.update({
+      const updated = await this.prisma.maritalStatus.update({
         where: { id },
         data: {
           name: updateDto.name,
@@ -156,14 +158,14 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.maritalStatus.findUnique({
+      const existing = await this.prisma.maritalStatus.findUnique({
         where: { id },
       });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
 
-      const removed = await this.prismaMaster.maritalStatus.delete({
+      const removed = await this.prisma.maritalStatus.delete({
         where: { id },
       });
 
@@ -226,7 +228,7 @@ export class MaritalStatusService {
         if (!item.id) {
           continue;
         }
-        const updated = await this.prismaMaster.maritalStatus.update({
+        const updated = await this.prisma.maritalStatus.update({
           where: { id: item.id },
           data: {
             name: item.name,
@@ -282,7 +284,7 @@ export class MaritalStatusService {
         return { status: false, message: 'No IDs provided' };
       }
 
-      const result = await this.prismaMaster.maritalStatus.deleteMany({
+      const result = await this.prisma.maritalStatus.deleteMany({
         where: { id: { in: ids } },
       });
 

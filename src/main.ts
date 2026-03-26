@@ -25,7 +25,7 @@ async function bootstrap() {
   // Register multipart plugin on the adapter BEFORE creating the app
   await adapter.register(fastifyMultipart as any, {
     limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB limit
+      fileSize: 500 * 1024 * 1024, // 500MB limit
     },
   });
 
@@ -109,10 +109,7 @@ async function bootstrap() {
       'X-Tenant-Id',
       'X-Company-Id',
     ],
-    exposedHeaders: [
-      'X-New-Access-Token',
-      'X-New-Refresh-Token',
-    ],
+    exposedHeaders: ['X-New-Access-Token', 'X-New-Refresh-Token'],
   });
 
   // Graceful shutdown handlers
@@ -162,7 +159,9 @@ async function bootstrap() {
   });
 
   logger.log(`Application is running on: http://${host}:${port}`);
-  logger.log(`Swagger documentation available at: http://${host}:${port}/api/docs`);
+  logger.log(
+    `Swagger documentation available at: http://${host}:${port}/api/docs`,
+  );
   logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 

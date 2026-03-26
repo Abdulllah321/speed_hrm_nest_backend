@@ -11,8 +11,9 @@ echo "📦 Generating Prisma client..."
 bun run prisma:master:generate
 
 # Push schema to database
-echo "📊 Pushing database schema..."
+echo "📊 Pushing database schema (Master & Tenants)..."
 bun run prisma:master:push --accept-data-loss
+bun run prisma:tenant:push
 
 # Check if database is already seeded
 echo "🔍 Checking if database needs seeding..."

@@ -10,4 +10,4 @@ import { DatabaseModule } from '../../database/database.module';
   providers: [RebateNatureService],
   exports: [RebateNatureService],
 })
-export class RebateNatureModule { }
+export class RebateNatureModule {}

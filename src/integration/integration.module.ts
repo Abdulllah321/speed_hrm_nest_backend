@@ -9,9 +9,9 @@ import { CompanyModule } from '../admin/company/company.module';
  * Provides server-to-server APIs for tenant and user provisioning.
  */
 @Module({
-    imports: [DatabaseModule, CompanyModule],
-    controllers: [IntegrationController],
-    providers: [IntegrationService],
-    exports: [IntegrationService],
+  imports: [DatabaseModule, CompanyModule],
+  controllers: [IntegrationController],
+  providers: [IntegrationService],
+  exports: [IntegrationService],
 })
-export class IntegrationModule { }
+export class IntegrationModule {}

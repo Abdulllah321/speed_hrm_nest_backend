@@ -1,10 +1,11 @@
+import { PrismaService } from '../../database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateMachineDto, UpdateMachineDto } from './dto/machine-dto';
 
 @Injectable()
 export class MachineService {
-  constructor(private prisma: PrismaMasterService) {}
+  constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateMachineDto, userId: string) {
     const result = await this.prisma.machine.create({
@@ -13,7 +14,11 @@ export class MachineService {
         createdById: userId,
       },
     });
-    return { status: true, data: result, message: 'Machine created successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Machine created successfully',
+    };
   }
 
   async findAll() {
@@ -35,7 +40,11 @@ export class MachineService {
       where: { id },
       data: updateDto,
     });
-    return { status: true, data: result, message: 'Machine updated successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Machine updated successfully',
+    };
   }
 
   async remove(id: string) {

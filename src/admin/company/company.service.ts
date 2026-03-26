@@ -33,16 +33,16 @@ export class CompanyService {
   constructor(
     private readonly prismaMaster: PrismaMasterService,
     private readonly tenantDb: TenantDatabaseService,
-  ) { }
+  ) {}
 
   /**
    * List all companies ordered by creation date (newest first)
    */
   async listCompanies(): Promise<{ status: boolean; data: CompanyResponse[] }> {
-    const companies = await this.prismaMaster.company.findMany({
+    const companies = (await this.prismaMaster.company.findMany({
       select: selectSafeFields,
       orderBy: { createdAt: 'desc' },
-    }) as CompanyResponse[];
+    })) as CompanyResponse[];
 
     return { status: true, data: companies };
   }
@@ -50,11 +50,15 @@ export class CompanyService {
   /**
    * Get a specific company by ID
    */
-  async getCompanyById(id: string): Promise<{ status: boolean; data: CompanyResponse | null; message?: string }> {
-    const company = await this.prismaMaster.company.findUnique({
+  async getCompanyById(id: string): Promise<{
+    status: boolean;
+    data: CompanyResponse | null;
+    message?: string;
+  }> {
+    const company = (await this.prismaMaster.company.findUnique({
       where: { id },
       select: selectSafeFields,
-    }) as CompanyResponse | null;
+    })) as CompanyResponse | null;
 
     if (!company) {
       return { status: false, data: null, message: 'Company not found' };
@@ -66,11 +70,15 @@ export class CompanyService {
   /**
    * Get a specific company by code
    */
-  async getCompanyByCode(code: string): Promise<{ status: boolean; data: CompanyResponse | null; message?: string }> {
-    const company = await this.prismaMaster.company.findUnique({
+  async getCompanyByCode(code: string): Promise<{
+    status: boolean;
+    data: CompanyResponse | null;
+    message?: string;
+  }> {
+    const company = (await this.prismaMaster.company.findUnique({
       where: { code },
       select: selectSafeFields,
-    }) as CompanyResponse | null;
+    })) as CompanyResponse | null;
 
     if (!company) {
       return { status: false, data: null, message: 'Company not found' };
@@ -155,13 +163,15 @@ export class CompanyService {
       const { dbName, dbUrl, dbUser, encryptedPassword } =
         await this.tenantDb.provisionTenantDatabase(input.code);
 
-      this.logger.log(`Tenant database provisioned: ${dbName} with user: ${dbUser}`);
+      this.logger.log(
+        `Tenant database provisioned: ${dbName} with user: ${dbUser}`,
+      );
 
       // Parse DB URL to extract host and port
       const parsedUrl = new URL(dbUrl);
 
       // 3) Store company in master DB linked to tenant and with encrypted credentials
-      const company = await this.prismaMaster.company.create({
+      const company = (await this.prismaMaster.company.create({
         data: {
           name: input.name.trim(),
           code: input.code.toLowerCase().trim(),
@@ -175,13 +185,18 @@ export class CompanyService {
           status: 'active',
         },
         select: selectSafeFields,
-      }) as CompanyResponse;
+      })) as CompanyResponse;
 
-      this.logger.log(`Company created successfully: ${company.id} for tenant: ${tenant.id}`);
+      this.logger.log(
+        `Company created successfully: ${company.id} for tenant: ${tenant.id}`,
+      );
 
       return { status: true, data: company };
     } catch (error: any) {
-      this.logger.error(`Failed to create company: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to create company: ${error.message}`,
+        error.stack,
+      );
       return {
         status: false,
         message: error.message || 'Failed to create company',
@@ -197,33 +212,39 @@ export class CompanyService {
     input: { name?: string; status?: string },
   ): Promise<{ status: boolean; data?: CompanyResponse; message?: string }> {
     try {
-      const company = await this.prismaMaster.company.update({
+      const company = (await this.prismaMaster.company.update({
         where: { id },
         data: {
           ...(input.name && { name: input.name.trim() }),
           ...(input.status && { status: input.status }),
         },
         select: selectSafeFields,
-      }) as CompanyResponse;
+      })) as CompanyResponse;
 
       return { status: true, data: company };
     } catch (error: any) {
       if (error.code === 'P2025') {
         return { status: false, message: 'Company not found' };
       }
-      return { status: false, message: error.message || 'Failed to update company' };
+      return {
+        status: false,
+        message: error.message || 'Failed to update company',
+      };
     }
   }
 
   /**
    * Get the first active company (for auto-selection on login)
    */
-  async getFirstActiveCompany(): Promise<{ status: boolean; data: CompanyResponse | null }> {
-    const company = await this.prismaMaster.company.findFirst({
+  async getFirstActiveCompany(): Promise<{
+    status: boolean;
+    data: CompanyResponse | null;
+  }> {
+    const company = (await this.prismaMaster.company.findFirst({
       where: { status: 'active' },
       select: selectSafeFields,
       orderBy: { createdAt: 'asc' },
-    }) as CompanyResponse | null;
+    })) as CompanyResponse | null;
 
     return { status: true, data: company };
   }

@@ -7,9 +7,8 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 export class ExitClearanceService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list() {
     const clearances = await this.prisma.exitClearance.findMany({
@@ -17,10 +16,10 @@ export class ExitClearanceService {
     });
 
     // Fetch all departments and designations for mapping
-    const departments = await this.prismaMaster.department.findMany({
+    const departments = await this.prisma.department.findMany({
       include: { subDepartments: true },
     });
-    const designations = await this.prismaMaster.designation.findMany();
+    const designations = await this.prisma.designation.findMany();
 
     // Map IDs to names
     const mappedClearances = clearances.map((clearance) => {
@@ -52,23 +51,23 @@ export class ExitClearanceService {
 
     // Fetch department and designation for mapping
     const department = clearance.department
-      ? await this.prismaMaster.department.findUnique({
-          where: { id: clearance.department },
-          include: { subDepartments: true },
-        })
+      ? await this.prisma.department.findUnique({
+        where: { id: clearance.department },
+        include: { subDepartments: true },
+      })
       : null;
 
     const subDepartment =
       department && clearance.subDepartment
         ? department.subDepartments.find(
-            (sd) => sd.id === clearance.subDepartment,
-          )
+          (sd) => sd.id === clearance.subDepartment,
+        )
         : null;
 
     const designation = clearance.designation
-      ? await this.prismaMaster.designation.findUnique({
-          where: { id: clearance.designation },
-        })
+      ? await this.prisma.designation.findUnique({
+        where: { id: clearance.designation },
+      })
       : null;
 
     const mappedClearance = {

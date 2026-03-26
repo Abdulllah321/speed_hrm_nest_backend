@@ -1,15 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaMasterService } from '../../database/prisma-master.service';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()
 export class CategoryService {
-  constructor(private readonly prismaMaster: PrismaMasterService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
     if (createCategoryDto.parentId) {
-      const parent = await this.prismaMaster.category.findUnique({
+      const parent = await this.prisma.category.findUnique({
         where: { id: createCategoryDto.parentId },
       });
       if (!parent) {
@@ -17,7 +21,7 @@ export class CategoryService {
       }
     }
 
-    return this.prismaMaster.category.create({
+    return this.prisma.category.create({
       data: createCategoryDto,
     });
   }
@@ -30,7 +34,7 @@ export class CategoryService {
       where.parentId = parentId || null;
     }
 
-    return this.prismaMaster.category.findMany({
+    return this.prisma.category.findMany({
       where,
       include: {
         parent: true,
@@ -43,7 +47,7 @@ export class CategoryService {
   }
 
   async findTree() {
-    return this.prismaMaster.category.findMany({
+    return this.prisma.category.findMany({
       where: { parentId: null },
       include: {
         children: {
@@ -57,7 +61,7 @@ export class CategoryService {
   }
 
   async findOne(id: string) {
-    const category = await this.prismaMaster.category.findUnique({
+    const category = await this.prisma.category.findUnique({
       where: { id },
       include: {
         parent: true,
@@ -79,14 +83,14 @@ export class CategoryService {
       throw new BadRequestException('A category cannot be its own parent');
     }
 
-    return this.prismaMaster.category.update({
+    return this.prisma.category.update({
       where: { id },
       data: updateCategoryDto,
     });
   }
 
   async remove(id: string) {
-    const category = await this.prismaMaster.category.findUnique({
+    const category = await this.prisma.category.findUnique({
       where: { id },
       include: { children: true },
     });
@@ -96,10 +100,12 @@ export class CategoryService {
     }
 
     if (category.children.length > 0) {
-      throw new BadRequestException('Cannot delete category with sub-categories');
+      throw new BadRequestException(
+        'Cannot delete category with sub-categories',
+      );
     }
 
-    return this.prismaMaster.category.delete({
+    return this.prisma.category.delete({
       where: { id },
     });
   }

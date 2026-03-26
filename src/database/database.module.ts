@@ -37,12 +37,12 @@ export class DatabaseModule implements NestModule {
         { path: '/api/auth/register', method: RequestMethod.POST },
         { path: '/api/auth/forgot-password', method: RequestMethod.POST },
         { path: '/api/auth/reset-password', method: RequestMethod.POST },
-        { path: '/api/health', method: RequestMethod.GET },
+        { path: '/api/auth/(.*)', method: RequestMethod.ALL },
         // super-admin endpoints that manage tenants
         { path: '/api/admin/companies', method: RequestMethod.ALL },
-        { path: '/api/admin/companies/*path', method: RequestMethod.ALL },
+        { path: '/api/admin/companies/(.*)', method: RequestMethod.ALL },
         { path: '/api/users', method: RequestMethod.ALL },
-        { path: '/api/users/*path', method: RequestMethod.ALL },
+        { path: '/api/users/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

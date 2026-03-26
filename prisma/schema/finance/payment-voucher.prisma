@@ -1,44 +1,51 @@
 model PaymentVoucher {
-    id         String    @id @default(uuid())
-    type       String // bank or cash
-    pvNo       String    @unique
-    pvDate     DateTime
-    refBillNo  String?
-    billDate   DateTime?
-    chequeNo   String?
-    chequeDate DateTime?
+  id              String                 @id @default(uuid())
+  type            String
+  pvNo            String                 @unique
+  pvDate          DateTime
+  refBillNo       String?
+  billDate        DateTime?
+  chequeNo        String?
+  chequeDate      DateTime?
+  creditAccountId String
+  supplierId      String?
+  creditAmount    Decimal                @default(0.0) @db.Decimal(15, 2)
+  isAdvance       Boolean                @default(false)
+  isTaxApplicable Boolean                @default(false)
+  description     String
+  status          String                 @default("approved")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  createdBy       String?
+  creditAccount   ChartOfAccount         @relation("CreditAccountRelation", fields: [creditAccountId], references: [id])
+  supplier        Supplier?              @relation(fields: [supplierId], references: [id])
+  details         PaymentVoucherDetail[]
+  invoices        PaymentVoucherToInvoice[]
+}
 
-    creditAccountId String
-    supplierId      String?
-    creditAmount    Decimal @default(0.0) @db.Decimal(15, 2)
+model PaymentVoucherToInvoice {
+  id                String          @id @default(uuid())
+  paymentVoucherId  String          @map("payment_voucher_id")
+  purchaseInvoiceId String          @map("purchase_invoice_id")
+  paidAmount        Decimal         @map("paid_amount") @db.Decimal(15, 2)
+  paymentVoucher    PaymentVoucher  @relation(fields: [paymentVoucherId], references: [id], onDelete: Cascade)
+  purchaseInvoice   PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
 
-    isAdvance       Boolean @default(false)
-    isTaxApplicable Boolean @default(false)
-    description     String
-    status          String  @default("pending") // pending, approved, rejected
-
-    details PaymentVoucherDetail[]
-
-    creditAccount ChartOfAccount @relation("CreditAccountRelation", fields: [creditAccountId], references: [id])
-    supplier      Supplier?      @relation(fields: [supplierId], references: [id])
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    createdBy String?
+  @@index([paymentVoucherId])
+  @@index([purchaseInvoiceId])
+  @@map("payment_voucher_to_invoices")
 }
 
 model PaymentVoucherDetail {
-    id               String  @id @default(uuid())
-    paymentVoucherId String
-    accountId        String
-    debit            Decimal @default(0.0) @db.Decimal(15, 2)
+  id               String         @id @default(uuid())
+  paymentVoucherId String
+  accountId        String
+  debit            Decimal        @default(0.0) @db.Decimal(15, 2)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  account          ChartOfAccount @relation(fields: [accountId], references: [id])
+  paymentVoucher   PaymentVoucher @relation(fields: [paymentVoucherId], references: [id], onDelete: Cascade)
 
-    paymentVoucher PaymentVoucher @relation(fields: [paymentVoucherId], references: [id], onDelete: Cascade)
-    account        ChartOfAccount @relation(fields: [accountId], references: [id])
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    @@index([paymentVoucherId])
-    @@index([accountId])
+  @@index([paymentVoucherId])
+  @@index([accountId])
 }

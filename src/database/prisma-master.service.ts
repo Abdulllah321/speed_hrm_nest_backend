@@ -25,7 +25,12 @@ export class PrismaMasterService
       );
     }
 
-    const pool = new Pool({ connectionString });
+    const pool = new Pool({
+      connectionString,
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
     const adapter = new PrismaPg(pool);
     super({ adapter } as any);
     this.pool = pool;
@@ -37,11 +42,20 @@ export class PrismaMasterService
     this.logger.log('Master Database connected successfully');
   }
 
+  private isPoolEnded = false;
+
   async onModuleDestroy() {
+    if (this.isPoolEnded) return;
+
     this.logger.log('Disconnecting from Master Database...');
-    await this.$disconnect();
-    await this.pool.end();
-    this.logger.log('Master Database disconnected');
+    try {
+      await this.$disconnect();
+      await this.pool.end();
+      this.isPoolEnded = true;
+      this.logger.log('Master Database disconnected');
+    } catch (error) {
+      this.logger.error('Error during Master Database disconnect:', error);
+    }
   }
 
   getPool() {

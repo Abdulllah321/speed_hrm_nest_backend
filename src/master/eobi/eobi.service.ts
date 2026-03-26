@@ -1,23 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 
 @Injectable()
 export class EobiService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prismaMaster.eOBI.findMany({
+    const items = await this.prisma.eOBI.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.eOBI.findUnique({ where: { id } });
+    const item = await this.prisma.eOBI.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'EOBI not found' };
     return { status: true, data: item };
   }
@@ -36,7 +38,7 @@ export class EobiService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.eOBI.create({
+      const created = await this.prisma.eOBI.create({
         data: {
           name: body.name,
           eobiId: body.eobiId || null,
@@ -94,7 +96,7 @@ export class EobiService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const res = await this.prismaMaster.eOBI.createMany({
+      const res = await this.prisma.eOBI.createMany({
         data: items.map((i) => ({
           name: i.name,
           eobiId: i.eobiId || null,
@@ -152,11 +154,11 @@ export class EobiService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.eOBI.findUnique({
+      const existing = await this.prisma.eOBI.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'EOBI not found' };
-      const updated = await this.prismaMaster.eOBI.update({
+      const updated = await this.prisma.eOBI.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -217,11 +219,11 @@ export class EobiService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.eOBI.findUnique({
+      const existing = await this.prisma.eOBI.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'EOBI not found' };
-      await this.prismaMaster.eOBI.delete({ where: { id } });
+      await this.prisma.eOBI.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -258,7 +260,7 @@ export class EobiService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prismaMaster.eOBI.deleteMany({ where: { id: { in: ids } } });
+      await this.prisma.eOBI.deleteMany({ where: { id: { in: ids } } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -304,7 +306,7 @@ export class EobiService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const i of items) {
-        await this.prismaMaster.eOBI.update({
+        await this.prisma.eOBI.update({
           where: { id: i.id },
           data: {
             name: i.name,
