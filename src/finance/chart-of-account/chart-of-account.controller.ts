@@ -23,7 +23,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @Controller('api/finance/chart-of-accounts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ChartOfAccountController {
-  constructor(private readonly chartOfAccountService: ChartOfAccountService) { }
+  constructor(private readonly chartOfAccountService: ChartOfAccountService) {}
 
   @Post()
   @ApiBearerAuth()

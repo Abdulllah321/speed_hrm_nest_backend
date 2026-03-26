@@ -14,7 +14,7 @@ export class LeaveEncashmentService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   private async resolveApproverUserId(args: {
     level: {
@@ -56,7 +56,7 @@ export class LeaveEncashmentService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prismaMaster.department.findUnique({
+      const department = await this.prisma.department.findUnique({
         where: { id: departmentId },
         select: { headId: true },
       });
@@ -74,7 +74,7 @@ export class LeaveEncashmentService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prismaMaster.subDepartment.findUnique({
+      const subDepartment = await this.prisma.subDepartment.findUnique({
         where: { id: subDepartmentId },
         select: { headId: true },
       });
@@ -95,49 +95,49 @@ export class LeaveEncashmentService {
     const [department, subDepartment, approvedBy, createdBy, updatedBy] =
       await Promise.all([
         leaveEncashment.employee?.departmentId
-          ? this.prismaMaster.department.findUnique({
-            where: { id: leaveEncashment.employee.departmentId },
-            select: { id: true, name: true },
-          })
+          ? this.prisma.department.findUnique({
+              where: { id: leaveEncashment.employee.departmentId },
+              select: { id: true, name: true },
+            })
           : null,
         leaveEncashment.employee?.subDepartmentId
-          ? this.prismaMaster.subDepartment.findUnique({
-            where: { id: leaveEncashment.employee.subDepartmentId },
-            select: { id: true, name: true },
-          })
+          ? this.prisma.subDepartment.findUnique({
+              where: { id: leaveEncashment.employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
           : null,
         leaveEncashment.approvedById
           ? this.prismaMaster.user.findUnique({
-            where: { id: leaveEncashment.approvedById },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          })
+              where: { id: leaveEncashment.approvedById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
           : null,
         leaveEncashment.createdById
           ? this.prismaMaster.user.findUnique({
-            where: { id: leaveEncashment.createdById },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          })
+              where: { id: leaveEncashment.createdById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
           : null,
         leaveEncashment.updatedById
           ? this.prismaMaster.user.findUnique({
-            where: { id: leaveEncashment.updatedById },
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          })
+              where: { id: leaveEncashment.updatedById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
           : null,
       ]);
 
@@ -145,10 +145,10 @@ export class LeaveEncashmentService {
       ...leaveEncashment,
       employee: leaveEncashment.employee
         ? {
-          ...leaveEncashment.employee,
-          department,
-          subDepartment,
-        }
+            ...leaveEncashment.employee,
+            department,
+            subDepartment,
+          }
         : null,
       approvedBy,
       createdBy,
@@ -187,7 +187,6 @@ export class LeaveEncashmentService {
     status?: string;
   }) {
     try {
-
       const where: any = {};
 
       if (params?.employeeId) {
@@ -262,11 +261,11 @@ export class LeaveEncashmentService {
       ] as string[];
 
       const [departments, subDepartments, users] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: subDeptIds } },
           select: { id: true, name: true },
         }),
@@ -286,11 +285,11 @@ export class LeaveEncashmentService {
           ...le,
           employee: le.employee
             ? {
-              ...le.employee,
-              department: deptMap.get(le.employee.departmentId) || null,
-              subDepartment:
-                subDeptMap.get(le.employee.subDepartmentId) || null,
-            }
+                ...le.employee,
+                department: deptMap.get(le.employee.departmentId) || null,
+                subDepartment:
+                  subDeptMap.get(le.employee.subDepartmentId) || null,
+              }
             : null,
           approvedBy: userMap.get(le.approvedById) || null,
           createdBy: userMap.get(le.createdById) || null,
@@ -313,7 +312,6 @@ export class LeaveEncashmentService {
 
   async get(id: string) {
     try {
-
       const leaveEncashment = await this.prisma.leaveEncashment.findUnique({
         where: { id },
         include: {
@@ -353,7 +351,6 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!body.leaveEncashments || body.leaveEncashments.length === 0) {
         return {
           status: false,
@@ -551,7 +548,6 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.leaveEncashment.findUnique({
         where: { id },
       });
@@ -677,7 +673,6 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -872,7 +867,6 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       if (!ctx.userId) {
         return { status: false, message: 'Unauthorized' };
       }
@@ -1055,7 +1049,6 @@ export class LeaveEncashmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-
       const existing = await this.prisma.leaveEncashment.findUnique({
         where: { id },
       });

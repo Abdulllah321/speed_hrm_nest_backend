@@ -1,29 +1,25 @@
 model JournalVoucher {
-    id          String   @id @default(uuid())
-    jvNo        String   @unique
-    jvDate      DateTime
-    description String
-    status      String   @default("pending") // pending, approved, rejected
-
-    details JournalVoucherDetail[]
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id          String                 @id @default(uuid())
+  jvNo        String                 @unique
+  jvDate      DateTime
+  description String
+  status      String                 @default("pending")
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  details     JournalVoucherDetail[]
 }
 
 model JournalVoucherDetail {
-    id               String  @id @default(uuid())
-    journalVoucherId String
-    accountId        String
-    debit            Decimal @default(0.0) @db.Decimal(15, 2)
-    credit           Decimal @default(0.0) @db.Decimal(15, 2)
+  id               String         @id @default(uuid())
+  journalVoucherId String
+  accountId        String
+  debit            Decimal        @default(0.0) @db.Decimal(15, 2)
+  credit           Decimal        @default(0.0) @db.Decimal(15, 2)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  account          ChartOfAccount @relation(fields: [accountId], references: [id])
+  journalVoucher   JournalVoucher @relation(fields: [journalVoucherId], references: [id], onDelete: Cascade)
 
-    journalVoucher JournalVoucher @relation(fields: [journalVoucherId], references: [id], onDelete: Cascade)
-    account        ChartOfAccount @relation(fields: [accountId], references: [id])
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    @@index([journalVoucherId])
-    @@index([accountId])
+  @@index([journalVoucherId])
+  @@index([accountId])
 }

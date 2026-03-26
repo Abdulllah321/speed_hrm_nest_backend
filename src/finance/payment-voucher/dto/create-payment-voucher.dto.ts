@@ -1,73 +1,109 @@
-import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsDate, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsDate,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class CreatePaymentVoucherDetailDto {
-    @IsString()
-    @IsNotEmpty()
-    accountId: string;
+  @IsString()
+  @IsNotEmpty()
+  accountId: string;
 
-    @IsNumber()
-    @Min(0)
-    debit: number;
+  @IsNumber()
+  @Min(0)
+  debit: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  credit?: number;
+}
+
+export class CreatePaymentVoucherInvoiceDto {
+  @IsString()
+  @IsNotEmpty()
+  purchaseInvoiceId: string;
+
+  @IsNumber()
+  @Min(0)
+  paidAmount: number;
 }
 
 export class CreatePaymentVoucherDto {
-    @IsString()
-    @IsNotEmpty()
-    type: string; // bank or cash
+  @IsString()
+  @IsNotEmpty()
+  type: string; // bank or cash
 
-    @IsString()
-    @IsNotEmpty()
-    pvNo: string;
+  @IsString()
+  @IsNotEmpty()
+  pvNo: string;
 
-    @IsDate()
-    @Type(() => Date)
-    pvDate: Date;
+  @IsDate()
+  @Type(() => Date)
+  pvDate: Date;
 
-    @IsString()
-    @IsOptional()
-    refBillNo?: string;
+  @IsString()
+  @IsOptional()
+  refBillNo?: string;
 
-    @IsDate()
-    @IsOptional()
-    @Type(() => Date)
-    billDate?: Date;
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  billDate?: Date;
 
-    @IsString()
-    @IsOptional()
-    chequeNo?: string;
+  @IsString()
+  @IsOptional()
+  chequeNo?: string;
 
-    @IsDate()
-    @IsOptional()
-    @Type(() => Date)
-    chequeDate?: Date;
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  chequeDate?: Date;
 
-    @IsString()
-    @IsNotEmpty()
-    creditAccountId: string;
+  @IsString()
+  @IsNotEmpty()
+  creditAccountId: string;
 
-    @IsNumber()
-    @Min(0)
-    creditAmount: number;
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? undefined : value)
+  @IsString()
+  supplierId?: string;
 
-    @IsBoolean()
-    @IsOptional()
-    isAdvance?: boolean;
+  @IsNumber()
+  @Min(0)
+  creditAmount: number;
 
-    @IsBoolean()
-    @IsOptional()
-    isTaxApplicable?: boolean;
+  @IsBoolean()
+  @IsOptional()
+  isAdvance?: boolean;
 
-    @IsString()
-    @IsNotEmpty()
-    description: string;
+  @IsBoolean()
+  @IsOptional()
+  isTaxApplicable?: boolean;
 
-    @IsString()
-    @IsOptional()
-    status?: string;
+  @IsString()
+  @IsNotEmpty()
+  description: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreatePaymentVoucherDetailDto)
-    details: CreatePaymentVoucherDetailDto[];
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePaymentVoucherDetailDto)
+  details: CreatePaymentVoucherDetailDto[];
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePaymentVoucherInvoiceDto)
+  invoices?: CreatePaymentVoucherInvoiceDto[];
 }

@@ -1,51 +1,47 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+} from '@nestjs/common';
 import { WarehouseService } from './warehouse.service';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Warehouse')
-@Controller('warehouse')
+@Controller('api/warehouse')
 export class WarehouseController {
-    constructor(private readonly warehouseService: WarehouseService) { }
+  constructor(private readonly warehouseService: WarehouseService) { }
 
-    @Post()
-    @ApiOperation({ summary: 'Create a new warehouse' })
-    create(@Body() createWarehouseDto: any) {
-        return this.warehouseService.createWarehouse(createWarehouseDto);
-    }
+  @Post()
+  @ApiOperation({ summary: 'Create a new warehouse' })
+  create(@Body() createWarehouseDto: any) {
+    return this.warehouseService.createWarehouse(createWarehouseDto);
+  }
 
-    @Get()
-    @ApiOperation({ summary: 'List all warehouses' })
-    findAll() {
-        return this.warehouseService.findAllWarehouses();
-    }
+  @Get()
+  @ApiOperation({ summary: 'List all warehouses' })
+  findAll() {
+    return this.warehouseService.findAllWarehouses();
+  }
 
-    @Get(':id')
-    @ApiOperation({ summary: 'Get warehouse details' })
-    findOne(@Param('id') id: string) {
-        return this.warehouseService.findOneWarehouse(id);
-    }
+  @Get(':id')
+  @ApiOperation({ summary: 'Get warehouse details' })
+  findOne(@Param('id') id: string) {
+    return this.warehouseService.findOneWarehouse(id);
+  }
 
-    @Patch(':id')
-    @ApiOperation({ summary: 'Update warehouse' })
-    update(@Param('id') id: string, @Body() updateWarehouseDto: any) {
-        return this.warehouseService.updateWarehouse(id, updateWarehouseDto);
-    }
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update warehouse' })
+  update(@Param('id') id: string, @Body() updateWarehouseDto: any) {
+    return this.warehouseService.updateWarehouse(id, updateWarehouseDto);
+  }
 
-    @Delete(':id')
-    @ApiOperation({ summary: 'Delete warehouse' })
-    remove(@Param('id') id: string) {
-        return this.warehouseService.removeWarehouse(id);
-    }
-
-    @Post('location')
-    @ApiOperation({ summary: 'Create a location/bin' })
-    createLocation(@Body() createLocationDto: any) {
-        return this.warehouseService.createLocation(createLocationDto);
-    }
-
-    @Get(':id/locations')
-    @ApiOperation({ summary: 'Get all locations in a warehouse' })
-    getLocations(@Param('id') id: string) {
-        return this.warehouseService.findLocationsByWarehouse(id);
-    }
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete warehouse' })
+  remove(@Param('id') id: string) {
+    return this.warehouseService.removeWarehouse(id);
+  }
 }

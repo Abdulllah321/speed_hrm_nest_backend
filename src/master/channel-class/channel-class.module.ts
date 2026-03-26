@@ -4,8 +4,8 @@ import { ChannelClassService } from './channel-class.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [ChannelClassController],
-    providers: [ChannelClassService],
+  imports: [PrismaModule],
+  controllers: [ChannelClassController],
+  providers: [ChannelClassService],
 })
-export class ChannelClassModule { }
+export class ChannelClassModule {}

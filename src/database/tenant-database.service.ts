@@ -73,12 +73,17 @@ export class TenantDatabaseService implements OnModuleInit {
     }
   }
 
-  private async createDatabaseUser(dbUser: string, dbPassword: string): Promise<void> {
+  private async createDatabaseUser(
+    dbUser: string,
+    dbPassword: string,
+  ): Promise<void> {
     const pool = this.prismaMaster.getPool();
 
     const exists = await this.userExists(dbUser);
     if (exists) {
-      this.logger.warn(`Database user ${dbUser} already exists, skipping creation`);
+      this.logger.warn(
+        `Database user ${dbUser} already exists, skipping creation`,
+      );
       return;
     }
 
@@ -93,10 +98,15 @@ export class TenantDatabaseService implements OnModuleInit {
 
       this.logger.log(`Database user ${dbUser} created successfully`);
     } catch (error: any) {
-      if (error.code === '42710') { // duplicate_object
-        this.logger.warn(`Database user ${dbUser} already exists (concurrent creation)`);
+      if (error.code === '42710') {
+        // duplicate_object
+        this.logger.warn(
+          `Database user ${dbUser} already exists (concurrent creation)`,
+        );
       } else {
-        this.logger.error(`Failed to create database user ${dbUser}: ${error.message}`);
+        this.logger.error(
+          `Failed to create database user ${dbUser}: ${error.message}`,
+        );
         throw error;
       }
     }
@@ -121,17 +131,27 @@ export class TenantDatabaseService implements OnModuleInit {
 
       this.logger.log(`Database ${dbName} created successfully`);
     } catch (error: any) {
-      if (error.code === '42P04') { // duplicate_database
-        this.logger.warn(`Database ${dbName} already exists (concurrent creation)`);
+      if (error.code === '42P04') {
+        // duplicate_database
+        this.logger.warn(
+          `Database ${dbName} already exists (concurrent creation)`,
+        );
       } else {
-        this.logger.error(`Failed to create database ${dbName}: ${error.message}`);
+        this.logger.error(
+          `Failed to create database ${dbName}: ${error.message}`,
+        );
         throw error;
       }
     }
   }
 
-  private async grantDatabasePrivileges(dbName: string, dbUser: string): Promise<void> {
-    this.logger.log(`Granting privileges on database ${dbName} to user ${dbUser}`);
+  private async grantDatabasePrivileges(
+    dbName: string,
+    dbUser: string,
+  ): Promise<void> {
+    this.logger.log(
+      `Granting privileges on database ${dbName} to user ${dbUser}`,
+    );
 
     // Connect to the new database to grant schema-level privileges
     const { Pool } = require('pg');
@@ -180,9 +200,13 @@ export class TenantDatabaseService implements OnModuleInit {
     }
   }
 
-  private generateDatabaseUrl(dbName: string, dbUser: string, dbPassword: string): string {
-    return `postgresql://${dbUser}:${dbPassword}@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
+  private generateDatabaseUrl(
+    dbName: string,
+    dbUser: string,
+  ): string {
+    return `postgresql://${dbUser}:[password]@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
   }
+
 
   private async runMigrations(dbUrl: string): Promise<void> {
     this.logger.log('Running migrations on tenant database...');
@@ -238,11 +262,13 @@ export class TenantDatabaseService implements OnModuleInit {
       // 3. Grant necessary privileges
       await this.grantDatabasePrivileges(dbName, dbUser);
 
-      // 4. Generate connection URL
-      const dbUrl = this.generateDatabaseUrl(dbName, dbUser, dbPassword);
+      // 4. Generate connection URL for saving to DB (without password)
+      const dbUrl = this.generateDatabaseUrl(dbName, dbUser);
 
-      // 5. Run migrations
-      await this.runMigrations(dbUrl);
+      // 5. Run migrations (requires actual password)
+      const encodedPassword = encodeURIComponent(dbPassword);
+      const migrationDbUrl = `postgresql://${dbUser}:${encodedPassword}@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
+      await this.runMigrations(migrationDbUrl);
 
       // 6. Encrypt password for storage
       const encryptedPassword = this.encryptionService.encrypt(dbPassword);
@@ -254,10 +280,12 @@ export class TenantDatabaseService implements OnModuleInit {
         dbUrl,
         dbUser,
         dbPassword,
-        encryptedPassword
+        encryptedPassword,
       };
     } catch (error: any) {
-      this.logger.error(`Failed to provision tenant database: ${error.message}`);
+      this.logger.error(
+        `Failed to provision tenant database: ${error.message}`,
+      );
 
       // Cleanup on failure
       await this.cleanupFailedProvisioning(dbName, dbUser);
@@ -266,7 +294,10 @@ export class TenantDatabaseService implements OnModuleInit {
     }
   }
 
-  private async cleanupFailedProvisioning(dbName: string, dbUser: string): Promise<void> {
+  private async cleanupFailedProvisioning(
+    dbName: string,
+    dbUser: string,
+  ): Promise<void> {
     const pool = this.prismaMaster.getPool();
 
     try {
@@ -290,7 +321,11 @@ export class TenantDatabaseService implements OnModuleInit {
     }
   }
 
-  async deleteDatabase(dbName: string, tenantId: string, dbUser?: string): Promise<void> {
+  async deleteDatabase(
+    dbName: string,
+    tenantId: string,
+    dbUser?: string,
+  ): Promise<void> {
     const pool = this.prismaMaster.getPool();
     this.logger.warn(`Deleting tenant database: ${dbName}`);
 
@@ -311,7 +346,7 @@ export class TenantDatabaseService implements OnModuleInit {
       );
 
       // Small delay to ensure connections are terminated
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // 3. Drop the database
       const sanitizedDbName = dbName.replace(/[^a-zA-Z0-9_]/g, '');
@@ -324,7 +359,9 @@ export class TenantDatabaseService implements OnModuleInit {
         this.logger.log(`Database user ${dbUser} deleted successfully`);
       }
     } catch (error: any) {
-      this.logger.error(`Failed to delete database ${dbName}: ${error.message}`);
+      this.logger.error(
+        `Failed to delete database ${dbName}: ${error.message}`,
+      );
       throw error;
     }
   }

@@ -4,9 +4,9 @@ import { SeasonController } from './season.controller';
 import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
 
 @Module({
-    imports: [ActivityLogsModule],
-    controllers: [SeasonController],
-    providers: [SeasonService],
-    exports: [SeasonService],
+  imports: [ActivityLogsModule],
+  controllers: [SeasonController],
+  providers: [SeasonService],
+  exports: [SeasonService],
 })
-export class SeasonModule { }
+export class SeasonModule {}

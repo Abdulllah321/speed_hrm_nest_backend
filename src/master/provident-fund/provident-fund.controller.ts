@@ -27,7 +27,7 @@ import {
 @ApiTags('Provident Fund')
 @Controller('api')
 export class ProvidentFundController {
-  constructor(private service: ProvidentFundService) { }
+  constructor(private service: ProvidentFundService) {}
 
   @Get('provident-funds')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.read'))

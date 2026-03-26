@@ -1,0 +1,16 @@
+model BulkUpload {
+  id               String    @id @default(uuid())
+  jobId            String    @unique
+  filename         String
+  totalRecords     Int
+  processedRecords Int       @default(0)
+  successRecords   Int       @default(0)
+  failedRecords    Int       @default(0)
+  skippedRecords   Int       @default(0)
+  status           String    @default("pending")
+  message          String?
+  errors           Json?
+  uploadedBy       String
+  createdAt        DateTime  @default(now())
+  completedAt      DateTime?
+}

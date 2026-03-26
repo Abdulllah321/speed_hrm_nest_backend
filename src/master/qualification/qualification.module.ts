@@ -9,4 +9,4 @@ import { DatabaseModule } from '../../database/database.module';
   controllers: [QualificationController],
   providers: [QualificationService],
 })
-export class QualificationModule { }
+export class QualificationModule {}

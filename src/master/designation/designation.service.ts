@@ -1,23 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()
 export class DesignationService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prismaMaster.designation.findMany({
+    const items = await this.prisma.designation.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.designation.findUnique({
+    const item = await this.prisma.designation.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Designation not found' };
@@ -29,7 +30,7 @@ export class DesignationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.designation.create({
+      const created = await this.prisma.designation.create({
         data: { name, status: 'active', createdById: ctx.userId },
       });
       await this.activityLogs.log({
@@ -76,7 +77,7 @@ export class DesignationService {
   ) {
     if (!names?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prismaMaster.designation.createMany({
+      const result = await this.prisma.designation.createMany({
         data: names.map((n) => ({
           name: n,
           status: 'active',
@@ -127,10 +128,10 @@ export class DesignationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.designation.findUnique({
+      const existing = await this.prisma.designation.findUnique({
         where: { id },
       });
-      const updated = await this.prismaMaster.designation.update({
+      const updated = await this.prisma.designation.update({
         where: { id },
         data: { name },
       });
@@ -181,7 +182,7 @@ export class DesignationService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const item of items) {
-        await this.prismaMaster.designation.update({
+        await this.prisma.designation.update({
           where: { id: item.id },
           data: { name: item.name },
         });
@@ -228,10 +229,10 @@ export class DesignationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.designation.findUnique({
+      const existing = await this.prisma.designation.findUnique({
         where: { id },
       });
-      const removed = await this.prismaMaster.designation.delete({
+      const removed = await this.prisma.designation.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -278,7 +279,7 @@ export class DesignationService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prismaMaster.designation.deleteMany({
+      const removed = await this.prisma.designation.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

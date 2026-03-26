@@ -24,7 +24,7 @@ import { CreateTaxSlabDto, UpdateTaxSlabDto } from './dto/tax-slab.dto';
 @ApiTags('Tax Slab')
 @Controller('api')
 export class TaxSlabController {
-  constructor(private service: TaxSlabService) { }
+  constructor(private service: TaxSlabService) {}
 
   @Get('tax-slabs')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.read'))

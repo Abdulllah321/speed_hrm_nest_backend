@@ -1,4 +1,3 @@
-import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsGateway } from './activity-logs.gateway';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
@@ -6,11 +5,10 @@ import { forwardRef, Inject, Injectable } from '@nestjs/common';
 @Injectable()
 export class ActivityLogsService {
   constructor(
-    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => ActivityLogsGateway))
     private gateway: ActivityLogsGateway,
-  ) { }
+  ) {}
 
   async findAll(query: {
     page?: number;

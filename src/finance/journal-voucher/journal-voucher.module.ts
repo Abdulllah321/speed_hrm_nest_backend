@@ -4,8 +4,8 @@ import { JournalVoucherController } from './journal-voucher.controller';
 import { DatabaseModule } from '../../database/database.module';
 
 @Module({
-    imports: [DatabaseModule],
-    controllers: [JournalVoucherController],
-    providers: [JournalVoucherService],
+  imports: [DatabaseModule],
+  controllers: [JournalVoucherController],
+  providers: [JournalVoucherService],
 })
-export class JournalVoucherModule { }
+export class JournalVoucherModule {}

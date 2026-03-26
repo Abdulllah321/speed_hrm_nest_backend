@@ -8,4 +8,4 @@ import { PrismaModule } from '../../prisma/prisma.module';
   controllers: [TaxSlabController],
   providers: [TaxSlabService],
 })
-export class TaxSlabModule { }
+export class TaxSlabModule {}

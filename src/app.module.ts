@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisStore } from 'cache-manager-redis-yet';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { QueueModule } from './queue/queue.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandModule } from './master/erp/brand/brand.module';
@@ -71,20 +73,6 @@ import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
-<<<<<<< Updated upstream
-import { CompanyGroupModule } from './master/company-group/company-group.module';
-import { SalePoolModule } from './master/sale-pool/sale-pool.module';
-import { SaleTypeModule } from './master/sale-type/sale-type.module';
-import { SalesmanModule } from './master/salesman/salesman.module';
-import { StorageDimensionModule } from './master/storage-dimension/storage-dimension.module';
-import { MachineModule } from './master/machine/machine.module';
-import { CategoryModule } from './master/category/category.module';
-import { UomModule } from './master/uom/uom.module';
-import { ItemClassModule } from './master/item-class/item-class.module';
-import { ItemSubclassModule } from './master/item-subclass/item-subclass.module';
-import { SeasonModule } from './master/season/season.module';
-import { SegmentModule } from './master/segment/segment.module';
-=======
 import { CategoryModule } from './master/erp/category/category.module';
 import { TaxRateModule } from './master/erp/tax-rate/tax-rate.module';
 import { ItemClassModule } from './master/erp/item-class/item-class.module';
@@ -92,37 +80,56 @@ import { ItemSubclassModule } from './master/erp/item-subclass/item-subclass.mod
 import { SeasonModule } from './master/erp/season/season.module';
 import { OldSeasonModule } from './master/erp/old-season/old-season.module';
 import { SegmentModule } from './master/erp/segment/segment.module';
->>>>>>> Stashed changes
 import { ItemModule } from './finance/item/item.module';
 import { SupplierModule } from './finance/supplier/supplier.module';
-
+import { CustomerModule } from './sales/customer/customer.module';
 import { IntegrationModule } from './integration/integration.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PurchaseRequisitionModule } from './purchase/purchase-requisition/purchase-requisition.module';
 import { RfqModule } from './purchase/rfq/rfq.module';
 import { VendorQuotationModule } from './purchase/vendor-quotation/vendor-quotation.module';
+import { PurchaseOrderModule } from './purchase/purchase-order/purchase-order.module';
+import { PurchaseInvoiceModule } from './purchase/purchase-invoice/purchase-invoice.module';
+import { GrnModule } from './warehouse/grn/grn.module';
+import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
-<<<<<<< Updated upstream
-=======
-import { HsCodeModule } from './master/erp/hs-code/hs-code.module';
->>>>>>> Stashed changes
+import { HsCodeModule } from './master/hs-code/hs-code.module';
 
 import { SearchModule } from './search/search.module';
+import { WebhookModule } from './webhook/webhook.module';
+import { PosSalesModule } from './pos-sales/pos-sales.module';
+import { PosConfigModule } from './pos-config/pos-config.module';
+import { PosSessionModule } from './pos-session/pos-session.module';
 
 @Module({
   imports: [
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: async () => ({
-        store: await redisStore({
-          socket: {
-            host: process.env.REDIS_HOST || '127.0.0.1',
-            port: parseInt(process.env.REDIS_PORT || '6379'),
-          },
-        }),
-      }),
+      useFactory: async () => {
+        try {
+          // If we explicitly want no redis in this dev environment, return memory store implicitly
+          if (process.env.NO_REDIS === 'true') {
+            console.log('Redis disabled via NO_REDIS, using memory cache instead');
+            return {};
+          }
+
+          const store = await redisStore({
+            socket: {
+              host: process.env.REDIS_HOST || '127.0.0.1',
+              port: parseInt(process.env.REDIS_PORT || '6379'),
+            },
+            pingInterval: 1000 * 60,
+          });
+          return { store };
+        } catch (error) {
+          console.warn('Failed to connect to Redis. Using fallback memory cache.');
+          return {}; // fallback memory cache
+        }
+      },
     }),
+    EventEmitterModule.forRoot(),
+    QueueModule,
     DatabaseModule,
     PrismaModule,
     AuthModule, // added swagger
@@ -193,10 +200,11 @@ import { SearchModule } from './search/search.module';
     ChannelClassModule,
     ColorModule,
     CategoryModule,
-    UomModule,
+    TaxRateModule,
     ItemClassModule,
     ItemSubclassModule,
     SeasonModule,
+    OldSeasonModule,
     SegmentModule,
     ItemModule,
     IntegrationModule, // DriveSafe integration (SSO + HMAC provisioning)
@@ -206,8 +214,18 @@ import { SearchModule } from './search/search.module';
     PurchaseRequisitionModule,
     RfqModule,
     VendorQuotationModule,
+    PurchaseOrderModule,
+    PurchaseInvoiceModule,
+    GrnModule,
+    LandedCostModule,
     PosModule,
+    HsCodeModule,
     SearchModule,
+    CustomerModule,
+    WebhookModule,
+    PosSalesModule,
+    PosConfigModule,
+    PosSessionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

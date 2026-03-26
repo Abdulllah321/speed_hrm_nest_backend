@@ -21,17 +21,17 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 export class TransferController {
   constructor(private readonly transferService: TransferService) {}
 
-    @Post('employee-transfer')
-    @Permissions('hr.employee.transfer')
-    @ApiOperation({ summary: 'Transfer an employee' })
-    create(@Body() createTransferDto: CreateTransferDto, @Req() req: any) {
-        return this.transferService.create(createTransferDto, req.user.id);
-    }
+  @Post('employee-transfer')
+  @Permissions('hr.employee.transfer')
+  @ApiOperation({ summary: 'Transfer an employee' })
+  create(@Body() createTransferDto: CreateTransferDto, @Req() req: any) {
+    return this.transferService.create(createTransferDto, req.user.id);
+  }
 
-    @Get('employee-transfer/employee/:id')
-    @Permissions('hr.employee.read')
-    @ApiOperation({ summary: 'Get employee transfer history' })
-    findAll(@Param('id') id: string) {
-        return this.transferService.findAll(id);
-    }
+  @Get('employee-transfer/employee/:id')
+  @Permissions('hr.employee.read')
+  @ApiOperation({ summary: 'Get employee transfer history' })
+  findAll(@Param('id') id: string) {
+    return this.transferService.findAll(id);
+  }
 }

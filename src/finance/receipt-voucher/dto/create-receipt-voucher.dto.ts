@@ -1,65 +1,75 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsDate, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsDate,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class CreateReceiptVoucherDetailDto {
-    @IsString()
-    @IsNotEmpty()
-    accountId: string;
+  @IsString()
+  @IsNotEmpty()
+  accountId: string;
 
-    @IsNumber()
-    @Min(0)
-    credit: number;
+  @IsNumber()
+  @Min(0)
+  credit: number;
 }
 
 export class CreateReceiptVoucherDto {
-    @IsString()
-    @IsNotEmpty()
-    type: string; // bank or cash
+  @IsString()
+  @IsNotEmpty()
+  type: string; // bank or cash
 
-    @IsString()
-    @IsNotEmpty()
-    rvNo: string;
+  @IsString()
+  @IsNotEmpty()
+  rvNo: string;
 
-    @IsDate()
-    @Type(() => Date)
-    rvDate: Date;
+  @IsDate()
+  @Type(() => Date)
+  rvDate: Date;
 
-    @IsString()
-    @IsOptional()
-    refBillNo?: string;
+  @IsString()
+  @IsOptional()
+  refBillNo?: string;
 
-    @IsDate()
-    @IsOptional()
-    @Type(() => Date)
-    billDate?: Date;
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  billDate?: Date;
 
-    @IsString()
-    @IsOptional()
-    chequeNo?: string;
+  @IsString()
+  @IsOptional()
+  chequeNo?: string;
 
-    @IsDate()
-    @IsOptional()
-    @Type(() => Date)
-    chequeDate?: Date;
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  chequeDate?: Date;
 
-    @IsString()
-    @IsNotEmpty()
-    debitAccountId: string;
+  @IsString()
+  @IsNotEmpty()
+  debitAccountId: string;
 
-    @IsNumber()
-    @Min(0)
-    debitAmount: number;
+  @IsNumber()
+  @Min(0)
+  debitAmount: number;
 
-    @IsString()
-    @IsNotEmpty()
-    description: string;
+  @IsString()
+  @IsNotEmpty()
+  description: string;
 
-    @IsString()
-    @IsOptional()
-    status?: string;
+  @IsString()
+  @IsOptional()
+  status?: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreateReceiptVoucherDetailDto)
-    details: CreateReceiptVoucherDetailDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateReceiptVoucherDetailDto)
+  details: CreateReceiptVoucherDetailDto[];
 }

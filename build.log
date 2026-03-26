@@ -1,0 +1,3463 @@
+﻿bun.exe : $ nest build
+At C:\Users\abdullah.sufyan\A
+ppData\Roaming\npm\bun.ps1:14
+ char:3
++   & "$basedir/node_modules/
+bun/bin/bun.exe"   $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: ($ nest   
+  build:String) [], Remote   
+ Exception
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+[96msrc/allowance/allowance.
+service.ts[0m:[93m14[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/allowance/allowance.
+service.ts[0m:[93m15[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/allowance/allowance.
+service.ts[0m:[93m105[0m:
+[93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'AllowanceService'.
+
+[7m105[0m           this.pr
+ismaMaster.user.findMany({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/allowance/allowance.
+service.ts[0m:[93m186[0m:
+[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'AllowanceService'.
+
+[7m186[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/allowance/allowance.
+service.ts[0m:[93m197[0m:
+[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'AllowanceService'.
+
+[7m197[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/app.module.ts[0m:[
+93m83[0m:[93m27[0m - 
+[91merror[0m[90m TS2307: 
+[0mCannot find module 
+'./master/uom/uom.module' or 
+its corresponding type 
+declarations.
+
+[7m83[0m import { 
+UomModule } from 
+'./master/uom/uom.module';
+[7m  [0m [91m             
+             
+~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/attendance-exemption
+/attendance-exemption.service
+.ts[0m:[93m9[0m:[93m13[0
+m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/attendance-exemption
+/attendance-exemption.service
+.ts[0m:[93m10[0m:[93m13[
+0m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/attendance-request-q
+uery/attendance-request-query
+.service.ts[0m:[93m9[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/attendance-request-q
+uery/attendance-request-query
+.service.ts[0m:[93m10[0m:
+[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/attendance/attendanc
+e.service.ts[0m:[93m10[0m:
+[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/attendance/attendanc
+e.service.ts[0m:[93m11[0m:
+[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m11[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/auth/auth.controller
+.ts[0m:[93m15[0m:[93m31[
+0m - [91merror[0m[90m 
+TS2307: [0mCannot find 
+module '../../database/prisma
+.service' or its 
+corresponding type 
+declarations.
+
+[7m15[0m import { 
+PrismaService } from '../../d
+atabase/prisma.service';
+[7m  [0m [91m             
+                 ~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m49[0m:[93m29[0m 
+- [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m49[0m     const user = 
+await this.prismaMaster.user.
+findUnique({
+[7m  [0m [91m             
+               
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m62[0m:[93m16[0m 
+- [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m62[0m     await this.pri
+smaMaster.loginHistory.create
+({
+[7m  [0m [91m             
+  ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m138[0m:[93m35[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m138[0m     const 
+actingUser = await this.prism
+aMaster.user.findUnique({
+[7m   [0m [91m            
+                      
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m173[0m:[93m33[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m173[0m     let 
+targetUser = await this.prism
+aMaster.user.findFirst({
+[7m   [0m [91m            
+                    
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m188[0m:[93m31[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m188[0m       targetUser 
+= await this.prismaMaster.use
+r.findUnique({
+[7m   [0m [91m            
+                  
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m197[0m:[93m33[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m197[0m         
+targetUser = await this.prism
+aMaster.user.update({
+[7m   [0m [91m            
+                    
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m214[0m:[93m33[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m214[0m         
+targetUser = await this.prism
+aMaster.user.create({
+[7m   [0m [91m            
+                    
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m240[0m:[93m31[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m240[0m       targetUser 
+= await this.prismaMaster.use
+r.update({
+[7m   [0m [91m            
+                  
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m327[0m:[93m29[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m327[0m     const user = 
+await this.prismaMaster.user.
+findUnique({
+[7m   [0m [91m            
+                
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m428[0m:[93m29[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m428[0m     let tenant = 
+await this.prismaMaster.tenan
+t.findUnique({
+[7m   [0m [91m            
+                
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m454[0m:[93m27[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m454[0m       tenant = 
+await this.prismaMaster.tenan
+t.findUnique({
+[7m   [0m [91m            
+              
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m465[0m:[93m27[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m465[0m     let user = 
+await this.prismaMaster.user.
+findUnique({
+[7m   [0m [91m            
+              
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m481[0m:[93m31[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m481[0m       roleRecord 
+= await this.prismaMaster.rol
+e.findFirst({
+[7m   [0m [91m            
+                  
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m489[0m:[93m25[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m489[0m       user = 
+await this.prismaMaster.user.
+create({
+[7m   [0m [91m            
+            ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m510[0m:[93m25[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m510[0m       user = 
+await this.prismaMaster.user.
+update({
+[7m   [0m [91m            
+            ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m561[0m:[93m16[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m561[0m     await this.pr
+ismaMaster.loginHistory.creat
+e({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m571[0m:[93m16[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m571[0m     await this.pr
+ismaMaster.loginHistory.creat
+e({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m812[0m:[93m31[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m812[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m   [0m [91m            
+                  
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m851[0m:[93m28[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m851[0m     let user = 
+(await this.prismaMaster.user
+.findUnique({
+[7m   [0m [91m            
+               
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m963[0m:[93m29[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m963[0m     const user = 
+await this.prismaMaster.user.
+findUnique({
+[7m   [0m [91m            
+                
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m994[0m:[93m29[0m
+ - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m994[0m     const user = 
+await this.prismaMaster.user.
+findUnique({
+[7m   [0m [91m            
+                
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1009[0m:[93m16[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1009[0m     await this.p
+rismaMaster.user.update({
+[7m    [0m [91m           
+    ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1030[0m:[93m30[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1030[0m     const user 
+= (await this.prismaMaster.us
+er.update({
+[7m    [0m [91m           
+                  
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1077[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1077[0m     const logs 
+= await this.prismaMaster.log
+inHistory.findMany({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1086[0m:[93m31[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1086[0m     const users 
+= (await this.prismaMaster.us
+er.findMany({
+[7m    [0m [91m           
+                   
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1157[0m:[93m37[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1157[0m     const 
+existingUser = await this.pri
+smaMaster.user.findUnique({
+[7m    [0m [91m           
+                         
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1168[0m:[93m40[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1168[0m         const 
+updatedUser = await this.pris
+maMaster.user.update({
+[7m    [0m [91m           
+                            
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1194[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1194[0m     const user 
+= await this.prismaMaster.use
+r.create({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1206[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1206[0m     const user 
+= await this.prismaMaster.use
+r.update({ where: { id }, 
+data });
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1211[0m:[93m30[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1211[0m     const roles 
+= await this.prismaMaster.rol
+e.findMany({
+[7m    [0m [91m           
+                  
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1219[0m:[93m36[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1219[0m     const 
+permissions = await this.pris
+maMaster.permission.findMany(
+{
+[7m    [0m [91m           
+                        
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1226[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1226[0m     const logs 
+= await this.prismaMaster.act
+ivityLog.findMany({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1237[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1237[0m     const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1262[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1262[0m     const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1305[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1305[0m     const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1336[0m:[93m43[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1336[0m       const 
+existingSessions = await this
+.prismaMaster.userSession.fin
+dMany({
+[7m    [0m [91m           
+                             
+  ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1344[0m:[93m20[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1344[0m         await th
+is.prismaMaster.userSession.d
+eleteMany({
+[7m    [0m [91m           
+        ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1351[0m:[93m18[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1351[0m       await this
+.prismaMaster.userSession.del
+eteMany({
+[7m    [0m [91m           
+      ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1360[0m:[93m35[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1360[0m     const 
+newSession = await this.prism
+aMaster.userSession.create({
+[7m    [0m [91m           
+                       
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1380[0m:[93m33[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1380[0m     const 
+sessions = await this.prismaM
+aster.userSession.findMany({
+[7m    [0m [91m           
+                     
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1421[0m:[93m29[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1421[0m     const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m    [0m [91m           
+                 
+~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1524[0m:[93m16[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1524[0m     await this.p
+rismaMaster.loginHistory.crea
+te({
+[7m    [0m [91m           
+    ~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts
+[0m:[93m1565[0m:[93m31[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'AuthService'.
+
+[7m1565[0m       const 
+user = await this.prismaMaste
+r.user.findUnique({
+[7m    [0m [91m           
+                   
+~~~~~~~~~~~~[0m
+[96msrc/bonus/bonus.service.
+ts[0m:[93m14[0m:[93m13[0
+m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/bonus/bonus.service.
+ts[0m:[93m15[0m:[93m13[0
+m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/bonus/bonus.service.
+ts[0m:[93m43[0m:[93m18[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'BonusService'.
+
+[7m43[0m           ? this.p
+rismaMaster.user.findUnique({
+[7m  [0m [91m             
+    ~~~~~~~~~~~~[0m
+[96msrc/bonus/bonus.service.
+ts[0m:[93m54[0m:[93m18[0
+m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'BonusService'.
+
+[7m54[0m           ? this.p
+rismaMaster.user.findUnique({
+[7m  [0m [91m             
+    ~~~~~~~~~~~~[0m
+[96msrc/bonus/bonus.service.
+ts[0m:[93m178[0m:[93m16[
+0m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'BonusService'.
+
+[7m178[0m           this.pr
+ismaMaster.user.findMany({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/dashboard/dashboard.
+service.ts[0m:[93m8[0m:[9
+3m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m8[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/dashboard/dashboard.
+service.ts[0m:[93m9[0m:[9
+3m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/dashboard/dashboard.
+service.ts[0m:[93m322[0m:
+[93m33[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DashboardService'.
+
+[7m322[0m         const 
+user = await this.prismaMaste
+r.user.findUnique({
+[7m   [0m [91m            
+                    
+~~~~~~~~~~~~[0m
+[96msrc/deduction/deduction.
+service.ts[0m:[93m14[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/deduction/deduction.
+service.ts[0m:[93m15[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/deduction/deduction.
+service.ts[0m:[93m203[0m:
+[93m20[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DeductionService'.
+
+[7m203[0m             ? thi
+s.prismaMaster.user.findUniqu
+e({
+[7m   [0m [91m            
+       ~~~~~~~~~~~~[0m
+[96msrc/deduction/deduction.
+service.ts[0m:[93m214[0m:
+[93m20[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DeductionService'.
+
+[7m214[0m             ? thi
+s.prismaMaster.user.findUniqu
+e({
+[7m   [0m [91m            
+       ~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m9[0m:[93m
+10[0m - [91merror[0m[90m 
+TS2305: [0mModule '"@prisma/
+management-client"' has no 
+exported member 
+'SocialSecurityInstitution'.
+
+[7m9[0m import { 
+SocialSecurityInstitution } 
+from 
+'@prisma/management-client';
+[7m [0m [91m         
+~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m17[0m:[93
+m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m18[0m:[93
+m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m18[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m95[0m:[93
+m12[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m95[0m       this.prismaM
+aster.user.findMany({
+[7m  [0m [91m           
+~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m133[0m:[9
+3m26[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'avatar' does 
+not exist on type '{}'.
+
+[7m133[0m         
+avatarUrl: user?.avatar || 
+null,
+[7m   [0m [91m            
+             ~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m348[0m:[9
+3m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m348[0m         ? this.pr
+ismaMaster.user.findUnique({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m904[0m:[9
+3m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m904[0m         let user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m   [0m [91m            
+                  
+~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m914[0m:[9
+3m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m914[0m             
+await this.prismaMaster.user.
+update({
+[7m   [0m [91m            
+           ~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m936[0m:[9
+3m29[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m936[0m           user = 
+await this.prismaMaster.user.
+create({
+[7m   [0m [91m            
+                
+~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m1040[0m:[
+93m22[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m1040[0m                 
+this.prismaMaster as any
+[7m    [0m [91m           
+          ~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m1849[0m:[
+93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m1849[0m             
+await this.prismaMaster.user.
+update({
+[7m    [0m [91m           
+            ~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m1856[0m:[
+93m33[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m1856[0m           let 
+user = await this.prismaMaste
+r.user.findUnique({
+[7m    [0m [91m           
+                     
+~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m1868[0m:[
+93m26[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m1868[0m               
+await this.prismaMaster.user.
+update({
+[7m    [0m [91m           
+              
+~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m1889[0m:[
+93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m1889[0m             
+user = await this.prismaMaste
+r.user.create({
+[7m    [0m [91m           
+                   
+~~~~~~~~~~~~[0m
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2214[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'departmentId' 
+does not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'department'?
+
+[7m2214[0m         
+updateData.departmentId = 
+resolvedDepartmentId;
+[7m    [0m [91m           
+        ~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+138[0m:[93m5[0m
+    [7m173138[0m     
+department?: DepartmentUpdate
+OneRequiredWithoutEmployeesNe
+stedInput
+    [7m      [0m [96m    
+~~~~~~~~~~[0m
+    'department' is declared 
+here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2225[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 
+'subDepartmentId' does not 
+exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'subDepartment'?
+
+[7m2225[0m         
+updateData.subDepartmentId = 
+resolvedSubDepartmentId;
+[7m    [0m [91m           
+        ~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+139[0m:[93m5[0m
+    [7m173139[0m     
+subDepartment?: SubDepartment
+UpdateOneWithoutEmployeesNest
+edInput
+    [7m      [0m [96m    
+~~~~~~~~~~~~~[0m
+    'subDepartment' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2236[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 
+'employeeGradeId' does not 
+exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'employeeGrade'?
+
+[7m2236[0m         
+updateData.employeeGradeId = 
+resolvedEmployeeGradeId;
+[7m    [0m [91m           
+        ~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+140[0m:[93m5[0m
+    [7m173140[0m     
+employeeGrade?: EmployeeGrade
+UpdateOneRequiredWithoutEmplo
+yeesNestedInput
+    [7m      [0m [96m    
+~~~~~~~~~~~~~[0m
+    'employeeGrade' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2247[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'designationId' 
+does not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'designation'?
+
+[7m2247[0m         
+updateData.designationId = 
+resolvedDesignationId;
+[7m    [0m [91m           
+        ~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+141[0m:[93m5[0m
+    [7m173141[0m     
+designation?: DesignationUpda
+teOneRequiredWithoutEmployees
+NestedInput
+    [7m      [0m [96m    
+~~~~~~~~~~~[0m
+    'designation' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2258[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 
+'maritalStatusId' does not 
+exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'maritalStatus'?
+
+[7m2258[0m         
+updateData.maritalStatusId = 
+resolvedMaritalStatusId;
+[7m    [0m [91m           
+        ~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+142[0m:[93m5[0m
+    [7m173142[0m     
+maritalStatus?: MaritalStatus
+UpdateOneWithoutEmployeesNest
+edInput
+    [7m      [0m [96m    
+~~~~~~~~~~~~~[0m
+    'maritalStatus' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2270[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 
+'employmentStatusId' does 
+not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'employmentStatus'?
+
+[7m2270[0m         updateDa
+ta.employmentStatusId = 
+resolvedEmploymentStatusId;
+[7m    [0m [91m           
+        
+~~~~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+143[0m:[93m5[0m
+    [7m173143[0m     
+employmentStatus?: EmployeeSt
+atusUpdateOneWithoutEmployees
+NestedInput
+    [7m      [0m [96m    
+~~~~~~~~~~~~~~~~[0m
+    'employmentStatus' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2337[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'countryId' 
+does not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'country'?
+
+[7m2337[0m         
+updateData.countryId = 
+resolvedCountryId;
+[7m    [0m [91m           
+        ~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+144[0m:[93m5[0m
+    [7m173144[0m     
+country?: CountryUpdateOneReq
+uiredWithoutEmployeesNestedIn
+put
+    [7m      [0m [96m    
+~~~~~~~[0m
+    'country' is declared 
+here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2348[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'stateId' does 
+not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'state'?
+
+[7m2348[0m         
+updateData.stateId = 
+resolvedStateId;
+[7m    [0m [91m           
+        ~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+145[0m:[93m5[0m
+    [7m173145[0m     
+state?: StateUpdateOneRequire
+dWithoutEmployeesNestedInput
+    [7m      [0m [96m    
+~~~~~[0m
+    'state' is declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2359[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'cityId' does 
+not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'city'?
+
+[7m2359[0m         
+updateData.cityId = 
+resolvedCityId;
+[7m    [0m [91m           
+        ~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+146[0m:[93m5[0m
+    [7m173146[0m     
+city?: CityUpdateOneRequiredW
+ithoutEmployeesNestedInput
+    [7m      [0m [96m    
+~~~~[0m
+    'city' is declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2413[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 
+'workingHoursPolicyId' does 
+not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 
+'workingHoursPolicy'?
+
+[7m2413[0m         updateDa
+ta.workingHoursPolicyId = 
+resolvedWorkingHoursPolicyId;
+[7m    [0m [91m           
+        
+~~~~~~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+147[0m:[93m5[0m
+    [7m173147[0m     
+workingHoursPolicy?: WorkingH
+oursPolicyUpdateOneRequiredWi
+thoutEmployeesNestedInput
+    [7m      [0m [96m    
+~~~~~~~~~~~~~~~~~~[0m
+    'workingHoursPolicy' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2424[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'locationId' 
+does not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'location'?
+
+[7m2424[0m         
+updateData.locationId = 
+resolvedLocationId;
+[7m    [0m [91m           
+        ~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+148[0m:[93m5[0m
+    [7m173148[0m     
+location?: LocationUpdateOneW
+ithoutEmployeesNestedInput
+    [7m      [0m [96m    
+~~~~~~~~[0m
+    'location' is declared 
+here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2435[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 
+'leavesPolicyId' does not 
+exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'leavesPolicy'?
+
+[7m2435[0m         
+updateData.leavesPolicyId = 
+resolvedLeavesPolicyId;
+[7m    [0m [91m           
+        ~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+150[0m:[93m5[0m
+    [7m173150[0m     
+leavesPolicy?: LeavesPolicyUp
+dateOneRequiredWithoutEmploye
+esNestedInput
+    [7m      [0m [96m    
+~~~~~~~~~~~~[0m
+    'leavesPolicy' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2465[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'socialSecurityI
+nstitutionId' does not exist 
+on type 
+'EmployeeUpdateInput'. Did 
+you mean 
+'socialSecurityInstitution'?
+
+[7m2465[0m         updateDa
+ta.socialSecurityInstitutionI
+d = (
+[7m    [0m [91m           
+        ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+151[0m:[93m5[0m
+    [7m173151[0m     
+socialSecurityInstitution?: S
+ocialSecurityInstitutionUpdat
+eOneWithoutEmployeesNestedInp
+ut
+    [7m      [0m [96m    
+~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    
+'socialSecurityInstitution' 
+is declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2630[0m:[
+93m25[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'departmentId' 
+does not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'department'?
+
+[7m2630[0m             
+(updateData.departmentId as 
+any) || 
+existing.departmentId,
+[7m    [0m [91m           
+             ~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+138[0m:[93m5[0m
+    [7m173138[0m     
+department?: DepartmentUpdate
+OneRequiredWithoutEmployeesNe
+stedInput
+    [7m      [0m [96m    
+~~~~~~~~~~[0m
+    'department' is declared 
+here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2633[0m:[
+93m25[0m - 
+[91merror[0m[90m TS2551: 
+[0mProperty 'designationId' 
+does not exist on type 
+'EmployeeUpdateInput'. Did 
+you mean 'designation'?
+
+[7m2633[0m             
+(updateData.designationId as 
+any) || 
+existing.designationId,
+[7m    [0m [91m           
+             
+~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m173
+141[0m:[93m5[0m
+    [7m173141[0m     
+designation?: DesignationUpda
+teOneRequiredWithoutEmployees
+NestedInput
+    [7m      [0m [96m    
+~~~~~~~~~~~[0m
+    'designation' is 
+declared here.
+[96msrc/employee/employee.se
+rvice.ts[0m:[93m2657[0m:[
+93m20[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'EmployeeService'.
+
+[7m2657[0m         await th
+is.prismaMaster.user.update({
+[7m    [0m [91m           
+        ~~~~~~~~~~~~[0m
+[96msrc/employee/transfer/tr
+ansfer.service.ts[0m:[93m13
+[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m13[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/employee/transfer/tr
+ansfer.service.ts[0m:[93m14
+[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/employee/transfer/tr
+ansfer.service.ts[0m:[93m12
+6[0m:[93m12[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'TransferService'.
+
+[7m126[0m       this.prisma
+Master.user.findMany({
+[7m   [0m [91m           
+~~~~~~~~~~~~[0m
+[96msrc/exit-clearance/exit-
+clearance.service.ts[0m:[93
+m9[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/exit-clearance/exit-
+clearance.service.ts[0m:[93
+m10[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/finance/item/item.se
+rvice.ts[0m:[93m9[0m:[93m
+13[0m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/finance/item/item.se
+rvice.ts[0m:[93m10[0m:[93
+m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/increment/increment.
+service.ts[0m:[93m13[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m13[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/increment/increment.
+service.ts[0m:[93m14[0m:[
+93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/increment/increment.
+service.ts[0m:[93m54[0m:[
+93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'IncrementService'.
+
+[7m54[0m         ? this.pri
+smaMaster.user.findUnique({
+[7m  [0m [91m             
+  ~~~~~~~~~~~~[0m
+[96msrc/increment/increment.
+service.ts[0m:[93m60[0m:[
+93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'IncrementService'.
+
+[7m60[0m         ? this.pri
+smaMaster.user.findUnique({
+[7m  [0m [91m             
+  ~~~~~~~~~~~~[0m
+[96msrc/leave-application/le
+ave-application.service.ts[0
+m:[93m10[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/leave-application/le
+ave-application.service.ts[0
+m:[93m11[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m11[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/leave-application/le
+ave-application.service.ts[0
+m:[93m710[0m:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LeaveApplicationService'.
+
+[7m710[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m   [0m [91m            
+                  
+~~~~~~~~~~~~[0m
+[96msrc/leave-application/le
+ave-application.service.ts[0
+m:[93m1000[0m:[93m31[0m 
+- [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 
+'LeaveApplicationService'.
+
+[7m1000[0m       const 
+user = await this.prismaMaste
+r.user.findUnique({
+[7m    [0m [91m           
+                   
+~~~~~~~~~~~~[0m
+[96msrc/leave-encashment/lea
+ve-encashment.service.ts[0m:
+[93m14[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/leave-encashment/lea
+ve-encashment.service.ts[0m:
+[93m15[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/leave-encashment/lea
+ve-encashment.service.ts[0m:
+[93m110[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LeaveEncashmentService'.
+
+[7m110[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/leave-encashment/lea
+ve-encashment.service.ts[0m:
+[93m121[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LeaveEncashmentService'.
+
+[7m121[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/leave-encashment/lea
+ve-encashment.service.ts[0m:
+[93m132[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LeaveEncashmentService'.
+
+[7m132[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/leave-encashment/lea
+ve-encashment.service.ts[0m:
+[93m272[0m:[93m14[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LeaveEncashmentService'.
+
+[7m272[0m         this.pris
+maMaster.user.findMany({
+[7m   [0m [91m            
+ ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m14
+[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m15
+[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m144
+[0m:[93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m144[0m         ? this.pr
+ismaMaster.user.findUnique({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m150
+[0m:[93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m150[0m         ? this.pr
+ismaMaster.user.findUnique({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m156
+[0m:[93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m156[0m         ? this.pr
+ismaMaster.user.findUnique({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m291
+[0m:[93m16[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m291[0m           this.pr
+ismaMaster.user.findMany({
+[7m   [0m [91m            
+   ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m401
+[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m401[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m412
+[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m412[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m423
+[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m423[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m652
+[0m:[93m22[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m652[0m               ? t
+his.prismaMaster.user.findUni
+que({
+[7m   [0m [91m            
+         ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m821
+[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m821[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m832
+[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m832[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/loan-request/loan-re
+quest.service.ts[0m:[93m843
+[0m:[93m18[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'LoanRequestService'.
+
+[7m843[0m           ? this.
+prismaMaster.user.findUnique(
+{
+[7m   [0m [91m            
+     ~~~~~~~~~~~~[0m
+[96msrc/master/advance-salar
+y/advance-salary.service.ts[
+0m:[93m15[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/advance-salar
+y/advance-salary.service.ts[
+0m:[93m16[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m16[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/advance-salar
+y/advance-salary.service.ts[
+0m:[93m182[0m:[93m14[0m 
+- [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 
+'AdvanceSalaryService'.
+
+[7m182[0m         this.pris
+maMaster.user.findMany({
+[7m   [0m [91m            
+ ~~~~~~~~~~~~[0m
+[96msrc/master/advance-salar
+y/advance-salary.service.ts[
+0m:[93m260[0m:[93m14[0m 
+- [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 
+'AdvanceSalaryService'.
+
+[7m260[0m         this.pris
+maMaster.user.findMany({
+[7m   [0m [91m            
+ ~~~~~~~~~~~~[0m
+[96msrc/master/allocation/al
+location.service.ts[0m:[93m
+2[0m:[93m10[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'PrismaService'.
+
+[7m2[0m import { 
+PrismaService } from '../../d
+atabase/prisma.service';
+[7m [0m [91m         
+~~~~~~~~~~~~~[0m
+[96msrc/master/allocation/al
+location.service.ts[0m:[93m
+4[0m:[93m10[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'PrismaService'.
+
+[7m4[0m import { 
+PrismaService } from '../../d
+atabase/prisma.service';
+[7m [0m [91m         
+~~~~~~~~~~~~~[0m
+[96msrc/master/allocation/al
+location.service.ts[0m:[93m
+9[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/master/allocation/al
+location.service.ts[0m:[93m
+10[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/allocation/al
+location.service.ts[0m:[93m
+127[0m:[93m32[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'AllocationService'.
+
+[7m127[0m       const 
+users = await this.prismaMast
+er.user.findMany({
+[7m   [0m [91m            
+                   
+~~~~~~~~~~~~[0m
+[96msrc/master/allocation/al
+location.service.ts[0m:[93m
+157[0m:[93m32[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'AllocationService'.
+
+[7m157[0m         
+createdBy = await this.prisma
+Master.user.findUnique({
+[7m   [0m [91m            
+                   
+~~~~~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m17[0m:[9
+3m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m18[0m:[9
+3m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m18[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m42[0m:[9
+3m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'BrandService'.
+
+[7m42[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m53[0m:[9
+3m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m53[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m53[0m:[9
+3m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m53[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m72[0m:[9
+3m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'BrandService'.
+
+[7m72[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m271[0m:[
+93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'BrandService'.
+
+[7m271[0m     const users 
+= await this.prismaMaster.use
+r.findMany({
+[7m   [0m [91m            
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m283[0m:[
+93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m283[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+           ~~~~~~~~~[0m
+[96msrc/master/brand/brand.s
+ervice.ts[0m:[93m283[0m:[
+93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m283[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+   ~~~~~~~~[0m
+[96msrc/master/channel-class
+/channel-class.service.ts[0m
+:[93m16[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m16[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/channel-class
+/channel-class.service.ts[0m
+:[93m17[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/channel-class
+/channel-class.service.ts[0m
+:[93m36[0m:[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ChannelClassService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/channel-class
+/channel-class.service.ts[0m
+:[93m47[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m47[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/channel-class
+/channel-class.service.ts[0m
+:[93m47[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m47[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/channel-class
+/channel-class.service.ts[0m
+:[93m64[0m:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ChannelClassService'.
+
+[7m64[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/color/color.s
+ervice.ts[0m:[93m16[0m:[9
+3m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m16[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/color/color.s
+ervice.ts[0m:[93m17[0m:[9
+3m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/color/color.s
+ervice.ts[0m:[93m36[0m:[9
+3m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ColorService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/color/color.s
+ervice.ts[0m:[93m47[0m:[9
+3m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m47[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/color/color.s
+ervice.ts[0m:[93m47[0m:[9
+3m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m47[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/color/color.s
+ervice.ts[0m:[93m64[0m:[9
+3m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ColorService'.
+
+[7m64[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+17[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+18[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m18[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+53[0m:[93m12[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DepartmentService'.
+
+[7m53[0m       this.prismaM
+aster.user.findMany({
+[7m  [0m [91m           
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+73[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m73[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+73[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m73[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+75[0m:[93m34[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeName' 
+does not exist on type '{}'.
+
+[7m75[0m         headName: 
+head ? `${head.employeeName} 
+(${head.employeeId})` : null,
+[7m  [0m [91m             
+                    
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+75[0m:[93m56[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeId' 
+does not exist on type '{}'.
+
+[7m75[0m         headName: 
+head ? `${head.employeeName} 
+(${head.employeeId})` : null,
+[7m  [0m [91m             
+                             
+             ~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+82[0m:[93m27[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeName' 
+does not exist on type '{}'.
+
+[7m82[0m               ? 
+`${sdHead.employeeName} 
+(${sdHead.employeeId})`
+[7m  [0m [91m             
+             ~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+82[0m:[93m51[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeId' 
+does not exist on type '{}'.
+
+[7m82[0m               ? 
+`${sdHead.employeeName} 
+(${sdHead.employeeId})`
+[7m  [0m [91m             
+                             
+        ~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+110[0m:[93m12[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DepartmentService'.
+
+[7m110[0m       this.prisma
+Master.user.findMany({
+[7m   [0m [91m           
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+131[0m:[93m22[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m131[0m         ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+         ~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+131[0m:[93m43[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m131[0m         ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+ ~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+133[0m:[93m32[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeName' 
+does not exist on type '{}'.
+
+[7m133[0m       headName: 
+head ? `${head.employeeName} 
+(${head.employeeId})` : null,
+[7m   [0m [91m            
+                   
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+133[0m:[93m54[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeId' 
+does not exist on type '{}'.
+
+[7m133[0m       headName: 
+head ? `${head.employeeName} 
+(${head.employeeId})` : null,
+[7m   [0m [91m            
+                             
+            ~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+140[0m:[93m25[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeName' 
+does not exist on type '{}'.
+
+[7m140[0m             ? 
+`${sdHead.employeeName} 
+(${sdHead.employeeId})`
+[7m   [0m [91m            
+            ~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+140[0m:[93m49[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeId' 
+does not exist on type '{}'.
+
+[7m140[0m             ? 
+`${sdHead.employeeName} 
+(${sdHead.employeeId})`
+[7m   [0m [91m            
+                             
+       ~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+447[0m:[93m12[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DepartmentService'.
+
+[7m447[0m       this.prisma
+Master.user.findMany({
+[7m   [0m [91m           
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+468[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m468[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+           ~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+468[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m468[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+   ~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+470[0m:[93m34[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeName' 
+does not exist on type '{}'.
+
+[7m470[0m         
+headName: head ? 
+`${head.employeeName} 
+(${head.employeeId})` : null,
+[7m   [0m [91m            
+                     
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+470[0m:[93m56[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeId' 
+does not exist on type '{}'.
+
+[7m470[0m         
+headName: head ? 
+`${head.employeeName} 
+(${head.employeeId})` : null,
+[7m   [0m [91m            
+                             
+              ~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+499[0m:[93m12[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'DepartmentService'.
+
+[7m499[0m       this.prisma
+Master.user.findMany({
+[7m   [0m [91m           
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+520[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m520[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+           ~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+520[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m520[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+   ~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+522[0m:[93m34[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeName' 
+does not exist on type '{}'.
+
+[7m522[0m         
+headName: head ? 
+`${head.employeeName} 
+(${head.employeeId})` : null,
+[7m   [0m [91m            
+                     
+~~~~~~~~~~~~[0m
+[96msrc/master/department/de
+partment.service.ts[0m:[93m
+522[0m:[93m56[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'employeeId' 
+does not exist on type '{}'.
+
+[7m522[0m         
+headName: head ? 
+`${head.employeeName} 
+(${head.employeeId})` : null,
+[7m   [0m [91m            
+                             
+              ~~~~~~~~~~[0m
+[96msrc/master/gender/gender
+.service.ts[0m:[93m16[0m:
+[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m16[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/gender/gender
+.service.ts[0m:[93m17[0m:
+[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/gender/gender
+.service.ts[0m:[93m36[0m:
+[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'GenderService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/gender/gender
+.service.ts[0m:[93m49[0m:
+[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/gender/gender
+.service.ts[0m:[93m49[0m:
+[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/gender/gender
+.service.ts[0m:[93m66[0m:
+[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'GenderService'.
+
+[7m66[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/holiday/holid
+ay.service.ts[0m:[93m3[0m:
+[93m10[0m - 
+[91merror[0m[90m TS2305: 
+[0mModule '"@prisma/manageme
+nt-client"' has no exported 
+member 'Holiday'.
+
+[7m3[0m import { Holiday } 
+from 
+'@prisma/management-client';
+[7m [0m [91m         
+~~~~~~~[0m
+[96msrc/master/item-class/it
+em-class.service.ts[0m:[93m
+39[0m:[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ItemClassService'.
+
+[7m39[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/item-class/it
+em-class.service.ts[0m:[93m
+52[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m52[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/item-class/it
+em-class.service.ts[0m:[93m
+52[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m52[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/item-class/it
+em-class.service.ts[0m:[93m
+71[0m:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ItemClassService'.
+
+[7m71[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/item-subclass
+/item-subclass.service.ts[0m
+:[93m39[0m:[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ItemSubclassService'.
+
+[7m39[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/item-subclass
+/item-subclass.service.ts[0m
+:[93m53[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m53[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/item-subclass
+/item-subclass.service.ts[0m
+:[93m53[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m53[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/item-subclass
+/item-subclass.service.ts[0m
+:[93m71[0m:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'ItemSubclassService'.
+
+[7m71[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/location/loca
+tion.service.ts[0m:[93m9[0
+m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m9[0m     private 
+prisma: PrismaService,
+[7m [0m [91m            
+~~~~~~[0m
+[96msrc/master/location/loca
+tion.service.ts[0m:[93m10[
+0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m10[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/old-season/ol
+d-season.service.ts[0m:[93m
+36[0m:[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'OldSeasonService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/old-season/ol
+d-season.service.ts[0m:[93m
+49[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/old-season/ol
+d-season.service.ts[0m:[93m
+49[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/old-season/ol
+d-season.service.ts[0m:[93m
+66[0m:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'OldSeasonService'.
+
+[7m66[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/pos/pos.servi
+ce.ts[0m:[93m245[0m:[93m9
+[0m - [91merror[0m[90m 
+TS2353: [0mObject literal 
+may only specify known 
+properties, and 'company' 
+does not exist in type 
+'PosInclude<DefaultArgs>'.
+
+[7m245[0m         company: 
+{
+[7m   [0m [91m        
+~~~~~~~[0m
+
+  [96mnode_modules/.prisma/c
+lient/index.d.ts[0m:[93m110
+705[0m:[93m5[0m
+    [7m110705[0m     
+include?: 
+PosInclude<ExtArgs> | null
+    [7m      [0m [96m    
+~~~~~~~[0m
+    The expected type comes 
+from property 'include' 
+which is declared here on 
+type '{ select?: 
+PosSelect<DefaultArgs> | 
+null | undefined; omit?: 
+PosOmit<DefaultArgs> | null 
+| undefined; include?: 
+PosInclude<DefaultArgs> | 
+null | undefined; where: 
+PosWhereUniqueInput; }'
+[96msrc/master/pos/pos.servi
+ce.ts[0m:[93m275[0m:[93m2
+7[0m - [91merror[0m[90m 
+TS2551: [0mProperty 
+'company' does not exist on 
+type '{ id: string; status: 
+string; createdAt: Date; 
+updatedAt: Date; name: 
+string; companyId: string | 
+null; locationId: string; 
+terminalPin: string | null; 
+terminalCode: string; posId: 
+string; createdById: string 
+| null; }'. Did you mean 
+'companyId'?
+
+[7m275[0m         company: 
+terminal.company,
+[7m   [0m [91m            
+              ~~~~~~~[0m
+[96msrc/master/pos/pos.servi
+ce.ts[0m:[93m276[0m:[93m2
+6[0m - [91merror[0m[90m 
+TS2551: [0mProperty 
+'company' does not exist on 
+type '{ id: string; status: 
+string; createdAt: Date; 
+updatedAt: Date; name: 
+string; companyId: string | 
+null; locationId: string; 
+terminalPin: string | null; 
+terminalCode: string; posId: 
+string; createdById: string 
+| null; }'. Did you mean 
+'companyId'?
+
+[7m276[0m         tenant: 
+terminal.company?.tenant,
+[7m   [0m [91m            
+             ~~~~~~~[0m
+[96msrc/master/season/season
+.service.ts[0m:[93m36[0m:
+[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'SeasonService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/season/season
+.service.ts[0m:[93m49[0m:
+[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/season/season
+.service.ts[0m:[93m49[0m:
+[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/season/season
+.service.ts[0m:[93m66[0m:
+[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'SeasonService'.
+
+[7m66[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/segment/segme
+nt.service.ts[0m:[93m36[0m
+:[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'SegmentService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/segment/segme
+nt.service.ts[0m:[93m49[0m
+:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/segment/segme
+nt.service.ts[0m:[93m49[0m
+:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/segment/segme
+nt.service.ts[0m:[93m66[0m
+:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'SegmentService'.
+
+[7m66[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/silhouette/si
+lhouette.service.ts[0m:[93m
+16[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m16[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/silhouette/si
+lhouette.service.ts[0m:[93m
+17[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/silhouette/si
+lhouette.service.ts[0m:[93m
+36[0m:[93m30[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'SilhouetteService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/silhouette/si
+lhouette.service.ts[0m:[93m
+49[0m:[93m24[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/silhouette/si
+lhouette.service.ts[0m:[93m
+49[0m:[93m45[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m49[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/silhouette/si
+lhouette.service.ts[0m:[93m
+66[0m:[93m31[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'SilhouetteService'.
+
+[7m66[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/size/size.ser
+vice.ts[0m:[93m16[0m:[93m
+13[0m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m16[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/size/size.ser
+vice.ts[0m:[93m17[0m:[93m
+13[0m - [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m17[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/size/size.ser
+vice.ts[0m:[93m36[0m:[93m
+30[0m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'SizeService'.
+
+[7m36[0m     const users = 
+await this.prismaMaster.user.
+findMany({
+[7m  [0m [91m             
+                
+~~~~~~~~~~~~[0m
+[96msrc/master/size/size.ser
+vice.ts[0m:[93m47[0m:[93m
+24[0m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'firstName' does not exist 
+on type '{}'.
+
+[7m47[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+          ~~~~~~~~~[0m
+[96msrc/master/size/size.ser
+vice.ts[0m:[93m47[0m:[93m
+45[0m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'lastName' does not exist on 
+type '{}'.
+
+[7m47[0m           ? 
+`${creator.firstName} 
+${creator.lastName || 
+''}`.trim()
+[7m  [0m [91m             
+                             
+  ~~~~~~~~[0m
+[96msrc/master/size/size.ser
+vice.ts[0m:[93m64[0m:[93m
+31[0m - [91merror[0m[90m 
+TS2339: [0mProperty 
+'prismaMaster' does not 
+exist on type 'SizeService'.
+
+[7m64[0m       const user 
+= await this.prismaMaster.use
+r.findUnique({
+[7m  [0m [91m             
+                 
+~~~~~~~~~~~~[0m
+[96msrc/master/social-securi
+ty/social-security.service.ts
+[0m:[93m19[0m:[93m13[0m 
+- [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m19[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/master/social-securi
+ty/social-security.service.ts
+[0m:[93m20[0m:[93m13[0m 
+- [91merror[0m[90m 
+TS2300: [0mDuplicate 
+identifier 'prisma'.
+
+[7m20[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m14[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m14[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m15[0m:[93m13[0m - 
+[91merror[0m[90m TS2300: 
+[0mDuplicate identifier 
+'prisma'.
+
+[7m15[0m     private 
+prisma: PrismaService,
+[7m  [0m [91m            
+~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m186[0m:[93m14[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'OvertimeRequestService'.
+
+[7m186[0m         this.pris
+maMaster.user.findMany({
+[7m   [0m [91m            
+ ~~~~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m206[0m:[93m67[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'name' does not 
+exist on type '{}'.
+
+[7m206[0m           
+department: deptMap.get(reque
+st.employee.departmentId)?.na
+me || 'N/A',
+[7m   [0m [91m            
+                             
+                         
+~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m208[0m:[93m65[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'name' does not 
+exist on type '{}'.
+
+[7m208[0m             ? sub
+DeptMap.get(request.employee.
+subDepartmentId)?.name || 
+'N/A'
+[7m   [0m [91m            
+                             
+                       
+~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m219[0m:[93m50[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m219[0m             ? `${
+userMap.get(request.approval1
+)?.firstName || ''} ${userMap
+.get(request.approval1)?.last
+Name || ''}`.trim()
+[7m   [0m [91m            
+                             
+        ~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m219[0m:[93m101[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m219[0m             ? `${
+userMap.get(request.approval1
+)?.firstName || ''} ${userMap
+.get(request.approval1)?.last
+Name || ''}`.trim()
+[7m   [0m [91m            
+                             
+                             
+                             
+ ~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m227[0m:[93m50[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m227[0m             ? `${
+userMap.get(request.approval2
+)?.firstName || ''} ${userMap
+.get(request.approval2)?.last
+Name || ''}`.trim()
+Found 251 error(s).
+
+[7m   [0m [91m            
+                             
+        ~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m227[0m:[93m101[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m227[0m             ? `${
+userMap.get(request.approval2
+)?.firstName || ''} ${userMap
+.get(request.approval2)?.last
+Name || ''}`.trim()
+[7m   [0m [91m            
+                             
+                             
+                             
+ ~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m236[0m:[93m26[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m236[0m             ? 
+`${creator.firstName} 
+${creator.lastName}`
+[7m   [0m [91m            
+             ~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m236[0m:[93m47[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m236[0m             ? 
+`${creator.firstName} 
+${creator.lastName}`
+[7m   [0m [91m            
+                             
+     ~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m294[0m:[93m14[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'prismaMaster' 
+does not exist on type 
+'OvertimeRequestService'.
+
+[7m294[0m         this.pris
+maMaster.user.findMany({
+[7m   [0m [91m            
+ ~~~~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m325[0m:[93m56[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m325[0m           ? `${us
+erMap.get(overtimeRequest.app
+roval1)?.firstName || ''} ${u
+serMap.get(overtimeRequest.ap
+proval1)?.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+              ~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m325[0m:[93m115[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m325[0m           ? `${us
+erMap.get(overtimeRequest.app
+roval1)?.firstName || ''} ${u
+serMap.get(overtimeRequest.ap
+proval1)?.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+                             
+                             
+               ~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m333[0m:[93m56[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'firstName' 
+does not exist on type '{}'.
+
+[7m333[0m           ? `${us
+erMap.get(overtimeRequest.app
+roval2)?.firstName || ''} ${u
+serMap.get(overtimeRequest.ap
+proval2)?.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+              ~~~~~~~~~[0m
+[96msrc/overtime-request/ove
+rtime-request.service.ts[0m:
+[93m333[0m:[93m115[0m - 
+[91merror[0m[90m TS2339: 
+[0mProperty 'lastName' does 
+not exist on type '{}'.
+
+[7m333[0m           ? `${us
+erMap.get(overtimeRequest.app
+roval2)?.firstName || ''} ${u
+serMap.get(overtimeRequest.ap
+proval2)?.lastName || 
+''}`.trim()
+[7m   [0m [91m            
+                             
+                             
+                             
+               ~~~~~~~~[0m
+
+error: script "build" exited 
+with code 1

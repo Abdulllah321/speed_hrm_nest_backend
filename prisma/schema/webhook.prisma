@@ -1,0 +1,29 @@
+model Webhook {
+  id        String       @id @default(uuid())
+  url       String
+  name      String?
+  secret    String?
+  events    String[]
+  isActive  Boolean      @default(true)
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  logs      WebhookLog[]
+}
+
+model WebhookLog {
+  id         String   @id @default(uuid())
+  webhookId  String
+  event      String
+  payload    Json
+  response   Json?
+  statusCode Int?
+  error      String?
+  attempts   Int      @default(1)
+  status     String
+  createdAt  DateTime @default(now())
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([createdAt])
+}

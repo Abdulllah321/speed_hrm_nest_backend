@@ -6,19 +6,19 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 @Injectable()
 export class DeductionHeadService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prismaMaster.deductionHead.findMany({
+    const items = await this.prisma.deductionHead.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.deductionHead.findUnique({
+    const item = await this.prisma.deductionHead.findUnique({
       where: { id },
     });
     if (!item) return { status: false, message: 'Deduction head not found' };
@@ -31,7 +31,7 @@ export class DeductionHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.deductionHead.create({
+      const created = await this.prisma.deductionHead.create({
         data: { name, status: status || 'active', createdById: ctx.userId },
       });
       await this.activityLogs.log({
@@ -70,7 +70,7 @@ export class DeductionHeadService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const result = await this.prismaMaster.deductionHead.createMany({
+      const result = await this.prisma.deductionHead.createMany({
         data: items.map((item) => ({
           name: item.name,
           status: item.status || 'active',
@@ -114,12 +114,12 @@ export class DeductionHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.deductionHead.findUnique({
+      const existing = await this.prisma.deductionHead.findUnique({
         where: { id },
       });
       const updateData: { name: string; status?: string } = { name };
       if (status !== undefined) updateData.status = status;
-      const updated = await this.prismaMaster.deductionHead.update({
+      const updated = await this.prisma.deductionHead.update({
         where: { id },
         data: updateData,
       });
@@ -166,7 +166,7 @@ export class DeductionHeadService {
           name: item.name,
         };
         if (item.status !== undefined) updateData.status = item.status;
-        await this.prismaMaster.deductionHead.update({
+        await this.prisma.deductionHead.update({
           where: { id: item.id },
           data: updateData,
         });
@@ -205,10 +205,10 @@ export class DeductionHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.deductionHead.findUnique({
+      const existing = await this.prisma.deductionHead.findUnique({
         where: { id },
       });
-      const removed = await this.prismaMaster.deductionHead.delete({
+      const removed = await this.prisma.deductionHead.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -247,7 +247,7 @@ export class DeductionHeadService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prismaMaster.deductionHead.deleteMany({
+      const removed = await this.prisma.deductionHead.deleteMany({
         where: { id: { in: ids } },
       });
       await this.activityLogs.log({

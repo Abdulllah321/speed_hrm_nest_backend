@@ -1,10 +1,14 @@
+import { PrismaService } from '../../database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
-import { CreateCompanyGroupDto, UpdateCompanyGroupDto } from './dto/company-group-dto';
+import {
+  CreateCompanyGroupDto,
+  UpdateCompanyGroupDto,
+} from './dto/company-group-dto';
 
 @Injectable()
 export class CompanyGroupService {
-  constructor(private prisma: PrismaMasterService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createDto: CreateCompanyGroupDto, userId: string) {
     const result = await this.prisma.companyGroup.create({
@@ -13,7 +17,11 @@ export class CompanyGroupService {
         createdById: userId,
       },
     });
-    return { status: true, data: result, message: 'Company Group created successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Company Group created successfully',
+    };
   }
 
   async findAll() {
@@ -35,7 +43,11 @@ export class CompanyGroupService {
       where: { id },
       data: updateDto,
     });
-    return { status: true, data: result, message: 'Company Group updated successfully' };
+    return {
+      status: true,
+      data: result,
+      message: 'Company Group updated successfully',
+    };
   }
 
   async remove(id: string) {

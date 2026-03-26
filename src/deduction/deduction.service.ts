@@ -13,8 +13,9 @@ export class DeductionService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
+
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async list(params?: {
     employeeId?: string;
@@ -88,15 +89,15 @@ export class DeductionService {
 
       // Fetch from Master DB
       const [departments, subDepartments, deductionHeads] = await Promise.all([
-        this.prismaMaster.department.findMany({
+        this.prisma.department.findMany({
           where: { id: { in: Array.from(departmentIds) } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.subDepartment.findMany({
+        this.prisma.subDepartment.findMany({
           where: { id: { in: Array.from(subDepartmentIds) } },
           select: { id: true, name: true },
         }),
-        this.prismaMaster.deductionHead.findMany({
+        this.prisma.deductionHead.findMany({
           where: { id: { in: Array.from(deductionHeadIds) } },
           select: { id: true, name: true },
         }),
@@ -122,12 +123,12 @@ export class DeductionService {
           ...d,
           employee: d.employee
             ? {
-                ...d.employee,
-                department: dept ? { id: dept.id, name: dept.name } : null,
-                subDepartment: subDept
-                  ? { id: subDept.id, name: subDept.name }
-                  : null,
-              }
+              ...d.employee,
+              department: dept ? { id: dept.id, name: dept.name } : null,
+              subDepartment: subDept
+                ? { id: subDept.id, name: subDept.name }
+                : null,
+            }
             : null,
           deductionHead: head ? { id: head.id, name: head.name } : null,
         };
@@ -182,44 +183,44 @@ export class DeductionService {
       const [department, subDepartment, deductionHead, createdBy, updatedBy] =
         await Promise.all([
           deduction.employee?.departmentId
-            ? this.prismaMaster.department.findUnique({
-                where: { id: deduction.employee.departmentId },
-                select: { id: true, name: true },
-              })
+            ? this.prisma.department.findUnique({
+              where: { id: deduction.employee.departmentId },
+              select: { id: true, name: true },
+            })
             : Promise.resolve(null),
           deduction.employee?.subDepartmentId
-            ? this.prismaMaster.subDepartment.findUnique({
-                where: { id: deduction.employee.subDepartmentId },
-                select: { id: true, name: true },
-              })
+            ? this.prisma.subDepartment.findUnique({
+              where: { id: deduction.employee.subDepartmentId },
+              select: { id: true, name: true },
+            })
             : Promise.resolve(null),
           deduction.deductionHeadId
-            ? this.prismaMaster.deductionHead.findUnique({
-                where: { id: deduction.deductionHeadId },
-                select: { id: true, name: true },
-              })
+            ? this.prisma.deductionHead.findUnique({
+              where: { id: deduction.deductionHeadId },
+              select: { id: true, name: true },
+            })
             : Promise.resolve(null),
           deduction.createdById
             ? this.prismaMaster.user.findUnique({
-                where: { id: deduction.createdById },
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                },
-              })
+              where: { id: deduction.createdById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
             : Promise.resolve(null),
           deduction.updatedById
             ? this.prismaMaster.user.findUnique({
-                where: { id: deduction.updatedById },
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                },
-              })
+              where: { id: deduction.updatedById },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            })
             : Promise.resolve(null),
         ]);
 
@@ -227,14 +228,14 @@ export class DeductionService {
         ...deduction,
         employee: deduction.employee
           ? {
-              ...deduction.employee,
-              department: department
-                ? { id: department.id, name: department.name }
-                : null,
-              subDepartment: subDepartment
-                ? { id: subDepartment.id, name: subDepartment.name }
-                : null,
-            }
+            ...deduction.employee,
+            department: department
+              ? { id: department.id, name: department.name }
+              : null,
+            subDepartment: subDepartment
+              ? { id: subDepartment.id, name: subDepartment.name }
+              : null,
+          }
           : null,
         deductionHead: deductionHead
           ? { id: deductionHead.id, name: deductionHead.name }
@@ -281,7 +282,7 @@ export class DeductionService {
       const deductionHeadIds = Array.from(
         new Set(body.deductions.map((d) => d.deductionHeadId)),
       );
-      const deductionHeads = await this.prismaMaster.deductionHead.findMany({
+      const deductionHeads = await this.prisma.deductionHead.findMany({
         where: { id: { in: deductionHeadIds }, status: 'active' },
         select: { id: true },
       });
@@ -407,7 +408,7 @@ export class DeductionService {
 
       // Validate deduction head if provided
       if (body.deductionHeadId) {
-        const head = await this.prismaMaster.deductionHead.findUnique({
+        const head = await this.prisma.deductionHead.findUnique({
           where: { id: body.deductionHeadId, status: 'active' },
         });
         if (!head) {
@@ -451,7 +452,7 @@ export class DeductionService {
       // Fetch deduction head name
       let deductionHead: { id: string; name: string } | null = null;
       if (updated.deductionHeadId) {
-        deductionHead = await this.prismaMaster.deductionHead.findUnique({
+        deductionHead = await this.prisma.deductionHead.findUnique({
           where: { id: updated.deductionHeadId },
           select: { id: true, name: true },
         });
@@ -590,7 +591,7 @@ export class DeductionService {
         where.status = status;
       }
 
-      const deductionHeads = await this.prismaMaster.deductionHead.findMany({
+      const deductionHeads = await this.prisma.deductionHead.findMany({
         where,
         orderBy: { name: 'asc' },
       });
@@ -610,7 +611,7 @@ export class DeductionService {
 
   async getDeductionHead(id: string) {
     try {
-      const deductionHead = await this.prismaMaster.deductionHead.findUnique({
+      const deductionHead = await this.prisma.deductionHead.findUnique({
         where: { id },
       });
 

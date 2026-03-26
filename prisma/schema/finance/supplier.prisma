@@ -1,57 +1,47 @@
+model Supplier {
+  id               String                      @id @default(uuid())
+  code             String                      @unique
+  brand            String?
+  name             String
+  nature           SupplierNature?
+  type             SupplierType?               @default(LOCAL)
+  address          String?
+  city             String?
+  country          String?                     @default("Pakistan")
+  contactNo        String?
+  email            String?
+  website          String?
+  cnicNo           String?
+  ntnNo            String?
+  strnNo           String?
+  srbNo            String?
+  praNo            String?
+  ictNo            String?
+  paymentTerms     String?
+  creditLimit      Decimal?                    @db.Decimal(15, 2)
+  openingBalance   Decimal                     @default(0.0) @db.Decimal(15, 2)
+  isActive         Boolean                     @default(true)
+  createdById      String?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  paymentVouchers  PaymentVoucher[]
+  landedCosts      LandedCost[]
+  purchaseOrders   PurchaseOrder[]
+  purchaseInvoices PurchaseInvoice[]
+  rfqVendors       RequestForQuotationVendor[]
+  vendorQuotations VendorQuotation[]
+  chartOfAccounts  ChartOfAccount[]            @relation("ChartOfAccountToSupplier")
+
+  @@index([nature])
+  @@index([type])
+}
+
 enum SupplierNature {
-    GOODS
-    SERVICES
+  GOODS
+  SERVICES
 }
 
 enum SupplierType {
-    LOCAL
-    INTERNATIONAL
-}
-
-model Supplier {
-    id        String          @id @default(uuid())
-    code      String          @unique
-    brand     String?
-    name      String
-    nature    SupplierNature?
-    type      SupplierType?   @default(LOCAL)
-    address   String?         @db.Text
-    city      String?
-    country   String?         @default("Pakistan")
-    contactNo String?
-    email     String?
-    website   String?
-
-    // Identity & Tax Information
-    cnicNo String?
-    ntnNo  String?
-    strnNo String?
-    srbNo  String?
-    praNo  String?
-    ictNo  String?
-
-    // Financial Linking
-    chartOfAccountId String
-    chartOfAccount   ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
-
-    // Financial Details
-    paymentTerms   String?
-    creditLimit    Decimal? @db.Decimal(15, 2)
-    openingBalance Decimal  @default(0.0) @db.Decimal(15, 2)
-
-    isActive Boolean @default(true)
-
-    // Auditing
-    createdById String?
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
-
-    // Relations
-    paymentVouchers  PaymentVoucher[]
-    rfqVendors       RequestForQuotationVendor[]
-    vendorQuotations VendorQuotation[]
-
-    @@index([chartOfAccountId])
-    @@index([nature])
-    @@index([type])
+  LOCAL
+  INTERNATIONAL
 }

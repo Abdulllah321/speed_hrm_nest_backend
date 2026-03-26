@@ -1,23 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { PrismaService } from '../../database/prisma.service';
+
 
 @Injectable()
 export class BankService {
   constructor(
-    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
-    const items = await this.prismaMaster.bank.findMany({
+    const items = await this.prisma.bank.findMany({
       orderBy: { createdAt: 'desc' },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prismaMaster.bank.findUnique({ where: { id } });
+    const item = await this.prisma.bank.findUnique({ where: { id } });
     if (!item) return { status: false, message: 'Bank not found' };
     return { status: true, data: item };
   }
@@ -32,7 +34,7 @@ export class BankService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const created = await this.prismaMaster.bank.create({
+      const created = await this.prisma.bank.create({
         data: {
           name: body.name,
           code: body.code || null,
@@ -82,7 +84,7 @@ export class BankService {
   ) {
     if (!items?.length) return { status: false, message: 'No items to create' };
     try {
-      const res = await this.prismaMaster.bank.createMany({
+      const res = await this.prisma.bank.createMany({
         data: items.map((i) => ({
           name: i.name,
           code: i.code || null,
@@ -132,11 +134,11 @@ export class BankService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.bank.findUnique({
+      const existing = await this.prisma.bank.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Bank not found' };
-      const updated = await this.prismaMaster.bank.update({
+      const updated = await this.prisma.bank.update({
         where: { id },
         data: {
           name: body.name ?? existing.name,
@@ -186,11 +188,11 @@ export class BankService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.bank.findUnique({
+      const existing = await this.prisma.bank.findUnique({
         where: { id },
       });
       if (!existing) return { status: false, message: 'Bank not found' };
-      await this.prismaMaster.bank.delete({ where: { id } });
+      await this.prisma.bank.delete({ where: { id } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
@@ -234,7 +236,7 @@ export class BankService {
     if (!items?.length) return { status: false, message: 'No items to update' };
     try {
       for (const i of items) {
-        await this.prismaMaster.bank.update({
+        await this.prisma.bank.update({
           where: { id: i.id },
           data: {
             name: i.name,
@@ -280,7 +282,7 @@ export class BankService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prismaMaster.bank.deleteMany({ where: { id: { in: ids } } });
+      await this.prisma.bank.deleteMany({ where: { id: { in: ids } } });
       await this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',

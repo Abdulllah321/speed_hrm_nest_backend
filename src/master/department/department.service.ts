@@ -15,10 +15,10 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 export class DepartmentService {
   constructor(
     private prisma: PrismaService,
-    private prismaMaster: PrismaMasterService,
+   private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) { }
+  ) {}
 
   async getAllDepartments() {
     const cacheKey = 'departments_all';
@@ -27,7 +27,7 @@ export class DepartmentService {
       return { status: true, data: cachedData };
     }
 
-    const departments = await this.prismaMaster.department.findMany({
+    const departments = await this.prisma.department.findMany({
       include: {
         subDepartments: true,
         allocation: { select: { id: true, name: true } },
@@ -91,7 +91,7 @@ export class DepartmentService {
   }
 
   async getDepartmentById(id: string) {
-    const department: any = await this.prismaMaster.department.findUnique({
+    const department: any = await this.prisma.department.findUnique({
       where: { id },
       include: {
         subDepartments: true,
@@ -154,7 +154,7 @@ export class DepartmentService {
       // But for bulk insert efficiency createMany is better. However, createMany cannot set relations if they are not foreign keys directly.
       // Fortunately allocationId and headId are FKs on Department.
 
-      const departments = await this.prismaMaster.department.createMany({
+      const departments = await this.prisma.department.createMany({
         data: items.map((item) => ({
           name: item.name,
           allocationId: item.allocationId || null,
@@ -204,10 +204,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.department.findUnique({
+      const existing = await this.prisma.department.findUnique({
         where: { id },
       });
-      const department = await this.prismaMaster.department.update({
+      const department = await this.prisma.department.update({
         where: { id },
         data: {
           name: updateDepartmentDto.name,
@@ -274,7 +274,7 @@ export class DepartmentService {
         if (!dto.id) {
           continue; // Skip items without ID (shouldn't happen due to filter, but defensive check)
         }
-        const department = await this.prismaMaster.department.update({
+        const department = await this.prisma.department.update({
           where: { id: dto.id },
           data: {
             name: dto.name,
@@ -327,7 +327,7 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const departments = await this.prismaMaster.department.deleteMany({
+      const departments = await this.prisma.department.deleteMany({
         where: { id: { in: departmentIds } },
       });
       await this.activityLogs.log({
@@ -373,10 +373,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.department.findUnique({
+      const existing = await this.prisma.department.findUnique({
         where: { id },
       });
-      const department = await this.prismaMaster.department.delete({
+      const department = await this.prisma.department.delete({
         where: { id },
       });
       await this.activityLogs.log({
@@ -429,7 +429,7 @@ export class DepartmentService {
       };
     }
 
-    const subDepartments = await this.prismaMaster.subDepartment.findMany({
+    const subDepartments = await this.prisma.subDepartment.findMany({
       include: {
         department: true,
       },
@@ -480,7 +480,7 @@ export class DepartmentService {
   }
 
   async getSubDepartmentsByDepartment(departmentId: string) {
-    const subDepartments = await this.prismaMaster.subDepartment.findMany({
+    const subDepartments = await this.prisma.subDepartment.findMany({
       where: { departmentId },
       include: {
         department: true,
@@ -534,7 +534,7 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const subDepartments = await this.prismaMaster.subDepartment.createMany({
+      const subDepartments = await this.prisma.subDepartment.createMany({
         data: createSubDepartmentDto.map((dto) => ({
           name: dto.name,
           departmentId: dto.departmentId,
@@ -604,7 +604,7 @@ export class DepartmentService {
         if (!dto.id) {
           continue; // Skip items without ID (shouldn't happen due to filter, but defensive check)
         }
-        const subDepartment = await this.prismaMaster.subDepartment.update({
+        const subDepartment = await this.prisma.subDepartment.update({
           where: { id: dto.id },
           data: {
             name: dto.name,
@@ -658,10 +658,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.subDepartment.findUnique({
+      const existing = await this.prisma.subDepartment.findUnique({
         where: { id },
       });
-      const subDepartment = await this.prismaMaster.subDepartment.update({
+      const subDepartment = await this.prisma.subDepartment.update({
         where: { id },
         data: {
           name: updateSubDepartmentDto.name,
@@ -715,7 +715,7 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const subDepartments = await this.prismaMaster.subDepartment.deleteMany({
+      const subDepartments = await this.prisma.subDepartment.deleteMany({
         where: { id: { in: subDepartmentIds } },
       });
       await this.activityLogs.log({
@@ -762,10 +762,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prismaMaster.subDepartment.findUnique({
+      const existing = await this.prisma.subDepartment.findUnique({
         where: { id },
       });
-      const subDepartment = await this.prismaMaster.subDepartment.delete({
+      const subDepartment = await this.prisma.subDepartment.delete({
         where: { id },
       });
       await this.activityLogs.log({
