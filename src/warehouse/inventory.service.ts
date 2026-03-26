@@ -70,11 +70,11 @@ export class InventoryService {
     });
   }
 
-  async searchInventory(query: string = '', warehouseId?: string) {
-    console.log('Search called with:', { query, warehouseId });
+  async searchInventory(query: string = '', warehouseId?: string, locationId?: string) {
+    console.log('Search called with:', { query, warehouseId, locationId });
     
-    if (!warehouseId) {
-      throw new Error('Warehouse ID is required for stock search');
+    if (!warehouseId && !locationId) {
+      throw new Error('Warehouse ID or Location ID is required for stock search');
     }
 
     const items = await this.prisma.item.findMany({
@@ -95,28 +95,22 @@ export class InventoryService {
       },
     });
 
-    console.log('Found items:', items.length);
-
     const itemIds = items.map((i) => i.id);
 
-    // Get warehouse stock (locationId = null means warehouse stock)
-    const warehouseStock = await this.prisma.inventoryItem.groupBy({
+    // Get stock from StockLedger (Accurate source for both Warehouse and Outlets)
+    const stockEntries = await this.prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
         itemId: { in: itemIds },
-        status: 'AVAILABLE',
-        warehouseId: warehouseId,
-        locationId: null, // Only warehouse stock (no outlet locations)
+        ...(locationId ? { locationId } : { warehouseId, locationId: null }),
       },
       _sum: {
-        quantity: true,
+        qty: true,
       },
     });
 
-    console.log('Warehouse stock results:', warehouseStock);
-
     const stockMap = new Map(
-      warehouseStock.map((a) => [a.itemId, Number(a._sum.quantity) || 0]),
+      stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
     );
 
     const result = items.map((item) => ({
@@ -124,7 +118,6 @@ export class InventoryService {
       totalQuantity: stockMap.get(item.id) || 0,
     }));
 
-    console.log('Final result:', result);
     return result;
   }
 }
