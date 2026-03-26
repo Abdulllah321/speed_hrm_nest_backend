@@ -55,4 +55,6 @@ model Item {
   salesOrderItems      SalesOrderItem[]
   stockLedgerEntries   StockLedger[]
   transferRequestItems TransferRequestItem[]
+
+  purchaseRequisitionItems PurchaseRequisitionItem[]
 }
