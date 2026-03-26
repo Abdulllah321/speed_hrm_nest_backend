@@ -23,14 +23,6 @@ export class CreatePurchaseOrderItemDto {
 
   @IsNumber()
   unitPrice: number;
-
-  @IsNumber()
-  @IsOptional()
-  taxPercent?: number;
-
-  @IsNumber()
-  @IsOptional()
-  discountPercent?: number;
 }
 
 export class CreatePurchaseOrderDto {
@@ -141,14 +133,6 @@ export class MultiDirectItemDto {
 
   @IsNumber()
   unitPrice: number;
-
-  @IsNumber()
-  @IsOptional()
-  taxPercent?: number;
-
-  @IsNumber()
-  @IsOptional()
-  discountPercent?: number;
 }
 
 export class MultiDirectGroupDto {

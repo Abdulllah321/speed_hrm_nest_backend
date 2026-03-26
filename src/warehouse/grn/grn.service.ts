@@ -50,8 +50,8 @@ export class GrnService {
   async create(dto: CreateGrnDto) {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id: dto.purchaseOrderId },
-      include: { 
-        items: true, 
+      include: {
+        items: true,
         vendorQuotation: true,
         purchaseRequisition: true // Include PR to check goods type
       },
@@ -72,13 +72,34 @@ export class GrnService {
     }
 
     const grnNumber = `GRN-${Date.now()}`;
-    
-    // Determine goods type and inventory update logic
-    const goodsType = po.goodsType || po.purchaseRequisition?.goodsType || 'CONSUMABLE';
-    const isConsumable = goodsType === 'CONSUMABLE';
 
-    const shouldUpdateInventory = isConsumable;
-    const grnStatus = isConsumable ? 'VALUED' : 'RECEIVED_UNVALUED';
+    // Determine flow type and goods type
+    const isRfqVqFlow = Boolean(po.vendorQuotationId || po.rfqId);
+    const isPrDirectFlow = Boolean(po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId);
+    const isDirectPoFlow = Boolean(!po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId);
+
+    let shouldUpdateInventory = false;
+    let grnStatus = 'RECEIVED_UNVALUED';
+
+    if (isDirectPoFlow) {
+      // Direct PO flow: Always goes through Landed Cost (current logic)
+      shouldUpdateInventory = false;
+      grnStatus = 'RECEIVED_UNVALUED';
+    } else if (isRfqVqFlow || isPrDirectFlow) {
+      // PR-linked flows: Check PR goods type
+      const prGoodsType = po.purchaseRequisition?.goodsType;
+      const isConsumable = prGoodsType === 'CONSUMABLE' || !prGoodsType; // Default to consumable
+
+      if (isConsumable) {
+        // CONSUMABLE: Update inventory at GRN
+        shouldUpdateInventory = true;
+        grnStatus = 'VALUED';
+      } else {
+        // FRESH: Wait for Landed Cost
+        shouldUpdateInventory = false;
+        grnStatus = 'RECEIVED_UNVALUED';
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Create GRN
@@ -169,7 +190,7 @@ export class GrnService {
             // Update existing warehouse stock
             await tx.inventoryItem.update({
               where: { id: existingStock.id },
-              data: { 
+              data: {
                 quantity: { increment: new Prisma.Decimal(grnItem.receivedQty) }
               },
             });

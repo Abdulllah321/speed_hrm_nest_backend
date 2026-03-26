@@ -116,7 +116,7 @@ export class PaymentVoucherService {
 
           if (invoice) {
             const newPaidAmount = Number(invoice.paidAmount) + Number(invoicePayment.paidAmount);
-            const newRemainingAmount = Number(invoice.totalAmount) - newPaidAmount;
+            const newRemainingAmount = Number(invoice.totalAmount) - newPaidAmount - Number(invoice.returnAmount || 0);
 
             let paymentStatus = 'UNPAID';
             if (newRemainingAmount <= 0.01) {
@@ -387,6 +387,7 @@ export class PaymentVoucherService {
           invoiceDate: true,
           totalAmount: true,
           paidAmount: true,
+          returnAmount: true,
           remainingAmount: true,
           status: true,
           paymentStatus: true,

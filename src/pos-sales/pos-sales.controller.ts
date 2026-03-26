@@ -7,6 +7,7 @@ import {
     Query,
     Req,
     UseGuards,
+    BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
@@ -26,15 +27,35 @@ export class PosSalesController {
     // ─── Item lookup for POS (search by barcode, SKU, description) ────
     @Get('lookup')
     @ApiOperation({ summary: 'Search items for POS by barcode/SKU/name' })
-    async lookupItem(@Query('q') query: string) {
-        return this.posSalesService.lookupItem(query);
+    async lookupItem(@Query('q') query: string, @Req() req: any) {
+        const locationId = req.user?.locationId || this.extractLocationFromCookie(req);
+        if (!locationId) {
+            throw new BadRequestException('Location context is required for POS search');
+        }
+        return this.posSalesService.lookupItem(query, locationId);
     }
 
     // ─── Barcode scan — exact match, single item ──────────────────────
     @Get('scan')
     @ApiOperation({ summary: 'Scan barcode — exact match single item' })
-    async scanBarcode(@Query('barcode') barcode: string) {
-        return this.posSalesService.scanBarcode(barcode);
+    async scanBarcode(@Query('barcode') barcode: string, @Req() req: any) {
+        const locationId = req.user?.locationId || this.extractLocationFromCookie(req);
+        if (!locationId) {
+            throw new BadRequestException('Location context is required for POS scan');
+        }
+        return this.posSalesService.scanBarcode(barcode, locationId);
+    }
+
+    private extractLocationFromCookie(req: any): string | undefined {
+        if (req.cookies?.posTerminalToken) {
+            try {
+                const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+                return decoded?.locationId;
+            } catch (e) {
+                return undefined;
+            }
+        }
+        return undefined;
     }
 
     // ─── Create a sales order (checkout) ──────────────────────────────
