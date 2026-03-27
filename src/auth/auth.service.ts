@@ -1274,10 +1274,20 @@ export class AuthService {
 
     // If tenant is connected, map employees to users
     if (this.prisma) {
+      const isInit = (this.prisma as any).isInitialized;
+      this.logger.log(`getAllUsers: Prisma initialized=${isInit}`);
+
       try {
         const userIds = users.map((u) => u.id);
+        const employeeIds = users
+          .filter((u) => u.employeeId)
+          .map((u) => u.employeeId) as string[];
+
+        // Fetch employees by either userId (back-ref) or employeeId (direct-ref)
         const employees = await this.prisma.employee.findMany({
-          where: { userId: { in: userIds } },
+          where: {
+            OR: [{ userId: { in: userIds } }, { id: { in: employeeIds } }],
+          },
           select: {
             userId: true,
             id: true,
@@ -1287,7 +1297,11 @@ export class AuthService {
           },
         });
 
-        const employeeMap = new Map(employees.map((e) => [e.userId, e]));
+        // Map by both for maximum reliability
+        const employeeByUserId = new Map(
+          employees.filter((e) => e.userId).map((e) => [e.userId, e]),
+        );
+        const employeeByEmpId = new Map(employees.map((e) => [e.id, e]));
 
         // Fetch Master data for departments and designations
         const deptIds = [
@@ -1314,7 +1328,11 @@ export class AuthService {
         const desgMap = new Map(designations.map((d) => [d.id, d.name]));
 
         for (const user of users) {
-          const emp = employeeMap.get(user.id) as any;
+          // Try lookup by employeeId first (master link), then userId (tenant link)
+          const emp =
+            (user.employeeId ? employeeByEmpId.get(user.employeeId) : null) ||
+            employeeByUserId.get(user.id);
+
           if (emp) {
             (user as any).employee = {
               ...emp,
@@ -1328,7 +1346,7 @@ export class AuthService {
           }
         }
       } catch (err) {
-        // Silently fail if tenant context not available
+        this.logger.error(`Failed to map employees in getAllUsers: ${err.message}`);
       }
     }
 
@@ -1358,6 +1376,20 @@ export class AuthService {
           },
         });
 
+        // Sync to employee record in tenant DB if present
+        if (data.employeeId && this.prisma) {
+          try {
+            await this.prisma.employee.update({
+              where: { id: data.employeeId },
+              data: { userId: updatedUser.id },
+            });
+          } catch (e) {
+            this.logger.error(
+              `Failed to sync userId to employee on update: ${e.message}`,
+            );
+          }
+        }
+
         return {
           status: true,
           data: updatedUser,
@@ -1381,11 +1413,38 @@ export class AuthService {
       },
     });
 
+    // Sync to employee record in tenant DB if present
+    if (data.employeeId && this.prisma) {
+      try {
+        await this.prisma.employee.update({
+          where: { id: data.employeeId },
+          data: { userId: user.id },
+        });
+      } catch (e) {
+        this.logger.error(
+          `Failed to sync userId to employee on create: ${e.message}`,
+        );
+      }
+    }
+
     return { status: true, data: user, message: 'User created successfully' };
   }
 
   async updateUser(id: string, data: any) {
     const user = await this.prismaMaster.user.update({ where: { id }, data });
+
+    // Sync to employee record in tenant DB if employee link is being established/changed
+    if (data.employeeId && this.prisma) {
+      try {
+        await this.prisma.employee.update({
+          where: { id: data.employeeId },
+          data: { userId: user.id },
+        });
+      } catch (e) {
+        this.logger.error(`Failed to sync userId to employee on update: ${e.message}`);
+      }
+    }
+
     return { status: true, data: user };
   }
 
