@@ -42,6 +42,54 @@ export class TransferRequestService {
             }
         }
 
+        // Validate that locations exist
+        if (data.toLocationId) {
+            const toLocation = await this.prisma.location.findUnique({
+                where: { id: data.toLocationId }
+            });
+            if (!toLocation) {
+                throw new BadRequestException(`Destination location ${data.toLocationId} not found`);
+            }
+        }
+
+        if (data.fromLocationId) {
+            const fromLocation = await this.prisma.location.findUnique({
+                where: { id: data.fromLocationId }
+            });
+            if (!fromLocation) {
+                throw new BadRequestException(`Source location ${data.fromLocationId} not found`);
+            }
+        }
+
+        // Validate stock availability based on transfer type
+        for (const item of data.items) {
+            let availableQty = 0;
+            if (transferType === 'WAREHOUSE_TO_OUTLET') {
+                const stock = await this.prisma.inventoryItem.findFirst({
+                    where: {
+                        warehouseId: data.fromWarehouseId,
+                        locationId: null, // Ensure we check warehouse main stock
+                        itemId: item.itemId,
+                        status: 'AVAILABLE'
+                    }
+                });
+                availableQty = stock ? Number(stock.quantity) : 0;
+            } else {
+                const stock = await this.prisma.inventoryItem.findFirst({
+                    where: {
+                        locationId: data.fromLocationId,
+                        itemId: item.itemId,
+                        status: 'AVAILABLE'
+                    }
+                });
+                availableQty = stock ? Number(stock.quantity) : 0;
+            }
+
+            if (availableQty < item.quantity) {
+                throw new BadRequestException(`Insufficient stock for item ID: ${item.itemId}. Available: ${availableQty}, Requested: ${item.quantity}`);
+            }
+        }
+
         return this.prisma.transferRequest.create({
             data: {
                 requestNo,
@@ -221,6 +269,25 @@ export class TransferRequestService {
             throw new BadRequestException('Request already approved by source outlet');
         }
 
+        // Validate that locations exist
+        if (request.fromLocationId) {
+            const fromLocation = await this.prisma.location.findUnique({
+                where: { id: request.fromLocationId }
+            });
+            if (!fromLocation) {
+                throw new BadRequestException(`Source location ${request.fromLocationId} not found`);
+            }
+        }
+
+        if (request.toLocationId) {
+            const toLocation = await this.prisma.location.findUnique({
+                where: { id: request.toLocationId }
+            });
+            if (!toLocation) {
+                throw new BadRequestException(`Destination location ${request.toLocationId} not found`);
+            }
+        }
+
         return this.prisma.$transaction(async (tx) => {
             // 1. Check and reserve stock at source outlet
             for (const item of request.items) {
@@ -277,6 +344,25 @@ export class TransferRequestService {
 
         if (!request) {
             throw new NotFoundException(`Transfer request ${id} not found`);
+        }
+
+        // Validate that locations exist before processing
+        if (request.toLocationId) {
+            const toLocation = await this.prisma.location.findUnique({
+                where: { id: request.toLocationId }
+            });
+            if (!toLocation) {
+                throw new BadRequestException(`Destination location ${request.toLocationId} not found`);
+            }
+        }
+
+        if (request.fromLocationId) {
+            const fromLocation = await this.prisma.location.findUnique({
+                where: { id: request.fromLocationId }
+            });
+            if (!fromLocation) {
+                throw new BadRequestException(`Source location ${request.fromLocationId} not found`);
+            }
         }
 
         return this.prisma.$transaction(async (tx) => {
