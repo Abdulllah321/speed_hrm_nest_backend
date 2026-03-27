@@ -63,6 +63,16 @@ export class TenantMiddleware implements NestMiddleware {
       );
 
       if (!company) {
+        // If it's an auth route, we allow it to proceed without tenant context
+        // This is important because auth routes are no longer broadly excluded in DatabaseModule
+        const isAuthRoute = req.url.startsWith('/api/auth/');
+        if (isAuthRoute) {
+          this.logger.debug(
+            `No company found for auth route, proceeding without tenant context: URL=${req.url}, Tenant=${tenantIdentifier}`,
+          );
+          return next();
+        }
+
         this.logger.warn(
           `No active company found for tenant=${tenantIdentifier}, company=${companyIdentifier}`,
         );
@@ -238,7 +248,17 @@ export class TenantMiddleware implements NestMiddleware {
       const subdomain = host.split('.')[0];
       if (
         subdomain &&
-        !['www', 'api', 'admin', 'localhost'].includes(subdomain)
+        ![
+          'www',
+          'api',
+          'admin',
+          'localhost',
+          'hr',
+          'erp',
+          'pos',
+          'master',
+          'auth',
+        ].includes(subdomain)
       ) {
         return subdomain;
       }

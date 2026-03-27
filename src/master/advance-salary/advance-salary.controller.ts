@@ -45,6 +45,7 @@ export class AdvanceSalaryController {
   @ApiQuery({ name: 'approvalStatus', required: false })
   @ApiQuery({ name: 'status', required: false })
   async list(
+    @Req() req: any,
     @Query('employeeId') employeeId?: string,
     @Query('deductionMonth') deductionMonth?: string,
     @Query('deductionYear') deductionYear?: string,
@@ -59,7 +60,7 @@ export class AdvanceSalaryController {
       deductionMonthYear,
       approvalStatus,
       status,
-    });
+    }, req.user);
   }
 
   @Get('advance-salaries/:id')

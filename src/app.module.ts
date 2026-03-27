@@ -94,7 +94,7 @@ import { PurchaseInvoiceModule } from './purchase/purchase-invoice/purchase-invo
 import { GrnModule } from './warehouse/grn/grn.module';
 import { LandedCostModule } from './warehouse/landed-cost/landed-cost.module';
 import { PosModule } from './master/pos/pos.module';
-import { HsCodeModule } from './master/hs-code/hs-code.module';
+import { HsCodeModule } from './master/erp/hs-code/hs-code.module';
 
 import { SearchModule } from './search/search.module';
 import { WebhookModule } from './webhook/webhook.module';
