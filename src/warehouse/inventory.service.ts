@@ -70,20 +70,39 @@ export class InventoryService {
     });
   }
 
-  async searchInventory(query: string = '', warehouseId?: string, locationId?: string) {
-    console.log('Search called with:', { query, warehouseId, locationId });
+  async searchInventory(
+    query: string = '',
+    warehouseId?: string,
+    locationId?: string,
+    filters?: {
+      brandIds?: string[];
+      categoryIds?: string[];
+      silhouetteIds?: string[];
+      genderIds?: string[];
+    }
+  ) {
+    console.log('Search called with:', { query, warehouseId, locationId, filters });
     
     if (!warehouseId && !locationId) {
       throw new Error('Warehouse ID or Location ID is required for stock search');
     }
 
+    const filterWhere: any = {};
+    if (filters?.brandIds?.length) filterWhere.brandId = { in: filters.brandIds };
+    if (filters?.categoryIds?.length) filterWhere.categoryId = { in: filters.categoryIds };
+    if (filters?.silhouetteIds?.length) filterWhere.silhouetteId = { in: filters.silhouetteIds };
+    if (filters?.genderIds?.length) filterWhere.genderId = { in: filters.genderIds };
+
     const items = await this.prisma.item.findMany({
       where: {
-        OR: [
-          { sku: { contains: query, mode: 'insensitive' } },
-          { description: { contains: query, mode: 'insensitive' } },
-        ],
+        OR: query
+          ? [
+              { sku: { contains: query, mode: 'insensitive' } },
+              { description: { contains: query, mode: 'insensitive' } },
+            ]
+          : undefined,
         isActive: true,
+        ...filterWhere,
       },
       take: 50,
       select: {
@@ -92,26 +111,47 @@ export class InventoryService {
         description: true,
         unitPrice: true,
         imageUrl: true,
+        brand: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        silhouette: { select: { id: true, name: true } },
+        gender: { select: { id: true, name: true } },
       },
     });
 
     const itemIds = items.map((i) => i.id);
 
-    // Get stock from StockLedger (Accurate source for both Warehouse and Outlets)
-    const stockEntries = await this.prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        itemId: { in: itemIds },
-        ...(locationId ? { locationId } : { warehouseId, locationId: null }),
-      },
-      _sum: {
-        qty: true,
-      },
-    });
+    let stockMap: Map<string, number>;
 
-    const stockMap = new Map(
-      stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
-    );
+    if (locationId) {
+      // For outlet stock: use InventoryItem directly (same source as transfer validation)
+      const inventoryItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          itemId: { in: itemIds },
+          locationId,
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true, quantity: true },
+      });
+
+      stockMap = new Map(
+        inventoryItems.map((inv) => [inv.itemId, Number(inv.quantity)]),
+      );
+    } else {
+      // For warehouse stock: use StockLedger (warehouse main stock has no locationId)
+      const stockEntries = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          warehouseId,
+          locationId: null,
+        },
+        _sum: { qty: true },
+      });
+
+      stockMap = new Map(
+        stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
+      );
+    }
 
     const result = items.map((item) => ({
       ...item,
