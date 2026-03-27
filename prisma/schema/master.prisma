@@ -779,6 +779,11 @@ model Location {
   allianceDiscountLocations AllianceDiscountLocation[]
   couponCodeLocations       CouponCodeLocation[]
   promoCampaignLocations    PromoCampaignLocation[]
+  fromTransferRequests      TransferRequest[]          @relation("TransferRequest_fromLocationIdToWarehouseLocation")
+  toTransferRequests        TransferRequest[]          @relation("TransferRequest_toLocationIdToWarehouseLocation")
+  fromStockMovements        StockMovement[]            @relation("StockMovement_fromLocation")
+  toStockMovements          StockMovement[]            @relation("StockMovement_toLocation")
+  inventoryItems            InventoryItem[]
 }
 
 model Pos {
