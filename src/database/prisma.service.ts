@@ -70,9 +70,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       logger.log(`Creating new connection pool for tenant: ${tenantId}`);
       pool = new Pool({
         connectionString: tenantDbUrl,
-        max: 10,
+        max: 20, // Increased from 10
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
+        connectionTimeoutMillis: 10000, // Increased from 2000 to handle heavier queries
       });
 
       // Increase listener limit to accommodate multiple Prisma clients

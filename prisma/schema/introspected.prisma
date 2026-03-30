@@ -14,11 +14,6 @@ model WarehouseLocation {
   isActive                                                          Boolean             @default(true)
   createdAt                                                         DateTime            @default(now())
   updatedAt                                                         DateTime
-  InventoryItem                                                     InventoryItem[]
-  StockMovement_StockMovement_fromLocationIdToWarehouseLocation     StockMovement[]     @relation("StockMovement_fromLocationIdToWarehouseLocation")
-  StockMovement_StockMovement_toLocationIdToWarehouseLocation       StockMovement[]     @relation("StockMovement_toLocationIdToWarehouseLocation")
-  TransferRequest_TransferRequest_fromLocationIdToWarehouseLocation TransferRequest[]   @relation("TransferRequest_fromLocationIdToWarehouseLocation")
-  TransferRequest_TransferRequest_toLocationIdToWarehouseLocation   TransferRequest[]   @relation("TransferRequest_toLocationIdToWarehouseLocation")
   WarehouseLocation                                                 WarehouseLocation?  @relation("WarehouseLocationToWarehouseLocation", fields: [parentId], references: [id])
   other_WarehouseLocation                                           WarehouseLocation[] @relation("WarehouseLocationToWarehouseLocation")
   Warehouse                                                         Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Cascade)

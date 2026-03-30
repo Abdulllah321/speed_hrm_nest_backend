@@ -2,17 +2,16 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { PrismaService } from '../../database/prisma.service';
-import { UploadJobData } from '../../queue/processors/upload.processor';
-import { UploadEventsService } from './upload-events.service';
+import { UploadEventsService } from '../../finance/item/upload-events.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
 @Injectable()
-export class ItemBulkUploadService {
-    private readonly logger = new Logger(ItemBulkUploadService.name);
+export class HsCodeBulkUploadService {
+    private readonly logger = new Logger(HsCodeBulkUploadService.name);
 
     constructor(
-        @InjectQueue('item-upload') private uploadQueue: Queue,
+        @InjectQueue('hscode-upload') private uploadQueue: Queue,
         private prisma: PrismaService,
         private eventsService: UploadEventsService,
     ) { }
@@ -25,15 +24,13 @@ export class ItemBulkUploadService {
         filename: string,
         userId: string,
     ): Promise<{ uploadId: string; jobId: string }> {
-        // Use a UUID-based jobId upfront — avoids the two-step create+update
-        // and eliminates the unique constraint race when Bull reuses integer IDs.
-        const { v4: uuidv4 } = await import('uuid');
-        const jobId = `validate-${uuidv4()}`;
-
-        // Create upload record with the final jobId in one shot
+        // Generate a temporary unique jobId to avoid constraint violation
+        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Create upload record with status 'validating'
         const upload = await this.prisma.bulkUpload.create({
             data: {
-                jobId,
+                jobId: tempJobId, // Temporary unique ID
                 filename,
                 totalRecords: 0,
                 uploadedBy: userId,
@@ -42,34 +39,41 @@ export class ItemBulkUploadService {
         });
 
         // Ensure uploads directory exists
-        const uploadDir = path.join(process.cwd(), 'uploads', 'bulk');
+        const uploadDir = path.join(process.cwd(), 'uploads', 'bulk', 'hscode');
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
 
         const ext = filename.split('.').pop();
-        const filePath = path.join(uploadDir, `upload-${upload.id}.${ext}`);
+        const filePath = path.join(uploadDir, `hscode-upload-${upload.id}.${ext}`);
         fs.writeFileSync(filePath, fileBuffer);
 
-        // Add validation job to queue — file is already on disk, no buffer needed
+        // Add validation job to queue
         const job = await this.uploadQueue.add({
             uploadId: upload.id,
+            fileBuffer, // Keep it for the first job for speed
             filename,
             userId,
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'validate',
+            uploadType: 'hscode',
         } as any, {
-            jobId, // Pin Bull's job ID to our UUID — no update needed after
             removeOnComplete: false,
             removeOnFail: false,
         });
 
-        this.logger.log(`Validation initiated: ${upload.id} (Job ID: ${jobId}), File saved to ${filePath}`);
+        // Update upload with actual job ID
+        await this.prisma.bulkUpload.update({
+            where: { id: upload.id },
+            data: { jobId: String(job.id) },
+        });
+
+        this.logger.log(`HS Code validation initiated: ${upload.id} (Job ID: ${job.id}), File saved to ${filePath}`);
 
         return {
             uploadId: upload.id,
-            jobId,
+            jobId: String(job.id),
         };
     }
 
@@ -109,10 +113,7 @@ export class ItemBulkUploadService {
             data: { status: 'pending', message: 'Confirming upload...' },
         });
 
-        const { v4: uuidv4 } = await import('uuid');
-        const importJobId = `import-${uuidv4()}`;
-
-        // Add processing job to queue with a UUID-based job ID
+        // Add processing job to queue
         const job = await this.uploadQueue.add({
             uploadId: upload.id,
             filename: upload.filename,
@@ -120,35 +121,23 @@ export class ItemBulkUploadService {
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'import',
+            uploadType: 'hscode',
         } as any, {
-            jobId: importJobId,
             removeOnComplete: false,
             removeOnFail: false,
         });
 
         await this.prisma.bulkUpload.update({
             where: { id: upload.id },
-            data: { jobId: importJobId },
+            data: { jobId: String(job.id) },
         });
 
-        this.logger.log(`Import confirmed: ${upload.id} (Job ID: ${importJobId})`);
+        this.logger.log(`HS Code import confirmed: ${upload.id} (Job ID: ${job.id})`);
 
         return {
             uploadId,
-            jobId: importJobId,
+            jobId: String(job.id),
         };
-    }
-
-    /**
-     * Old initiateUpload - keeping it for compatibility or removing it if we refactor everywhere
-     * Refactoring it to call initiateValidation by default.
-     */
-    async initiateUpload(
-        fileBuffer: Buffer,
-        filename: string,
-        userId: string,
-    ): Promise<{ uploadId: string; jobId: string }> {
-        return this.initiateValidation(fileBuffer, filename, userId);
     }
 
     /**
@@ -163,23 +152,18 @@ export class ItemBulkUploadService {
             throw new NotFoundException(`Upload ${uploadId} not found`);
         }
 
-        // Get job progress from Bull — with a timeout so a slow Redis never hangs the request
+        // Get job progress from Bull
         let jobProgress = 0;
         let jobState = 'unknown';
 
         try {
-            const jobPromise = this.uploadQueue.getJob(upload.jobId);
-            const timeoutPromise = new Promise<null>((_, reject) =>
-                setTimeout(() => reject(new Error('timeout')), 3000)
-            );
-            const job = await Promise.race([jobPromise, timeoutPromise]);
+            const job = await this.uploadQueue.getJob(upload.jobId);
             if (job) {
                 jobProgress = await job.progress();
                 jobState = await job.getState();
             }
         } catch (error) {
-            this.logger.warn(`Failed to get job status (${error.message}) — falling back to DB values`);
-            // Fall through — DB values are still returned below
+            this.logger.warn(`Failed to get job status: ${error.message}`);
         }
 
         return {
@@ -231,7 +215,7 @@ export class ItemBulkUploadService {
             },
         });
 
-        this.logger.log(`Upload cancelled: ${uploadId}`);
+        this.logger.log(`HS Code upload cancelled: ${uploadId}`);
     }
 
     /**

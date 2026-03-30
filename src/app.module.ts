@@ -67,6 +67,7 @@ import { ColorModule } from './master/color/color.module';
 import { UserModule } from './user/user.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChartOfAccountModule } from './finance/chart-of-account/chart-of-account.module';
+import { AccountingModule } from './finance/accounting/accounting.module';
 import { JournalVoucherModule } from './finance/journal-voucher/journal-voucher.module';
 import { PaymentVoucherModule } from './finance/payment-voucher/payment-voucher.module';
 import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.module';
@@ -196,6 +197,7 @@ import { DebitNoteModule } from './purchase/debit-note/debit-note.module';
     UserModule,
     NotificationsModule,
     ChartOfAccountModule,
+    AccountingModule,
     JournalVoucherModule,
     PaymentVoucherModule,
     ReceiptVoucherModule,

@@ -25,6 +25,25 @@ export class StockMovementService {
   ) { }
 
   async executeMovement(dto: CreateStockMovementDto) {
+    // Validate that locations exist before processing
+    if (dto.toLocationId) {
+      const toLocation = await this.prisma.location.findUnique({
+        where: { id: dto.toLocationId }
+      });
+      if (!toLocation) {
+        throw new BadRequestException(`Destination location ${dto.toLocationId} not found`);
+      }
+    }
+
+    if (dto.fromLocationId) {
+      const fromLocation = await this.prisma.location.findUnique({
+        where: { id: dto.fromLocationId }
+      });
+      if (!fromLocation) {
+        throw new BadRequestException(`Source location ${dto.fromLocationId} not found`);
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Create Stock Movement Log
       const movement = await tx.stockMovement.create({
