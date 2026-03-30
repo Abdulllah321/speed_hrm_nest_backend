@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseInvoiceDto, UpdatePurchaseInvoiceDto } from './dto';
+import { AccountingService } from '../../finance/accounting/accounting.service';
 
 @Injectable()
 export class PurchaseInvoiceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accounting: AccountingService,
+  ) {}
 
   async create(createDto: CreatePurchaseInvoiceDto) {
     // Validate business rules
@@ -649,28 +653,75 @@ export class PurchaseInvoiceService {
 
   async approve(id: string) {
     const invoice = await this.findOne(id);
-    
+
     if (invoice.status === 'APPROVED' || invoice.status === 'CANCELLED') {
       throw new BadRequestException('Invoice is already approved or cancelled');
     }
 
-    return this.prisma.purchaseInvoice.update({
-      where: { id },
-      data: { 
-        status: 'APPROVED',
-      },
-      include: {
-        supplier: true,
-        grn: true,
-        landedCost: true,
-        items: true,
-      },
+    // Fetch supplier with linked payable accounts
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: invoice.supplierId },
+      include: { chartOfAccounts: { select: { id: true } } },
+    });
+
+    if (!supplier?.chartOfAccounts?.length) {
+      throw new BadRequestException(
+        'Supplier has no linked chart of accounts. Please link accounts to the supplier before approving.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.purchaseInvoice.update({
+        where: { id },
+        data: { status: 'APPROVED' },
+        include: { supplier: true, grn: true, landedCost: true, items: true },
+      });
+
+      const totalAmount = Number(invoice.totalAmount);
+
+      // Build journal lines
+      // Credit side — vendor payable accounts (split equally if multiple)
+      const payableAccounts = supplier.chartOfAccounts;
+      const creditPerAccount = totalAmount / payableAccounts.length;
+      const creditLines = payableAccounts.map(acc => ({
+        accountId: acc.id,
+        debit: 0,
+        credit: creditPerAccount,
+      }));
+
+      // Debit side — purchases/expense account
+      // Use the first item's chartOfAccountId if set, otherwise fall back to a
+      // general purchases account (code 60020002 = PURCHASES LOCAL)
+      const purchasesAccount = await tx.chartOfAccount.findFirst({
+        where: { code: '60020002' },
+        select: { id: true },
+      });
+
+      const debitLines = purchasesAccount
+        ? [{ accountId: purchasesAccount.id, debit: totalAmount, credit: 0 }]
+        : [];
+
+      if (debitLines.length === 0) {
+        throw new BadRequestException(
+          'Purchases account (60020002) not found. Run chart-of-accounts seed first.',
+        );
+      }
+
+      await this.accounting.postLines([...debitLines, ...creditLines], {
+        sourceType: 'PURCHASE_INVOICE',
+        sourceId: id,
+        sourceRef: invoice.invoiceNumber,
+        description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
+        transactionDate: new Date(),
+      }, tx);
+
+      return updated;
     });
   }
 
   async cancel(id: string, reason?: string) {
     const invoice = await this.findOne(id);
-    
+
     if (invoice.status === 'CANCELLED') {
       throw new BadRequestException('Invoice is already cancelled');
     }
@@ -679,18 +730,48 @@ export class PurchaseInvoiceService {
       throw new BadRequestException('Cannot cancel invoice with payments');
     }
 
-    return this.prisma.purchaseInvoice.update({
-      where: { id },
-      data: { 
-        status: 'CANCELLED',
-        ...(reason && { notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}` }),
-      },
-      include: {
-        supplier: true,
-        grn: true,
-        landedCost: true,
-        items: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      // If invoice was approved, reverse the journal entries
+      if (invoice.status === 'APPROVED') {
+        const supplier = await tx.supplier.findUnique({
+          where: { id: invoice.supplierId },
+          include: { chartOfAccounts: { select: { id: true } } },
+        });
+
+        const purchasesAccount = await tx.chartOfAccount.findFirst({
+          where: { code: '60020002' },
+          select: { id: true },
+        });
+
+        if (supplier?.chartOfAccounts?.length && purchasesAccount) {
+          const totalAmount = Number(invoice.totalAmount);
+          const creditPerAccount = totalAmount / supplier.chartOfAccounts.length;
+
+          const originalLines = [
+            { accountId: purchasesAccount.id, debit: totalAmount, credit: 0 },
+            ...supplier.chartOfAccounts.map(acc => ({
+              accountId: acc.id, debit: 0, credit: creditPerAccount,
+            })),
+          ];
+
+          await this.accounting.reverseLines(originalLines, {
+            sourceType: 'PURCHASE_INVOICE',
+            sourceId: id,
+            sourceRef: invoice.invoiceNumber,
+            description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
+            transactionDate: new Date(),
+          }, tx);
+        }
+      }
+
+      return tx.purchaseInvoice.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          ...(reason && { notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}` }),
+        },
+        include: { supplier: true, grn: true, landedCost: true, items: true },
+      });
     });
   }
 }

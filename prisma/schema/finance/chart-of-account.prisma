@@ -19,6 +19,7 @@ model ChartOfAccount {
   receiptVoucherCredit  ReceiptVoucherDetail[]
   landedCostChargeTypes LandedCostChargeType[]
   suppliers             Supplier[]             @relation("ChartOfAccountToSupplier")
+  transactions          AccountTransaction[]
 
   @@index([parentId])
   @@index([type])
