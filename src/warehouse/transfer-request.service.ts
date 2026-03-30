@@ -127,6 +127,8 @@ export class TransferRequestService {
                     }
                 },
                 fromWarehouse: { select: { name: true } },
+                fromLocation: { select: { name: true } },
+                toLocation: { select: { name: true } },
             },
             orderBy: { createdAt: 'desc' },
         });
