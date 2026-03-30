@@ -189,6 +189,7 @@ export class UploadProcessor {
 
                 let validationBatch: ParsedRecord[] = [];
                 const allValidationErrors: any[] = [];
+                const invalidRowSet = new Set<number>(); // tracks unique invalid rows
 
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
@@ -203,6 +204,7 @@ export class UploadProcessor {
                                 value: record.data.itemId,
                                 reason: 'Duplicate ItemID found within file.'
                             });
+                            invalidRowSet.add(record.row);
                         } else {
                             itemIdSet.add(normalized);
                         }
@@ -220,6 +222,7 @@ export class UploadProcessor {
                                     value: record.data.hsCode,
                                     reason: `HS Code '${record.data.hsCode}' not found in master data. Please create it first.`
                                 });
+                                invalidRowSet.add(record.row);
                             }
                         }
                     }
@@ -229,8 +232,8 @@ export class UploadProcessor {
                     // Larger batch size for validation — lighter work per record than import
                     if (validationBatch.length >= 5000) {
                         const batchErrors = this.validator.validateRecords(validationBatch);
+                        for (const e of batchErrors) invalidRowSet.add(e.row);
                         allValidationErrors.push(...batchErrors);
-                        successRecordsCount += (validationBatch.length - batchErrors.length);
                         validationBatch = [];
 
                         // Yield to event loop
@@ -258,11 +261,14 @@ export class UploadProcessor {
                 // Final partial batch
                 if (validationBatch.length > 0) {
                     const batchErrors = this.validator.validateRecords(validationBatch);
+                    for (const e of batchErrors) invalidRowSet.add(e.row);
                     allValidationErrors.push(...batchErrors);
-                    successRecordsCount += (validationBatch.length - batchErrors.length);
                 }
 
                 itemIdSet.clear();
+
+                const totalInvalidRows = invalidRowSet.size;
+                const totalValidRows = totalRecordsCount - totalInvalidRows;
 
                 // Update DB with validation results
                 await prisma.bulkUpload.update({
@@ -270,10 +276,10 @@ export class UploadProcessor {
                     data: {
                         status: 'validated',
                         totalRecords: totalRecordsCount,
-                        failedRecords: allValidationErrors.length,
-                        successRecords: successRecordsCount,
+                        failedRecords: totalInvalidRows,
+                        successRecords: totalValidRows,
                         errors: allValidationErrors as any,
-                        message: `Validation complete: ${successRecordsCount} valid, ${allValidationErrors.length} invalid.`,
+                        message: `Validation complete: ${totalValidRows} valid, ${totalInvalidRows} invalid rows.`,
                         completedAt: new Date(),
                     },
                 });
@@ -281,7 +287,7 @@ export class UploadProcessor {
                 await this.notificationsService.create({
                     userId,
                     title: 'Validation Completed',
-                    message: `Bulk validation finished: ${successRecordsCount} valid rows, ${allValidationErrors.length} invalid.`,
+                    message: `Bulk validation finished: ${totalValidRows} valid rows, ${totalInvalidRows} invalid.`,
                     category: 'system',
                     priority: 'normal',
                     channels: ['inApp']
@@ -294,8 +300,8 @@ export class UploadProcessor {
                     data: {
                         status: 'validated',
                         totalRecords: totalRecordsCount,
-                        successRecords: successRecordsCount,
-                        failedRecords: allValidationErrors.length,
+                        successRecords: totalValidRows,
+                        failedRecords: totalInvalidRows,
                         errors: allValidationErrors,
                         progress: 100
                     }
