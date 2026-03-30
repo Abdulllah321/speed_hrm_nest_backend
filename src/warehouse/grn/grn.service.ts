@@ -18,7 +18,11 @@ export class GrnService {
   async findAll() {
     return this.prisma.goodsReceiptNote.findMany({
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         purchaseOrder: {
           select: { poNumber: true, vendorId: true, items: true },
         },
@@ -34,7 +38,11 @@ export class GrnService {
     const grn = await this.prisma.goodsReceiptNote.findUnique({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         purchaseOrder: true,
         warehouse: true,
       },
@@ -132,9 +140,9 @@ export class GrnService {
           );
         }
 
-        // Resolve internal Item UUID from itemId (e.g. "2121")
+        // Resolve internal Item UUID
         const itemRecord = await tx.item.findUnique({
-          where: { itemId: grnItem.itemId },
+          where: { id: grnItem.itemId },
           select: { id: true },
         });
 

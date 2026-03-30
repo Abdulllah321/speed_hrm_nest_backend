@@ -30,14 +30,14 @@ export class PurchaseRequisitionService {
           })),
         },
       },
-      include: { items: true },
+      include: { items: { include: { item: true } } },
     });
   }
 
   async findAll(status?: string) {
     return this.prisma.purchaseRequisition.findMany({
       where: status && status !== 'ALL' ? { status } : {},
-      include: { items: true },
+      include: { items: { include: { item: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -45,7 +45,7 @@ export class PurchaseRequisitionService {
   async findOne(id: string) {
     const pr = await this.prisma.purchaseRequisition.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: { include: { item: true } } },
     });
     if (!pr) throw new NotFoundException(`Purchase Requisition not found`);
     return pr;

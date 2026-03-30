@@ -51,11 +51,17 @@ export class VendorQuotationService {
       );
     }
 
-    // Validate expiry date
-    const now = new Date();
-    const expiry = new Date(createDto.expiryDate);
-    if (isNaN(expiry.getTime()) || expiry <= now) {
-      throw new BadRequestException('Expiry date must be a valid future date');
+    // Validate expiry date if provided
+    let expiry: Date | null = null;
+    if (createDto.expiryDate) {
+      expiry = new Date(createDto.expiryDate);
+      if (isNaN(expiry.getTime())) {
+        throw new BadRequestException('Expiry date must be a valid date');
+      }
+      const now = new Date();
+      if (expiry <= now) {
+        throw new BadRequestException('Expiry date must be a future date');
+      }
     }
 
     // Create quotation with items
@@ -91,7 +97,11 @@ export class VendorQuotationService {
           : undefined,
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {
@@ -115,7 +125,11 @@ export class VendorQuotationService {
         NOT: { status: 'EXPIRED' },
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {
@@ -133,7 +147,11 @@ export class VendorQuotationService {
     const quotation = await this.prisma.vendorQuotation.findUnique({
       where: { id },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {
@@ -164,12 +182,20 @@ export class VendorQuotationService {
         OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {
             purchaseRequisition: {
-              include: { items: true },
+              include: {
+                items: {
+                  include: { item: true },
+                },
+              },
             },
           },
         },
@@ -179,6 +205,96 @@ export class VendorQuotationService {
 
     if (quotations.length === 0) {
       throw new NotFoundException('No submitted quotations found for this RFQ');
+    }
+
+    // --- ENRICH WITH LAST PURCHASE INFO ---
+    // 1. Get all unique item IDs from the PR
+    const prItems = quotations[0]?.rfq?.purchaseRequisition?.items || [];
+    const itemIds = Array.from(new Set(prItems.map((i) => i.itemId)));
+
+    // 2. For each item, find the latest INBOUND stock movement
+    const enrichedQuotations = await Promise.all(
+      quotations.map(async (q) => {
+        // We only need to enrich once per RFQ, but the structure has RFQ nested in each quotation.
+        // To be safe and efficient, we'll enrich the PR items inside the first quotation's RFQ,
+        // since the frontend reads `quotations[0].rfq.purchaseRequisition.items`.
+        return q;
+      }),
+    );
+
+    // Fetch last purchase info for each unique item
+    const lastPurchaseMap = new Map<string, any>();
+    console.log('--- DEBUG LAST PURCHASE INFO ---');
+    console.log('Unique PR item IDs to check:', itemIds);
+    await Promise.all(
+      itemIds.map(async (itemId) => {
+        const lastEntry = await this.prisma.stockLedger.findFirst({
+          where: {
+            itemId,
+            movementType: 'INBOUND',
+            referenceType: { in: ['GRN', 'PURCHASE_INVOICE', 'LANDED_COST'] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        console.log(`[DEBUG] Item ID: ${itemId}`);
+        console.log(`[DEBUG] Last Entry Found:`, lastEntry ? 'YES' : 'NO');
+        if (lastEntry) {
+          console.log(`[DEBUG] Entry Details:`, JSON.stringify(lastEntry));
+          let vendorName = 'Unknown';
+          let purchaseDate = lastEntry.createdAt;
+
+          // Resolve Vendor Name based on referenceType
+          if (lastEntry.referenceType === 'PURCHASE_INVOICE') {
+            const pi = await this.prisma.purchaseInvoice.findUnique({
+              where: { id: lastEntry.referenceId },
+              include: { supplier: true },
+            });
+            vendorName = pi?.supplier?.name || 'Unknown';
+            purchaseDate = pi?.invoiceDate || lastEntry.createdAt;
+          } else if (lastEntry.referenceType === 'GRN') {
+            const grn = await this.prisma.goodsReceiptNote.findUnique({
+              where: { id: lastEntry.referenceId },
+              include: { purchaseOrder: { include: { vendor: true } } },
+            });
+            vendorName = grn?.purchaseOrder?.vendor?.name || 'Unknown';
+          } else if (lastEntry.referenceType === 'LANDED_COST') {
+            const lc = await this.prisma.landedCost.findUnique({
+              where: { id: lastEntry.referenceId },
+              include: {
+                supplier: true,
+                grn: { include: { purchaseOrder: { include: { vendor: true } } } },
+              },
+            });
+            vendorName =
+              lc?.supplier?.name ||
+              lc?.grn?.purchaseOrder?.vendor?.name ||
+              'Unknown';
+          }
+
+          lastPurchaseMap.set(itemId, {
+            rate: lastEntry.rate,
+            date: purchaseDate,
+            vendor: vendorName,
+          });
+        }
+      }),
+    );
+
+    // Attach to the PR items in each quotation (though frontend usually uses quotations[0])
+    for (const q of quotations) {
+      if (q.rfq?.purchaseRequisition?.items) {
+        q.rfq.purchaseRequisition.items = q.rfq.purchaseRequisition.items.map((item) => {
+          const lastInfo = lastPurchaseMap.get(item.itemId);
+          if (lastInfo) {
+            return {
+              ...item,
+              lastPurchaseInfo: lastInfo,
+            };
+          }
+          return item;
+        }) as any;
+      }
     }
 
     return quotations;
@@ -210,7 +326,11 @@ export class VendorQuotationService {
         where: { id },
         data: { status: 'SELECTED' },
         include: {
-          items: true,
+          items: {
+          include: {
+            item: true,
+          },
+        },
           vendor: true,
           rfq: {
             include: {
@@ -239,7 +359,11 @@ export class VendorQuotationService {
       where: { id },
       data: { status: 'SUBMITTED' },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {
@@ -300,7 +424,11 @@ export class VendorQuotationService {
             },
           },
           include: {
-            items: true,
+            items: {
+              include: {
+                item: true,
+              },
+            },
             vendor: true,
             rfq: {
               include: {
@@ -320,7 +448,11 @@ export class VendorQuotationService {
       where: { id },
       data: data,
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {
@@ -396,7 +528,11 @@ export class VendorQuotationService {
         totalAmount,
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         vendor: true,
         rfq: {
           include: {

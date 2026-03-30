@@ -146,7 +146,7 @@ export class LandedCostService {
       // 2) Update Stock Ledger for each item with the new Landed Cost
       for (const item of dto.items) {
         const itemRecord = await tx.item.findUnique({
-          where: { itemId: item.itemId },
+          where: { id: item.itemId },
           select: { id: true },
         });
         if (!itemRecord) {

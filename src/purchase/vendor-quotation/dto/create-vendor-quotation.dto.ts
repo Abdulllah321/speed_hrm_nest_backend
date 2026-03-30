@@ -53,8 +53,8 @@ export class CreateVendorQuotationDto {
   vendorId: string;
 
   @IsString()
-  @IsNotEmpty()
-  expiryDate: string;
+  @IsOptional()
+  expiryDate?: string;
 
   @IsString()
   @IsOptional()
