@@ -1,17 +1,17 @@
 model VendorQuotation {
   id             String                @id @default(uuid())
-  rfqId          String                @map("rfq_id")
-  vendorId       String                @map("vendor_id")
-  quotationDate  DateTime              @default(now()) @map("quotation_date")
+  rfqId          String
+  vendorId       String
+  quotationDate  DateTime              @default(now())
   status         String                @default("DRAFT")
   subtotal       Decimal               @default(0) @db.Decimal(15, 2)
-  taxAmount      Decimal               @default(0) @map("tax_amount") @db.Decimal(15, 2)
-  discountAmount Decimal               @default(0) @map("discount_amount") @db.Decimal(15, 2)
-  totalAmount    Decimal               @default(0) @map("total_amount") @db.Decimal(15, 2)
+  taxAmount      Decimal               @default(0) @db.Decimal(15, 2)
+  discountAmount Decimal               @default(0) @db.Decimal(15, 2)
+  totalAmount    Decimal               @default(0) @db.Decimal(15, 2)
   notes          String?
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  expiryDate     DateTime?             @map("expiry_date")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  expiryDate     DateTime?
   purchaseOrders PurchaseOrder[]
   items          VendorQuotationItem[]
   rfq            RequestForQuotation   @relation(fields: [rfqId], references: [id])
@@ -23,18 +23,18 @@ model VendorQuotation {
 
 model VendorQuotationItem {
   id                String          @id @default(uuid())
-  vendorQuotationId String          @map("vendor_quotation_id")
-  itemId            String          @map("item_id")
+  vendorQuotationId String
+  itemId            String
   description       String?
-  quotedQty         Decimal         @map("quoted_qty") @db.Decimal(15, 4)
-  unitPrice         Decimal         @map("unit_price") @db.Decimal(15, 2)
-  taxPercent        Decimal         @default(0) @map("tax_percent") @db.Decimal(5, 2)
-  discountPercent   Decimal         @default(0) @map("discount_percent") @db.Decimal(5, 2)
-  lineTotal         Decimal         @map("line_total") @db.Decimal(15, 2)
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  quotedQty         Decimal         @db.Decimal(15, 4)
+  unitPrice         Decimal         @db.Decimal(15, 2)
+  taxPercent        Decimal         @default(0) @db.Decimal(5, 2)
+  discountPercent   Decimal         @default(0) @db.Decimal(5, 2)
+  lineTotal         Decimal         @db.Decimal(15, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
   fob               Decimal         @default(0) @db.Decimal(15, 2)
-  unitCost          Decimal         @default(0) @map("unit_cost") @db.Decimal(15, 2)
+  unitCost          Decimal         @default(0) @db.Decimal(15, 2)
   vendorQuotation   VendorQuotation @relation(fields: [vendorQuotationId], references: [id], onDelete: Cascade)
   item              Item            @relation(fields: [itemId], references: [id])
 

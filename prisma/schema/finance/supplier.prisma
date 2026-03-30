@@ -3,7 +3,7 @@ model Supplier {
   code             String                      @unique
   brand            String?
   name             String
-  nature           SupplierNature?
+  nature           String?
   type             SupplierType?               @default(LOCAL)
   address          String?
   city             String?
