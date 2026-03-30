@@ -163,18 +163,23 @@ export class ItemBulkUploadService {
             throw new NotFoundException(`Upload ${uploadId} not found`);
         }
 
-        // Get job progress from Bull
+        // Get job progress from Bull — with a timeout so a slow Redis never hangs the request
         let jobProgress = 0;
         let jobState = 'unknown';
 
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            const jobPromise = this.uploadQueue.getJob(upload.jobId);
+            const timeoutPromise = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 3000)
+            );
+            const job = await Promise.race([jobPromise, timeoutPromise]);
             if (job) {
                 jobProgress = await job.progress();
                 jobState = await job.getState();
             }
         } catch (error) {
-            this.logger.warn(`Failed to get job status: ${error.message}`);
+            this.logger.warn(`Failed to get job status (${error.message}) — falling back to DB values`);
+            // Fall through — DB values are still returned below
         }
 
         return {
