@@ -327,7 +327,7 @@ export class PosSalesService {
             where.cashierUserId = user.id;
         }
 
-        const [orders, total] = await Promise.all([
+        const [rawOrders, total] = await Promise.all([
             this.prisma.salesOrder.findMany({
                 where,
                 skip,
@@ -343,6 +343,19 @@ export class PosSalesService {
             this.prisma.salesOrder.count({ where }),
         ]);
 
+        // Reconstruct tenders from stored columns since they aren't persisted separately
+        const orders = rawOrders.map(order => {
+            const tenders: { method: string; amount: number }[] = [];
+            if (order.tenderType === 'split') {
+                if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
+                if (Number(order.cardAmount) > 0) tenders.push({ method: 'card', amount: Number(order.cardAmount) });
+            } else if (order.paymentMethod) {
+                const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
+                tenders.push({ method: order.paymentMethod, amount });
+            }
+            return { ...order, tenders };
+        });
+
         return {
             status: true,
             data: orders,
@@ -354,10 +367,89 @@ export class PosSalesService {
     async getOrder(id: string) {
         const order = await this.prisma.salesOrder.findUnique({
             where: { id },
-            include: { items: { include: { item: true } } },
+            include: {
+                items: { include: { item: true } },
+                promo: { select: { name: true, code: true } },
+                coupon: { select: { code: true, description: true } },
+                alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+            },
         });
         if (!order) return { status: false, message: 'Order not found' };
-        return { status: true, data: order };
+
+        const tenders: { method: string; amount: number }[] = [];
+        if (order.tenderType === 'split') {
+            if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
+            if (Number(order.cardAmount) > 0) tenders.push({ method: 'card', amount: Number(order.cardAmount) });
+        } else if (order.paymentMethod) {
+            const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
+            tenders.push({ method: order.paymentMethod, amount });
+        }
+
+        return { status: true, data: { ...order, tenders } };
+    }
+
+    // ─── Partial return ───────────────────────────────────────────────
+    async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string) {
+        try {
+            return await this.prisma.$transaction(async (tx) => {
+                const order = await tx.salesOrder.findUnique({
+                    where: { id },
+                    include: { items: true },
+                });
+                if (!order) return { status: false, message: 'Order not found' };
+                if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
+
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                if (!warehouse) throw new Error('No active warehouse found');
+
+                for (const returnItem of items) {
+                    const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
+                    if (!orderItem) continue;
+                    if (returnItem.quantity > orderItem.quantity) {
+                        throw new Error(`Return qty exceeds ordered qty for item ${returnItem.itemId}`);
+                    }
+
+                    await this.stockLedgerService.createEntry({
+                        itemId: returnItem.itemId,
+                        warehouseId: warehouse.id,
+                        locationId: order.locationId,
+                        qty: returnItem.quantity,
+                        movementType: MovementType.INBOUND,
+                        referenceType: 'POS_RETURN',
+                        referenceId: order.id,
+                    }, tx);
+
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { itemId: returnItem.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    });
+                    if (existing) {
+                        await tx.inventoryItem.update({
+                            where: { id: existing.id },
+                            data: { quantity: { increment: returnItem.quantity } },
+                        });
+                    } else {
+                        await tx.inventoryItem.create({
+                            data: {
+                                itemId: returnItem.itemId,
+                                locationId: order.locationId,
+                                warehouseId: warehouse.id,
+                                quantity: returnItem.quantity,
+                                status: 'AVAILABLE',
+                            },
+                        });
+                    }
+                }
+
+                const updatedOrder = await tx.salesOrder.update({
+                    where: { id },
+                    data: { status: 'partially_returned', notes: reason ? `Return: ${reason}` : order.notes },
+                });
+
+                return { status: true, data: updatedOrder, message: 'Return processed and inventory restored' };
+            });
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
     }
 
     // ─── Void order ───────────────────────────────────────────────────
@@ -434,6 +526,99 @@ export class PosSalesService {
 
                 return { status: true, data: voidedOrder, message: 'Order voided and inventory restored' };
             });
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+    // ─── Exchange items ───────────────────────────────────────────────
+    async exchangeItems(
+        id: string,
+        returnedItems: { orderItemId: string; itemId: string; quantity: number }[],
+        newItems: { itemId: string; quantity: number; unitPrice: number }[],
+        reason?: string,
+    ) {
+        try {
+            return await this.prisma.$transaction(async (tx) => {
+                const order = await tx.salesOrder.findUnique({ where: { id }, include: { items: true } });
+                if (!order) return { status: false, message: 'Order not found' };
+                if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
+
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                if (!warehouse) throw new Error('No active warehouse found');
+
+                // ── Restore returned items ──────────────────────────────
+                for (const ri of returnedItems) {
+                    const orderItem = order.items.find(i => i.id === ri.orderItemId);
+                    if (!orderItem || ri.quantity > orderItem.quantity) continue;
+
+                    await this.stockLedgerService.createEntry({
+                        itemId: ri.itemId, warehouseId: warehouse.id, locationId: order.locationId,
+                        qty: ri.quantity, movementType: MovementType.INBOUND,
+                        referenceType: 'POS_EXCHANGE_IN', referenceId: order.id,
+                    }, tx);
+
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { itemId: ri.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    });
+                    if (existing) {
+                        await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: ri.quantity } } });
+                    } else {
+                        await tx.inventoryItem.create({ data: { itemId: ri.itemId, locationId: order.locationId, warehouseId: warehouse.id, quantity: ri.quantity, status: 'AVAILABLE' } });
+                    }
+                }
+
+                // ── Deduct new items ────────────────────────────────────
+                for (const ni of newItems) {
+                    await this.stockLedgerService.createEntry({
+                        itemId: ni.itemId, warehouseId: warehouse.id, locationId: order.locationId,
+                        qty: -ni.quantity, movementType: MovementType.OUTBOUND,
+                        referenceType: 'POS_EXCHANGE_OUT', referenceId: order.id,
+                    }, tx);
+
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { itemId: ni.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    });
+                    if (existing) {
+                        await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { decrement: ni.quantity } } });
+                    } else {
+                        await tx.inventoryItem.create({ data: { itemId: ni.itemId, locationId: order.locationId, warehouseId: warehouse.id, quantity: -ni.quantity, status: 'AVAILABLE' } });
+                    }
+                }
+
+                const returnedValue = returnedItems.reduce((s, ri) => {
+                    const oi = order.items.find(i => i.id === ri.orderItemId);
+                    return s + (oi ? Number(oi.unitPrice) * ri.quantity : 0);
+                }, 0);
+                const newValue = newItems.reduce((s, ni) => s + ni.unitPrice * ni.quantity, 0);
+                const difference = newValue - returnedValue; // positive = customer pays more, negative = refund
+
+                const updatedOrder = await tx.salesOrder.update({
+                    where: { id },
+                    data: { status: 'exchanged', notes: reason ? `Exchange: ${reason}` : order.notes },
+                });
+
+                return { status: true, data: { ...updatedOrder, difference }, message: 'Exchange processed successfully' };
+            });
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    // ─── Refund only (no stock movement) ─────────────────────────────
+    async refundOnly(id: string, refundAmount: number, reason?: string) {
+        try {
+            const order = await this.prisma.salesOrder.findUnique({ where: { id } });
+            if (!order) return { status: false, message: 'Order not found' };
+            if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
+            if (refundAmount <= 0) return { status: false, message: 'Refund amount must be greater than 0' };
+            if (refundAmount > Number(order.grandTotal)) return { status: false, message: 'Refund amount exceeds order total' };
+
+            const updatedOrder = await this.prisma.salesOrder.update({
+                where: { id },
+                data: { status: 'refunded', notes: reason ? `Refund Rs.${refundAmount}: ${reason}` : `Refund Rs.${refundAmount}` },
+            });
+
+            return { status: true, data: updatedOrder, message: `Refund of Rs.${refundAmount} processed` };
         } catch (error: any) {
             return { status: false, message: error.message };
         }
