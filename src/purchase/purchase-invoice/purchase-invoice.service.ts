@@ -13,6 +13,23 @@ export class PurchaseInvoiceService {
     // Calculate totals
     const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
 
+    // Resolve true UUIDs for all items to fix legacy string IDs
+    const resolvedItems = await Promise.all(createDto.items.map(async (item) => {
+      const itemRecord = await this.prisma.item.findFirst({
+        where: {
+          OR: [
+            { id: item.itemId },
+            { itemId: item.itemId }
+          ]
+        },
+        select: { id: true },
+      });
+      return {
+        ...item,
+        trueItemId: itemRecord ? itemRecord.id : item.itemId
+      } as any;
+    }));
+
     return this.prisma.purchaseInvoice.create({
       data: {
         invoiceNumber: createDto.invoiceNumber,
@@ -29,13 +46,13 @@ export class PurchaseInvoiceService {
         notes: createDto.notes,
         status: createDto.status || 'DRAFT',
         items: {
-          create: createDto.items.map(item => {
+          create: resolvedItems.map((item: any) => {
             const lineTotal = item.quantity * item.unitPrice;
             const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
             const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
             
             return {
-              itemId: item.itemId,
+              itemId: item.trueItemId,
               grnItemId: item.grnItemId,
               landedCostItemId: item.landedCostItemId,
               description: item.description,
@@ -54,7 +71,11 @@ export class PurchaseInvoiceService {
         supplier: true,
         grn: true,
         landedCost: true,
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
       },
     });
   }
@@ -84,7 +105,11 @@ export class PurchaseInvoiceService {
           supplier: true,
           grn: true,
           landedCost: true,
-          items: true,
+          items: {
+          include: {
+            item: true,
+          },
+        },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -109,15 +134,27 @@ export class PurchaseInvoiceService {
         supplier: true,
         grn: {
           include: {
-            items: true,
+            items: {
+          include: {
+            item: true,
+          },
+        },
           },
         },
         landedCost: {
           include: {
-            items: true,
+            items: {
+          include: {
+            item: true,
           },
         },
-        items: true,
+          },
+        },
+        items: {
+          include: {
+            item: true,
+          },
+        },
         paymentVouchers: {
           include: {
             paymentVoucher: true,
@@ -159,18 +196,36 @@ export class PurchaseInvoiceService {
       });
     }
 
-    return this.prisma.purchaseInvoice.update({
-      where: { id },
-      data: {
-        ...updateData,
-        items: updateDto.items ? {
-          create: updateDto.items.map(item => {
+    let finalUpdateData = { ...updateData };
+
+    if (updateDto.items) {
+      // Resolve true UUIDs for update items
+      const resolvedItemsForUpdate = await Promise.all(updateDto.items.map(async (item) => {
+        const itemRecord = await this.prisma.item.findFirst({
+          where: {
+            OR: [
+              { id: item.itemId },
+              { itemId: item.itemId }
+            ]
+          },
+          select: { id: true },
+        });
+        return {
+          ...item,
+          trueItemId: itemRecord ? itemRecord.id : item.itemId
+        } as any;
+      }));
+
+      finalUpdateData = {
+        ...finalUpdateData,
+        items: {
+          create: resolvedItemsForUpdate.map((item: any) => {
             const lineTotal = item.quantity * item.unitPrice;
             const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
             const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
             
             return {
-              itemId: item.itemId,
+              itemId: item.trueItemId,
               grnItemId: item.grnItemId,
               landedCostItemId: item.landedCostItemId,
               description: item.description,
@@ -183,13 +238,22 @@ export class PurchaseInvoiceService {
               discountAmount: itemDiscountAmount,
             };
           }),
-        } : undefined,
-      },
+        }
+      };
+    }
+
+    return this.prisma.purchaseInvoice.update({
+      where: { id },
+      data: finalUpdateData,
       include: {
         supplier: true,
         grn: true,
         landedCost: true,
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
       },
     });
   }
@@ -284,7 +348,11 @@ export class PurchaseInvoiceService {
           purchaseOrder: {
             include: {
               vendor: true,
-              items: true,
+              items: {
+          include: {
+            item: true,
+          },
+        },
             },
           },
         },
@@ -315,7 +383,11 @@ export class PurchaseInvoiceService {
           purchaseOrder: {
             include: {
               vendor: true,
-              items: true,
+              items: {
+          include: {
+            item: true,
+          },
+        },
             },
           },
         },
@@ -663,7 +735,11 @@ export class PurchaseInvoiceService {
         supplier: true,
         grn: true,
         landedCost: true,
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
       },
     });
   }
@@ -689,7 +765,11 @@ export class PurchaseInvoiceService {
         supplier: true,
         grn: true,
         landedCost: true,
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
       },
     });
   }

@@ -55,7 +55,7 @@ export class RfqService {
         },
         purchaseRequisition: {
           include: {
-            items: true,
+            items: { include: { item: true } },
           },
         },
       },
@@ -81,7 +81,7 @@ export class RfqService {
         },
         purchaseRequisition: {
           include: {
-            items: true,
+            items: { include: { item: true } },
           },
         },
       },
@@ -100,7 +100,7 @@ export class RfqService {
         },
         purchaseRequisition: {
           include: {
-            items: true,
+            items: { include: { item: true } },
           },
         },
       },
@@ -150,7 +150,7 @@ export class RfqService {
         },
         purchaseRequisition: {
           include: {
-            items: true,
+            items: { include: { item: true } },
           },
         },
       },
@@ -187,7 +187,7 @@ export class RfqService {
         },
         purchaseRequisition: {
           include: {
-            items: true,
+            items: { include: { item: true } },
           },
         },
       },
@@ -215,7 +215,7 @@ export class RfqService {
         },
         purchaseRequisition: {
           include: {
-            items: true,
+            items: { include: { item: true } },
           },
         },
       },

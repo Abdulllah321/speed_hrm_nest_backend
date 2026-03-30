@@ -59,7 +59,11 @@ export class PurchaseReturnService {
     return this.prisma.purchaseReturn.findMany({
       where: status && status !== 'ALL' ? { status } : {},
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         grn: true,
         landedCost: true,
         supplier: true,
@@ -77,6 +81,7 @@ export class PurchaseReturnService {
           include: {
             grnItem: true,
             landedCostItem: true,
+            item: true,
           },
         },
         grn: {
@@ -254,7 +259,7 @@ export class PurchaseReturnService {
           },
         },
         warehouse: true,
-        items: true,
+        items: { include: { item: true } },
       },
       orderBy: { receivedDate: 'desc' },
     });
@@ -270,8 +275,9 @@ export class PurchaseReturnService {
         const poItem = grn.purchaseOrder.items.find(poi => poi.itemId === grnItem.itemId);
         return {
           ...grnItem,
-          unitPrice: poItem?.unitPrice || 0, // Add unit price from PO
-          description: poItem?.description || grnItem.description,
+          unitPrice: poItem?.unitPrice || 0,
+          description: (grnItem as any).item?.description || poItem?.description || grnItem.description,
+          displayCode: (grnItem as any).item?.itemId || grnItem.itemId,
         };
       }),
     }));
@@ -294,7 +300,7 @@ export class PurchaseReturnService {
           },
         },
         supplier: true,
-        items: true,
+        items: { include: { item: true } },
       },
       orderBy: { date: 'desc' },
     });
@@ -305,7 +311,11 @@ export class PurchaseReturnService {
       landedCostNumber: lc.landedCostNumber,
       supplier: lc.supplier,
       warehouse: lc.grn.warehouse,
-      items: lc.items,
+      items: lc.items.map(lcItem => ({
+        ...lcItem,
+        description: (lcItem as any).item?.description || lcItem.description,
+        displayCode: (lcItem as any).item?.itemId || lcItem.itemId,
+      })),
     }));
   }
 
@@ -372,9 +382,9 @@ export class PurchaseReturnService {
       });
 
       // Validate that item and warehouse exist before creating stock ledger entry
-      // Find item by itemId (code) to get the actual UUID
+      // Find item by its UUID
       const itemExists = await this.prisma.item.findUnique({
-        where: { itemId: item.itemId } // Use itemId field (code) instead of id
+        where: { id: item.itemId } // Strict UUID lookup
       });
 
       const warehouseExists = await this.prisma.warehouse.findUnique({

@@ -47,6 +47,7 @@ model PurchaseReturnItem {
   purchaseReturn    PurchaseReturn       @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
   grnItem           GoodsReceiptNoteItem? @relation(fields: [grnItemId], references: [id])
   landedCostItem    LandedCostItem?      @relation(fields: [landedCostItemId], references: [id])
+  item              Item                 @relation(fields: [itemId], references: [id])
   
   @@map("purchase_return_items")
 }
