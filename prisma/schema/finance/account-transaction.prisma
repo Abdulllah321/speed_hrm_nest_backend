@@ -1,0 +1,21 @@
+model AccountTransaction {
+  id               String         @id @default(uuid())
+  accountId        String
+  debit            Decimal        @default(0.0) @db.Decimal(15, 2)
+  credit           Decimal        @default(0.0) @db.Decimal(15, 2)
+  balanceAfter     Decimal        @default(0.0) @db.Decimal(15, 2)
+  /// Source document type: PURCHASE_INVOICE | PAYMENT_VOUCHER | JOURNAL_VOUCHER | RECEIPT_VOUCHER
+  sourceType       String
+  /// ID of the source document
+  sourceId         String
+  /// Human-readable reference e.g. PI-2026-0001, BPV-2026-0001
+  sourceRef        String
+  description      String?
+  transactionDate  DateTime
+  createdAt        DateTime       @default(now())
+  account          ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([sourceType, sourceId])
+  @@index([transactionDate])
+}
