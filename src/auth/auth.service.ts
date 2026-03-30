@@ -16,6 +16,9 @@ import { CompanyService } from '../admin/company/company.service';
 import { PosService } from '../master/pos/pos.service';
 import { EncryptionService } from '../common/utils/encryption.service';
 import { PosSessionService } from '../pos-session/pos-session.service';
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 function parseExpiryToMs(expiry: string) {
   const m = expiry.match(/^(""d+)([smhd])$/);
@@ -655,10 +658,15 @@ export class AuthService {
       if (company.dbPassword) {
         try {
           const plainPassword = this.encryptionService.decrypt(company.dbPassword);
-          const encodedPassword = encodeURIComponent(plainPassword);
+          const encodedPassword = encodeURIComponent(String(plainPassword));
           if (company.dbUser && company.dbHost && company.dbName) {
+            const encodedUser = encodeURIComponent(company.dbUser);
+            const encodedHost = company.dbHost;
+            const encodedDbName = encodeURIComponent(company.dbName);
             const port = company.dbPort || 5432;
-            dbUrl = `postgresql://${company.dbUser}:${encodedPassword}@${company.dbHost}:${port}/${company.dbName}?schema=public`;
+            dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
+
+            this.logger.debug(`Reconstructed DB URL for global context company ${company.code} (password masked)`);
           }
         } catch (err) {
           this.logger.error(`Failed to decrypt database password for company ${company.id}`);
@@ -730,6 +738,7 @@ export class AuthService {
     lat?: number,
     lng?: number,
   ) {
+    this.prisma.ensureTenantContext();
     let location: any = null;
 
     if (code) {
@@ -868,26 +877,69 @@ export class AuthService {
     );
 
     // ── Check for existing active session ──
-    let session = await this.prisma.posSession.findFirst({
-      where: { posId: terminalId, status: 'open' },
-      orderBy: { openedAt: 'desc' },
-    });
+    // Determine which prisma client to use for session management
+    let sessionPrisma: any = this.prisma;
+    let tempPool: any = null;
+    let isTemp = false;
+    let session: any = null;
 
-    if (!session) {
-      // Create a new PosSession record
-      session = await this.prisma.posSession.create({
-        data: {
-          posId: terminalId,
-          status: 'open',
-          token: accessToken,
-        },
+    if (!this.prisma.getTenantId()) {
+      // If no context, we must create a temporary one for this specific company
+      if (company?.dbUrl) {
+        let dbUrl = company.dbUrl;
+        let dbPassword = '';
+        if (company.dbPassword) {
+          try {
+            dbPassword = this.encryptionService.decrypt(company.dbPassword);
+          } catch (e) { }
+        }
+
+        try {
+          tempPool = new Pool({
+            user: company.dbUser || undefined,
+            host: company.dbHost || undefined,
+            database: company.dbName || undefined,
+            password: dbPassword || undefined,
+            port: company.dbPort || 5432,
+            max: 1,
+            connectionTimeoutMillis: 2000,
+          });
+          const adapter = new PrismaPg(tempPool);
+          sessionPrisma = new PrismaClient({ adapter: adapter as any });
+          isTemp = true;
+        } catch (e) {
+          this.logger.error(`Failed to create temporary session prisma: ${e.message}`);
+        }
+      }
+    }
+
+    try {
+      session = await sessionPrisma.posSession.findFirst({
+        where: { posId: terminalId, status: 'open' },
+        orderBy: { openedAt: 'desc' },
       });
-    } else {
-      // Update the existing session with the new token
-      session = await this.prisma.posSession.update({
-        where: { id: session.id },
-        data: { token: accessToken },
-      });
+
+      if (!session) {
+        // Create a new PosSession record
+        session = await sessionPrisma.posSession.create({
+          data: {
+            posId: terminalId,
+            status: 'open',
+            token: accessToken,
+          },
+        });
+      } else {
+        // Update the existing session with the new token
+        session = await sessionPrisma.posSession.update({
+          where: { id: session.id },
+          data: { token: accessToken },
+        });
+      }
+    } finally {
+      if (isTemp && sessionPrisma) {
+        await sessionPrisma.$disconnect();
+        if (tempPool) await tempPool.end();
+      }
     }
 
     return {
@@ -941,15 +993,31 @@ export class AuthService {
           roleName: user.role?.name || null,
           impersonatorId: decoded.impersonatorId,
           isImpersonating: decoded.isImpersonating,
+          sessionId: decoded.sessionId, // Keep sessionId in the new access token
         },
         authConfig.jwt.accessSecret,
         accessOpts,
       );
 
-      // Return the same refresh token (no rotation required in simple stateless)
+      // Generate a new refresh token (Refresh Token Rotation)
+      const refreshOpts: jwt.SignOptions = {
+        expiresIn: authConfig.jwt.refreshExpiresIn as any,
+        issuer: authConfig.jwt.issuer,
+      };
+      const newRefreshToken = jwt.sign(
+        {
+          userId: user.id,
+          sessionId: decoded.sessionId,
+          impersonatorId: decoded.impersonatorId,
+          isImpersonating: decoded.isImpersonating
+        },
+        authConfig.jwt.refreshSecret,
+        refreshOpts,
+      );
+
       return {
         status: true,
-        data: { accessToken, refreshToken: token },
+        data: { accessToken, refreshToken: newRefreshToken },
       };
     } catch (error) {
       return { status: false, message: 'Invalid refresh token' };

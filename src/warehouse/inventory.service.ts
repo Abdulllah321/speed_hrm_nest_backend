@@ -70,20 +70,33 @@ export class InventoryService {
     });
   }
 
-  async searchInventory(query: string = '', warehouseId?: string, locationId?: string) {
-    console.log('Search called with:', { query, warehouseId, locationId });
-    
-    if (!warehouseId && !locationId) {
-      throw new Error('Warehouse ID or Location ID is required for stock search');
+  async searchInventory(
+    query: string = '',
+    warehouseId?: string,
+    locationId?: string,
+    filters?: {
+      brandIds?: string[];
+      categoryIds?: string[];
+      silhouetteIds?: string[];
+      genderIds?: string[];
     }
+  ) {
+    const filterWhere: any = {};
+    if (filters?.brandIds?.length) filterWhere.brandId = { in: filters.brandIds };
+    if (filters?.categoryIds?.length) filterWhere.categoryId = { in: filters.categoryIds };
+    if (filters?.silhouetteIds?.length) filterWhere.silhouetteId = { in: filters.silhouetteIds };
+    if (filters?.genderIds?.length) filterWhere.genderId = { in: filters.genderIds };
 
     const items = await this.prisma.item.findMany({
       where: {
-        OR: [
-          { sku: { contains: query, mode: 'insensitive' } },
-          { description: { contains: query, mode: 'insensitive' } },
-        ],
+        OR: query
+          ? [
+              { sku: { contains: query, mode: 'insensitive' } },
+              { description: { contains: query, mode: 'insensitive' } },
+            ]
+          : undefined,
         isActive: true,
+        ...filterWhere,
       },
       take: 50,
       select: {
@@ -92,26 +105,59 @@ export class InventoryService {
         description: true,
         unitPrice: true,
         imageUrl: true,
+        brand: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        silhouette: { select: { id: true, name: true } },
+        gender: { select: { id: true, name: true } },
       },
     });
 
     const itemIds = items.map((i) => i.id);
 
-    // Get stock from StockLedger (Accurate source for both Warehouse and Outlets)
-    const stockEntries = await this.prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        itemId: { in: itemIds },
-        ...(locationId ? { locationId } : { warehouseId, locationId: null }),
-      },
-      _sum: {
-        qty: true,
-      },
-    });
+    let stockMap: Map<string, number>;
 
-    const stockMap = new Map(
-      stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
-    );
+    if (locationId) {
+      // Outlet stock: use InventoryItem directly
+      const inventoryItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          itemId: { in: itemIds },
+          locationId,
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true, quantity: true },
+      });
+      stockMap = new Map(
+        inventoryItems.map((inv) => [inv.itemId, Number(inv.quantity)]),
+      );
+    } else if (warehouseId) {
+      // Warehouse stock: use StockLedger
+      const stockEntries = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          warehouseId,
+          locationId: null,
+        },
+        _sum: { qty: true },
+      });
+      stockMap = new Map(
+        stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
+      );
+    } else {
+      // Global search (no warehouse/location filter) — sum all available inventory
+      const inventoryItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          itemId: { in: itemIds },
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true, quantity: true },
+      });
+      const globalMap = new Map<string, number>();
+      for (const inv of inventoryItems) {
+        globalMap.set(inv.itemId, (globalMap.get(inv.itemId) || 0) + Number(inv.quantity));
+      }
+      stockMap = globalMap;
+    }
 
     const result = items.map((item) => ({
       ...item,

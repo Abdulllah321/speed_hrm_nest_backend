@@ -122,6 +122,7 @@ export class JwtAuthGuard implements CanActivate {
 
       return true;
     } catch (error) {
+      if (isOptional) return true;
       // console.error('Token validation error:', error);
       throw new UnauthorizedException('Invalid token');
     }
