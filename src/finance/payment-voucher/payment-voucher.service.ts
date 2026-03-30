@@ -2,10 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentVoucherDto } from './dto/create-payment-voucher.dto';
 import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
+import { AccountingService } from '../accounting/accounting.service';
 
 @Injectable()
 export class PaymentVoucherService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) { }
 
   async create(createPaymentVoucherDto: CreatePaymentVoucherDto) {
     const { details, invoices, ...data } = createPaymentVoucherDto;
@@ -138,6 +142,23 @@ export class PaymentVoucherService {
           }
         }
       }
+
+      // Post journal lines to update account balances
+      // Debit lines from details (vendor payable accounts)
+      const debitLines = details
+        .filter(d => Number(d.debit) > 0)
+        .map(d => ({ accountId: d.accountId, debit: Number(d.debit), credit: 0 }));
+
+      // Credit line — bank/cash account
+      const creditLines = [{ accountId: data.creditAccountId, debit: 0, credit: totalDebit }];
+
+      await this.accounting.postLines([...debitLines, ...creditLines], {
+        sourceType: 'PAYMENT_VOUCHER',
+        sourceId: paymentVoucher.id,
+        sourceRef: paymentVoucher.pvNo,
+        description: data.description || `Payment Voucher: ${paymentVoucher.pvNo}`,
+        transactionDate: new Date(data.pvDate),
+      }, prisma);
 
       return paymentVoucher;
     });
