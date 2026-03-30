@@ -29,6 +29,7 @@ model GoodsReceiptNoteItem {
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
   goodsReceiptNote     GoodsReceiptNote      @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+  item                 Item                  @relation(fields: [itemId], references: [id])
   purchaseInvoiceItems PurchaseInvoiceItem[]
   purchaseReturnItems  PurchaseReturnItem[]
 

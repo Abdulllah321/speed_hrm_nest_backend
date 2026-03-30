@@ -57,4 +57,10 @@ model Item {
   transferRequestItems TransferRequestItem[]
 
   purchaseRequisitionItems PurchaseRequisitionItem[]
+  purchaseOrderItems       PurchaseOrderItem[]
+  goodsReceiptNoteItems    GoodsReceiptNoteItem[]
+  landedCostItems          LandedCostItem[]
+  purchaseReturnItems      PurchaseReturnItem[]
+  vendorQuotationItems     VendorQuotationItem[]
+  purchaseInvoiceItems     PurchaseInvoiceItem[]
 }

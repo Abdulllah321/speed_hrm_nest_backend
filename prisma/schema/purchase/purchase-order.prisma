@@ -42,6 +42,7 @@ model PurchaseOrderItem {
   updatedAt       DateTime      @updatedAt @map("updated_at")
   receivedQty     Decimal       @default(0) @map("received_qty") @db.Decimal(15, 4)
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item            Item          @relation(fields: [itemId], references: [id])
 
   @@map("purchase_order_items")
 }

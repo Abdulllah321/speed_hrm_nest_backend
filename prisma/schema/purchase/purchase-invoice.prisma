@@ -44,6 +44,7 @@ model PurchaseInvoiceItem {
   discountAmount    Decimal          @default(0.0) @map("discount_amount") @db.Decimal(15, 2)
   purchaseInvoice   PurchaseInvoice  @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
   grnItem           GoodsReceiptNoteItem? @relation(fields: [grnItemId], references: [id])
+  item              Item            @relation(fields: [itemId], references: [id])
 
   @@map("purchase_invoice_items")
 }
