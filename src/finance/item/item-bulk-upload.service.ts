@@ -25,13 +25,15 @@ export class ItemBulkUploadService {
         filename: string,
         userId: string,
     ): Promise<{ uploadId: string; jobId: string }> {
-        // Generate a temporary unique jobId to avoid constraint violation
-        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        // Use a UUID-based jobId upfront — avoids the two-step create+update
+        // and eliminates the unique constraint race when Bull reuses integer IDs.
+        const { v4: uuidv4 } = await import('uuid');
+        const jobId = `validate-${uuidv4()}`;
 
-        // Create upload record with status 'validating'
+        // Create upload record with the final jobId in one shot
         const upload = await this.prisma.bulkUpload.create({
             data: {
-                jobId: tempJobId, // Temporary unique ID
+                jobId,
                 filename,
                 totalRecords: 0,
                 uploadedBy: userId,
@@ -49,31 +51,26 @@ export class ItemBulkUploadService {
         const filePath = path.join(uploadDir, `upload-${upload.id}.${ext}`);
         fs.writeFileSync(filePath, fileBuffer);
 
-        // Add validation job to queue
+        // Add validation job to queue with the same jobId as the custom Bull job ID
         const job = await this.uploadQueue.add({
             uploadId: upload.id,
-            fileBuffer, // Keep it for the first job for speed
+            fileBuffer,
             filename,
             userId,
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'validate',
         } as any, {
+            jobId, // Pin Bull's job ID to our UUID — no update needed after
             removeOnComplete: false,
             removeOnFail: false,
         });
 
-        // Update upload with job ID
-        await this.prisma.bulkUpload.update({
-            where: { id: upload.id },
-            data: { jobId: String(job.id) },
-        });
-
-        this.logger.log(`Validation initiated: ${upload.id} (Job ID: ${job.id}), File saved to ${filePath}`);
+        this.logger.log(`Validation initiated: ${upload.id} (Job ID: ${jobId}), File saved to ${filePath}`);
 
         return {
             uploadId: upload.id,
-            jobId: String(job.id),
+            jobId,
         };
     }
 
@@ -113,7 +110,10 @@ export class ItemBulkUploadService {
             data: { status: 'pending', message: 'Confirming upload...' },
         });
 
-        // Add processing job to queue
+        const { v4: uuidv4 } = await import('uuid');
+        const importJobId = `import-${uuidv4()}`;
+
+        // Add processing job to queue with a UUID-based job ID
         const job = await this.uploadQueue.add({
             uploadId: upload.id,
             filename: upload.filename,
@@ -122,20 +122,21 @@ export class ItemBulkUploadService {
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'import',
         } as any, {
+            jobId: importJobId,
             removeOnComplete: false,
             removeOnFail: false,
         });
 
         await this.prisma.bulkUpload.update({
             where: { id: upload.id },
-            data: { jobId: String(job.id) },
+            data: { jobId: importJobId },
         });
 
-        this.logger.log(`Import confirmed: ${upload.id} (Job ID: ${job.id})`);
+        this.logger.log(`Import confirmed: ${upload.id} (Job ID: ${importJobId})`);
 
         return {
             uploadId,
-            jobId: String(job.id),
+            jobId: importJobId,
         };
     }
 
@@ -260,7 +261,7 @@ export class ItemBulkUploadService {
         }
 
         // CSV Header
-        let csv = 'Row,Reason,Field,Value""n';
+        let csv = 'Row,Reason,Field,Value\n';
 
         // CSV Rows
         errors.forEach((error) => {
@@ -269,7 +270,7 @@ export class ItemBulkUploadService {
             const field = error.data?.field || 'N/A';
             const value = error.data?.value || 'N/A';
 
-            csv += `${row},"${reason}",${field},${value}""n`;
+            csv += `${row},"${reason}",${field},${value}\n`;
         });
 
         return csv;

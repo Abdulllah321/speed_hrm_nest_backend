@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import * as Papa from 'papaparse';
+import { parse as csvParse } from 'csv-parse';
+import * as fs from 'fs';
 
 export interface ParsedRecord {
     row: number;
