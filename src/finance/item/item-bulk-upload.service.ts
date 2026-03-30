@@ -51,10 +51,9 @@ export class ItemBulkUploadService {
         const filePath = path.join(uploadDir, `upload-${upload.id}.${ext}`);
         fs.writeFileSync(filePath, fileBuffer);
 
-        // Add validation job to queue with the same jobId as the custom Bull job ID
+        // Add validation job to queue — file is already on disk, no buffer needed
         const job = await this.uploadQueue.add({
             uploadId: upload.id,
-            fileBuffer,
             filename,
             userId,
             tenantId: this.prisma.getTenantId() || '',
