@@ -22,6 +22,31 @@ async function bootstrap() {
     secret: process.env.COOKIE_SECRET || 'your-secret-key-change-in-production',
   });
 
+  // Register CORS on the adapter level for proper preflight handling with Fastify
+  const allowedOrigins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const fastifyCors = await import('@fastify/cors');
+  await adapter.register(fastifyCors.default as any, {
+    origin: allowedOrigins.length ? allowedOrigins : true,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Refresh-Token',
+      'X-New-Access-Token',
+      'X-New-Refresh-Token',
+      'X-Tenant-Id',
+      'X-Company-Id',
+    ],
+    exposedHeaders: ['X-New-Access-Token', 'X-New-Refresh-Token'],
+    preflight: true,
+    strictPreflight: false,
+  });
+
   // Register multipart plugin on the adapter BEFORE creating the app
   await adapter.register(fastifyMultipart as any, {
     limits: {
@@ -91,26 +116,7 @@ async function bootstrap() {
     },
   });
 
-  // CORS configuration
-  const origins = (process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  app.enableCors({
-    origin: origins.length ? origins : true,
-    credentials: true,
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Refresh-Token',
-      'X-New-Access-Token',
-      'X-New-Refresh-Token',
-      'X-Tenant-Id',
-      'X-Company-Id',
-    ],
-    exposedHeaders: ['X-New-Access-Token', 'X-New-Refresh-Token'],
-  });
+  // CORS is handled at the Fastify adapter level above
 
   // Graceful shutdown handlers
   const gracefulShutdown = async (signal: string) => {
