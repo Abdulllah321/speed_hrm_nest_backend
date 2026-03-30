@@ -81,12 +81,6 @@ export class InventoryService {
       genderIds?: string[];
     }
   ) {
-    console.log('Search called with:', { query, warehouseId, locationId, filters });
-    
-    if (!warehouseId && !locationId) {
-      throw new Error('Warehouse ID or Location ID is required for stock search');
-    }
-
     const filterWhere: any = {};
     if (filters?.brandIds?.length) filterWhere.brandId = { in: filters.brandIds };
     if (filters?.categoryIds?.length) filterWhere.categoryId = { in: filters.categoryIds };
@@ -123,7 +117,7 @@ export class InventoryService {
     let stockMap: Map<string, number>;
 
     if (locationId) {
-      // For outlet stock: use InventoryItem directly (same source as transfer validation)
+      // Outlet stock: use InventoryItem directly
       const inventoryItems = await this.prisma.inventoryItem.findMany({
         where: {
           itemId: { in: itemIds },
@@ -132,12 +126,11 @@ export class InventoryService {
         },
         select: { itemId: true, quantity: true },
       });
-
       stockMap = new Map(
         inventoryItems.map((inv) => [inv.itemId, Number(inv.quantity)]),
       );
-    } else {
-      // For warehouse stock: use StockLedger (warehouse main stock has no locationId)
+    } else if (warehouseId) {
+      // Warehouse stock: use StockLedger
       const stockEntries = await this.prisma.stockLedger.groupBy({
         by: ['itemId'],
         where: {
@@ -147,10 +140,23 @@ export class InventoryService {
         },
         _sum: { qty: true },
       });
-
       stockMap = new Map(
         stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
       );
+    } else {
+      // Global search (no warehouse/location filter) — sum all available inventory
+      const inventoryItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          itemId: { in: itemIds },
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true, quantity: true },
+      });
+      const globalMap = new Map<string, number>();
+      for (const inv of inventoryItems) {
+        globalMap.set(inv.itemId, (globalMap.get(inv.itemId) || 0) + Number(inv.quantity));
+      }
+      stockMap = globalMap;
     }
 
     const result = items.map((item) => ({
