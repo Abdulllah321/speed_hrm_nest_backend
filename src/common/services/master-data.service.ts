@@ -275,6 +275,93 @@ export class MasterDataService {
     }
 
     /**
+     * Pre-warm only the HS code cache — used before validation.
+     * Single query, loads all HS codes into memory so findHsCode() is a sync Map hit.
+     */
+    async warmHsCodeCache(): Promise<void> {
+        const hsCodes = await this.prisma.hsCode.findMany({ select: { id: true, hsCode: true } });
+        this.initCache('hscode');
+        for (const h of hsCodes) {
+            this.cache[this.getCacheKey('hscode')].set(h.hsCode.toLowerCase(), h.id);
+        }
+        this.logger.log(`HS code cache warmed: ${hsCodes.length} codes loaded`);
+    }
+
+    /**
+     * Pre-warm the cache by bulk-loading all existing master data in ~15 queries.
+     * Call this once at the start of an import job — turns all subsequent
+     * getOrCreate calls into sync cache hits with zero DB round trips.
+     */
+    async warmCache(): Promise<void> {
+        this.logger.log('Pre-warming master data cache...');
+
+        const [
+            sizes, colors, brands, genders, departments,
+            categories, itemClasses, silhouettes, channelClasses,
+            seasons, segments, hsCodes, divisions, itemSubclasses,
+        ] = await Promise.all([
+            this.prisma.size.findMany({ select: { id: true, name: true } }),
+            this.prisma.color.findMany({ select: { id: true, name: true } }),
+            this.prisma.brand.findMany({ select: { id: true, name: true } }),
+            this.prisma.gender.findMany({ select: { id: true, name: true } }),
+            this.prisma.department.findMany({ select: { id: true, name: true } }),
+            this.prisma.category.findMany({ select: { id: true, name: true, parentId: true } }),
+            this.prisma.itemClass.findMany({ select: { id: true, name: true } }),
+            this.prisma.silhouette.findMany({ select: { id: true, name: true } }),
+            this.prisma.channelClass.findMany({ select: { id: true, name: true } }),
+            this.prisma.season.findMany({ select: { id: true, name: true } }),
+            this.prisma.segment.findMany({ select: { id: true, name: true } }),
+            this.prisma.hsCode.findMany({ select: { id: true, hsCode: true } }),
+            this.prisma.division.findMany({ select: { id: true, name: true, brandId: true } }),
+            this.prisma.itemSubclass.findMany({ select: { id: true, name: true, itemClassId: true } }),
+        ]);
+
+        const load = (type: string, records: { id: string; name: string }[]) => {
+            this.initCache(type);
+            for (const r of records) this.cache[this.getCacheKey(type)].set(r.name.toLowerCase(), r.id);
+        };
+
+        load('size', sizes);
+        load('color', colors);
+        load('brand', brands);
+        load('gender', genders);
+        load('department', departments);
+        load('itemclass', itemClasses);
+        load('silhouette', silhouettes);
+        load('channelclass', channelClasses);
+        load('season', seasons);
+        load('segment', segments);
+
+        // Categories — keyed by name under their parentId bucket
+        this.initCache('category');
+        for (const c of categories) {
+            const key = c.parentId ? this.getCacheKey(`category_${c.parentId}`) : this.getCacheKey('category');
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(c.name.toLowerCase(), c.id);
+        }
+
+        // HS Codes — field is hsCode not name
+        this.initCache('hscode');
+        for (const h of hsCodes) this.cache[this.getCacheKey('hscode')].set(h.hsCode.toLowerCase(), h.id);
+
+        // Divisions — keyed per brandId
+        for (const d of divisions) {
+            const key = this.getCacheKey(`division_${d.brandId}`);
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(d.name.toLowerCase(), d.id);
+        }
+
+        // Item Subclasses — keyed per itemClassId
+        for (const s of itemSubclasses) {
+            const key = this.getCacheKey(`itemsubclass_${s.itemClassId}`);
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(s.name.toLowerCase(), s.id);
+        }
+
+        this.logger.log(`Cache warmed: ${sizes.length} sizes, ${colors.length} colors, ${brands.length} brands, ${categories.length} categories, ${hsCodes.length} HS codes, ${divisions.length} divisions`);
+    }
+
+    /**
      * Clear cache (useful for testing or long-running processes)
      */
     clearCache(): void {
