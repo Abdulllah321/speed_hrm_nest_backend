@@ -17,8 +17,8 @@ model StockMovement {
   createdById                                                       String?
   createdAt                                                         DateTime           @default(now())
   updatedAt                                                         DateTime           @updatedAt
-  WarehouseLocation_StockMovement_fromLocationIdToWarehouseLocation WarehouseLocation? @relation("StockMovement_fromLocationIdToWarehouseLocation", fields: [fromLocationId], references: [id])
-  WarehouseLocation_StockMovement_toLocationIdToWarehouseLocation   WarehouseLocation? @relation("StockMovement_toLocationIdToWarehouseLocation", fields: [toLocationId], references: [id])
+  fromLocation                                                    Location?          @relation("StockMovement_fromLocation", fields: [fromLocationId], references: [id])
+  toLocation                                                      Location?          @relation("StockMovement_toLocation", fields: [toLocationId], references: [id])
 
   @@index([itemId])
   @@index([fromLocationId])
@@ -29,29 +29,29 @@ model StockMovement {
 }
 
 model TransferRequest {
-  id                                                                  String                @id @default(uuid())
-  requestNo                                                           String                @unique
-  fromWarehouseId                                                     String?
-  toWarehouseId                                                       String?
-  status                                                              String                @default("DRAFT")
-  requestDate                                                         DateTime              @default(now())
-  expectedDate                                                        DateTime?
-  transferType                                                        String                @default("WAREHOUSE_TO_OUTLET") @map("transfer_type")
-  requiresSourceApproval                                              Boolean               @default(false) @map("requires_source_approval")
-  sourceApprovedById                                                  String?               @map("source_approved_by_id")
-  sourceApprovedAt                                                    DateTime?             @map("source_approved_at")
-  createdById                                                         String?
-  approvedById                                                        String?
-  createdAt                                                           DateTime              @default(now())
-  updatedAt                                                           DateTime              @updatedAt
-  fromLocationId                                                      String?
-  notes                                                               String?
-  toLocationId                                                        String?
-  fromWarehouse                                                       Warehouse?            @relation("TransferRequest_fromWarehouse", fields: [fromWarehouseId], references: [id])
-  toWarehouse                                                         Warehouse?            @relation("TransferRequest_toWarehouse", fields: [toWarehouseId], references: [id])
-  fromLocation                                                        WarehouseLocation?    @relation("TransferRequest_fromLocationIdToWarehouseLocation", fields: [fromLocationId], references: [id])
-  toLocation                                                          WarehouseLocation?    @relation("TransferRequest_toLocationIdToWarehouseLocation", fields: [toLocationId], references: [id])
-  items                                                               TransferRequestItem[]
+  id                     String                @id @default(uuid())
+  requestNo              String                @unique
+  fromWarehouseId        String?
+  toWarehouseId          String?
+  status                 String                @default("DRAFT")
+  requestDate            DateTime              @default(now())
+  expectedDate           DateTime?
+  transferType           String                @default("WAREHOUSE_TO_OUTLET") @map("transfer_type")
+  requiresSourceApproval Boolean               @default(false) @map("requires_source_approval")
+  sourceApprovedById     String?               @map("source_approved_by_id")
+  sourceApprovedAt       DateTime?             @map("source_approved_at")
+  createdById            String?
+  approvedById           String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  fromLocationId         String?
+  notes                  String?
+  toLocationId           String?
+  fromWarehouse          Warehouse?            @relation("TransferRequest_fromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse            Warehouse?            @relation("TransferRequest_toWarehouse", fields: [toWarehouseId], references: [id])
+  fromLocation           Location?             @relation("TransferRequest_fromLocationIdToWarehouseLocation", fields: [fromLocationId], references: [id])
+  toLocation             Location?             @relation("TransferRequest_toLocationIdToWarehouseLocation", fields: [toLocationId], references: [id])
+  items                  TransferRequestItem[]
 }
 
 model TransferRequestItem {
@@ -60,9 +60,9 @@ model TransferRequestItem {
   itemId            String
   quantity          Decimal         @db.Decimal(15, 4)
   batchNumber       String?
-  fulfilledQty    Decimal         @default(0) @db.Decimal(15, 4)
-  transferRequest TransferRequest @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
-  item            Item            @relation(fields: [itemId], references: [itemId])
+  fulfilledQty      Decimal         @default(0) @db.Decimal(15, 4)
+  transferRequest   TransferRequest @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+  item              Item            @relation(fields: [itemId], references: [id])
 
   @@unique([transferRequestId, itemId, batchNumber])
 }

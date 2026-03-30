@@ -1,12 +1,16 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { CreatePosDto } from './dto/create-pos.dto';
 import { UpdatePosDto } from './dto/update-pos.dto';
 import { generateNextPosId } from '../../common/utils/pos-id-generator';
 import * as bcrypt from 'bcrypt';
+import { EncryptionService } from '../../common/utils/encryption.service';
 
 @Injectable()
 export class PosService {
@@ -14,6 +18,7 @@ export class PosService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
+    private encryptionService: EncryptionService,
   ) { }
 
   async list(locationId?: string) {
@@ -238,28 +243,84 @@ export class PosService {
   }
 
   async validateTerminal(terminalCode: string, pin: string) {
-    const terminal = await this.prisma.pos.findUnique({
-      where: {
-        terminalCode,
-      },
-    });
-
+    let terminal: any = null;
     let company: any = null;
-    if (terminal?.companyId) {
-      company = await this.prismaMaster.company.findUnique({
-        where: { id: terminal.companyId },
-        include: { tenant: true }
+
+    // 1. Try to find in the current context if it exists
+    const hasContext = this.prisma.getTenantId();
+    if (hasContext) {
+      terminal = await this.prisma.pos.findUnique({
+        where: { terminalCode },
       });
+
+      if (terminal?.companyId) {
+        company = await this.prismaMaster.company.findUnique({
+          where: { id: terminal.companyId },
+          include: { tenant: true }
+        });
+      }
+    } else {
+      // 2. No context? Attempt a global search across all companies
+      // This is necessary for the initial terminal login where the client doesn't know its tenant yet.
+      const companies = await this.prismaMaster.company.findMany({
+        where: { status: 'active' }
+      });
+
+      for (const comp of companies) {
+        let dbUrl = comp.dbUrl;
+        let password = '';
+
+        if (comp.dbPassword) {
+          try {
+            password = this.encryptionService.decrypt(comp.dbPassword);
+          } catch (err) {
+            continue;
+          }
+        }
+
+        try {
+          const tempPool = new Pool({
+            user: comp.dbUser || undefined,
+            host: comp.dbHost || undefined,
+            database: comp.dbName || undefined,
+            password: password || undefined,
+            port: comp.dbPort || 5432,
+            max: 1,
+            connectionTimeoutMillis: 2000,
+          });
+          const adapter = new PrismaPg(tempPool);
+          const tempPrisma = new PrismaClient({ adapter: adapter as any });
+
+          try {
+            terminal = await tempPrisma.pos.findUnique({
+              where: { terminalCode, status: 'active' },
+            });
+
+            if (terminal) {
+              company = await this.prismaMaster.company.findUnique({
+                where: { id: comp.id },
+                include: { tenant: true }
+              });
+              break;
+            }
+          } finally {
+            await tempPrisma.$disconnect();
+            await tempPool.end();
+          }
+        } catch (err) {
+          continue;
+        }
+      }
     }
 
     if (!terminal || terminal.status !== 'active') {
       return { status: false, message: 'Terminal not found or inactive' };
     }
 
-    if (!terminal || !terminal.terminalPin) {
+    if (!terminal.terminalPin) {
       return {
         status: false,
-        message: 'Terminal not found or security not configured',
+        message: 'Terminal found but security not configured',
       };
     }
 

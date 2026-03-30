@@ -7,7 +7,7 @@ export class DashboardService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-  ) {}
+  ) { }
 
   async getDashboardStats() {
     this.prisma.ensureTenantContext();
@@ -24,86 +24,114 @@ export class DashboardService {
     const lastWeekEnd = new Date(lastWeekStart);
     lastWeekEnd.setDate(lastWeekEnd.getDate() + 1);
 
-    // 1. Basic Stats & Trends
-    const totalEmployees = await this.prisma.employee.count({
-      where: { status: 'active' },
-    });
-    const totalEmployeesLastWeek = await this.prisma.employee.count({
-      where: {
-        status: 'active',
-        createdAt: { lt: lastWeekStart }
-      },
-    });
-    const employeeTrend = totalEmployeesLastWeek === 0 ? 0 : Math.round(((totalEmployees - totalEmployeesLastWeek) / totalEmployeesLastWeek) * 100);
+    const weekBeforeStart = new Date(lastWeekStart);
+    weekBeforeStart.setDate(weekBeforeStart.getDate() - 7);
 
-    const inactiveEmployees = await this.prisma.employee.count({
-      where: { status: 'inactive' },
-    });
+    const fourteenDaysAgo = new Date(today);
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
 
-    const presentToday = await this.prisma.attendance.count({
-      where: {
-        date: { gte: today, lt: tomorrow },
-        status: 'present',
-      },
-    });
-    const presentLastWeek = await this.prisma.attendance.count({
-      where: {
-        date: { gte: lastWeekStart, lt: lastWeekEnd },
-        status: 'present',
-      },
-    });
+    // Consolidated Data Fetching
+    const [
+      activeEmployees,
+      inactiveEmployeesCount,
+      totalEmployeesLastWeekCount,
+      attendanceTodayStats,
+      attendanceLastWeekStats,
+      pendingLeavesStatus,
+      pendingLeavesLastWeekCount,
+      pendingAttendanceQueriesStatus,
+      pendingQueriesLastWeekCount,
+      departments,
+      last7DaysPresence,
+      weekBeforePresence,
+      lateArrivals,
+      attendancesForTrend,
+      recentLeaveRequests,
+      employeesByDepartment,
+    ] = await Promise.all([
+      this.prisma.employee.findMany({
+        where: { status: 'active' },
+        select: {
+          id: true,
+          employeeName: true,
+          dateOfBirth: true,
+          joiningDate: true,
+          departmentId: true,
+          designationId: true,
+          officialEmail: true,
+          cnicExpiryDate: true,
+          probationExpiryDate: true,
+        },
+      }),
+      this.prisma.employee.count({ where: { status: 'inactive' } }),
+      this.prisma.employee.count({
+        where: { status: 'active', createdAt: { lt: lastWeekStart } },
+      }),
+      this.prisma.attendance.groupBy({
+        by: ['status'],
+        where: { date: { gte: today, lt: tomorrow } },
+        _count: { id: true },
+      }),
+      this.prisma.attendance.groupBy({
+        by: ['status'],
+        where: { date: { gte: lastWeekStart, lt: lastWeekEnd } },
+        _count: { id: true },
+      }),
+      this.prisma.leaveApplication.count({ where: { status: 'pending' } }),
+      this.prisma.leaveApplication.count({
+        where: { status: 'pending', createdAt: { lt: lastWeekStart } },
+      }),
+      this.prisma.attendanceRequestQuery.count({
+        where: { approvalStatus: 'pending' },
+      }),
+      this.prisma.attendanceRequestQuery.count({
+        where: { approvalStatus: 'pending', createdAt: { lt: lastWeekStart } },
+      }),
+      this.prisma.department.findMany({ select: { id: true, name: true } }),
+      this.prisma.attendance.count({
+        where: { date: { gte: lastWeekStart, lt: today }, status: 'present' },
+      }),
+      this.prisma.attendance.count({
+        where: { date: { gte: weekBeforeStart, lt: lastWeekStart }, status: 'present' },
+      }),
+      this.prisma.attendance.findMany({
+        where: { date: { gte: lastWeekStart }, lateMinutes: { gt: 0 } },
+        select: { employeeId: true, lateMinutes: true },
+      }),
+      this.prisma.attendance.findMany({
+        where: {
+          date: { gte: fourteenDaysAgo, lt: tomorrow },
+          status: { in: ['present', 'absent'] },
+        },
+        select: { date: true, status: true },
+      }),
+      this.prisma.leaveApplication.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        include: {
+          employee: { select: { employeeName: true, departmentId: true } },
+        },
+      }),
+      this.prisma.employee.groupBy({
+        by: ['departmentId'],
+        _count: { id: true },
+        where: { status: 'active' },
+      }),
+    ]);
+
+    // 1. Basic Stats Processing
+    const totalEmployees = activeEmployees.length;
+    const employeeTrend = totalEmployeesLastWeekCount === 0 ? 0 : Math.round(((totalEmployees - totalEmployeesLastWeekCount) / totalEmployeesLastWeekCount) * 100);
+
+    const presentToday = attendanceTodayStats.find(s => s.status === 'present')?._count.id || 0;
+    const absentToday = attendanceTodayStats.find(s => s.status === 'absent')?._count.id || 0;
+    const presentLastWeek = attendanceLastWeekStats.find(s => s.status === 'present')?._count.id || 0;
     const presentTrend = presentLastWeek === 0 ? 0 : Math.round(((presentToday - presentLastWeek) / presentLastWeek) * 100);
 
-    const absentToday = await this.prisma.attendance.count({
-      where: {
-        date: { gte: today, lt: tomorrow },
-        status: 'absent',
-      },
-    });
+    const leavesTrend = pendingLeavesLastWeekCount === 0 ? 0 : Math.round(((pendingLeavesStatus - pendingLeavesLastWeekCount) / pendingLeavesLastWeekCount) * 100);
+    const queriesTrend = pendingQueriesLastWeekCount === 0 ? 0 : Math.round(((pendingAttendanceQueriesStatus - pendingQueriesLastWeekCount) / pendingQueriesLastWeekCount) * 100);
 
-    const pendingLeaves = await this.prisma.leaveApplication.count({
-      where: { status: 'pending' },
-    });
-    const pendingLeavesLastWeek = await this.prisma.leaveApplication.count({
-      where: {
-        status: 'pending',
-        createdAt: { lt: lastWeekStart }
-      },
-    });
-    // For pending items, a "down" trend is often "good", but we'll just show the raw % change
-    const leavesTrend = pendingLeavesLastWeek === 0 ? 0 : Math.round(((pendingLeaves - pendingLeavesLastWeek) / pendingLeavesLastWeek) * 100);
-
-    const pendingAttendanceQueries = await this.prisma.attendanceRequestQuery.count({
-      where: { approvalStatus: 'pending' },
-    });
-    const pendingQueriesLastWeek = await this.prisma.attendanceRequestQuery.count({
-      where: {
-        approvalStatus: 'pending',
-        createdAt: { lt: lastWeekStart }
-      },
-    });
-    const queriesTrend = pendingQueriesLastWeek === 0 ? 0 : Math.round(((pendingAttendanceQueries - pendingQueriesLastWeek) / pendingQueriesLastWeek) * 100);
-
-    // 2. Celebrations (Birthdays & Anniversaries)
-    const employees = await this.prisma.employee.findMany({
-      where: { status: 'active' },
-      select: {
-        id: true,
-        employeeName: true,
-        dateOfBirth: true,
-        joiningDate: true,
-        departmentId: true,
-        designationId: true,
-        officialEmail: true,
-        cnicExpiryDate: true,
-        probationExpiryDate: true,
-      },
-    });
-
-    const departments = await this.prisma.department.findMany({
-      select: { id: true, name: true },
-    });
-
+    // 2. Celebrations & Critical Alerts
     const getEffectiveDate = (d: Date) => {
       const bday = new Date(d);
       const thisYear = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
@@ -111,7 +139,7 @@ export class DashboardService {
       return new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate());
     };
 
-    const upcomingBirthdays = employees
+    const upcomingBirthdays = activeEmployees
       .filter((emp) => {
         if (!emp.dateOfBirth) return false;
         const bday = new Date(emp.dateOfBirth as Date);
@@ -126,43 +154,34 @@ export class DashboardService {
       }))
       .sort((a, b) => getEffectiveDate(a.date as Date).getTime() - getEffectiveDate(b.date as Date).getTime());
 
-    const upcomingAnniversaries = employees
+    const upcomingAnniversaries = activeEmployees
       .filter((emp) => {
         if (!emp.joiningDate) return false;
         const joinDate = new Date(emp.joiningDate as Date);
         const thisYearAnn = new Date(today.getFullYear(), joinDate.getMonth(), joinDate.getDate());
         const nextYearAnn = new Date(today.getFullYear() + 1, joinDate.getMonth(), joinDate.getDate());
-        const isThisYear = thisYearAnn >= today && thisYearAnn <= next30Days;
-        const isNextYear = nextYearAnn >= today && nextYearAnn <= next30Days;
-        return (isThisYear || isNextYear) && joinDate.getFullYear() < today.getFullYear();
+        return joinDate.getFullYear() < today.getFullYear() && ((thisYearAnn >= today && thisYearAnn <= next30Days) || (nextYearAnn >= today && nextYearAnn <= next30Days));
       })
-      .map((emp) => {
-        const joinDate = new Date(emp.joiningDate as Date);
-        const years = today.getFullYear() - joinDate.getFullYear();
-        return {
-          name: emp.employeeName,
-          date: emp.joiningDate,
-          years,
-          department: departments.find((d) => d.id === emp.departmentId)?.name || 'N/A',
-        };
-      })
+      .map((emp) => ({
+        name: emp.employeeName,
+        date: emp.joiningDate,
+        years: today.getFullYear() - new Date(emp.joiningDate as Date).getFullYear(),
+        department: departments.find((d) => d.id === emp.departmentId)?.name || 'N/A',
+      }))
       .sort((a, b) => getEffectiveDate(a.date as Date).getTime() - getEffectiveDate(b.date as Date).getTime());
 
-    // 3. Critical Alerts
     const criticalAlerts: any[] = [];
-    employees.forEach((emp) => {
+    activeEmployees.forEach((emp) => {
       if (emp.cnicExpiryDate && new Date(emp.cnicExpiryDate as Date) <= next30Days) {
         criticalAlerts.push({
-          type: 'CNIC_EXPIRY',
-          priority: 'high',
+          type: 'CNIC_EXPIRY', priority: 'high',
           message: `CNIC for ${emp.employeeName} expires on ${new Date(emp.cnicExpiryDate as Date).toLocaleDateString()}`,
           employeeId: emp.id,
         });
       }
       if (emp.probationExpiryDate && new Date(emp.probationExpiryDate as Date) <= next30Days) {
         criticalAlerts.push({
-          type: 'PROBATION_EXPIRY',
-          priority: 'medium',
+          type: 'PROBATION_EXPIRY', priority: 'medium',
           message: `${emp.employeeName} completes probation on ${new Date(emp.probationExpiryDate as Date).toLocaleDateString()}`,
           employeeId: emp.id,
         });
@@ -171,17 +190,6 @@ export class DashboardService {
 
     // 4. Heavy Analytics Suggestions
     const analyticsSuggestions: any[] = [];
-
-    // Trend: Attendance
-    const last7DaysPresence = await this.prisma.attendance.count({
-      where: { date: { gte: lastWeekStart, lt: today }, status: 'present' },
-    });
-    const weekBeforeStart = new Date(lastWeekStart);
-    weekBeforeStart.setDate(weekBeforeStart.getDate() - 7);
-    const weekBeforePresence = await this.prisma.attendance.count({
-      where: { date: { gte: weekBeforeStart, lt: lastWeekStart }, status: 'present' },
-    });
-
     if (last7DaysPresence < weekBeforePresence * 0.9) {
       analyticsSuggestions.push({
         title: 'Attendance Decline',
@@ -189,22 +197,13 @@ export class DashboardService {
         impact: 'high',
       });
     }
-
-    // Bottlenecks: Departments with many pending requests
-    // (Simplified: using the overall pendingLeaves compare)
-    if (pendingLeaves > totalEmployees * 0.1) {
+    if (pendingLeavesStatus > totalEmployees * 0.1) {
       analyticsSuggestions.push({
         title: 'Leave Approval Bottleneck',
         description: `Over 10% of your workforce has pending leave requests. Consider reviewing approvals to avoid operational gaps.`,
         impact: 'medium',
       });
     }
-
-    // Late Arrivals Hotspot
-    const lateArrivals = await this.prisma.attendance.findMany({
-      where: { date: { gte: lastWeekStart }, lateMinutes: { gt: 0 } },
-      select: { employeeId: true, lateMinutes: true },
-    });
     if (lateArrivals.length > totalEmployees * 0.2) {
       analyticsSuggestions.push({
         title: 'Late Arrival Pattern',
@@ -213,7 +212,6 @@ export class DashboardService {
       });
     }
 
-    // Retention Risk (Dummy logic based on high late frequency)
     const lateFrequencies = lateArrivals.reduce((acc, curr) => {
       acc[curr.employeeId] = (acc[curr.employeeId] || 0) + 1;
       return acc;
@@ -227,80 +225,49 @@ export class DashboardService {
       });
     }
 
-
-    // 6. Attendance Trend (Last 14 days)
+    // 6. Attendance Trend Processing
     const attendanceTrend: any[] = [];
     for (let i = 13; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const nextDate = new Date(date);
-      nextDate.setDate(nextDate.getDate() + 1);
-
-      const presentCount = await this.prisma.attendance.count({
-        where: { date: { gte: date, lt: nextDate }, status: 'present' },
-      });
-      const absentCount = await this.prisma.attendance.count({
-        where: { date: { gte: date, lt: nextDate }, status: 'absent' },
+      const dayRecords = attendancesForTrend.filter(a => {
+        const d = new Date(a.date);
+        return d.getDate() === date.getDate() && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
       });
 
       attendanceTrend.push({
         date: date.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }),
-        present: presentCount,
-        absent: absentCount,
+        present: dayRecords.filter(a => a.status === 'present').length,
+        absent: dayRecords.filter(a => a.status === 'absent').length,
       });
     }
 
-    // 7. Recent Leave Requests
-    const recentLeaveRequests = await this.prisma.leaveApplication.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      include: {
-        employee: { select: { employeeName: true, departmentId: true } },
-      },
-    });
-
+    // 7. Recent Leave Requests Formatting
     const formattedRecentLeaves = recentLeaveRequests.map((l) => ({
       id: l.id,
       employeeName: (l as any).employee?.employeeName || 'Unknown',
       department: departments.find((d) => d.id === (l as any).employee?.departmentId)?.name || 'N/A',
-      type: 'Leave', // Simplified since leaveType relation is not found in schema
-      status: l.status,
-      dateFrom: (l as any).fromDate,
-      dateTo: (l as any).toDate,
+      type: 'Leave', status: l.status,
+      dateFrom: (l as any).fromDate, dateTo: (l as any).toDate,
       days: Math.ceil((new Date((l as any).toDate).getTime() - new Date((l as any).fromDate).getTime()) / (1000 * 60 * 60 * 24)) + 1,
     }));
 
-    // 8. Department Stats
-    const employeesByDepartment = await this.prisma.employee.groupBy({
-      by: ['departmentId'],
-      _count: { id: true },
-      where: { status: 'active' },
-    });
-
+    // 8. Department Stats Processing
     const departmentStats = employeesByDepartment.map((ed) => {
       const dept = departments.find((d) => d.id === ed.departmentId);
-      return {
-        name: dept?.name || 'Unknown',
-        count: ed._count.id,
-      };
+      return { name: dept?.name || 'Unknown', count: ed._count.id };
     });
 
     return {
       overview: {
         totalEmployees: { value: totalEmployees, trend: employeeTrend, trendType: employeeTrend >= 0 ? 'up' : 'down' },
-        inactiveEmployees: { value: inactiveEmployees },
+        inactiveEmployees: { value: inactiveEmployeesCount },
         presentToday: { value: presentToday, trend: presentTrend, trendType: presentTrend >= 0 ? 'up' : 'down' },
         absentToday: { value: absentToday },
-        pendingLeaves: { value: pendingLeaves, trend: leavesTrend, trendType: leavesTrend >= 0 ? 'up' : 'down' },
-        pendingAttendanceQueries: { value: pendingAttendanceQueries, trend: queriesTrend, trendType: queriesTrend >= 0 ? 'up' : 'down' },
+        pendingLeaves: { value: pendingLeavesStatus, trend: leavesTrend, trendType: leavesTrend >= 0 ? 'up' : 'down' },
+        pendingAttendanceQueries: { value: pendingAttendanceQueriesStatus, trend: queriesTrend, trendType: queriesTrend >= 0 ? 'up' : 'down' },
       },
-      departmentStats,
-      upcomingBirthdays,
-      upcomingAnniversaries,
-      criticalAlerts,
-      analyticsSuggestions,
-      attendanceTrend,
-      recentLeaveRequests: formattedRecentLeaves,
+      departmentStats, upcomingBirthdays, upcomingAnniversaries, criticalAlerts, analyticsSuggestions, attendanceTrend, recentLeaveRequests: formattedRecentLeaves,
     };
   }
 

@@ -31,8 +31,18 @@ export class InventoryController {
     @Query('q') query: string,
     @Query('warehouseId') warehouseId?: string,
     @Query('locationId') locationId?: string,
+    @Query('brandIds') brandIds?: string,
+    @Query('categoryIds') categoryIds?: string,
+    @Query('silhouetteIds') silhouetteIds?: string,
+    @Query('genderIds') genderIds?: string,
   ) {
-    const data = await this.inventoryService.searchInventory(query, warehouseId, locationId);
+    const filters = {
+      brandIds: brandIds ? brandIds.split(',').filter(Boolean) : undefined,
+      categoryIds: categoryIds ? categoryIds.split(',').filter(Boolean) : undefined,
+      silhouetteIds: silhouetteIds ? silhouetteIds.split(',').filter(Boolean) : undefined,
+      genderIds: genderIds ? genderIds.split(',').filter(Boolean) : undefined,
+    };
+    const data = await this.inventoryService.searchInventory(query, warehouseId, locationId, filters);
     return { status: true, data };
   }
 }
