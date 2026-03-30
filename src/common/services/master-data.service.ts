@@ -11,6 +11,7 @@ interface MasterDataCache {
 export class MasterDataService {
     private readonly logger = new Logger(MasterDataService.name);
     private cache: MasterDataCache = {};
+    private pendingPromises: Map<string, Promise<string | null>> = new Map();
 
     constructor(private prisma: PrismaService) { }
 
@@ -32,123 +33,227 @@ export class MasterDataService {
     }
 
     /**
-     * Get or create Size master record
+     * Unified resolver to handle parallel safety
      */
-    async getOrCreateSize(name: string): Promise<string | null> {
+    private async resolveOrCreate(
+        type: string,
+        name: string,
+        parentId: string | null,
+        fetcher: () => Promise<{ id: string } | null>,
+        creator: () => Promise<{ id: string }>
+    ): Promise<string | null> {
         if (!name) return null;
 
         const normalized = name.trim();
-        const cacheKey = this.getCacheKey('size');
-        this.initCache('size');
+        const cacheKey = this.getCacheKey(parentId ? `${type}_${parentId}` : type);
+        this.initCache(parentId ? `${type}_${parentId}` : type);
 
-        // Check cache first
+        // 1. Sync Cache
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        // Check database
-        let record = await this.prisma.size.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
+        // 2. In-flight Promise (Parallel safety)
+        const promiseKey = `${cacheKey}:${normalized.toLowerCase()}`;
+        const existingPromise = this.pendingPromises.get(promiseKey);
+        if (existingPromise) return existingPromise;
 
-        // Create if not found
-        if (!record) {
-            this.logger.log(`Creating new Size: ${normalized}`);
-            record = await this.prisma.size.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
+        // 3. Create new resolution promise
+        const resolution = (async () => {
+            try {
+                // Check DB
+                let record = await fetcher();
 
-        // Cache and return
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
+                // Create if missing
+                if (!record) {
+                    this.logger.log(`Creating new ${type}: ${normalized}`);
+                    record = await creator();
+                }
+
+                // Update sync cache
+                this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
+                return record.id;
+            } catch (error) {
+                this.logger.error(`Failed to resolve ${type} for ${normalized}: ${error.message}`);
+                return null;
+            } finally {
+                // Cleanup pending map
+                this.pendingPromises.delete(promiseKey);
+            }
+        })();
+
+        this.pendingPromises.set(promiseKey, resolution);
+        return resolution;
+    }
+
+    /**
+     * Get or create Size master record
+     */
+    async getOrCreateSize(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'size', name, null,
+            () => this.prisma.size.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.size.create({ data: { name: name.trim(), status: 'active' } })
+        );
     }
 
     /**
      * Get or create Color master record
      */
     async getOrCreateColor(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('color');
-        this.initCache('color');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.color.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Color: ${normalized}`);
-            record = await this.prisma.color.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
+        return this.resolveOrCreate(
+            'color', name, null,
+            () => this.prisma.color.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.color.create({ data: { name: name.trim(), status: 'active' } })
+        );
     }
 
     /**
      * Get or create Brand master record
      */
     async getOrCreateBrand(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('brand');
-        this.initCache('brand');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.brand.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Brand: ${normalized}`);
-            record = await this.prisma.brand.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
+        return this.resolveOrCreate(
+            'brand', name, null,
+            () => this.prisma.brand.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.brand.create({ data: { name: name.trim(), status: 'active' } })
+        );
     }
 
     /**
      * Get or create Division master record
      */
     async getOrCreateDivision(name: string, brandId?: string | null): Promise<string | null> {
-        if (!name) return null;
+        if (!brandId) return null;
+        return this.resolveOrCreate(
+            'division', name, brandId,
+            () => this.prisma.division.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' }, brandId } }),
+            () => this.prisma.division.create({ data: { name: name.trim(), brandId, status: 'active' } })
+        );
+    }
 
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey(`division_${brandId || 'none'}`);
-        this.initCache(`division_${brandId || 'none'}`);
+    /**
+     * Get or create Gender master record
+     */
+    async getOrCreateGender(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'gender', name, null,
+            () => this.prisma.gender.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.gender.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Department master record
+     */
+    async getOrCreateDepartment(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'department', name, null,
+            () => this.prisma.department.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.department.create({ data: { name: name.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Category master record
+     */
+    async getOrCreateCategory(name: string, parentId?: string | null): Promise<string | null> {
+        return this.resolveOrCreate(
+            'category', name, parentId || null,
+            () => this.prisma.category.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' }, parentId: parentId || null } }),
+            () => this.prisma.category.create({ data: { name: name.trim(), parentId: parentId || null } })
+        );
+    }
+
+    /**
+     * Get or create Sub-Category master record
+     */
+    async getOrCreateSubCategory(name: string, categoryId?: string | null): Promise<string | null> {
+        if (!categoryId) return null;
+        return this.getOrCreateCategory(name, categoryId);
+    }
+
+    /**
+     * Get or create Item Class master record
+     */
+    async getOrCreateItemClass(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'itemclass', name, null,
+            () => this.prisma.itemClass.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.itemClass.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Item Subclass master record
+     */
+    async getOrCreateItemSubclass(name: string, itemClassId?: string | null): Promise<string | null> {
+        if (!itemClassId) return null;
+        return this.resolveOrCreate(
+            'itemsubclass', name, itemClassId,
+            () => this.prisma.itemSubclass.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' }, itemClassId } }),
+            () => this.prisma.itemSubclass.create({ data: { name: name.trim(), itemClassId, status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Silhouette master record
+     */
+    async getOrCreateSilhouette(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'silhouette', name, null,
+            () => this.prisma.silhouette.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.silhouette.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Channel Class master record
+     */
+    async getOrCreateChannelClass(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'channelclass', name, null,
+            () => this.prisma.channelClass.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.channelClass.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Season master record
+     */
+    async getOrCreateSeason(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'season', name, null,
+            () => this.prisma.season.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.season.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Segment master record
+     */
+    async getOrCreateSegment(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'segment', name, null,
+            () => this.prisma.segment.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.segment.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Find HS Code master record (No creation)
+     */
+    async findHsCode(code: string): Promise<string | null> {
+        if (!code) return null;
+
+        const normalized = code.trim();
+        const cacheKey = this.getCacheKey('hscode');
+        this.initCache('hscode');
 
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        let record = await this.prisma.division.findFirst({
-            where: {
-                name: { equals: normalized, mode: 'insensitive' },
-                ...(brandId ? { brandId } : {}),
-            },
+        const record = await this.prisma.hsCode.findFirst({
+            where: { hsCode: { equals: normalized, mode: 'insensitive' } },
         });
-
-        if (!record && brandId) {
-            this.logger.log(`Creating new Division: ${normalized} for brand: ${brandId}`);
-            record = await this.prisma.division.create({
-                data: {
-                    name: normalized,
-                    brandId: brandId,
-                    status: 'active'
-                },
-            });
-        }
 
         if (record) {
             this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
@@ -159,306 +264,101 @@ export class MasterDataService {
     }
 
     /**
-     * Get or create Gender master record
-     */
-    async getOrCreateGender(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('gender');
-        this.initCache('gender');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.gender.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Gender: ${normalized}`);
-            record = await this.prisma.gender.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Department master record
-     */
-    async getOrCreateDepartment(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('department');
-        this.initCache('department');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.department.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Department: ${normalized}`);
-            record = await this.prisma.department.create({
-                data: { name: normalized },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Category master record
-     */
-    async getOrCreateCategory(name: string, parentId?: string | null): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey(`category_${parentId || 'root'}`);
-        this.initCache(`category_${parentId || 'root'}`);
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.category.findFirst({
-            where: {
-                name: { equals: normalized, mode: 'insensitive' },
-                parentId: parentId || null,
-            },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Category: ${normalized}`);
-            record = await this.prisma.category.create({
-                data: {
-                    name: normalized,
-                    parentId: parentId || null,
-                },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Sub-Category master record
-     */
-    async getOrCreateSubCategory(name: string, categoryId?: string | null): Promise<string | null> {
-        if (!name || !categoryId) return null;
-        return this.getOrCreateCategory(name, categoryId);
-    }
-
-    /**
-     * Get or create Item Class master record
-     */
-    async getOrCreateItemClass(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('itemclass');
-        this.initCache('itemclass');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.itemClass.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new ItemClass: ${normalized}`);
-            record = await this.prisma.itemClass.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Item Subclass master record
-     */
-    async getOrCreateItemSubclass(name: string, itemClassId?: string | null): Promise<string | null> {
-        if (!name || !itemClassId) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey(`itemsubclass_${itemClassId}`);
-        this.initCache(`itemsubclass_${itemClassId}`);
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.itemSubclass.findFirst({
-            where: {
-                name: { equals: normalized, mode: 'insensitive' },
-                itemClassId,
-            },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new ItemSubclass: ${normalized} for class: ${itemClassId}`);
-            record = await this.prisma.itemSubclass.create({
-                data: {
-                    name: normalized,
-                    itemClassId,
-                    status: 'active'
-                },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Silhouette master record
-     */
-    async getOrCreateSilhouette(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('silhouette');
-        this.initCache('silhouette');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.silhouette.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Silhouette: ${normalized}`);
-            record = await this.prisma.silhouette.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Channel Class master record
-     */
-    async getOrCreateChannelClass(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('channelclass');
-        this.initCache('channelclass');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.channelClass.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new ChannelClass: ${normalized}`);
-            record = await this.prisma.channelClass.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
-     * Get or create Season master record
-     */
-    async getOrCreateSeason(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('season');
-        this.initCache('season');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.season.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Season: ${normalized}`);
-            record = await this.prisma.season.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-
-
-    /**
-     * Get or create Segment master record
-     */
-    async getOrCreateSegment(name: string): Promise<string | null> {
-        if (!name) return null;
-
-        const normalized = name.trim();
-        const cacheKey = this.getCacheKey('segment');
-        this.initCache('segment');
-
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
-
-        let record = await this.prisma.segment.findFirst({
-            where: { name: { equals: normalized, mode: 'insensitive' } },
-        });
-
-        if (!record) {
-            this.logger.log(`Creating new Segment: ${normalized}`);
-            record = await this.prisma.segment.create({
-                data: { name: normalized, status: 'active' },
-            });
-        }
-
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
-    }
-
-    /**
      * Get or create HS Code master record
      */
     async getOrCreateHsCode(code: string): Promise<string | null> {
-        if (!code) return null;
+        return this.resolveOrCreate(
+            'hscode', code, null,
+            () => this.prisma.hsCode.findFirst({ where: { hsCode: { equals: code.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.hsCode.create({ data: { hsCode: code.trim() } })
+        );
+    }
 
-        const normalized = code.trim();
-        const cacheKey = this.getCacheKey('hscode');
+    /**
+     * Pre-warm only the HS code cache — used before validation.
+     * Single query, loads all HS codes into memory so findHsCode() is a sync Map hit.
+     */
+    async warmHsCodeCache(): Promise<void> {
+        const hsCodes = await this.prisma.hsCode.findMany({ select: { id: true, hsCode: true } });
         this.initCache('hscode');
+        for (const h of hsCodes) {
+            this.cache[this.getCacheKey('hscode')].set(h.hsCode.toLowerCase(), h.id);
+        }
+        this.logger.log(`HS code cache warmed: ${hsCodes.length} codes loaded`);
+    }
 
-        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
-        if (cachedId) return cachedId;
+    /**
+     * Pre-warm the cache by bulk-loading all existing master data in ~15 queries.
+     * Call this once at the start of an import job — turns all subsequent
+     * getOrCreate calls into sync cache hits with zero DB round trips.
+     */
+    async warmCache(): Promise<void> {
+        this.logger.log('Pre-warming master data cache...');
 
-        let record = await this.prisma.hsCode.findFirst({
-            where: { hsCode: { equals: normalized, mode: 'insensitive' } },
-        });
+        const [
+            sizes, colors, brands, genders, departments,
+            categories, itemClasses, silhouettes, channelClasses,
+            seasons, segments, hsCodes, divisions, itemSubclasses,
+        ] = await Promise.all([
+            this.prisma.size.findMany({ select: { id: true, name: true } }),
+            this.prisma.color.findMany({ select: { id: true, name: true } }),
+            this.prisma.brand.findMany({ select: { id: true, name: true } }),
+            this.prisma.gender.findMany({ select: { id: true, name: true } }),
+            this.prisma.department.findMany({ select: { id: true, name: true } }),
+            this.prisma.category.findMany({ select: { id: true, name: true, parentId: true } }),
+            this.prisma.itemClass.findMany({ select: { id: true, name: true } }),
+            this.prisma.silhouette.findMany({ select: { id: true, name: true } }),
+            this.prisma.channelClass.findMany({ select: { id: true, name: true } }),
+            this.prisma.season.findMany({ select: { id: true, name: true } }),
+            this.prisma.segment.findMany({ select: { id: true, name: true } }),
+            this.prisma.hsCode.findMany({ select: { id: true, hsCode: true } }),
+            this.prisma.division.findMany({ select: { id: true, name: true, brandId: true } }),
+            this.prisma.itemSubclass.findMany({ select: { id: true, name: true, itemClassId: true } }),
+        ]);
 
-        if (!record) {
-            this.logger.log(`Creating new HS Code: ${normalized}`);
-            record = await this.prisma.hsCode.create({
-                data: { hsCode: normalized },
-            });
+        const load = (type: string, records: { id: string; name: string }[]) => {
+            this.initCache(type);
+            for (const r of records) this.cache[this.getCacheKey(type)].set(r.name.toLowerCase(), r.id);
+        };
+
+        load('size', sizes);
+        load('color', colors);
+        load('brand', brands);
+        load('gender', genders);
+        load('department', departments);
+        load('itemclass', itemClasses);
+        load('silhouette', silhouettes);
+        load('channelclass', channelClasses);
+        load('season', seasons);
+        load('segment', segments);
+
+        // Categories — keyed by name under their parentId bucket
+        this.initCache('category');
+        for (const c of categories) {
+            const key = c.parentId ? this.getCacheKey(`category_${c.parentId}`) : this.getCacheKey('category');
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(c.name.toLowerCase(), c.id);
         }
 
-        this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
-        return record.id;
+        // HS Codes — field is hsCode not name
+        this.initCache('hscode');
+        for (const h of hsCodes) this.cache[this.getCacheKey('hscode')].set(h.hsCode.toLowerCase(), h.id);
+
+        // Divisions — keyed per brandId
+        for (const d of divisions) {
+            const key = this.getCacheKey(`division_${d.brandId}`);
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(d.name.toLowerCase(), d.id);
+        }
+
+        // Item Subclasses — keyed per itemClassId
+        for (const s of itemSubclasses) {
+            const key = this.getCacheKey(`itemsubclass_${s.itemClassId}`);
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(s.name.toLowerCase(), s.id);
+        }
+
+        this.logger.log(`Cache warmed: ${sizes.length} sizes, ${colors.length} colors, ${brands.length} brands, ${categories.length} categories, ${hsCodes.length} HS codes, ${divisions.length} divisions`);
     }
 
     /**

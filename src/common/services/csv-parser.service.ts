@@ -1,46 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import * as Papa from 'papaparse';
+import { parse as csvParse } from 'csv-parse';
+import * as fs from 'fs';
 
 export interface ParsedRecord {
     row: number;
-    data: {
-        concept?: string;
-        description?: string;
-        fob?: number;
-        unitCost?: number;
-        unitPrice?: number;
-        taxRate1?: number;
-        taxRate2?: number;
-        discountStartDate?: Date | null;
-        discountEndDate?: Date | null;
-        discountRate?: number;
-        discountAmount?: number;
-        isActive?: boolean;
-        sku?: string;
-        size?: string;
-        color?: string;
-        division?: string;
-        department?: string;
-        productCategory?: string;
-        silhouette?: string;
-        class?: string;
-        subclass?: string;
-        channelClass?: string;
-        season?: string;
-        oldSeason?: string;
-        gender?: string;
-        case?: string;
-        band?: string;
-        movementType?: string;
-        heelHeight?: string;
-        width?: string;
-        hsCode?: string;
-        itemId?: string;
-        barCode?: string;
-        segment?: string;
-    };
+    data: any; // Allow flexibility for mapping
 }
+
+export type ParseCallback = (record: ParsedRecord) => Promise<void>;
 
 @Injectable()
 export class CsvParserService {
@@ -56,7 +25,7 @@ export class CsvParserService {
         const strValue = String(value).trim();
 
         // Check for various N/A patterns
-        const naPatterns = ['n/a', 'n / a', 'null', 'none', '-'];
+        const naPatterns = ['n/a', 'n / a', 'null', 'none', '-', "NA"];
         if (naPatterns.includes(strValue.toLowerCase()) || strValue === '') {
             return null;
         }
@@ -206,101 +175,220 @@ export class CsvParserService {
     }
 
     /**
-     * Parse CSV file
+     * Parse CSV from a file path using fs.createReadStream + csv-parse.
+     * True streaming — never loads the full file into memory.
+     * First rows flow within milliseconds of starting.
      */
-    async parseCSV(fileBuffer: Buffer): Promise<ParsedRecord[]> {
+    async parseCSVFromPath(filePath: string, onRecord: (record: ParsedRecord) => Promise<void>): Promise<void> {
+        return new Promise((resolve, reject) => {
+            let rowCount = 0;
+            const parser = csvParse({ columns: true, skip_empty_lines: true, trim: true });
+            const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 }); // 64KB chunks
+
+            (async () => {
+                try {
+                    stream.pipe(parser);
+                    for await (const record of parser) {
+                        if (!this.isEmptyRow(record)) {
+                            await onRecord({ row: ++rowCount + 1, data: this.mapColumns(record) });
+                        }
+                    }
+                    this.logger.log(`Streamed ${rowCount} records from CSV file`);
+                    resolve();
+                } catch (err) {
+                    stream.destroy();
+                    this.logger.error(`CSV stream error: ${err.message}`);
+                    reject(new Error(`Failed to stream CSV: ${err.message}`));
+                }
+            })();
+        });
+    }
+
+    /**
+     * Parse Excel from a file path using XLSX.readFile.
+     * Avoids holding the raw buffer AND the parsed workbook in memory simultaneously.
+     */
+    async parseExcelFromPath(filePath: string, onRecord: (record: ParsedRecord) => Promise<void>): Promise<void> {
+        try {
+            const workbook = XLSX.readFile(filePath, { cellDates: true, dense: false });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            if (!worksheet) return;
+
+            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            const headers: string[] = [];
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cell = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
+                headers.push(cell ? String(cell.v) : `UNKNOWN_${C}`);
+            }
+
+            let rowCount = 0;
+            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+                const rowObj: any = {};
+                let hasData = false;
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+                    if (cell && cell.v !== null && cell.v !== undefined) {
+                        rowObj[headers[C]] = cell.v;
+                        hasData = true;
+                    }
+                }
+                if (hasData && !this.isEmptyRow(rowObj)) {
+                    await onRecord({ row: R + 1, data: this.mapColumns(rowObj) });
+                    rowCount++;
+                    // Yield every 500 rows so the event loop stays responsive
+                    if (rowCount % 500 === 0) {
+                        await new Promise(resolve => setImmediate(resolve));
+                    }
+                }
+            }
+
+            // Free worksheet from memory
+            workbook.Sheets[sheetName] = null as any;
+            this.logger.log(`Processed ${rowCount} records from Excel file`);
+        } catch (error) {
+            this.logger.error(`Excel processing error: ${error.message}`);
+            throw new Error(`Failed to process Excel: ${error.message}`);
+        }
+    }
+
+    /**
+     * Auto-detect and parse directly from a file path on disk.
+     * Preferred over parseFileStreaming for large files — no buffer in memory.
+     */
+    async parseFileFromPath(filePath: string, filename: string, onRecord: (record: ParsedRecord) => Promise<void>): Promise<void> {
+        const ext = filename.toLowerCase().split('.').pop();
+        if (ext === 'csv') {
+            return this.parseCSVFromPath(filePath, onRecord);
+        } else if (['xlsx', 'xls'].includes(ext as string)) {
+            return this.parseExcelFromPath(filePath, onRecord);
+        } else {
+            throw new Error(`Unsupported file format: ${ext}`);
+        }
+    }
+
+    /**
+     * Parse CSV file with streaming support for large files (buffer-based, kept for compatibility)
+     */
+    async parseCSVStreaming(fileBuffer: Buffer, onRecord: (record: ParsedRecord) => Promise<void>): Promise<void> {
         return new Promise((resolve, reject) => {
             const csvString = fileBuffer.toString('utf-8');
+            let rowCount = 0;
 
             Papa.parse(csvString, {
                 header: true,
-                skipEmptyLines: false, // We'll handle empty rows manually
-                complete: (results) => {
-                    const records: ParsedRecord[] = [];
-
-                    results.data.forEach((row: any, index: number) => {
-                        // Skip empty rows but log them
-                        if (this.isEmptyRow(row)) {
-                            this.logger.debug(`Skipping empty row at line ${index + 2}`);
-                            return;
+                skipEmptyLines: 'greedy',
+                chunkSize: 1024 * 1024 * 2, // 2MB chunks
+                chunk: async (results, parser) => {
+                    // Pause parser to handle async processing
+                    parser.pause();
+                    for (const row of results.data) {
+                        if (!this.isEmptyRow(row)) {
+                            await onRecord({
+                                row: ++rowCount + 1, // +1 for header
+                                data: this.mapColumns(row),
+                            });
                         }
-
-                        records.push({
-                            row: index + 2, // +2 because: +1 for header, +1 for 1-indexed
-                            data: this.mapColumns(row),
-                        });
-                    });
-
-                    this.logger.log(`Parsed ${records.length} valid records from CSV (Total rows: ${results.data.length})`);
-                    resolve(records);
+                    }
+                    parser.resume();
+                },
+                complete: () => {
+                    this.logger.log(`Streamed ${rowCount} records from CSV`);
+                    resolve();
                 },
                 error: (error) => {
-                    this.logger.error(`CSV parsing error: ${error.message}`);
-                    reject(new Error(`Failed to parse CSV: ${error.message}`));
+                    this.logger.error(`CSV streaming error: ${error.message}`);
+                    reject(new Error(`Failed to stream CSV: ${error.message}`));
                 },
             });
         });
     }
 
     /**
-     * Parse Excel file (.xlsx, .xls)
+     * Legacy parseCSV (returns full array, kept for compatibility if needed)
      */
-    async parseExcel(fileBuffer: Buffer): Promise<ParsedRecord[]> {
-        try {
-            this.logger.log(`Parsing Excel file (${fileBuffer ? fileBuffer.length : 0} bytes)`);
-
-            const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
-
-            this.logger.debug(`Workbook sheet names: ${workbook.SheetNames.join(', ')}`);
-
-            const sheetName = workbook.SheetNames[0]; // Use first sheet
-            const worksheet = workbook.Sheets[sheetName];
-
-            if (!worksheet) {
-                this.logger.warn(`Worksheet "${sheetName}" not found or empty`);
-                return [];
-            }
-
-            // Convert to JSON with header row
-            const json = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-
-            this.logger.debug(`XLSX converted ${json.length} rows to JSON`);
-
-            const records: ParsedRecord[] = [];
-
-            json.forEach((row: any, index: number) => {
-                // Skip empty rows
-                if (this.isEmptyRow(row)) {
-                    this.logger.debug(`Skipping empty row at line ${index + 2}`);
-                    return;
-                }
-
-                records.push({
-                    row: index + 2, // +2 for header and 1-indexed
-                    data: this.mapColumns(row),
-                });
-            });
-
-            this.logger.log(`Parsed ${records.length} valid records from Excel (Total rows: ${json.length})`);
-            return records;
-        } catch (error) {
-            this.logger.error(`Excel parsing error: ${error.message}`);
-            throw new Error(`Failed to parse Excel: ${error.message}`);
-        }
+    async parseCSV(fileBuffer: Buffer): Promise<ParsedRecord[]> {
+        const records: ParsedRecord[] = [];
+        await this.parseCSVStreaming(fileBuffer, async (rec) => {
+            records.push(rec);
+        });
+        return records;
     }
 
     /**
-     * Auto-detect and parse file based on extension
+     * Parse Excel file with memory optimization
      */
-    async parseFile(fileBuffer: Buffer, filename: string): Promise<ParsedRecord[]> {
-        const ext = filename.toLowerCase().split('.').pop();
+    async parseExcelStreaming(fileBuffer: Buffer, onRecord: (record: ParsedRecord) => Promise<void>): Promise<void> {
+        try {
+            const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
 
-        if (ext === 'csv') {
-            return this.parseCSV(fileBuffer);
-        } else if (['xlsx', 'xls'].includes(ext as string)) {
-            return this.parseExcel(fileBuffer);
-        } else {
-            throw new Error(`Unsupported file format: ${ext}. Please upload CSV or Excel files.`);
+            if (!worksheet) return;
+
+            // Use sheet_to_json row by row to save memory compared to full array conversion
+            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            const headers: string[] = [];
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cell = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
+                headers.push(cell ? cell.v : `UNKNOWN_${C}`);
+            }
+
+            let rowCount = 0;
+            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+                const rowObj: any = {};
+                let hasData = false;
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+                    if (cell && cell.v !== null) {
+                        rowObj[headers[C]] = cell.v;
+                        hasData = true;
+                    }
+                }
+
+                if (hasData && !this.isEmptyRow(rowObj)) {
+                    await onRecord({
+                        row: R + 1,
+                        data: this.mapColumns(rowObj),
+                    });
+                    rowCount++;
+                }
+            }
+
+            this.logger.log(`Processed ${rowCount} records from Excel`);
+        } catch (error) {
+            this.logger.error(`Excel processing error: ${error.message}`);
+            throw new Error(`Failed to process Excel: ${error.message}`);
         }
+    }
+
+    async parseExcel(fileBuffer: Buffer): Promise<ParsedRecord[]> {
+        const records: ParsedRecord[] = [];
+        await this.parseExcelStreaming(fileBuffer, async (rec) => {
+            records.push(rec);
+        });
+        return records;
+    }
+
+    /**
+     * Auto-detect and parse file based on extension (Streaming version)
+     */
+    async parseFileStreaming(fileBuffer: Buffer, filename: string, onRecord: (record: ParsedRecord) => Promise<void>): Promise<void> {
+        const ext = filename.toLowerCase().split('.').pop();
+        if (ext === 'csv') {
+            return this.parseCSVStreaming(fileBuffer, onRecord);
+        } else if (['xlsx', 'xls'].includes(ext as string)) {
+            return this.parseExcelStreaming(fileBuffer, onRecord);
+        } else {
+            throw new Error(`Unsupported file format: ${ext}`);
+        }
+    }
+
+    async parseFile(fileBuffer: Buffer, filename: string): Promise<ParsedRecord[]> {
+        const records: ParsedRecord[] = [];
+        await this.parseFileStreaming(fileBuffer, filename, async (rec) => {
+            records.push(rec);
+        });
+        return records;
     }
 }
