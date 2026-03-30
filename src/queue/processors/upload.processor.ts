@@ -4,7 +4,7 @@ import type { Job } from 'bull';
 import { PrismaService } from '../../database/prisma.service';
 import { CsvParserService, ParsedRecord } from '../../common/services/csv-parser.service';
 import { MasterDataService } from '../../common/services/master-data.service';
-import { ItemValidatorService, ValidationError } from '../../common/services/item-validator.service';
+import { ItemValidatorService } from '../../common/services/item-validator.service';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import * as fs from 'fs';
@@ -52,26 +52,16 @@ export class UploadProcessor {
 
         this.logger.log(`[Job ${job.id}] ${mode.toUpperCase()} phase started for ${filename} (Upload ID: ${uploadId})`);
 
-        // Reconstruct Buffer if provided (validation phase)
-        if (fileBuffer && (fileBuffer as any).type === 'Buffer' && Array.isArray((fileBuffer as any).data)) {
-            fileBuffer = Buffer.from((fileBuffer as any).data);
-        }
-
-        // Recovery logic for large files from disk if buffer is missing
-        if (!fileBuffer) {
-            const ext = filename.split('.').pop();
-            const filePath = path.join(process.cwd(), 'uploads', 'bulk', `upload-${uploadId}.${ext}`);
-            if (fs.existsSync(filePath)) {
-                this.logger.log(`[Job ${job.id}] Recovering file from disk: ${filePath}`);
-                fileBuffer = fs.readFileSync(filePath);
-            } else {
-                this.logger.error(`[Job ${job.id}] CRITICAL: File buffer missing and not found on disk at ${filePath}`);
-                throw new Error(`File buffer missing and could not be found on disk at ${filePath}`);
-            }
-        }
-
         const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
         const tenantMasterData = new MasterDataService(prisma);
+
+        // Resolve file path once — used by both validate and import modes
+        const ext = filename.split('.').pop();
+        const filePath = path.join(process.cwd(), 'uploads', 'bulk', `upload-${uploadId}.${ext}`);
+        if (!fs.existsSync(filePath)) {
+            this.logger.error(`[Job ${job.id}] File not found on disk: ${filePath}`);
+            throw new Error(`Upload file not found on disk at ${filePath}`);
+        }
 
         try {
             await prisma.bulkUpload.update({
@@ -79,10 +69,15 @@ export class UploadProcessor {
                 data: { status: mode === 'validate' ? 'validating' : 'processing' },
             });
 
+            // Heartbeat — fires immediately so the client unfreezes before any parsing begins
             this.eventsService.emit({
                 uploadId,
                 type: 'status',
-                data: { status: mode === 'validate' ? 'validating' : 'processing', message: mode === 'validate' ? 'Starting Validation...' : 'Starting Import...' }
+                data: {
+                    status: mode === 'validate' ? 'validating' : 'processing',
+                    message: mode === 'validate' ? 'Reading file...' : 'Starting Import...',
+                    progress: 1,
+                }
             });
 
             const progress: UploadProgress = {
@@ -102,6 +97,9 @@ export class UploadProcessor {
             if (mode === 'import') {
                 // Stage 2: Streaming Batch Import
                 this.logger.log(`[Job ${job.id}] Starting Streaming Import for ${uploadId}`);
+
+                // Pre-warm master data cache — turns all getOrCreate calls into sync hits
+                await tenantMasterData.warmCache();
                 
                 // Load existing validation errors from DB to know which rows to skip
                 const uploadRecord = await prisma.bulkUpload.findUnique({
@@ -124,7 +122,7 @@ export class UploadProcessor {
                 const startTime = Date.now();
                 let importBatch: ParsedRecord[] = [];
                 
-                await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
+                await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
                     if (invalidRows.has(record.row)) return;
 
@@ -182,16 +180,20 @@ export class UploadProcessor {
                     await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
                 }
             } else {
-                // Stage 1: Validation Mode - Truly Streaming
+                // Stage 1: Validation Mode
+                // Pre-warm HS code cache — eliminates all DB queries in the hot path
+                this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Loading master data...' } });
+                await tenantMasterData.warmHsCodeCache();
+
                 this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Streaming validation scan...' } });
 
                 let validationBatch: ParsedRecord[] = [];
                 const allValidationErrors: any[] = [];
 
-                await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
+                await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
-                    
-                    // Track duplicates in memory (lightweight compared to full records)
+
+                    // Duplicate ItemID check — sync Map lookup, free
                     if (record.data.itemId) {
                         const normalized = String(record.data.itemId).trim().toLowerCase();
                         if (itemIdSet.has(normalized)) {
@@ -206,7 +208,7 @@ export class UploadProcessor {
                         }
                     }
 
-                    // HS Code existence validation (No auto-creation during validation)
+                    // HS Code check — sync cache hit after warmHsCodeCache(), no DB query
                     if (record.data.hsCode) {
                         const hsCode = String(record.data.hsCode).trim();
                         if (hsCode !== '') {
@@ -224,33 +226,43 @@ export class UploadProcessor {
 
                     validationBatch.push(record);
 
-                    if (validationBatch.length >= 1000) {
-                        const batchErrors = await this.validator.validateRecords(validationBatch);
+                    // Larger batch size for validation — lighter work per record than import
+                    if (validationBatch.length >= 5000) {
+                        const batchErrors = this.validator.validateRecords(validationBatch);
                         allValidationErrors.push(...batchErrors);
                         successRecordsCount += (validationBatch.length - batchErrors.length);
-                        validationBatch = []; // Clear memory
+                        validationBatch = [];
 
-                        // Throttled Progress
+                        // Yield to event loop
+                        await new Promise(resolve => setImmediate(resolve));
+
+                        // Emit progress every 500ms so the UI feels alive
                         const now = Date.now();
-                        if (now - lastEmitTime > 2000) {
+                        if (now - lastEmitTime > 500) {
                             lastEmitTime = now;
-                            await job.progress(10); // Still in phase 1
+                            await job.progress(10);
                             this.eventsService.emit({
                                 uploadId,
                                 type: 'progress',
-                                data: { progress: 10, status: 'validating', message: `Validating: ${totalRecordsCount} rows scanned...` }
+                                data: {
+                                    progress: 10,
+                                    processedRecords: totalRecordsCount,
+                                    status: 'validating',
+                                    message: `Validating: ${totalRecordsCount.toLocaleString()} rows scanned...`
+                                }
                             });
                         }
                     }
                 });
 
+                // Final partial batch
                 if (validationBatch.length > 0) {
-                    const batchErrors = await this.validator.validateRecords(validationBatch);
+                    const batchErrors = this.validator.validateRecords(validationBatch);
                     allValidationErrors.push(...batchErrors);
                     successRecordsCount += (validationBatch.length - batchErrors.length);
                 }
-                
-                itemIdSet.clear(); // Free memory
+
+                itemIdSet.clear();
 
                 // Update DB with validation results
                 await prisma.bulkUpload.update({
@@ -420,71 +432,71 @@ export class UploadProcessor {
             }
         }
 
-        // Execute Individual Updates (Prisma doesn't easily support batch upsert yet)
-        for (const item of toUpdate) {
+        // Batch updates via $transaction — one round trip instead of N sequential awaits
+        if (toUpdate.length > 0) {
             try {
-                await prisma.item.update({
-                    where: { id: item.id },
-                    data: item.data
-                });
-                progress.successRecords++;
+                await prisma.$transaction(
+                    toUpdate.map(item => prisma.item.update({ where: { id: item.id }, data: item.data }))
+                );
+                progress.successRecords += toUpdate.length;
+                progress.processedRecords += toUpdate.length;
             } catch (error) {
-                this.logger.warn(`Failed to update row ${item.row}: ${error.message}`);
-                progress.failedRecords++;
-                progress.errors.push({
-                    row: item.row,
-                    reason: `Update failed: ${error.message}`,
-                    data: { id: item.id }
-                });
+                // Transaction failed — fall back to individual so we can isolate which rows failed
+                this.logger.warn(`Batch update transaction failed, falling back to individual: ${error.message}`);
+                for (const item of toUpdate) {
+                    try {
+                        await prisma.item.update({ where: { id: item.id }, data: item.data });
+                        progress.successRecords++;
+                    } catch (e) {
+                        progress.failedRecords++;
+                        progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
+                    }
+                    progress.processedRecords++;
+                }
             }
-            progress.processedRecords++;
         }
     }
 
     private async prepareItemData(record: ParsedRecord, tenantMasterData: MasterDataService): Promise<any> {
         const { data } = record;
 
-        // Step 1: Resolve high-level master data (Sequentially to populate cache and avoid connection burst)
-        const brandId = await tenantMasterData.getOrCreateBrand(data.concept as string);
-        const itemClassId = await tenantMasterData.getOrCreateItemClass(data.class as string);
-        const categoryId = await tenantMasterData.getOrCreateCategory(data.productCategory as string);
-        const sizeId = await tenantMasterData.getOrCreateSize(data.size as string);
-        const colorId = await tenantMasterData.getOrCreateColor(data.color as string);
-        const genderId = await tenantMasterData.getOrCreateGender(data.gender as string);
-        const silhouetteId = await tenantMasterData.getOrCreateSilhouette(data.silhouette as string);
-        const channelClassId = await tenantMasterData.getOrCreateChannelClass(data.channelClass as string);
-        const seasonId = await tenantMasterData.getOrCreateSeason(data.season as string);
-        const segmentId = await tenantMasterData.getOrCreateSegment(data.segment as string);
-        const hsCodeId = await tenantMasterData.getOrCreateHsCode(data.hsCode ? String(data.hsCode) : '');
+        // Step 1: All independent master data resolved in parallel
+        const [
+            brandId, itemClassId, categoryId, sizeId, colorId,
+            genderId, silhouetteId, channelClassId, seasonId, segmentId, hsCodeId,
+        ] = await Promise.all([
+            tenantMasterData.getOrCreateBrand(data.concept as string),
+            tenantMasterData.getOrCreateItemClass(data.class as string),
+            tenantMasterData.getOrCreateCategory(data.productCategory as string),
+            tenantMasterData.getOrCreateSize(data.size as string),
+            tenantMasterData.getOrCreateColor(data.color as string),
+            tenantMasterData.getOrCreateGender(data.gender as string),
+            tenantMasterData.getOrCreateSilhouette(data.silhouette as string),
+            tenantMasterData.getOrCreateChannelClass(data.channelClass as string),
+            tenantMasterData.getOrCreateSeason(data.season as string),
+            tenantMasterData.getOrCreateSegment(data.segment as string),
+            tenantMasterData.getOrCreateHsCode(data.hsCode ? String(data.hsCode) : ''),
+        ]);
 
-        // Step 2: Resolve dependent master data
-        const divisionId = await tenantMasterData.getOrCreateDivision(data.division as string, brandId);
-        const itemSubclassId = await tenantMasterData.getOrCreateItemSubclass(data.subclass as string, itemClassId);
-        const subCategoryId = await tenantMasterData.getOrCreateSubCategory(data.subclass as string, categoryId);
+        // Step 2: Dependent master data (needs brandId / itemClassId / categoryId from above)
+        const [divisionId, itemSubclassId, subCategoryId] = await Promise.all([
+            tenantMasterData.getOrCreateDivision(data.division as string, brandId),
+            tenantMasterData.getOrCreateItemSubclass(data.subclass as string, itemClassId),
+            tenantMasterData.getOrCreateSubCategory(data.subclass as string, categoryId),
+        ]);
 
         return {
             sku: data.sku ? String(data.sku) : null,
             barCode: data.barCode ? String(data.barCode) : null,
             description: data.description ? String(data.description) : null,
             unitPrice: data.unitPrice ? Number(data.unitPrice) : 0,
-            unitCost: data.unitCost ? Number(data.unitCost) : 0, // Map unitCost to unitCost field in DB
+            unitCost: data.unitCost ? Number(data.unitCost) : 0,
             taxRate1: data.taxRate1 ? Number(data.taxRate1) : 0,
             taxRate2: data.taxRate2 ? Number(data.taxRate2) : 0,
             status: data.isActive === false ? 'inactive' : 'active',
-            brandId,
-            itemClassId,
-            itemSubclassId,
-            silhouetteId,
-            sizeId,
-            colorId,
-            seasonId,
-            genderId,
-            categoryId,
-            subCategoryId,
-            hsCodeId,
-            divisionId,
-            channelClassId,
-            segmentId,
+            brandId, itemClassId, itemSubclassId, silhouetteId,
+            sizeId, colorId, seasonId, genderId, categoryId,
+            subCategoryId, hsCodeId, divisionId, channelClassId, segmentId,
         };
     }
 }
