@@ -139,6 +139,40 @@ export class PosSalesController {
         return this.posSalesService.getOrder(id);
     }
 
+    // ─── Partial return ───────────────────────────────────────────────
+    @Post('orders/:id/return')
+    @ApiOperation({ summary: 'Process a partial or full return for a sales order' })
+    async returnOrder(
+        @Param('id') id: string,
+        @Body() body: { items: { orderItemId: string; itemId: string; quantity: number }[]; reason?: string },
+    ) {
+        return this.posSalesService.returnItems(id, body.items, body.reason);
+    }
+
+    // ─── Exchange items ───────────────────────────────────────────────
+    @Post('orders/:id/exchange')
+    @ApiOperation({ summary: 'Exchange items — return old items, issue new items' })
+    async exchangeOrder(
+        @Param('id') id: string,
+        @Body() body: {
+            returnedItems: { orderItemId: string; itemId: string; quantity: number }[];
+            newItems: { itemId: string; quantity: number; unitPrice: number }[];
+            reason?: string;
+        },
+    ) {
+        return this.posSalesService.exchangeItems(id, body.returnedItems, body.newItems, body.reason);
+    }
+
+    // ─── Refund only (no stock movement) ─────────────────────────────
+    @Post('orders/:id/refund')
+    @ApiOperation({ summary: 'Refund only — money back, no stock movement' })
+    async refundOrder(
+        @Param('id') id: string,
+        @Body() body: { refundAmount: number; reason?: string },
+    ) {
+        return this.posSalesService.refundOnly(id, body.refundAmount, body.reason);
+    }
+
     // ─── Void order ───────────────────────────────────────────────────
     @Post('orders/:id/void')
     @ApiOperation({ summary: 'Void a sales order' })
