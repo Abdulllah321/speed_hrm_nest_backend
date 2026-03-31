@@ -3,64 +3,103 @@ const fs = require('fs');
 const filePath = 'd:\\projects\\speed-limit\\nestjs_backend\\backup\\companies\\tenant_speed_sport_mkzblxzg.sql';
 let content = fs.readFileSync(filePath, 'utf-8');
 
-const lines = content.split('\n');
+const TODAY = new Date('2026-03-31');
+const PROBATION_MONTHS = 3;
 
-let updatedLines = 0;
-// Only rows 8 to 282, which means indices 7 to 281
-for (let i = 7; i <= 281; i++) {
-    let line = lines[i];
-    if (line.startsWith('INSERT INTO public."Employee"')) {
-        const valuesStartList = line.indexOf('VALUES (') + 'VALUES ('.length;
-        const valuesEndList = line.lastIndexOf(');');
-        if (valuesStartList !== -1 && valuesEndList !== -1) {
-            const valuesStr = line.substring(valuesStartList, valuesEndList);
+// Column index of probationExpiryDate in the INSERT (0-based)
+// id, userId, employeeId, employeeName, fatherHusbandName, departmentId, subDepartmentId,
+// employeeGradeId, attendanceId, designationId, maritalStatusId, employmentStatusId,
+// probationExpiryDate(12), cnicNumber, cnicExpiryDate, lifetimeCnic,
+// joiningDate(16), dateOfBirth, ...
+const PROBATION_IDX = 12;
+const JOINING_IDX = 16;
 
-            let values = [];
-            let current = '';
-            let inQuotes = false;
-            for (let j = 0; j < valuesStr.length; j++) {
-                const char = valuesStr[j];
-                if (char === "'") {
-                    inQuotes = !inQuotes;
-                    current += char;
-                } else if (char === ',' && !inQuotes) {
-                    values.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            if (current !== '') {
-                values.push(current.trim());
-            }
-
-            const joiningDateRaw = values[16];
-            if (joiningDateRaw && joiningDateRaw !== 'NULL') {
-                const joiningDateStr = joiningDateRaw.replace(/'/g, '');
-
-                // Parse date string like '2000-10-04 19:00:00' or '2000-10-04 00:00:00'
-                const [datePart, timePart] = joiningDateStr.split(' ');
-                if (datePart && timePart) {
-                    const [year, month, day] = datePart.split('-');
-                    const [hour, minute, second] = timePart.split(':');
-
-                    const date = new Date(year, month - 1, day, hour, minute, second);
-                    date.setMonth(date.getMonth() + 3);
-
-                    const pad = (n) => n.toString().padStart(2, '0');
-                    const newDateStr = `'${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}'`;
-
-                    // probationExpiryDate is index 12 in columns list
-                    values[12] = newDateStr;
-
-                    const newValuesStr = values.join(', ');
-                    lines[i] = line.substring(0, valuesStartList) + newValuesStr + ');';
-                    updatedLines++;
-                }
-            }
+function parseValues(valuesStr) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < valuesStr.length; i++) {
+        const ch = valuesStr[i];
+        if (ch === "'" && valuesStr[i - 1] !== '\\') {
+            inQuotes = !inQuotes;
+            current += ch;
+        } else if (ch === ',' && !inQuotes) {
+            values.push(current.trim());
+            current = '';
+        } else {
+            current += ch;
         }
     }
+    if (current.trim()) values.push(current.trim());
+    return values;
+}
+
+function addMonths(date, months) {
+    const d = new Date(date);
+    d.setMonth(d.getMonth() + months);
+    return d;
+}
+
+function pad(n) { return n.toString().padStart(2, '0'); }
+
+function formatDate(d) {
+    return `'${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}'`;
+}
+
+const lines = content.split('\n');
+let updated = 0;
+let alreadySet = 0;
+let expired = 0;
+let noJoining = 0;
+
+for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.startsWith('INSERT INTO "Employee"')) continue;
+
+    const valStart = line.indexOf('VALUES (') + 'VALUES ('.length;
+    const valEnd = line.lastIndexOf(');');
+    if (valStart === -1 || valEnd === -1) continue;
+
+    const valuesStr = line.substring(valStart, valEnd);
+    const values = parseValues(valuesStr);
+
+    const probation = values[PROBATION_IDX];
+    const joining = values[JOINING_IDX];
+
+    // Skip if probationExpiryDate already set
+    if (probation && probation !== 'NULL') {
+        alreadySet++;
+        continue;
+    }
+
+    // Skip if no joining date
+    if (!joining || joining === 'NULL') {
+        noJoining++;
+        continue;
+    }
+
+    const joiningStr = joining.replace(/'/g, '');
+    const joiningDate = new Date(joiningStr);
+    if (isNaN(joiningDate.getTime())) {
+        noJoining++;
+        continue;
+    }
+
+    const probationExpiry = addMonths(joiningDate, PROBATION_MONTHS);
+    values[PROBATION_IDX] = formatDate(probationExpiry);
+
+    if (probationExpiry < TODAY) {
+        expired++;
+    }
+
+    lines[i] = line.substring(0, valStart) + values.join(', ') + ');';
+    updated++;
 }
 
 fs.writeFileSync(filePath, lines.join('\n'));
-console.log('Done, updated ' + updatedLines + ' lines');
+
+console.log(`Done.`);
+console.log(`  Updated (probationExpiryDate set): ${updated}`);
+console.log(`  Already had probationExpiryDate:   ${alreadySet}`);
+console.log(`  Of updated, probation expired:     ${expired}`);
+console.log(`  Skipped (no joining date):         ${noJoining}`);
