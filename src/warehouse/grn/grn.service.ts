@@ -20,11 +20,26 @@ export class GrnService {
       include: {
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                hsCode: true,
+                category: { select: { name: true } },
+              },
+            },
           },
         },
         purchaseOrder: {
-          select: { poNumber: true, vendorId: true, items: true },
+          select: {
+            poNumber: true,
+            vendorId: true,
+            purchaseRequisitionId: true,
+            vendorQuotationId: true,
+            rfqId: true,
+            items: true,
+            vendor: {
+              select: { id: true, name: true, code: true },
+            },
+          },
         },
         warehouse: {
           select: { name: true },
