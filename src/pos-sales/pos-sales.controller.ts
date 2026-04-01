@@ -179,4 +179,54 @@ export class PosSalesController {
     async voidOrder(@Param('id') id: string) {
         return this.posSalesService.voidOrder(id);
     }
+
+    // ─── Hold order ───────────────────────────────────────────────────
+    @Post('orders/hold')
+    @ApiOperation({ summary: 'Place current cart on hold (max 1 hour / cleared at midnight)' })
+    async holdOrder(@Body() dto: CreateSalesOrderDto, @Req() req: any) {
+        const cashierUserId = req.user?.id;
+        if (req.user?.isPosUser || req.user?.isTerminal) {
+            if (!dto.terminalId) dto.terminalId = req.user.terminalId;
+            if (!dto.posId) dto.posId = req.user.posId;
+            if (!dto.locationId) dto.locationId = req.user.locationId;
+        }
+        if ((!dto.terminalId || !dto.posId) && req.cookies?.posTerminalToken) {
+            try {
+                const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+                if (decoded) {
+                    if (!dto.terminalId) dto.terminalId = decoded.terminalId;
+                    if (!dto.posId) dto.posId = decoded.posId;
+                    if (!dto.locationId) dto.locationId = decoded.locationId;
+                }
+            } catch (e) { }
+        }
+        return this.posSalesService.holdOrder(dto, cashierUserId);
+    }
+
+    // ─── Resume hold order ────────────────────────────────────────────
+    @Post('orders/:id/resume')
+    @ApiOperation({ summary: 'Resume a held order — returns cart items' })
+    async resumeHoldOrder(@Param('id') id: string) {
+        return this.posSalesService.resumeHoldOrder(id);
+    }
+
+    // ─── List hold orders ─────────────────────────────────────────────
+    @Get('orders/holds')
+    @ApiOperation({ summary: 'List active hold orders for this POS/location' })
+    async listHoldOrders(@Req() req: any, @Query('posId') posId?: string, @Query('locationId') locationId?: string) {
+        let effectivePosId = posId;
+        let effectiveLocationId = locationId;
+        if (req.user?.isPosUser || req.user?.isTerminal) {
+            if (!effectivePosId) effectivePosId = req.user.posId;
+            if (!effectiveLocationId) effectiveLocationId = req.user.locationId;
+        }
+        return this.posSalesService.listHoldOrders(effectivePosId, effectiveLocationId);
+    }
+
+    // ─── Clear expired holds (internal / cron) ────────────────────────
+    @Post('orders/clear-expired-holds')
+    @ApiOperation({ summary: 'Clear all expired hold orders (called by scheduler)' })
+    async clearExpiredHolds() {
+        return this.posSalesService.clearExpiredHolds();
+    }
 }
