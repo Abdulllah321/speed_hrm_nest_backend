@@ -100,34 +100,6 @@ export class ItemBulkUploadController {
     }
 
     /**
-     * GET /api/items/bulk-upload/:uploadId/status
-     * Get current status (polling fallback)
-     */
-    @Get(':uploadId/status')
-    @ApiOperation({ summary: 'Get upload status' })
-    async getUploadStatus(@Param('uploadId') uploadId: string) {
-        const status = await this.bulkUploadService.getUploadStatus(uploadId);
-        return {
-            status: true,
-            data: status,
-        };
-    }
-
-    /**
-     * DELETE /api/items/bulk-upload/:uploadId
-     * Cancel job
-     */
-    @Delete(':uploadId')
-    @ApiOperation({ summary: 'Cancel upload' })
-    async cancelUpload(@Param('uploadId') uploadId: string) {
-        await this.bulkUploadService.cancelUpload(uploadId);
-        return {
-            status: true,
-            message: 'Upload cancelled successfully',
-        };
-    }
-
-    /**
      * GET /api/items/bulk-upload/history
      */
     @Get('history/list')
@@ -140,19 +112,6 @@ export class ItemBulkUploadController {
         };
     }
 
-    @Get(':uploadId/error-report')
-    @ApiOperation({ summary: 'Download error report' })
-    async downloadErrorReport(
-        @Param('uploadId') uploadId: string,
-        @Res() res: any,
-    ) {
-        const upload = await this.bulkUploadService.getUploadStatus(uploadId);
-        const csv = this.bulkUploadService.generateErrorReport(upload.errors as any[]);
-        res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', `attachment; filename="upload-errors-${uploadId}.csv"`);
-        return res.status(HttpStatus.OK).send(csv);
-    }
-
     @Get('template/download')
     @ApiOperation({ summary: 'Download CSV template' })
     async downloadTemplate(@Res() res: any) {
@@ -163,5 +122,49 @@ export class ItemBulkUploadController {
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="item-upload-template.csv"');
         return res.status(HttpStatus.OK).send(template);
+    }
+
+    // ── Param routes last — static routes above must be declared first ──────
+
+    @Get(':uploadId/status')
+    @ApiOperation({ summary: 'Get upload status' })
+    async getUploadStatus(@Param('uploadId') uploadId: string) {
+        const status = await this.bulkUploadService.getUploadStatus(uploadId);
+        return {
+            status: true,
+            data: status,
+        };
+    }
+
+    @Delete(':uploadId')
+    @ApiOperation({ summary: 'Cancel upload' })
+    async cancelUpload(@Param('uploadId') uploadId: string) {
+        await this.bulkUploadService.cancelUpload(uploadId);
+        return {
+            status: true,
+            message: 'Upload cancelled successfully',
+        };
+    }
+
+    // More specific sub-paths before less specific ones
+    @Get(':uploadId/error-report')
+    @ApiOperation({ summary: 'Download error report (streamed CSV) or check readiness via ?prepare=true' })
+    async downloadErrorReport(
+        @Param('uploadId') uploadId: string,
+        @Res() res: any,
+        @Req() req: any,
+    ) {
+        // ?prepare=true → JSON response to check readiness / kick off generation
+        if (req.query?.prepare === 'true') {
+            const result = await this.bulkUploadService.prepareErrorReport(uploadId);
+            if (!result.ready) {
+                await this.bulkUploadService.regenerateErrorReport(uploadId).catch(() => {});
+            }
+            res.header('Content-Type', 'application/json');
+            res.send({ status: true, data: result });
+            return;
+        }
+
+        await this.bulkUploadService.streamErrorReport(uploadId, res);
     }
 }
