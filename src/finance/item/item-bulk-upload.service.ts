@@ -6,6 +6,8 @@ import { UploadJobData } from '../../queue/processors/upload.processor';
 import { UploadEventsService } from './upload-events.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CsvParserService } from '../../common/services/csv-parser.service';
+import { ItemValidatorService } from '../../common/services/item-validator.service';
 
 @Injectable()
 export class ItemBulkUploadService {
@@ -257,7 +259,177 @@ export class ItemBulkUploadService {
     }
 
     /**
-     * Generate error report CSV
+     * Check if error report JSONL is ready on disk.
+     */
+    async prepareErrorReport(uploadId: string): Promise<{ ready: boolean; totalErrors: number }> {
+        const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
+        if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
+        const errorFilePath = path.join(process.cwd(), 'uploads', 'bulk', `errors-${uploadId}.jsonl`);
+        return { ready: fs.existsSync(errorFilePath), totalErrors: upload.failedRecords ?? 0 };
+    }
+
+    /**
+     * Regenerate JSONL error file in the background (for old uploads without it).
+     * Caller should poll prepareErrorReport() until ready === true.
+     */
+    async regenerateErrorReport(uploadId: string): Promise<void> {
+        const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
+        if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
+
+        const ext = upload.filename.split('.').pop();
+        const uploadFilePath = path.join(process.cwd(), 'uploads', 'bulk', `upload-${uploadId}.${ext}`);
+        const errorFilePath = path.join(process.cwd(), 'uploads', 'bulk', `errors-${uploadId}.jsonl`);
+        const tmpPath = errorFilePath + '.tmp';
+
+        if (fs.existsSync(errorFilePath)) return;
+        if (!fs.existsSync(uploadFilePath)) throw new Error('Original upload file not found on disk.');
+
+        // Emit initial SSE so frontend knows generation started
+        this.eventsService.emit({
+            uploadId,
+            type: 'status',
+            data: { message: 'Generating error report...', reportGenerating: true, reportReady: false }
+        });
+
+        setImmediate(async () => {
+            const writeStream = fs.createWriteStream(tmpPath, { flags: 'w' });
+            let errorsWritten = 0;
+            let lastEmit = Date.now();
+
+            const writeError = (e: any): Promise<void> => {
+                errorsWritten++;
+                const line = JSON.stringify(e) + '\n';
+                const ok = writeStream.write(line);
+                if (!ok) return new Promise(r => writeStream.once('drain', r));
+                return Promise.resolve();
+            };
+
+            try {
+                const csvParser = new CsvParserService();
+                const validator = new ItemValidatorService();
+                const itemIdSet = new Set<string>();
+                let batch: any[] = [];
+
+                await csvParser.parseFileFromPath(uploadFilePath, upload.filename, async (record) => {
+                    const itemId = record.data.itemId ? String(record.data.itemId).trim() : undefined;
+                    const barCode = record.data.barCode ? String(record.data.barCode).trim() : undefined;
+
+                    if (record.data.itemId) {
+                        const norm = String(record.data.itemId).trim().toLowerCase();
+                        if (itemIdSet.has(norm)) {
+                            await writeError({ row: record.row, field: 'ItemID', value: record.data.itemId, reason: 'Duplicate ItemID found within file.', itemId, barCode });
+                        } else {
+                            itemIdSet.add(norm);
+                        }
+                    }
+                    batch.push(record);
+
+                    if (batch.length >= 1000) {
+                        for (const e of validator.validateRecords(batch)) await writeError(e);
+                        batch = [];
+                        await new Promise(r => setImmediate(r));
+
+                        // Emit progress every 500ms via SSE
+                        const now = Date.now();
+                        if (now - lastEmit > 500) {
+                            lastEmit = now;
+                            this.eventsService.emit({
+                                uploadId,
+                                type: 'status',
+                                data: {
+                                    message: `Generating error report: ${errorsWritten.toLocaleString()} errors written...`,
+                                    reportGenerating: true,
+                                    reportReady: false,
+                                    reportErrorsWritten: errorsWritten,
+                                }
+                            });
+                        }
+                    }
+                });
+
+                if (batch.length > 0) {
+                    for (const e of validator.validateRecords(batch)) await writeError(e);
+                }
+
+                await new Promise<void>((res, rej) => writeStream.end((err: any) => err ? rej(err) : res()));
+                fs.renameSync(tmpPath, errorFilePath);
+
+                this.logger.log(`Error report regenerated for ${uploadId}: ${errorsWritten} errors`);
+                this.eventsService.emit({
+                    uploadId,
+                    type: 'status',
+                    data: {
+                        message: `Error report ready: ${errorsWritten.toLocaleString()} errors`,
+                        reportGenerating: false,
+                        reportReady: true,
+                        reportErrorsWritten: errorsWritten,
+                    }
+                });
+            } catch (err: any) {
+                this.logger.error(`Failed to regenerate error report for ${uploadId}: ${err.message}`);
+                writeStream.destroy();
+                try { fs.unlinkSync(tmpPath); } catch { }
+                this.eventsService.emit({
+                    uploadId,
+                    type: 'status',
+                    data: { message: `Error report generation failed: ${err.message}`, reportGenerating: false, reportReady: false }
+                });
+            }
+        });
+    }
+
+    /**
+     * Stream error report as CSV directly from the on-disk JSONL file.
+     * Handles 70k+ error rows without loading everything into memory or timing out.
+     */
+    async streamErrorReport(uploadId: string, res: any): Promise<void> {
+        const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
+        if (!upload) {
+            res.code(404).send({ status: false, message: 'Upload not found' });
+            return;
+        }
+
+        const errorFilePath = path.join(process.cwd(), 'uploads', 'bulk', `errors-${uploadId}.jsonl`);
+
+        // Send headers directly on the raw socket — Fastify's reply.header() buffers
+        // headers until reply.send() is called, but we're streaming via res.raw.write()
+        // which bypasses that buffer. Writing headers on res.raw ensures they go out first.
+        const raw = res.raw;
+        raw.writeHead(200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="error-report-${uploadId}.csv"`,
+            'Transfer-Encoding': 'chunked',
+            'Cache-Control': 'no-cache',
+        });
+        raw.write('Row,ItemID,BarCode,Field,Reason\n');
+
+        const writeLine = (e: any) => {
+            const row = e.row ?? 'N/A';
+            const itemId = String(e.itemId ?? '').replace(/"/g, '""');
+            const barCode = String(e.barCode ?? '').replace(/"/g, '""');
+            const field = e.field ?? e.data?.field ?? 'N/A';
+            const reason = String(e.reason ?? '').replace(/"/g, '""');
+            raw.write(`${row},"${itemId}","${barCode}",${field},"${reason}"\n`);
+        };
+
+        // No JSONL on disk — fall back to DB preview errors (capped at 100)
+        if (!fs.existsSync(errorFilePath)) {
+            const errors = (Array.isArray(upload.errors) ? upload.errors : []) as any[];
+            for (const e of errors) writeLine(e);
+            raw.end();
+            return;
+        }
+
+        // Stream JSONL line by line — O(1) memory regardless of file size
+        const { createInterface } = await import('readline');
+        const rl = createInterface({ input: fs.createReadStream(errorFilePath), crlfDelay: Infinity });
+        rl.on('line', (line) => { if (line.trim()) { try { writeLine(JSON.parse(line)); } catch { } } });
+        rl.on('close', () => raw.end());
+        rl.on('error', () => raw.end());
+    }
+
+    /**
+     * Generate error report CSV (legacy — kept for compatibility)
      */
     generateErrorReport(errors: any[]): string {
         if (!errors || errors.length === 0) {
