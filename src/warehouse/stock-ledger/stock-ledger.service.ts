@@ -10,44 +10,50 @@ export class StockLedgerService {
     warehouseId?: string;
     movementType?: MovementType;
     itemId?: string;
+    referenceType?: string;
+    page?: number;
+    limit?: number;
   }) {
-    const { warehouseId, movementType, itemId } = options || {};
+    const { warehouseId, movementType, itemId, referenceType, page = 1, limit = 50 } = options || {};
+    const skip = (page - 1) * limit;
 
-    return this.prisma.stockLedger.findMany({
-      where: {
-        warehouseId,
-        movementType,
-        itemId,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        itemId: true,
-        warehouseId: true,
-        qty: true,
-        rate: true,
-        unitCost: true,
-        movementType: true,
-        referenceType: true,
-        referenceId: true,
-        locationId: true,
-        createdAt: true,
-        item: {
-          select: {
-            itemId: true,
-            sku: true,
-            description: true,
-          },
+    const where: any = {
+      ...(warehouseId && { warehouseId }),
+      ...(movementType && { movementType }),
+      ...(itemId && { itemId }),
+      ...(referenceType && { referenceType }),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.stockLedger.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          itemId: true,
+          warehouseId: true,
+          qty: true,
+          rate: true,
+          unitCost: true,
+          movementType: true,
+          referenceType: true,
+          referenceId: true,
+          locationId: true,
+          createdAt: true,
+          item: { select: { itemId: true, sku: true, description: true } },
+          warehouse: { select: { name: true } },
         },
-        warehouse: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+      }),
+      this.prisma.stockLedger.count({ where }),
+    ]);
+
+    return {
+      status: true,
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async getStockLevels(options?: { warehouseId?: string; locationId?: string } | string) {

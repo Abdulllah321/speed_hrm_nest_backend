@@ -24,8 +24,8 @@ import { BullModule } from '@nestjs/bull';
                             port: parseInt(process.env.REDIS_PORT || '6379'),
                         },
                         defaultJobOptions: {
-                            attempts: 3,
-                            backoff: { type: 'exponential', delay: 2000 },
+                            attempts: 1,           // Never retry bulk jobs — retrying causes duplicate inserts
+                            timeout: 4 * 60 * 60 * 1000, // 4 hour timeout — enough for 3 lakh records
                             removeOnComplete: false,
                             removeOnFail: false,
                         }
