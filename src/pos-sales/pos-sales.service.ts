@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -7,12 +7,30 @@ import { MovementType, Prisma } from '@prisma/client';
 
 
 @Injectable()
-export class PosSalesService {
+export class PosSalesService implements OnModuleInit {
     constructor(
         private prisma: PrismaService,
         private prismaMaster: PrismaMasterService,
         private stockLedgerService: StockLedgerService,
     ) { }
+
+      // ─── Schedule midnight hold-clear ─────────────────────────────────
+    onModuleInit() {
+        this.scheduleMidnightClear();
+    }
+
+    private scheduleMidnightClear() {
+        const now = new Date();
+        const midnight = new Date(now);
+        midnight.setHours(23, 59, 59, 999);
+        const msUntilMidnight = midnight.getTime() - now.getTime();
+
+        setTimeout(async () => {
+            await this.clearExpiredHolds();
+            // Re-schedule for next midnight
+            setInterval(() => this.clearExpiredHolds(), 24 * 60 * 60 * 1000);
+        }, msUntilMidnight);
+    }
 
     // ─── Generate next SO number ──────────────────────────────────────
     private async generateOrderNumber(): Promise<string> {
@@ -622,6 +640,127 @@ export class PosSalesService {
         } catch (error: any) {
             return { status: false, message: error.message };
         }
+    }
+
+    // ─── Hold order (max 1 hour, auto-cleared at midnight) ───────────
+    async holdOrder(dto: CreateSalesOrderDto, cashierUserId?: string) {
+        try {
+            const orderNumber = await this.generateOrderNumber();
+
+            // Hold expires in 1 hour OR at midnight today, whichever is sooner
+            const now = new Date();
+            const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+            const midnight = new Date(now);
+            midnight.setHours(23, 59, 59, 999);
+            const holdExpiresAt = oneHourLater < midnight ? oneHourLater : midnight;
+
+            const itemsData = dto.items.map((lineItem) => {
+                const subtotal = lineItem.unitPrice * lineItem.quantity;
+                const discPct = lineItem.discountPercent || 0;
+                const discAmt = Math.round(subtotal * (discPct / 100) * 100) / 100;
+                const afterDisc = subtotal - discAmt;
+                const taxPct = lineItem.taxPercent || 0;
+                const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
+                const lineTotal = Math.round((afterDisc + taxAmt) * 100) / 100;
+                return {
+                    itemId: lineItem.itemId,
+                    quantity: lineItem.quantity,
+                    unitPrice: lineItem.unitPrice,
+                    discountPercent: discPct,
+                    discountAmount: discAmt,
+                    taxPercent: taxPct,
+                    taxAmount: taxAmt,
+                    lineTotal: Math.max(0, lineTotal),
+                    isStockInTransit: (lineItem as any).isStockInTransit || false,
+                };
+            });
+
+            const subtotal = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
+            const totalDiscount = itemsData.reduce((acc, i) => acc + i.discountAmount, 0);
+            const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
+            const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
+
+            const order = await this.prisma.salesOrder.create({
+                data: {
+                    orderNumber,
+                    posId: dto.posId,
+                    terminalId: dto.terminalId,
+                    locationId: dto.locationId,
+                    customerId: dto.customerId,
+                    cashierUserId,
+                    paymentMethod: null,
+                    notes: dto.notes,
+                    subtotal,
+                    discountAmount: totalDiscount,
+                    taxAmount: totalTax,
+                    grandTotal,
+                    status: 'hold',
+                    paymentStatus: 'unpaid',
+                    holdExpiresAt,
+                    items: { create: itemsData },
+                },
+                include: {
+                    items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                },
+            });
+
+            return {
+                status: true,
+                data: order,
+                message: `Order ${orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
+            };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    // ─── Resume a held order (returns cart items to frontend) ─────────
+    async resumeHoldOrder(id: string) {
+        const order = await this.prisma.salesOrder.findUnique({
+            where: { id },
+            include: { items: { include: { item: true } } },
+        });
+        if (!order) return { status: false, message: 'Hold order not found' };
+        if (order.status !== 'hold') return { status: false, message: 'Order is not on hold' };
+
+        const now = new Date();
+        if (order.holdExpiresAt && order.holdExpiresAt < now) {
+            // Auto-clear expired hold
+            await this.prisma.salesOrder.update({ where: { id }, data: { status: 'hold_expired' } });
+            return { status: false, message: 'Hold order has expired' };
+        }
+
+        return { status: true, data: order };
+    }
+
+    // ─── List active hold orders for a POS/location ───────────────────
+    async listHoldOrders(posId?: string, locationId?: string) {
+        const now = new Date();
+        const where: any = {
+            status: 'hold',
+            holdExpiresAt: { gt: now },
+        };
+        if (posId) where.posId = posId;
+        if (locationId) where.locationId = locationId;
+
+        const orders = await this.prisma.salesOrder.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+            },
+        });
+        return { status: true, data: orders };
+    }
+
+    // ─── Clear all expired / end-of-day holds (called by scheduler) ──
+    async clearExpiredHolds() {
+        const now = new Date();
+        const result = await this.prisma.salesOrder.updateMany({
+            where: { status: 'hold', holdExpiresAt: { lte: now } },
+            data: { status: 'hold_expired' },
+        });
+        return { status: true, cleared: result.count };
     }
 
     // ─── Enrich items with master data + stock for POS display ────────
