@@ -23,6 +23,7 @@ model SalesOrder {
   cashAmount            Decimal?          @map("cash_amount") @db.Decimal(15, 2)
   cardAmount            Decimal?          @map("card_amount") @db.Decimal(15, 2)
   changeAmount          Decimal?          @map("change_amount") @db.Decimal(15, 2)
+  holdExpiresAt         DateTime?         @map("hold_expires_at")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   items                 SalesOrderItem[]
@@ -49,8 +50,9 @@ model SalesOrderItem {
   discountAmount  Decimal    @default(0) @db.Decimal(15, 2)
   taxPercent      Decimal    @default(0) @db.Decimal(5, 2)
   taxAmount       Decimal    @default(0) @db.Decimal(15, 2)
-  lineTotal       Decimal    @db.Decimal(15, 2)
-  createdAt       DateTime   @default(now()) @map("created_at")
+  lineTotal           Decimal    @db.Decimal(15, 2)
+  isStockInTransit    Boolean    @default(false) @map("is_stock_in_transit")
+  createdAt           DateTime   @default(now()) @map("created_at")
   item            Item       @relation(fields: [itemId], references: [id])
   salesOrder      SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
 
