@@ -1,0 +1,68 @@
+// ERP Sales Invoice - Stock out + Journal entry + Receivable create
+model ERPSalesInvoice {
+  id                String @id @default(cuid())
+  invoiceNo         String @unique // INV-001, INV-002, etc.
+  salesOrderId      String?
+  salesOrder        ERPSalesOrder? @relation(fields: [salesOrderId], references: [id])
+  deliveryChallanId String?
+  deliveryChallan   DeliveryChallan? @relation(fields: [deliveryChallanId], references: [id])
+  customerId        String
+  customer          Customer @relation(fields: [customerId], references: [id])
+  warehouseId       String?
+  warehouse         Warehouse? @relation(fields: [warehouseId], references: [id])
+  
+  // Invoice Details
+  invoiceDate       DateTime @default(now())
+  dueDate           DateTime?
+  status            ERPSalesInvoiceStatus @default(PENDING)
+  
+  // Totals
+  subtotal          Decimal
+  taxRate           Decimal @default(0)
+  taxAmount         Decimal @default(0)
+  discount          Decimal @default(0)
+  grandTotal        Decimal
+  paidAmount        Decimal @default(0)
+  balanceAmount     Decimal @default(0)
+  
+  // Relations
+  items             ERPSalesInvoiceItem[]
+  stockLedgers      StockLedger[]
+  
+  // Audit
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String?
+  updatedBy         String?
+  
+  @@map("erp_sales_invoices")
+}
+
+// ERP Sales Invoice Items
+model ERPSalesInvoiceItem {
+  id            String @id @default(cuid())
+  salesInvoiceId String
+  salesInvoice  ERPSalesInvoice @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  itemId        String
+  item          Item @relation(fields: [itemId], references: [id])
+  
+  // Pricing (copied from Sales Order)
+  costPrice     Decimal // For profit calculation
+  salePrice     Decimal // Final sale price
+  quantity      Int
+  discount      Decimal @default(0)
+  total         Decimal // (salePrice * quantity) - discount
+  
+  // Audit
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@map("erp_sales_invoice_items")
+}
+
+enum ERPSalesInvoiceStatus {
+  PENDING   // Invoice created, payment pending
+  PARTIAL   // Partially paid
+  PAID      // Fully paid
+  CANCELLED // Invoice cancelled
+}

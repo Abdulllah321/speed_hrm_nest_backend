@@ -92,7 +92,7 @@ async function pushToAllTenants() {
                 // Set DATABASE_URL for the prisma command
                 const env = { ...process.env, DATABASE_URL: connectionString };
 
-                execSync('bunx prisma db push --schema prisma/schema --accept-data-loss', {
+                execSync('bunx prisma db push --schema prisma/schema --accept-data-loss --force-reset', {
                     env,
                     stdio: 'inherit',
                     shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'

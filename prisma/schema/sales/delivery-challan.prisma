@@ -1,0 +1,67 @@
+// Delivery Challan - Goods dispatch record (no stock effect yet)
+model DeliveryChallan {
+  id            String @id @default(cuid())
+  challanNo     String @unique // DC-001, DC-002, etc.
+  salesOrderId  String
+  salesOrder    ERPSalesOrder @relation(fields: [salesOrderId], references: [id])
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  warehouseId   String?
+  warehouse     Warehouse? @relation(fields: [warehouseId], references: [id])
+  
+  // Delivery Details
+  challanDate   DateTime @default(now())
+  deliveryDate  DateTime?
+  driverName    String?
+  vehicleNo     String?
+  transportMode String? // SELF, COURIER, TRANSPORT
+  
+  // Status
+  status        DeliveryChallanStatus @default(PENDING)
+  
+  // Totals (for reference)
+  totalQty      Int
+  totalAmount   Decimal
+  
+  // Relations
+  items         DeliveryChallanItem[]
+  invoices      ERPSalesInvoice[]
+  
+  // Audit
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+  
+  @@map("delivery_challans")
+}
+
+// Delivery Challan Items
+model DeliveryChallanItem {
+  id                String @id @default(cuid())
+  deliveryChallanId String
+  deliveryChallan   DeliveryChallan @relation(fields: [deliveryChallanId], references: [id], onDelete: Cascade)
+  itemId            String
+  item              Item @relation(fields: [itemId], references: [id])
+  
+  // Quantities
+  orderedQty        Int // From Sales Order
+  deliveredQty      Int // Actual delivered quantity
+  
+  // Pricing (for reference)
+  salePrice         Decimal
+  total             Decimal // deliveredQty * salePrice
+  
+  // Audit
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("delivery_challan_items")
+}
+
+enum DeliveryChallanStatus {
+  PENDING     // Challan created, not delivered
+  DELIVERED   // Goods delivered to customer
+  INVOICED    // Invoice created from this challan
+  CANCELLED   // Delivery cancelled
+}

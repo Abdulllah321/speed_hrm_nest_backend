@@ -19,6 +19,11 @@ model Warehouse {
   purchaseReturns    PurchaseReturn[]
   fromTransferRequests TransferRequest[] @relation("TransferRequest_fromWarehouse")
   toTransferRequests   TransferRequest[] @relation("TransferRequest_toWarehouse")
+  
+  // Sales Relations
+  erpSalesOrders     ERPSalesOrder[]
+  deliveryChallans   DeliveryChallan[]
+  erpSalesInvoices   ERPSalesInvoice[]
 
   @@index([companyId])
   @@index([type])
