@@ -1,11 +1,23 @@
+// Customer Management - Based on your existing customer data
 model Customer {
-  id        String   @id @default(uuid())
-  code      String   @unique
-  name      String
-  address   String?
-  contactNo String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
+  id          String @id @default(cuid())
+  code        String @unique // 310001, 310003, etc.
+  name        String // ZAHID ASSOCIATES, NIZAM WATCH HOUSE, etc.
+  address     String? // Full address like "OFFICE NO 4, 109-WEST, SARDAR BEGUM PLAZA"
+  contactNo   String? // Contact No from your data
+  email       String?
+  balance     Decimal @default(0) // Current outstanding balance
+  
+  // Relations
+  salesOrders      ERPSalesOrder[]
+  deliveryChallans DeliveryChallan[]
+  salesInvoices    ERPSalesInvoice[]
+  
+  // Audit
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String?
+  updatedBy   String?
+  
   @@map("customers")
 }

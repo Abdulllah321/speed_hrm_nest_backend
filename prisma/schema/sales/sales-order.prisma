@@ -1,0 +1,61 @@
+// ERP Sales Order - No stock effect, only order record
+model ERPSalesOrder {
+  id          String @id @default(cuid())
+  orderNo     String @unique // SO-001, SO-002, etc.
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  warehouseId String?
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+  
+  // Order Details
+  orderDate   DateTime @default(now())
+  status      ERPSalesOrderStatus @default(DRAFT)
+  
+  // Totals
+  subtotal    Decimal
+  taxRate     Decimal @default(0)
+  taxAmount   Decimal @default(0)
+  discount    Decimal @default(0)
+  grandTotal  Decimal
+  
+  // Relations
+  items           ERPSalesOrderItem[]
+  deliveryChallans DeliveryChallan[]
+  invoices        ERPSalesInvoice[]
+  
+  // Audit
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+  
+  @@map("erp_sales_orders")
+}
+
+// ERP Sales Order Items - Cost price + Editable sale price
+model ERPSalesOrderItem {
+  id           String @id @default(cuid())
+  salesOrderId String
+  salesOrder   ERPSalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  itemId       String
+  item         Item @relation(fields: [itemId], references: [id])
+  
+  // Pricing Logic
+  costPrice    Decimal // System shows actual cost (from inventory)
+  salePrice    Decimal // User can edit this price
+  quantity     Int
+  discount     Decimal @default(0)
+  total        Decimal // (salePrice * quantity) - discount
+  
+  // Audit
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@map("erp_sales_order_items")
+}
+
+enum ERPSalesOrderStatus {
+  DRAFT      // No stock effect
+  CONFIRMED  // Optional: Stock reserve
+  CANCELLED  // Order cancelled
+}

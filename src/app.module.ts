@@ -110,6 +110,7 @@ import { PosConfigModule } from './pos-config/pos-config.module';
 import { PurchaseReturnModule } from './purchase/purchase-return/purchase-return.module';
 import { PosSessionModule } from './pos-session/pos-session.module';
 import { DebitNoteModule } from './purchase/debit-note/debit-note.module';
+import { SalesModule } from './sales/sales.module';
 
 @Module({
   imports: [
@@ -244,6 +245,7 @@ import { DebitNoteModule } from './purchase/debit-note/debit-note.module';
     PosConfigModule,
     PosSessionModule,
     DebitNoteModule,
+    SalesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
