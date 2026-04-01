@@ -45,7 +45,7 @@ COPY --from=builder /app/docker-entrypoint.sh ./
 
 # Other necessary# Other files
 # Copy individual files
-COPY check-seed.ts countries.json city.json backup.sql ./
+COPY check-seed.ts ./
 
 # Copy scripts folder
 COPY scripts/ ./scripts/
