@@ -16,7 +16,6 @@ export class HsCodeService {
                 salesTax: dto.salesTax ?? 0,
                 additionalSalesTax: dto.additionalSalesTax ?? 0,
                 incomeTax: dto.incomeTax ?? 0,
-                exciseCharges: dto.exciseCharges ?? 0,
                 status: dto.status ?? 'active',
             },
         });
@@ -50,7 +49,6 @@ export class HsCodeService {
                 salesTax: dto.salesTax ?? undefined,
                 additionalSalesTax: dto.additionalSalesTax ?? undefined,
                 incomeTax: dto.incomeTax ?? undefined,
-                exciseCharges: dto.exciseCharges ?? undefined,
                 status: dto.status ?? undefined,
             },
         });
