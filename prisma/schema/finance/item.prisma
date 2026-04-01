@@ -63,4 +63,9 @@ model Item {
   purchaseReturnItems      PurchaseReturnItem[]
   vendorQuotationItems     VendorQuotationItem[]
   purchaseInvoiceItems     PurchaseInvoiceItem[]
+  
+  // Sales Relations
+  erpSalesOrderItems       ERPSalesOrderItem[]
+  deliveryChallanItems     DeliveryChallanItem[]
+  erpSalesInvoiceItems     ERPSalesInvoiceItem[]
 }
