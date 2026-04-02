@@ -181,75 +181,94 @@ export class UploadProcessor {
                 }
             } else {
                 // Stage 1: Validation Mode
-                // Pre-warm HS code cache — eliminates all DB queries in the hot path
+                // Emit heartbeats during warm-up so SSE connection stays alive
                 this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Loading master data...' } });
-                await tenantMasterData.warmHsCodeCache();
+                
+                // Heartbeat interval during potentially long warm-up phase
+                const warmupHeartbeat = setInterval(() => {
+                    this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Loading master data...', progress: 1 } });
+                }, 15000);
+                
+                try {
+                    await tenantMasterData.warmHsCodeCache();
+                } finally {
+                    clearInterval(warmupHeartbeat);
+                }
 
                 this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Streaming validation scan...' } });
 
                 let validationBatch: ParsedRecord[] = [];
-                const allValidationErrors: any[] = [];
-                const invalidRowSet = new Set<number>(); // tracks unique invalid rows
+                const previewErrors: any[] = [];   // first 100 — stored in DB for UI preview
+                const invalidRowSet = new Set<number>();
+                const MAX_PREVIEW_ERRORS = 100;
+
+                // Write ALL errors to a JSONL file on disk — no DB size limit, streamable for report
+                const errorReportDir = path.join(process.cwd(), 'uploads', 'bulk');
+                const errorReportPath = path.join(errorReportDir, `errors-${uploadId}.jsonl`);
+                // Use a tmp path — rename atomically when complete so prepareErrorReport
+                // never sees a partial file
+                const errorReportTmp = errorReportPath + '.tmp';
+                const errorFileStream = fs.createWriteStream(errorReportTmp, { flags: 'w' });
+                let totalErrorsWritten = 0;
+
+                // Promisified write — respects backpressure so no lines are dropped
+                const writeError = (e: any): Promise<void> => {
+                    totalErrorsWritten++;
+                    if (previewErrors.length < MAX_PREVIEW_ERRORS) previewErrors.push(e);
+                    invalidRowSet.add(e.row);
+                    const line = JSON.stringify(e) + '\n';
+                    const ok = errorFileStream.write(line);
+                    if (!ok) {
+                        // Wait for drain before continuing — prevents buffer overflow
+                        return new Promise(resolve => errorFileStream.once('drain', resolve));
+                    }
+                    return Promise.resolve();
+                };
 
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
 
-                    // Duplicate ItemID check — sync Map lookup, free
+                    const itemId = record.data.itemId ? String(record.data.itemId).trim() : undefined;
+                    const barCode = record.data.barCode ? String(record.data.barCode).trim() : undefined;
+
                     if (record.data.itemId) {
                         const normalized = String(record.data.itemId).trim().toLowerCase();
                         if (itemIdSet.has(normalized)) {
-                            allValidationErrors.push({
-                                row: record.row,
-                                field: 'ItemID',
-                                value: record.data.itemId,
-                                reason: 'Duplicate ItemID found within file.'
-                            });
-                            invalidRowSet.add(record.row);
+                            await writeError({ row: record.row, field: 'ItemID', value: record.data.itemId, reason: 'Duplicate ItemID found within file.', itemId, barCode });
                         } else {
                             itemIdSet.add(normalized);
                         }
                     }
 
-                    // HS Code check — sync cache hit after warmHsCodeCache(), no DB query
                     if (record.data.hsCode) {
                         const hsCode = String(record.data.hsCode).trim();
                         if (hsCode !== '') {
                             const hsCodeId = await tenantMasterData.findHsCode(hsCode);
                             if (!hsCodeId) {
-                                allValidationErrors.push({
-                                    row: record.row,
-                                    field: 'HSCode',
-                                    value: record.data.hsCode,
-                                    reason: `HS Code '${record.data.hsCode}' not found in master data. Please create it first.`
-                                });
-                                invalidRowSet.add(record.row);
+                                await writeError({ row: record.row, field: 'HSCode', value: record.data.hsCode, reason: `HS Code '${record.data.hsCode}' not found in master data.`, itemId, barCode });
                             }
                         }
                     }
 
                     validationBatch.push(record);
 
-                    // Larger batch size for validation — lighter work per record than import
                     if (validationBatch.length >= 5000) {
                         const batchErrors = this.validator.validateRecords(validationBatch);
-                        for (const e of batchErrors) invalidRowSet.add(e.row);
-                        allValidationErrors.push(...batchErrors);
+                        for (const e of batchErrors) await writeError(e);
                         validationBatch = [];
 
-                        // Yield to event loop
                         await new Promise(resolve => setImmediate(resolve));
 
-                        // Emit progress every 500ms so the UI feels alive
                         const now = Date.now();
                         if (now - lastEmitTime > 500) {
                             lastEmitTime = now;
-                            await job.progress(10);
                             this.eventsService.emit({
                                 uploadId,
                                 type: 'progress',
                                 data: {
                                     progress: 10,
                                     processedRecords: totalRecordsCount,
+                                    failedRecords: invalidRowSet.size,
                                     status: 'validating',
                                     message: `Validating: ${totalRecordsCount.toLocaleString()} rows scanned...`
                                 }
@@ -258,19 +277,23 @@ export class UploadProcessor {
                     }
                 });
 
-                // Final partial batch
                 if (validationBatch.length > 0) {
                     const batchErrors = this.validator.validateRecords(validationBatch);
-                    for (const e of batchErrors) invalidRowSet.add(e.row);
-                    allValidationErrors.push(...batchErrors);
+                    for (const e of batchErrors) await writeError(e);
                 }
+
+                // Close stream and wait for flush, then atomic rename
+                await new Promise<void>((resolve, reject) =>
+                    errorFileStream.end((err: any) => err ? reject(err) : resolve())
+                );
+                fs.renameSync(errorReportTmp, errorReportPath);
 
                 itemIdSet.clear();
 
                 const totalInvalidRows = invalidRowSet.size;
                 const totalValidRows = totalRecordsCount - totalInvalidRows;
 
-                // Update DB with validation results
+                // Store only preview errors in DB — full report is on disk at errorReportPath
                 await prisma.bulkUpload.update({
                     where: { id: uploadId },
                     data: {
@@ -278,8 +301,8 @@ export class UploadProcessor {
                         totalRecords: totalRecordsCount,
                         failedRecords: totalInvalidRows,
                         successRecords: totalValidRows,
-                        errors: allValidationErrors as any,
-                        message: `Validation complete: ${totalValidRows} valid, ${totalInvalidRows} invalid rows.`,
+                        errors: previewErrors as any,
+                        message: `Validation complete: ${totalValidRows} valid, ${totalInvalidRows} invalid rows.${totalInvalidRows > MAX_PREVIEW_ERRORS ? ` Showing first ${MAX_PREVIEW_ERRORS} of ${totalInvalidRows} errors — download full report for all.` : ''}`,
                         completedAt: new Date(),
                     },
                 });
@@ -302,7 +325,8 @@ export class UploadProcessor {
                         totalRecords: totalRecordsCount,
                         successRecords: totalValidRows,
                         failedRecords: totalInvalidRows,
-                        errors: allValidationErrors,
+                        // Don't send errors over SSE — client fetches them via status endpoint
+                        // to avoid sending potentially MBs of JSON through the event stream
                         progress: 100
                     }
                 });
