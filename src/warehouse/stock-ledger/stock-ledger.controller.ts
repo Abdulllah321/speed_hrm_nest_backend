@@ -16,11 +16,17 @@ export class StockLedgerController {
     @Query('warehouseId') warehouseId?: string,
     @Query('movementType') movementType?: MovementType,
     @Query('itemId') itemId?: string,
+    @Query('referenceType') referenceType?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.stockLedgerService.findAll({
       warehouseId,
       movementType,
       itemId,
+      referenceType,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 }
