@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGrnDto } from './dto/grn.dto';
@@ -10,6 +11,8 @@ import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 
 @Injectable()
 export class GrnService {
+  private readonly logger = new Logger(GrnService.name);
+
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
@@ -71,6 +74,9 @@ export class GrnService {
   }
 
   async create(dto: CreateGrnDto) {
+    this.logger.log(`Starting GRN creation for PO: ${dto.purchaseOrderId}`);
+    this.logger.debug(`GRN DTO: ${JSON.stringify(dto)}`);
+
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id: dto.purchaseOrderId },
       include: {
@@ -81,25 +87,32 @@ export class GrnService {
     });
 
     if (!po) {
+      this.logger.error(`Purchase Order not found: ${dto.purchaseOrderId}`);
       throw new NotFoundException('Purchase Order not found');
     }
+
+    this.logger.log(`Found PO: ${po.poNumber}, Status: ${po.status}`);
 
     if (
       po.status === 'CLOSED' ||
       po.status === 'CANCELLED' ||
       po.status === 'DRAFT'
     ) {
+      this.logger.error(`Cannot receive goods for PO in ${po.status} status`);
       throw new BadRequestException(
         `Cannot receive goods for PO in ${po.status} status`,
       );
     }
 
     const grnNumber = `GRN-${Date.now()}`;
+    this.logger.log(`Generated GRN Number: ${grnNumber}`);
 
     // Determine flow type and goods type
     const isRfqVqFlow = Boolean(po.vendorQuotationId || po.rfqId);
     const isPrDirectFlow = Boolean(po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId);
     const isDirectPoFlow = Boolean(!po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId);
+
+    this.logger.log(`Flow Analysis - RFQ/VQ: ${isRfqVqFlow}, PR Direct: ${isPrDirectFlow}, Direct PO: ${isDirectPoFlow}`);
 
     let shouldUpdateInventory = false;
     let grnStatus = 'RECEIVED_UNVALUED';
@@ -108,10 +121,13 @@ export class GrnService {
       // Direct PO flow: Always goes through Landed Cost (current logic)
       shouldUpdateInventory = false;
       grnStatus = 'RECEIVED_UNVALUED';
+      this.logger.log(`Direct PO Flow - shouldUpdateInventory: ${shouldUpdateInventory}, status: ${grnStatus}`);
     } else if (isRfqVqFlow || isPrDirectFlow) {
       // PR-linked flows: Check PR goods type
       const prGoodsType = po.purchaseRequisition?.goodsType;
       const isConsumable = prGoodsType === 'CONSUMABLE' || !prGoodsType; // Default to consumable
+
+      this.logger.log(`PR Goods Type: ${prGoodsType}, isConsumable: ${isConsumable}`);
 
       if (isConsumable) {
         // CONSUMABLE: Update inventory at GRN
@@ -122,153 +138,188 @@ export class GrnService {
         shouldUpdateInventory = false;
         grnStatus = 'RECEIVED_UNVALUED';
       }
+      this.logger.log(`PR Flow - shouldUpdateInventory: ${shouldUpdateInventory}, status: ${grnStatus}`);
     }
 
+    this.logger.log(`Starting database transaction for GRN creation`);
+
     return this.prisma.$transaction(async (tx) => {
-      // 1. Create GRN
-      const grn = await tx.goodsReceiptNote.create({
-        data: {
-          grnNumber,
-          purchaseOrderId: dto.purchaseOrderId,
-          warehouseId: dto.warehouseId,
-          status: grnStatus,
-          notes: dto.notes,
-          orderType: po.orderType || null,
-          goodsType: po.goodsType || po.purchaseRequisition?.goodsType || null,
-          items: {
-            create: dto.items.map((item) => ({
-              itemId: item.itemId,
-              description: item.description,
-              receivedQty: new Prisma.Decimal(item.receivedQty),
-            })),
-          },
-        },
-        include: { items: true },
-      });
-
-      // 2. Process each item
-      for (const grnItem of dto.items) {
-        const poItem = po.items.find((i) => i.itemId === grnItem.itemId);
-        if (!poItem) {
-          throw new BadRequestException(
-            `Item ${grnItem.itemId} not found in PO`,
-          );
-        }
-
-        // Resolve internal Item UUID
-        const itemRecord = await tx.item.findUnique({
-          where: { id: grnItem.itemId },
-          select: { id: true },
-        });
-
-        if (!itemRecord) {
-          throw new BadRequestException(
-            `Item with ID ${grnItem.itemId} not found in database master`,
-          );
-        }
-
-        const remainingQty = new Prisma.Decimal(poItem.quantity).minus(
-          new Prisma.Decimal(poItem.receivedQty),
-        );
-        if (new Prisma.Decimal(grnItem.receivedQty).gt(remainingQty)) {
-          throw new BadRequestException(
-            `Received quantity exceeds remaining quantity for item ${grnItem.itemId}. Remaining: ${remainingQty}`,
-          );
-        }
-
-        // 3. Update PO Item receivedQty
-        await tx.purchaseOrderItem.update({
-          where: { id: poItem.id },
+      try {
+        this.logger.log(`Creating GRN record in database`);
+        
+        // 1. Create GRN
+        const grn = await tx.goodsReceiptNote.create({
           data: {
-            receivedQty: { increment: new Prisma.Decimal(grnItem.receivedQty) },
+            grnNumber,
+            purchaseOrderId: dto.purchaseOrderId,
+            warehouseId: dto.warehouseId,
+            status: grnStatus,
+            notes: dto.notes,
+            orderType: po.orderType || null,
+            goodsType: po.goodsType || po.purchaseRequisition?.goodsType || null,
+            items: {
+              create: dto.items.map((item) => ({
+                itemId: item.itemId,
+                description: item.description,
+                receivedQty: new Prisma.Decimal(item.receivedQty),
+              })),
+            },
           },
+          include: { items: true },
         });
 
-        // 4. Create stock ledger entry only if shouldUpdateInventory is true
-        if (shouldUpdateInventory) {
-          await this.stockLedgerService.createEntry(
-            {
-              itemId: itemRecord.id,
-              warehouseId: dto.warehouseId,
-              qty: new Prisma.Decimal(grnItem.receivedQty),
-              movementType: MovementType.INBOUND,
-              referenceType: 'GRN',
-              referenceId: grn.id,
-              rate: poItem.unitPrice ? new Prisma.Decimal(poItem.unitPrice) : undefined,
-            },
-            tx,
-          );
+        this.logger.log(`GRN created successfully with ID: ${grn.id}`);
 
-          // 5. Update InventoryItem (warehouse stock) only if shouldUpdateInventory is true
-          const existingStock = await tx.inventoryItem.findFirst({
-            where: {
-              warehouseId: dto.warehouseId,
-              locationId: null, // Warehouse stock
-              itemId: itemRecord.id,
-              status: 'AVAILABLE',
+        // 2. Process each item
+        this.logger.log(`Processing ${dto.items.length} items`);
+        for (const grnItem of dto.items) {
+          this.logger.debug(`Processing item: ${grnItem.itemId}, qty: ${grnItem.receivedQty}`);
+          
+          const poItem = po.items.find((i) => i.itemId === grnItem.itemId);
+          if (!poItem) {
+            this.logger.error(`Item ${grnItem.itemId} not found in PO`);
+            throw new BadRequestException(
+              `Item ${grnItem.itemId} not found in PO`,
+            );
+          }
+
+          // Resolve internal Item UUID
+          const itemRecord = await tx.item.findUnique({
+            where: { id: grnItem.itemId },
+            select: { id: true },
+          });
+
+          if (!itemRecord) {
+            this.logger.error(`Item with ID ${grnItem.itemId} not found in database master`);
+            throw new BadRequestException(
+              `Item with ID ${grnItem.itemId} not found in database master`,
+            );
+          }
+
+          const remainingQty = new Prisma.Decimal(poItem.quantity).minus(
+            new Prisma.Decimal(poItem.receivedQty),
+          );
+          
+          this.logger.debug(`Item ${grnItem.itemId} - Ordered: ${poItem.quantity}, Received: ${poItem.receivedQty}, Remaining: ${remainingQty}, Current GRN: ${grnItem.receivedQty}`);
+          
+          if (new Prisma.Decimal(grnItem.receivedQty).gt(remainingQty)) {
+            this.logger.error(`Received quantity exceeds remaining quantity for item ${grnItem.itemId}. Remaining: ${remainingQty}`);
+            throw new BadRequestException(
+              `Received quantity exceeds remaining quantity for item ${grnItem.itemId}. Remaining: ${remainingQty}`,
+            );
+          }
+
+          // 3. Update PO Item receivedQty
+          this.logger.debug(`Updating PO item receivedQty for item: ${grnItem.itemId}`);
+          await tx.purchaseOrderItem.update({
+            where: { id: poItem.id },
+            data: {
+              receivedQty: { increment: new Prisma.Decimal(grnItem.receivedQty) },
             },
           });
 
-          if (existingStock) {
-            // Update existing warehouse stock
-            await tx.inventoryItem.update({
-              where: { id: existingStock.id },
-              data: {
-                quantity: { increment: new Prisma.Decimal(grnItem.receivedQty) }
-              },
-            });
-          } else {
-            // Create new warehouse stock entry
-            await tx.inventoryItem.create({
-              data: {
-                warehouseId: dto.warehouseId,
-                locationId: null, // NULL = warehouse stock
+          // 4. Create stock ledger entry only if shouldUpdateInventory is true
+          if (shouldUpdateInventory) {
+            this.logger.debug(`Creating stock ledger entry for item: ${grnItem.itemId}`);
+            await this.stockLedgerService.createEntry(
+              {
                 itemId: itemRecord.id,
-                quantity: new Prisma.Decimal(grnItem.receivedQty),
+                warehouseId: dto.warehouseId,
+                qty: new Prisma.Decimal(grnItem.receivedQty),
+                movementType: MovementType.INBOUND,
+                referenceType: 'GRN',
+                referenceId: grn.id,
+                rate: poItem.unitPrice ? new Prisma.Decimal(poItem.unitPrice) : undefined,
+              },
+              tx,
+            );
+
+            // 5. Update InventoryItem (warehouse stock) only if shouldUpdateInventory is true
+            this.logger.debug(`Updating inventory for item: ${grnItem.itemId}`);
+            const existingStock = await tx.inventoryItem.findFirst({
+              where: {
+                warehouseId: dto.warehouseId,
+                locationId: null, // Warehouse stock
+                itemId: itemRecord.id,
                 status: 'AVAILABLE',
               },
             });
+
+            if (existingStock) {
+              // Update existing warehouse stock
+              this.logger.debug(`Updating existing stock for item: ${grnItem.itemId}`);
+              await tx.inventoryItem.update({
+                where: { id: existingStock.id },
+                data: {
+                  quantity: { increment: new Prisma.Decimal(grnItem.receivedQty) }
+                },
+              });
+            } else {
+              // Create new warehouse stock entry
+              this.logger.debug(`Creating new stock entry for item: ${grnItem.itemId}`);
+              await tx.inventoryItem.create({
+                data: {
+                  warehouseId: dto.warehouseId,
+                  locationId: null, // NULL = warehouse stock
+                  itemId: itemRecord.id,
+                  quantity: new Prisma.Decimal(grnItem.receivedQty),
+                  status: 'AVAILABLE',
+                },
+              });
+            }
+          } else {
+            this.logger.debug(`Skipping inventory update for item: ${grnItem.itemId} (shouldUpdateInventory: false)`);
+          }
+          // For FRESH goods or Direct PO, inventory will be updated later via Landed Cost
+        }
+
+        // 6. Update PO Status
+        this.logger.log(`Updating PO status`);
+        const updatedPo = await tx.purchaseOrder.findUnique({
+          where: { id: dto.purchaseOrderId },
+          include: { items: true },
+        });
+
+        if (!updatedPo) {
+          this.logger.error('Failed to update Purchase Order status');
+          throw new BadRequestException('Failed to update Purchase Order status');
+        }
+
+        const allReceived = updatedPo.items.every((item) =>
+          new Prisma.Decimal(item.receivedQty).gte(
+            new Prisma.Decimal(item.quantity),
+          ),
+        );
+
+        this.logger.log(`All items received: ${allReceived}`);
+
+        // Determine PO status based on flow and goods type
+        let poStatus = 'PARTIALLY_RECEIVED';
+        if (allReceived) {
+          if (shouldUpdateInventory) {
+            // CONSUMABLE goods or flows that update inventory immediately
+            poStatus = 'CLOSED';
+          } else {
+            // FRESH goods or Direct PO - wait for Landed Cost
+            poStatus = 'RECEIVED';
           }
         }
-        // For FRESH goods or Direct PO, inventory will be updated later via Landed Cost
+
+        this.logger.log(`Updating PO status to: ${poStatus}`);
+        await tx.purchaseOrder.update({
+          where: { id: dto.purchaseOrderId },
+          data: {
+            status: poStatus,
+          },
+        });
+
+        this.logger.log(`GRN creation completed successfully. GRN ID: ${grn.id}, Number: ${grn.grnNumber}`);
+        return grn;
+        
+      } catch (error) {
+        this.logger.error(`Error in GRN transaction: ${error.message}`, error.stack);
+        throw error;
       }
-
-      // 6. Update PO Status
-      const updatedPo = await tx.purchaseOrder.findUnique({
-        where: { id: dto.purchaseOrderId },
-        include: { items: true },
-      });
-
-      if (!updatedPo) {
-        throw new BadRequestException('Failed to update Purchase Order status');
-      }
-
-      const allReceived = updatedPo.items.every((item) =>
-        new Prisma.Decimal(item.receivedQty).gte(
-          new Prisma.Decimal(item.quantity),
-        ),
-      );
-
-      // Determine PO status based on flow and goods type
-      let poStatus = 'PARTIALLY_RECEIVED';
-      if (allReceived) {
-        if (shouldUpdateInventory) {
-          // CONSUMABLE goods or flows that update inventory immediately
-          poStatus = 'CLOSED';
-        } else {
-          // FRESH goods or Direct PO - wait for Landed Cost
-          poStatus = 'RECEIVED';
-        }
-      }
-
-      await tx.purchaseOrder.update({
-        where: { id: dto.purchaseOrderId },
-        data: {
-          status: poStatus,
-        },
-      });
-
-      return grn;
     });
   }
 }

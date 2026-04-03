@@ -27,7 +27,7 @@ model ERPSalesInvoice {
   
   // Relations
   items             ERPSalesInvoiceItem[]
-  stockLedgers      StockLedger[]
+  // stockLedgers      StockLedger[]  // Commented out - using referenceId instead of foreign key
   
   // Audit
   createdAt         DateTime @default(now())
