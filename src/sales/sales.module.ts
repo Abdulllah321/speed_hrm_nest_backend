@@ -5,6 +5,8 @@ import { DeliveryChallanController } from './controllers/delivery-challan.contro
 import { SalesOrderService } from './services/sales-order.service';
 import { SalesInvoiceService } from './services/sales-invoice.service';
 import { DeliveryChallanService } from './services/delivery-challan.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
 
 @Module({
   controllers: [
@@ -16,6 +18,8 @@ import { DeliveryChallanService } from './services/delivery-challan.service';
     SalesOrderService,
     SalesInvoiceService,
     DeliveryChallanService,
+    PrismaService,
+    StockLedgerService,
   ],
   exports: [
     SalesOrderService,
