@@ -12,10 +12,8 @@ model StockLedger {
   unitCost      Decimal?     @map("unit_cost") @db.Decimal(15, 4)
   item          Item         @relation(fields: [itemId], references: [id])
   warehouse     Warehouse    @relation(fields: [warehouseId], references: [id])
-  
-  // Sales Relations
   salesInvoice  ERPSalesInvoice? @relation(fields: [referenceId], references: [id])
-
+  
   @@index([itemId])
   @@index([warehouseId])
   @@index([referenceId])
