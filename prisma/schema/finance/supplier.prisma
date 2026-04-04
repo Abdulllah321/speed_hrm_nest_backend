@@ -46,5 +46,5 @@ enum SupplierNature {
 
 enum SupplierType {
   LOCAL
-  INTERNATIONAL
+  IMPORT
 }
