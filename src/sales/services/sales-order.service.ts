@@ -120,13 +120,23 @@ export class SalesOrderService {
         discount: createSalesOrderDto.discount || 0,
         grandTotal,
         items: {
-          create: processedItems.map(item => ({
-            itemId: item.itemId,
-            quantity: item.quantity,
-            costPrice: 0, // Will be fetched from item master
-            salePrice: item.salePrice,
-            discount: item.discount || 0,
-            total: item.total,
+          create: await Promise.all(processedItems.map(async (item) => {
+            // Fetch item cost from item master
+            const itemRecord = await this.prisma.item.findUnique({
+              where: { id: item.itemId },
+              select: { unitCost: true }
+            });
+            
+            console.log(`Item ${item.itemId} cost:`, itemRecord?.unitCost);
+            
+            return {
+              itemId: item.itemId,
+              quantity: item.quantity,
+              costPrice: itemRecord?.unitCost || 0,
+              salePrice: item.salePrice,
+              discount: item.discount || 0,
+              total: item.total,
+            };
           })),
         },
       },
@@ -195,16 +205,28 @@ export class SalesOrderService {
 
     // Create new items if provided
     if (updateSalesOrderDto.items) {
+      const itemsWithCost = await Promise.all(
+        updateSalesOrderDto.items.map(async (item) => {
+          // Fetch item cost from item master
+          const itemRecord = await this.prisma.item.findUnique({
+            where: { id: item.itemId },
+            select: { unitCost: true }
+          });
+          
+          return {
+            salesOrderId: id,
+            itemId: item.itemId,
+            quantity: item.quantity,
+            costPrice: itemRecord?.unitCost || 0,
+            salePrice: item.salePrice,
+            discount: item.discount || 0,
+            total: (item.salePrice * item.quantity) - (item.discount || 0),
+          };
+        })
+      );
+
       await this.prisma.eRPSalesOrderItem.createMany({
-        data: updateSalesOrderDto.items.map(item => ({
-          salesOrderId: id,
-          itemId: item.itemId,
-          quantity: item.quantity,
-          costPrice: 0,
-          salePrice: item.salePrice,
-          discount: item.discount || 0,
-          total: (item.salePrice * item.quantity) - (item.discount || 0),
-        })),
+        data: itemsWithCost,
       });
     }
 

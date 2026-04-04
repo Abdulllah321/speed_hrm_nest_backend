@@ -50,7 +50,7 @@ export class SalesInvoiceService {
             item: true,
           },
         },
-        stockLedgers: true,
+        // stockLedgers: true, // Removed - using referenceId approach instead
       },
     });
 
@@ -110,31 +110,8 @@ export class SalesInvoiceService {
         },
       });
 
-      // Create stock ledger entries for each item
-      for (const item of updatedInvoice.items) {
-        await tx.stockLedger.create({
-          data: {
-            itemId: item.itemId,
-            warehouseId: updatedInvoice.warehouseId!,
-            qty: item.quantity,
-            referenceType: 'SALES_INVOICE',
-            referenceId: updatedInvoice.id,
-            movementType: 'OUTBOUND',
-            rate: item.salePrice,
-            unitCost: item.costPrice,
-          },
-        });
-
-        // Update item stock - this should be handled by inventory service
-        // await tx.item.update({
-        //   where: { id: item.itemId },
-        //   data: {
-        //     currentStock: {
-        //       decrement: item.quantity,
-        //     },
-        //   },
-        // });
-      }
+      // NOTE: Stock ledger entries are now created at delivery challan stage
+      // No need to create OUTBOUND entries here as inventory is already out
 
       // Create journal entry for accounting
       const journalEntryNo = `JE-${Date.now()}`;
