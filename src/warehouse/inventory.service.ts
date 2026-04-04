@@ -104,6 +104,7 @@ export class InventoryService {
         sku: true,
         description: true,
         unitPrice: true,
+        unitCost: true, // Added unitCost field
         imageUrl: true,
         brand: { select: { id: true, name: true } },
         category: { select: { id: true, name: true } },
