@@ -693,10 +693,12 @@ export class AuthController {
   @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Logout user' })
+  @ApiOperation({ summary: 'Logout current user — preserves posTerminalToken so the device stays registered' })
   async logout(@Req() req: any, @Res() res: any) {
     const clearCookieOptions = this.getCookieOptions(req);
 
+    // Clear user session cookies only — posTerminalToken intentionally preserved
+    // so the physical terminal device stays registered after a cashier switch.
     res.clearCookie('accessToken', clearCookieOptions);
     res.clearCookie('refreshToken', clearCookieOptions);
     res.clearCookie('userRole', clearCookieOptions);
@@ -705,20 +707,42 @@ export class AuthController {
     res.clearCookie('sessionId', clearCookieOptions);
     res.clearCookie('terminal', clearCookieOptions);
     res.clearCookie('terminalId', clearCookieOptions);
-
-    // Clear Tenant and Company context
     res.clearCookie('currentCompany', clearCookieOptions);
     res.clearCookie('companyCode', clearCookieOptions);
     res.clearCookie('companyId', clearCookieOptions);
-    res.clearCookie('posTerminalToken', clearCookieOptions);
     res.clearCookie('bid', clearCookieOptions);
     res.clearCookie('tenantCode', clearCookieOptions);
     res.clearCookie('tenantId', clearCookieOptions);
 
-    return res.send({
-      status: true,
-      message: 'Logged out successfully',
-    });
+    return res.send({ status: true, message: 'Logged out successfully' });
+  }
+
+  @Post('pos/logout-terminal')
+  @OptionalJwtAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Fully deregister this POS terminal device — clears posTerminalToken' })
+  async logoutTerminal(@Req() req: any, @Res() res: any) {
+    const clearCookieOptions = this.getCookieOptions(req);
+
+    // Clear everything including the terminal device token
+    res.clearCookie('accessToken', clearCookieOptions);
+    res.clearCookie('refreshToken', clearCookieOptions);
+    res.clearCookie('userRole', clearCookieOptions);
+    res.clearCookie('user', clearCookieOptions);
+    res.clearCookie('posSessionId', clearCookieOptions);
+    res.clearCookie('sessionId', clearCookieOptions);
+    res.clearCookie('terminal', clearCookieOptions);
+    res.clearCookie('terminalId', clearCookieOptions);
+    res.clearCookie('currentCompany', clearCookieOptions);
+    res.clearCookie('companyCode', clearCookieOptions);
+    res.clearCookie('companyId', clearCookieOptions);
+    res.clearCookie('posTerminalToken', clearCookieOptions); // ← deregisters the device
+    res.clearCookie('bid', clearCookieOptions);
+    res.clearCookie('tenantCode', clearCookieOptions);
+    res.clearCookie('tenantId', clearCookieOptions);
+
+    return res.send({ status: true, message: 'Terminal deregistered successfully' });
   }
 
   @Post('change-password')
