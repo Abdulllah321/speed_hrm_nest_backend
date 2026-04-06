@@ -213,6 +213,77 @@ export class PosConfigService {
     }
 
     // ══════════════════════════════════════════════════════════════
+    //  VOUCHERS (POS-issued discount vouchers)
+    //  Stored as CouponCode with discountType = 'voucher'
+    //  No location restriction — redeemable at any POS terminal
+    // ══════════════════════════════════════════════════════════════
+
+    async listVouchers() {
+        try {
+            const vouchers = await this.prisma.couponCode.findMany({
+                where: { discountType: 'voucher' },
+                orderBy: { createdAt: 'desc' },
+            });
+            return { status: true, data: vouchers };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    async createVoucher(data: {
+        amount: number;
+        description?: string;
+        expiresAt?: string;
+        issuedBy?: string;
+    }) {
+        try {
+            // Auto-generate a unique voucher code: VCH-XXXXXX
+            const code = `VCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+            const voucher = await this.prisma.couponCode.create({
+                data: {
+                    code,
+                    description: data.description ?? `Voucher issued by ${data.issuedBy ?? 'POS'}`,
+                    discountType: 'voucher',
+                    discountValue: data.amount,
+                    maxUses: 1,           // single-use
+                    isActive: true,
+                    expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+                    // No locations → valid at all POS terminals
+                },
+            });
+            return { status: true, data: voucher, message: `Voucher ${code} created` };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    async deactivateVoucher(id: string) {
+        try {
+            const voucher = await this.prisma.couponCode.update({
+                where: { id },
+                data: { isActive: false },
+            });
+            return { status: true, data: voucher, message: 'Voucher deactivated' };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    async deleteVoucher(id: string) {
+        try {
+            // Only allow deleting unused vouchers
+            const voucher = await this.prisma.couponCode.findUnique({ where: { id } });
+            if (!voucher) return { status: false, message: 'Voucher not found' };
+            if (voucher.usedCount > 0) return { status: false, message: 'Cannot delete a voucher that has been redeemed' };
+            await this.prisma.couponCode.delete({ where: { id } });
+            return { status: true, message: 'Voucher deleted' };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
     //  ALLIANCE DISCOUNTS
     // ══════════════════════════════════════════════════════════════
 
