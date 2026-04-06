@@ -30,6 +30,7 @@ model SalesOrder {
   alliance              AllianceDiscount? @relation(fields: [allianceId], references: [id])
   coupon                CouponCode?       @relation(fields: [couponId], references: [id])
   promo                 PromoCampaign?    @relation(fields: [promoId], references: [id])
+  claims                PosClaim[]
 
   @@index([posId])
   @@index([terminalId])
