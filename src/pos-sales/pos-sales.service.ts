@@ -238,6 +238,7 @@ export class PosSalesService implements OnModuleInit {
                         qty: -item.quantity, // Negative for OUTBOUND
                         movementType: MovementType.OUTBOUND,
                         referenceType: 'POS_SALE',
+                        // unitCost: item.,
                         referenceId: order.id,
                     }, tx);
 
