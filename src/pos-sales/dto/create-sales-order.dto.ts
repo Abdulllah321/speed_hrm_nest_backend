@@ -206,6 +206,11 @@ export class CreateSalesOrderDto {
     @Min(0)
     changeAmount?: number;
 
+    @ApiPropertyOptional({ description: 'If resuming from a hold order, pass the hold order ID to skip stock deduction (already done at hold time)' })
+    @IsOptional()
+    @IsString()
+    holdOrderId?: string;
+
     @ApiProperty({ type: [SalesOrderItemDto] })
     @IsArray()
     @ValidateNested({ each: true })
