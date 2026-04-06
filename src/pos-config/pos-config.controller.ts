@@ -131,8 +131,7 @@ export class PosConfigController {
     }
 
     @Post('validate-coupon')
-    @ApiOperation({ summary: 'Validate a coupon code for a location' })
-    async validateCoupon(
+    @ApiOperation({ summary: 'Validate a coupon code for a location' })    async validateCoupon(
         @Req() req: any,
         @Body() body: { code: string; locationId?: string; orderSubtotal: number },
     ) {
@@ -146,5 +145,46 @@ export class PosConfigController {
             } catch { /* fall back to body */ }
         }
         return this.service.validateCoupon(body.code, locationId, body.orderSubtotal);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  VOUCHERS
+    // ══════════════════════════════════════════════════════════════
+
+    @Get('vouchers')
+    @ApiOperation({ summary: 'List all POS-issued vouchers' })
+    async listVouchers() {
+        return this.service.listVouchers();
+    }
+
+    @Post('vouchers')
+    @ApiOperation({ summary: 'Issue a new voucher from POS' })
+    async createVoucher(
+        @Req() req: any,
+        @Body() body: { amount: number; description?: string; expiresAt?: string },
+    ) {
+        // Attach issuer context from terminal token if available
+        let issuedBy: string | undefined;
+        const posTerminalToken = req.cookies?.['posTerminalToken'];
+        if (posTerminalToken) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded: any = jwt.decode(posTerminalToken);
+                issuedBy = decoded?.posId ?? decoded?.terminalId;
+            } catch { /* ignore */ }
+        }
+        return this.service.createVoucher({ ...body, issuedBy });
+    }
+
+    @Put('vouchers/:id/deactivate')
+    @ApiOperation({ summary: 'Deactivate a voucher' })
+    async deactivateVoucher(@Param('id') id: string) {
+        return this.service.deactivateVoucher(id);
+    }
+
+    @Delete('vouchers/:id')
+    @ApiOperation({ summary: 'Delete an unused voucher' })
+    async deleteVoucher(@Param('id') id: string) {
+        return this.service.deleteVoucher(id);
     }
 }
