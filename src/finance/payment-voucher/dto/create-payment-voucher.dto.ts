@@ -36,6 +36,16 @@ export class CreatePaymentVoucherInvoiceDto {
   paidAmount: number;
 }
 
+export class ApplyAdvanceDto {
+  @IsString()
+  @IsNotEmpty()
+  advanceVoucherId: string; // the advance PV being consumed
+
+  @IsNumber()
+  @Min(0.01)
+  appliedAmount: number;
+}
+
 export class CreatePaymentVoucherDto {
   @IsString()
   @IsNotEmpty()
@@ -106,4 +116,10 @@ export class CreatePaymentVoucherDto {
   @ValidateNested({ each: true })
   @Type(() => CreatePaymentVoucherInvoiceDto)
   invoices?: CreatePaymentVoucherInvoiceDto[];
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ApplyAdvanceDto)
+  advanceApplications?: ApplyAdvanceDto[];
 }
