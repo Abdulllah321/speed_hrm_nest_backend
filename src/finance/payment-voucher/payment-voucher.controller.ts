@@ -93,6 +93,13 @@ export class PaymentVoucherController {
     return this.paymentVoucherService.getPendingInvoicesBySupplier(supplierId);
   }
 
+  @Get('advances/:supplierId')
+  @ApiOperation({ summary: 'Get unapplied advance payments for a supplier' })
+  @ApiResponse({ status: 200, description: 'Advance payments retrieved successfully' })
+  getAdvancesBySupplier(@Param('supplierId') supplierId: string) {
+    return this.paymentVoucherService.getAdvancesBySupplier(supplierId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get payment voucher by ID' })
   @ApiResponse({ status: 200, description: 'Payment voucher found' })

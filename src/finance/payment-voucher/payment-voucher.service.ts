@@ -12,67 +12,78 @@ export class PaymentVoucherService {
   ) { }
 
   async create(createPaymentVoucherDto: CreatePaymentVoucherDto) {
-    const { details, invoices, ...data } = createPaymentVoucherDto;
+    const { details, invoices, advanceApplications, ...data } = createPaymentVoucherDto;
 
-    // Validate totals using details array
-    const totalDebit = details.reduce(
-      (sum, item) => sum + Number(item.debit || 0),
-      0,
-    );
-    const totalCredit = details.reduce(
-      (sum, item) => sum + Number(item.credit || 0),
-      0,
-    );
+    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
+    const totalCredit = details.reduce((sum, item) => sum + Number(item.credit || 0), 0);
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       throw new Error('Total Debit must equal Total Credit');
     }
 
-    if (totalDebit === 0) {
+    if (totalDebit === 0 && (!advanceApplications || advanceApplications.length === 0)) {
       throw new Error('Transaction amount must be greater than 0');
     }
 
-    // If invoices are provided, validate and update their payment status
+    // ── Validate advance applications ────────────────────────────────────────
+    const totalAdvanceApplied = advanceApplications?.reduce((s, a) => s + Number(a.appliedAmount), 0) ?? 0;
+
+    if (advanceApplications && advanceApplications.length > 0) {
+      for (const app of advanceApplications) {
+        const advPV = await this.prisma.paymentVoucher.findUnique({
+          where: { id: app.advanceVoucherId },
+          include: { advanceUsages: true },
+        });
+        if (!advPV) throw new BadRequestException(`Advance voucher not found: ${app.advanceVoucherId}`);
+        if (!advPV.isAdvance) throw new BadRequestException(`Voucher ${advPV.pvNo} is not an advance payment`);
+
+        const alreadyUsed = advPV.advanceUsages.reduce((s, u) => s + Number(u.appliedAmount), 0);
+        const available = Number(advPV.creditAmount) - alreadyUsed;
+        if (Number(app.appliedAmount) > available + 0.01) {
+          throw new BadRequestException(
+            `Advance ${advPV.pvNo} only has ${available.toLocaleString()} available (requested ${app.appliedAmount})`
+          );
+        }
+      }
+    }
+
+    // ── Validate invoice payments ────────────────────────────────────────────
     if (invoices && invoices.length > 0) {
-      console.log('Processing invoice payments:', invoices);
-
       let totalInvoiceAmount = 0;
-
-      // Validate each invoice exists and has sufficient remaining amount
       for (const invoicePayment of invoices) {
         const invoice = await this.prisma.purchaseInvoice.findUnique({
           where: { id: invoicePayment.purchaseInvoiceId }
         });
-
-        if (!invoice) {
-          throw new BadRequestException(`Purchase Invoice not found: ${invoicePayment.purchaseInvoiceId}`);
-        }
-
-        if (invoice.status !== 'APPROVED') {
-          throw new BadRequestException(`Purchase Invoice ${invoice.invoiceNumber} is not approved. Only approved invoices can be paid.`);
-        }
-
-        console.log(`Invoice ${invoice.invoiceNumber}: Total=${invoice.totalAmount}, Paid=${invoice.paidAmount}, Remaining=${invoice.remainingAmount}`);
-
+        if (!invoice) throw new BadRequestException(`Purchase Invoice not found: ${invoicePayment.purchaseInvoiceId}`);
+        if (invoice.status !== 'APPROVED') throw new BadRequestException(`Invoice ${invoice.invoiceNumber} is not approved`);
         if (Number(invoice.remainingAmount) < Number(invoicePayment.paidAmount)) {
           throw new BadRequestException(
-            `Payment amount ${invoicePayment.paidAmount} exceeds remaining amount ${invoice.remainingAmount} for invoice ${invoice.invoiceNumber}`
+            `Payment ${invoicePayment.paidAmount} exceeds remaining ${invoice.remainingAmount} for ${invoice.invoiceNumber}`
           );
         }
-
         totalInvoiceAmount += Number(invoicePayment.paidAmount);
       }
 
-      console.log(`Total invoice payment amount: ${totalInvoiceAmount}, Total debit: ${totalDebit}`);
-
-      // Allow some flexibility in amount matching (invoice amount should not exceed total debit)
-      if (totalInvoiceAmount > totalDebit + 0.01) {
-        throw new BadRequestException(`Total invoice payment amount (${totalInvoiceAmount}) cannot exceed total debit amount (${totalDebit})`);
+      // Total settled = cash paid (debit) + advance applied
+      const totalSettled = totalDebit + totalAdvanceApplied;
+      if (totalInvoiceAmount > totalSettled + 0.01) {
+        throw new BadRequestException(
+          `Invoice payments (${totalInvoiceAmount}) exceed total settled amount — cash (${totalDebit}) + advance (${totalAdvanceApplied}) = ${totalSettled}`
+        );
       }
     }
 
+    // ── Get ADVANCE TO SUPPLIERS account (code 31030004) ────────────────────
+    const advanceAccount = totalAdvanceApplied > 0
+      ? await this.prisma.chartOfAccount.findFirst({ where: { code: '31030004' }, select: { id: true } })
+      : null;
+
+    if (totalAdvanceApplied > 0 && !advanceAccount) {
+      throw new BadRequestException('Chart of account "ADVANCE TO SUPPLIERS" (31030004) not found');
+    }
+
     return this.prisma.$transaction(async (prisma) => {
-      // Create payment voucher
+      // Create the payment voucher (cash/bank portion)
       const paymentVoucher = await prisma.paymentVoucher.create({
         data: {
           type: data.type,
@@ -86,79 +97,102 @@ export class PaymentVoucherService {
           supplierId: data.supplierId || undefined,
           creditAmount: data.creditAmount || totalDebit || 0,
           isAdvance: data.isAdvance,
+          advanceApplied: totalAdvanceApplied,
           isTaxApplicable: data.isTaxApplicable,
           description: data.description,
           status: data.status || 'approved',
           details: {
             create: details
               .filter(d => Number(d.debit) > 0)
-              .map(d => ({
-                accountId: d.accountId,
-                debit: d.debit,
-              })),
+              .map(d => ({ accountId: d.accountId, debit: d.debit })),
           },
         },
-        include: {
-          details: {
-            include: {
-              account: true,
-            },
-          },
-          creditAccount: true,
-          supplier: true,
-        },
+        include: { details: { include: { account: true } }, creditAccount: true, supplier: true },
       });
 
-      // Update purchase invoice payment status
+      // ── Update invoice payment statuses ─────────────────────────────────
       if (invoices && invoices.length > 0) {
-        console.log('Updating purchase invoice payment status...');
-
         for (const invoicePayment of invoices) {
           const invoice = await prisma.purchaseInvoice.findUnique({
             where: { id: invoicePayment.purchaseInvoiceId }
           });
-
           if (invoice) {
             const newPaidAmount = Number(invoice.paidAmount) + Number(invoicePayment.paidAmount);
             const newRemainingAmount = Number(invoice.totalAmount) - newPaidAmount - Number(invoice.returnAmount || 0);
-
             let paymentStatus = 'UNPAID';
-            if (newRemainingAmount <= 0.01) {
-              paymentStatus = 'FULLY_PAID';
-            } else if (newPaidAmount > 0) {
-              paymentStatus = 'PARTIALLY_PAID';
-            }
-
-            console.log(`Updating PI ${invoice.invoiceNumber}: PaidAmount=${newPaidAmount}, RemainingAmount=${newRemainingAmount}, Status=${paymentStatus}`);
+            if (newRemainingAmount <= 0.01) paymentStatus = 'FULLY_PAID';
+            else if (newPaidAmount > 0) paymentStatus = 'PARTIALLY_PAID';
 
             await prisma.purchaseInvoice.update({
               where: { id: invoicePayment.purchaseInvoiceId },
               data: {
                 paidAmount: newPaidAmount,
                 remainingAmount: Math.max(0, newRemainingAmount),
-                paymentStatus: paymentStatus as any
+                paymentStatus: paymentStatus as any,
+              }
+            });
+
+            await prisma.paymentVoucherToInvoice.create({
+              data: {
+                paymentVoucherId: paymentVoucher.id,
+                purchaseInvoiceId: invoicePayment.purchaseInvoiceId,
+                paidAmount: invoicePayment.paidAmount,
               }
             });
           }
         }
       }
 
-      // Post journal lines to update account balances
-      // Debit lines from details (vendor payable accounts)
-      const debitLines = details
-        .filter(d => Number(d.debit) > 0)
-        .map(d => ({ accountId: d.accountId, debit: Number(d.debit), credit: 0 }));
+      // ── Apply advances: record usage + post reversal journal ────────────
+      if (advanceApplications && advanceApplications.length > 0 && advanceAccount) {
+        for (const app of advanceApplications) {
+          // Track usage against the source advance PV
+          await prisma.advanceApplication.create({
+            data: {
+              sourceAdvanceId: app.advanceVoucherId,
+              appliedInVoucherId: paymentVoucher.id,
+              appliedAmount: app.appliedAmount,
+            }
+          });
 
-      // Credit line — bank/cash account
-      const creditLines = [{ accountId: data.creditAccountId, debit: 0, credit: totalDebit }];
+          // Update advanceApplied on the source advance PV
+          await prisma.paymentVoucher.update({
+            where: { id: app.advanceVoucherId },
+            data: { advanceApplied: { increment: app.appliedAmount } },
+          });
 
-      await this.accounting.postLines([...debitLines, ...creditLines], {
-        sourceType: 'PAYMENT_VOUCHER',
-        sourceId: paymentVoucher.id,
-        sourceRef: paymentVoucher.pvNo,
-        description: data.description || `Payment Voucher: ${paymentVoucher.pvNo}`,
-        transactionDate: new Date(data.pvDate),
-      }, prisma);
+          // Journal: Dr A/P PARTIES (supplier payable) / Cr ADVANCE TO SUPPLIERS
+          // This clears the advance and reduces the payable
+          const apParties = details.find(d => Number(d.debit) > 0);
+          const apPartiesAccountId = apParties?.accountId ?? data.creditAccountId;
+
+          await this.accounting.postLines([
+            { accountId: apPartiesAccountId, debit: Number(app.appliedAmount), credit: 0 },
+            { accountId: advanceAccount.id, debit: 0, credit: Number(app.appliedAmount) },
+          ], {
+            sourceType: 'ADVANCE_APPLICATION',
+            sourceId: paymentVoucher.id,
+            sourceRef: `${paymentVoucher.pvNo}-ADV`,
+            description: `Advance applied from advance voucher`,
+            transactionDate: new Date(data.pvDate),
+          }, prisma);
+        }
+      }
+
+      // ── Post main journal lines (cash/bank payment) ──────────────────────
+      if (totalDebit > 0) {
+        const debitLines = details
+          .filter(d => Number(d.debit) > 0)
+          .map(d => ({ accountId: d.accountId, debit: Number(d.debit), credit: 0 }));
+        const creditLines = [{ accountId: data.creditAccountId, debit: 0, credit: totalDebit }];
+        await this.accounting.postLines([...debitLines, ...creditLines], {
+          sourceType: 'PAYMENT_VOUCHER',
+          sourceId: paymentVoucher.id,
+          sourceRef: paymentVoucher.pvNo,
+          description: data.description || `Payment Voucher: ${paymentVoucher.pvNo}`,
+          transactionDate: new Date(data.pvDate),
+        }, prisma);
+      }
 
       return paymentVoucher;
     });
@@ -557,16 +591,32 @@ export class PaymentVoucherService {
 
   async testSuppliers() {
     const allSuppliers = await this.prisma.supplier.findMany({
-      select: {
-        id: true,
-        name: true,
-        code: true,
-      }
+      select: { id: true, name: true, code: true }
     });
-    return {
-      message: 'Test endpoint working',
-      totalSuppliers: allSuppliers.length,
-      suppliers: allSuppliers
-    };
+    return { message: 'Test endpoint working', totalSuppliers: allSuppliers.length, suppliers: allSuppliers };
+  }
+
+  // Get unapplied advance payment vouchers for a supplier
+  async getAdvancesBySupplier(supplierId: string) {
+    const advances = await this.prisma.paymentVoucher.findMany({
+      where: { supplierId, isAdvance: true, status: 'approved' },
+      include: { advanceUsages: true },
+      orderBy: { pvDate: 'asc' },
+    });
+
+    return advances
+      .map(pv => {
+        const used = pv.advanceUsages.reduce((s, u) => s + Number(u.appliedAmount), 0);
+        const available = Number(pv.creditAmount) - used;
+        return {
+          pvId: pv.id,
+          pvNo: pv.pvNo,
+          pvDate: pv.pvDate,
+          totalAmount: Number(pv.creditAmount),
+          usedAmount: used,
+          availableAmount: available,
+        };
+      })
+      .filter(pv => pv.availableAmount > 0.01);
   }
 }
