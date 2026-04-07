@@ -109,7 +109,6 @@ export class EmployeeController {
   }
 
   @Get('employees/:id')
-  @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'Get employee details' })
   async get(
     @Param('id') id: string,
