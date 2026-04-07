@@ -1,7 +1,6 @@
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   IsArray,
-  IsBoolean,
   IsDate,
   IsNotEmpty,
   IsNumber,
@@ -19,6 +18,16 @@ export class CreateReceiptVoucherDetailDto {
   @IsNumber()
   @Min(0)
   credit: number;
+}
+
+export class CreateReceiptVoucherInvoiceDto {
+  @IsString()
+  @IsNotEmpty()
+  salesInvoiceId: string;
+
+  @IsNumber()
+  @Min(0.01)
+  receivedAmount: number;
 }
 
 export class CreateReceiptVoucherDto {
@@ -60,6 +69,11 @@ export class CreateReceiptVoucherDto {
   @Min(0)
   debitAmount: number;
 
+  @IsOptional()
+  @Transform(({ value }) => value === '' ? undefined : value)
+  @IsString()
+  customerId?: string;
+
   @IsString()
   @IsNotEmpty()
   description: string;
@@ -72,4 +86,10 @@ export class CreateReceiptVoucherDto {
   @ValidateNested({ each: true })
   @Type(() => CreateReceiptVoucherDetailDto)
   details: CreateReceiptVoucherDetailDto[];
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateReceiptVoucherInvoiceDto)
+  invoices?: CreateReceiptVoucherInvoiceDto[];
 }

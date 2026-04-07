@@ -24,6 +24,7 @@ model ERPSalesInvoice {
   grandTotal        Decimal
   paidAmount        Decimal @default(0)
   balanceAmount     Decimal @default(0)
+  paymentStatus     String  @default("UNPAID") // UNPAID | PARTIALLY_PAID | FULLY_PAID
   
   // Relations
   items             ERPSalesInvoiceItem[]
