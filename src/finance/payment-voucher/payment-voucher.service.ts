@@ -194,6 +194,91 @@ export class PaymentVoucherService {
         }, prisma);
       }
 
+      // ── Write supplier ledger entries ────────────────────────────────────
+      if (data.supplierId) {
+        const supplier = await prisma.supplier.findUnique({
+          where: { id: data.supplierId },
+          select: { currentBalance: true, advanceBalance: true },
+        });
+        if (supplier) {
+          let runningBalance = Number(supplier.currentBalance);
+          let runningAdvance = Number(supplier.advanceBalance);
+
+          if (data.isAdvance) {
+            // Advance payment: advance balance increases, AP balance unchanged
+            runningAdvance += totalDebit;
+            await prisma.supplierLedger.create({
+              data: {
+                supplierId: data.supplierId,
+                entryDate: new Date(data.pvDate),
+                entryType: 'ADVANCE_PAYMENT',
+                sourceId: paymentVoucher.id,
+                sourceRef: paymentVoucher.pvNo,
+                description: data.description || `Advance payment`,
+                debit: totalDebit,
+                credit: 0,
+                balanceAfter: runningBalance,
+                advanceDebit: totalDebit,
+                advanceCredit: 0,
+                advanceBalance: runningAdvance,
+              },
+            });
+          } else {
+            // Regular payment: reduces AP balance
+            runningBalance -= totalDebit;
+            if (totalDebit > 0) {
+              await prisma.supplierLedger.create({
+                data: {
+                  supplierId: data.supplierId,
+                  entryDate: new Date(data.pvDate),
+                  entryType: 'PAYMENT_VOUCHER',
+                  sourceId: paymentVoucher.id,
+                  sourceRef: paymentVoucher.pvNo,
+                  description: data.description || `Payment voucher`,
+                  debit: totalDebit,
+                  credit: 0,
+                  balanceAfter: runningBalance,
+                  advanceDebit: 0,
+                  advanceCredit: 0,
+                  advanceBalance: runningAdvance,
+                },
+              });
+            }
+
+            // Advance applications: reduce advance balance
+            for (const app of advanceApplications ?? []) {
+              runningBalance -= Number(app.appliedAmount);
+              runningAdvance -= Number(app.appliedAmount);
+              await prisma.supplierLedger.create({
+                data: {
+                  supplierId: data.supplierId,
+                  entryDate: new Date(data.pvDate),
+                  entryType: 'ADVANCE_APPLICATION',
+                  sourceId: paymentVoucher.id,
+                  sourceRef: `${paymentVoucher.pvNo}-ADV`,
+                  description: `Advance applied toward payment`,
+                  debit: Number(app.appliedAmount),
+                  credit: 0,
+                  balanceAfter: runningBalance,
+                  advanceDebit: 0,
+                  advanceCredit: Number(app.appliedAmount),
+                  advanceBalance: runningAdvance,
+                },
+              });
+            }
+          }
+
+          // Persist updated balances on supplier
+          await prisma.supplier.update({
+            where: { id: data.supplierId },
+            data: {
+              currentBalance: runningBalance,
+              advanceBalance: runningAdvance,
+            },
+          });
+        }
+      }
+
       return paymentVoucher;
     });
   }
@@ -598,6 +683,15 @@ export class PaymentVoucherService {
 
   // Get unapplied advance payment vouchers for a supplier
   async getAdvancesBySupplier(supplierId: string) {
+    // Use the supplier's advanceBalance as the authoritative source
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: supplierId },
+      select: { advanceBalance: true },
+    });
+
+    if (!supplier || Number(supplier.advanceBalance) <= 0.01) return [];
+
+    // Return individual advance PVs with their remaining available amounts
     const advances = await this.prisma.paymentVoucher.findMany({
       where: { supplierId, isAdvance: true, status: 'approved' },
       include: { advanceUsages: true },
@@ -618,5 +712,70 @@ export class PaymentVoucherService {
         };
       })
       .filter(pv => pv.availableAmount > 0.01);
+  }
+
+  // Get full supplier ledger statement
+  async getSupplierLedger(supplierId: string, fromDate?: string, toDate?: string) {
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: supplierId },
+      select: { id: true, name: true, code: true, currentBalance: true, advanceBalance: true, openingBalance: true },
+    });
+    if (!supplier) throw new NotFoundException(`Supplier ${supplierId} not found`);
+
+    const where: any = { supplierId };
+    if (fromDate || toDate) {
+      where.entryDate = {};
+      if (fromDate) where.entryDate.gte = new Date(fromDate);
+      if (toDate) where.entryDate.lte = new Date(toDate);
+    }
+
+    const entries = await this.prisma.supplierLedger.findMany({
+      where,
+      orderBy: { entryDate: 'asc' },
+    });
+
+    return {
+      supplier,
+      entries,
+      summary: {
+        totalInvoiced: entries.filter(e => e.entryType === 'PURCHASE_INVOICE').reduce((s, e) => s + Number(e.credit), 0),
+        totalPaid: entries.filter(e => ['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'].includes(e.entryType)).reduce((s, e) => s + Number(e.debit), 0),
+        totalAdvancePaid: entries.filter(e => e.entryType === 'ADVANCE_PAYMENT').reduce((s, e) => s + Number(e.advanceDebit), 0),
+        totalAdvanceApplied: entries.filter(e => e.entryType === 'ADVANCE_APPLICATION').reduce((s, e) => s + Number(e.advanceCredit), 0),
+        currentBalance: Number(supplier.currentBalance),
+        advanceBalance: Number(supplier.advanceBalance),
+      },
+    };
+  }
+
+  // Called by PurchaseInvoiceService when a PI is approved — writes ledger credit entry
+  async recordInvoiceInLedger(prismaClient: any, supplierId: string, invoiceId: string, invoiceRef: string, amount: number, invoiceDate: Date) {
+    const supplier = await prismaClient.supplier.findUnique({
+      where: { id: supplierId },
+      select: { currentBalance: true, advanceBalance: true },
+    });
+    if (!supplier) return;
+
+    const newBalance = Number(supplier.currentBalance) + amount;
+    await prismaClient.supplierLedger.create({
+      data: {
+        supplierId,
+        entryDate: invoiceDate,
+        entryType: 'PURCHASE_INVOICE',
+        sourceId: invoiceId,
+        sourceRef: invoiceRef,
+        description: `Purchase Invoice raised`,
+        debit: 0,
+        credit: amount,
+        balanceAfter: newBalance,
+        advanceDebit: 0,
+        advanceCredit: 0,
+        advanceBalance: Number(supplier.advanceBalance),
+      },
+    });
+    await prismaClient.supplier.update({
+      where: { id: supplierId },
+      data: { currentBalance: newBalance },
+    });
   }
 }
