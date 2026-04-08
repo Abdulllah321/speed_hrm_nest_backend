@@ -20,6 +20,8 @@ model Supplier {
   paymentTerms     String?
   creditLimit      Decimal?                    @db.Decimal(15, 2)
   openingBalance   Decimal                     @default(0.0) @db.Decimal(15, 2)
+  currentBalance   Decimal                     @default(0.0) @db.Decimal(15, 2) // running AP balance (positive = we owe them)
+  advanceBalance   Decimal                     @default(0.0) @db.Decimal(15, 2) // unapplied advance paid to supplier
   isActive         Boolean                     @default(true)
   createdById      String?
   createdAt        DateTime                    @default(now())
@@ -32,8 +34,8 @@ model Supplier {
   rfqVendors       RequestForQuotationVendor[]
   vendorQuotations VendorQuotation[]
   chartOfAccounts  ChartOfAccount[]            @relation("ChartOfAccountToSupplier")
-  debitNotes      DebitNote[]
-
+  debitNotes       DebitNote[]
+  ledgerEntries    SupplierLedger[]
 
   @@index([nature])
   @@index([type])
@@ -47,4 +49,33 @@ enum SupplierNature {
 enum SupplierType {
   LOCAL
   IMPORT
+}
+
+/// Per-supplier AP ledger — one row per financial event
+/// debit  = money we paid OUT to supplier (PV, advance)
+/// credit = money we OWE to supplier (PI raised, debit note reversed)
+/// balanceAfter = running AP balance (positive = we still owe them)
+model SupplierLedger {
+  id              String    @id @default(uuid())
+  supplierId      String    @map("supplier_id")
+  entryDate       DateTime  @map("entry_date")
+  /// PURCHASE_INVOICE | PAYMENT_VOUCHER | ADVANCE_PAYMENT | ADVANCE_APPLICATION | DEBIT_NOTE
+  entryType       String    @map("entry_type")
+  sourceId        String    @map("source_id")       // FK to the source document id
+  sourceRef       String    @map("source_ref")      // human-readable e.g. PI-2026-0001
+  description     String?
+  debit           Decimal   @default(0.0) @db.Decimal(15, 2)   // payment made
+  credit          Decimal   @default(0.0) @db.Decimal(15, 2)   // liability created
+  balanceAfter    Decimal   @default(0.0) @db.Decimal(15, 2)   // running AP balance
+  advanceDebit    Decimal   @default(0.0) @db.Decimal(15, 2)   // advance paid out
+  advanceCredit   Decimal   @default(0.0) @db.Decimal(15, 2)   // advance consumed/applied
+  advanceBalance  Decimal   @default(0.0) @db.Decimal(15, 2)   // running advance balance
+  createdAt       DateTime  @default(now())
+  supplier        Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([entryDate])
+  @@index([entryType])
+  @@index([sourceId])
+  @@map("supplier_ledger")
 }
