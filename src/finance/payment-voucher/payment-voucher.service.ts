@@ -683,15 +683,8 @@ export class PaymentVoucherService {
 
   // Get unapplied advance payment vouchers for a supplier
   async getAdvancesBySupplier(supplierId: string) {
-    // Use the supplier's advanceBalance as the authoritative source
-    const supplier = await this.prisma.supplier.findUnique({
-      where: { id: supplierId },
-      select: { advanceBalance: true },
-    });
-
-    if (!supplier || Number(supplier.advanceBalance) <= 0.01) return [];
-
-    // Return individual advance PVs with their remaining available amounts
+    // Query advance PVs directly — don't gate on advanceBalance
+    // (advanceBalance may be 0 for advances created before the ledger system)
     const advances = await this.prisma.paymentVoucher.findMany({
       where: { supplierId, isAdvance: true, status: 'approved' },
       include: { advanceUsages: true },
@@ -712,6 +705,40 @@ export class PaymentVoucherService {
         };
       })
       .filter(pv => pv.availableAmount > 0.01);
+  }
+
+  // Quick supplier balance summary — called on supplier selection in the form
+  async getSupplierSummary(supplierId: string) {
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: supplierId },
+      select: { id: true, name: true, code: true, currentBalance: true, advanceBalance: true, openingBalance: true },
+    });
+    if (!supplier) throw new NotFoundException(`Supplier ${supplierId} not found`);
+
+    // Compute live advance balance from PVs in case ledger hasn't been seeded yet
+    const advances = await this.prisma.paymentVoucher.findMany({
+      where: { supplierId, isAdvance: true, status: 'approved' },
+      include: { advanceUsages: true },
+    });
+    const liveAdvanceBalance = advances.reduce((sum, pv) => {
+      const used = pv.advanceUsages.reduce((s, u) => s + Number(u.appliedAmount), 0);
+      return sum + Math.max(0, Number(pv.creditAmount) - used);
+    }, 0);
+
+    // Compute live AP balance from purchase invoices
+    const invoiceAgg = await this.prisma.purchaseInvoice.aggregate({
+      where: { supplierId, status: 'APPROVED', paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] } },
+      _sum: { remainingAmount: true },
+    });
+    const liveApBalance = Number(invoiceAgg._sum.remainingAmount ?? 0);
+
+    return {
+      supplierId: supplier.id,
+      name: supplier.name,
+      code: supplier.code,
+      apBalance: liveApBalance,          // total outstanding payable
+      advanceBalance: liveAdvanceBalance, // unapplied advance available
+    };
   }
 
   // Get full supplier ledger statement
