@@ -95,9 +95,14 @@ export class PaymentVoucherController {
 
   @Get('advances/:supplierId')
   @ApiOperation({ summary: 'Get unapplied advance payments for a supplier' })
-  @ApiResponse({ status: 200, description: 'Advance payments retrieved successfully' })
   getAdvancesBySupplier(@Param('supplierId') supplierId: string) {
     return this.paymentVoucherService.getAdvancesBySupplier(supplierId);
+  }
+
+  @Get('supplier-summary/:supplierId')
+  @ApiOperation({ summary: 'Get AP balance and advance balance for a supplier' })
+  getSupplierSummary(@Param('supplierId') supplierId: string) {
+    return this.paymentVoucherService.getSupplierSummary(supplierId);
   }
 
   @Get('ledger/:supplierId')
