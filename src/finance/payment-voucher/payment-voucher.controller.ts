@@ -100,6 +100,18 @@ export class PaymentVoucherController {
     return this.paymentVoucherService.getAdvancesBySupplier(supplierId);
   }
 
+  @Get('ledger/:supplierId')
+  @ApiOperation({ summary: 'Get full AP ledger statement for a supplier' })
+  @ApiQuery({ name: 'fromDate', required: false, type: String })
+  @ApiQuery({ name: 'toDate', required: false, type: String })
+  getSupplierLedger(
+    @Param('supplierId') supplierId: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+  ) {
+    return this.paymentVoucherService.getSupplierLedger(supplierId, fromDate, toDate);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get payment voucher by ID' })
   @ApiResponse({ status: 200, description: 'Payment voucher found' })

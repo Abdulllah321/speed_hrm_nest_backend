@@ -787,6 +787,35 @@ export class PurchaseInvoiceService {
         transactionDate: new Date(),
       }, tx);
 
+      // ── Write supplier ledger credit entry ───────────────────────────────
+      const supplierForLedger = await tx.supplier.findUnique({
+        where: { id: invoice.supplierId },
+        select: { currentBalance: true, advanceBalance: true },
+      });
+      if (supplierForLedger) {
+        const newBalance = Number(supplierForLedger.currentBalance) + totalAmount;
+        await tx.supplierLedger.create({
+          data: {
+            supplierId: invoice.supplierId,
+            entryDate: new Date(),
+            entryType: 'PURCHASE_INVOICE',
+            sourceId: id,
+            sourceRef: invoice.invoiceNumber,
+            description: `Purchase Invoice approved`,
+            debit: 0,
+            credit: totalAmount,
+            balanceAfter: newBalance,
+            advanceDebit: 0,
+            advanceCredit: 0,
+            advanceBalance: Number(supplierForLedger.advanceBalance),
+          },
+        });
+        await tx.supplier.update({
+          where: { id: invoice.supplierId },
+          data: { currentBalance: newBalance },
+        });
+      }
+
       return updated;
     });
   }
