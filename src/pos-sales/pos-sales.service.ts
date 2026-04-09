@@ -226,6 +226,10 @@ export class PosSalesService implements OnModuleInit {
                 });
 
                 // ── Update Stock (Deduct) ───────────────────────────────
+                // Skip if this is a resumed hold order — stock was already deducted at hold time
+                const isResumedHold = !!(dto as any).holdOrderId;
+
+                if (!isResumedHold) {
                 for (const item of itemsData) {
                     await this.stockLedgerService.createEntry({
                         itemId: item.itemId,
@@ -234,6 +238,7 @@ export class PosSalesService implements OnModuleInit {
                         qty: -item.quantity, // Negative for OUTBOUND
                         movementType: MovementType.OUTBOUND,
                         referenceType: 'POS_SALE',
+                        // unitCost: item.,
                         referenceId: order.id,
                     }, tx);
 
@@ -266,6 +271,15 @@ export class PosSalesService implements OnModuleInit {
                             }
                         });
                     }
+                }
+                } // end if (!isResumedHold)
+
+                // If resumed from hold, mark the hold order as completed
+                if (isResumedHold) {
+                    await tx.salesOrder.update({
+                        where: { id: (dto as any).holdOrderId },
+                        data: { status: 'completed' },
+                    });
                 }
 
                 if (dto.couponId) {
@@ -647,7 +661,6 @@ export class PosSalesService implements OnModuleInit {
         try {
             const orderNumber = await this.generateOrderNumber();
 
-            // Hold expires in 1 hour OR at midnight today, whichever is sooner
             const now = new Date();
             const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
             const midnight = new Date(now);
@@ -680,35 +693,73 @@ export class PosSalesService implements OnModuleInit {
             const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
             const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
 
-            const order = await this.prisma.salesOrder.create({
-                data: {
-                    orderNumber,
-                    posId: dto.posId,
-                    terminalId: dto.terminalId,
-                    locationId: dto.locationId,
-                    customerId: dto.customerId,
-                    cashierUserId,
-                    paymentMethod: null,
-                    notes: dto.notes,
-                    subtotal,
-                    discountAmount: totalDiscount,
-                    taxAmount: totalTax,
-                    grandTotal,
-                    status: 'hold',
-                    paymentStatus: 'unpaid',
-                    holdExpiresAt,
-                    items: { create: itemsData },
-                },
-                include: {
-                    items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
-                },
-            });
+            return await this.prisma.$transaction(async (tx) => {
+                const order = await tx.salesOrder.create({
+                    data: {
+                        orderNumber,
+                        posId: dto.posId,
+                        terminalId: dto.terminalId,
+                        locationId: dto.locationId,
+                        customerId: dto.customerId,
+                        cashierUserId,
+                        paymentMethod: null,
+                        notes: dto.notes,
+                        subtotal,
+                        discountAmount: totalDiscount,
+                        taxAmount: totalTax,
+                        grandTotal,
+                        status: 'hold',
+                        paymentStatus: 'unpaid',
+                        holdExpiresAt,
+                        items: { create: itemsData },
+                    },
+                    include: {
+                        items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                    },
+                });
 
-            return {
-                status: true,
-                data: order,
-                message: `Order ${orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
-            };
+                // ── Deduct stock immediately on hold ────────────────────
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                if (warehouse) {
+                    for (const item of itemsData) {
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: warehouse.id,
+                            locationId: dto.locationId,
+                            qty: -item.quantity,
+                            movementType: MovementType.OUTBOUND,
+                            referenceType: 'POS_HOLD',
+                            referenceId: order.id,
+                        }, tx);
+
+                        const existing = await tx.inventoryItem.findFirst({
+                            where: { itemId: item.itemId, locationId: dto.locationId, status: 'AVAILABLE' },
+                        });
+                        if (existing) {
+                            await tx.inventoryItem.update({
+                                where: { id: existing.id },
+                                data: { quantity: { decrement: item.quantity } },
+                            });
+                        } else {
+                            await tx.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    locationId: dto.locationId,
+                                    warehouseId: warehouse.id,
+                                    quantity: -item.quantity,
+                                    status: 'AVAILABLE',
+                                },
+                            });
+                        }
+                    }
+                }
+
+                return {
+                    status: true,
+                    data: order,
+                    message: `Order ${orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
+                };
+            });
         } catch (error: any) {
             return { status: false, message: error.message };
         }
@@ -756,11 +807,52 @@ export class PosSalesService implements OnModuleInit {
     // ─── Clear all expired / end-of-day holds (called by scheduler) ──
     async clearExpiredHolds() {
         const now = new Date();
-        const result = await this.prisma.salesOrder.updateMany({
+
+        // Fetch expired holds with items before marking them expired
+        const expiredOrders = await this.prisma.salesOrder.findMany({
             where: { status: 'hold', holdExpiresAt: { lte: now } },
-            data: { status: 'hold_expired' },
+            include: { items: true },
         });
-        return { status: true, cleared: result.count };
+
+        if (expiredOrders.length === 0) return { status: true, cleared: 0 };
+
+        const warehouse = await this.prisma.warehouse.findFirst({ where: { isActive: true } });
+
+        for (const order of expiredOrders) {
+            await this.prisma.$transaction(async (tx) => {
+                // Restore stock for each item
+                if (warehouse) {
+                    for (const item of order.items) {
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: warehouse.id,
+                            locationId: order.locationId,
+                            qty: item.quantity,
+                            movementType: MovementType.INBOUND,
+                            referenceType: 'POS_HOLD_EXPIRED',
+                            referenceId: order.id,
+                        }, tx);
+
+                        const existing = await tx.inventoryItem.findFirst({
+                            where: { itemId: item.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                        });
+                        if (existing) {
+                            await tx.inventoryItem.update({
+                                where: { id: existing.id },
+                                data: { quantity: { increment: item.quantity } },
+                            });
+                        }
+                    }
+                }
+
+                await tx.salesOrder.update({
+                    where: { id: order.id },
+                    data: { status: 'hold_expired' },
+                });
+            });
+        }
+
+        return { status: true, cleared: expiredOrders.length };
     }
 
     // ─── Enrich items with master data + stock for POS display ────────

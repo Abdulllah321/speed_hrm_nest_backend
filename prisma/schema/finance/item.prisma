@@ -68,4 +68,5 @@ model Item {
   erpSalesOrderItems       ERPSalesOrderItem[]
   deliveryChallanItems     DeliveryChallanItem[]
   erpSalesInvoiceItems     ERPSalesInvoiceItem[]
+  posClaimItems            PosClaimItem[]
 }
