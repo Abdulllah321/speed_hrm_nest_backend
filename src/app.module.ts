@@ -106,6 +106,7 @@ import { HsCodeModule } from './master/hs-code/hs-code.module';
 import { SearchModule } from './search/search.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { PosSalesModule } from './pos-sales/pos-sales.module';
+import { PosClaimsModule } from './pos-claims/pos-claims.module';
 import { PosConfigModule } from './pos-config/pos-config.module';
 import { PurchaseReturnModule } from './purchase/purchase-return/purchase-return.module';
 import { PosSessionModule } from './pos-session/pos-session.module';
@@ -242,6 +243,7 @@ import { SalesModule } from './sales/sales.module';
     CustomerModule,
     WebhookModule,
     PosSalesModule,
+    PosClaimsModule,
     PosConfigModule,
     PosSessionModule,
     DebitNoteModule,
