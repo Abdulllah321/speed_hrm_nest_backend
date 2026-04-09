@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Req, Query, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSessionService } from './pos-session.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -55,5 +55,21 @@ export class PosSessionController {
     ) {
         const { terminalId, posId, locationId } = this.extractTerminalContext(req);
         return this.sessionService.closeDrawer(terminalId, posId, locationId, body.actualCash, body.note);
+    }
+
+    @Get('history')
+    @ApiOperation({ summary: 'Get paginated shift history for this terminal' })
+    async getSessionHistory(
+        @Req() req: any,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const { terminalId, posId } = this.extractTerminalContext(req);
+        return this.sessionService.getSessionHistory(
+            terminalId,
+            posId,
+            page ? parseInt(page, 10) : 1,
+            limit ? parseInt(limit, 10) : 20,
+        );
     }
 }
