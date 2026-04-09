@@ -25,6 +25,11 @@ export class SalesOrderController {
     return this.salesOrderService.findAll(search, status);
   }
 
+  @Get('available-for-delivery')
+  async findAvailableForDelivery() {
+    return this.salesOrderService.findAvailableForDelivery();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.salesOrderService.findOne(id);
