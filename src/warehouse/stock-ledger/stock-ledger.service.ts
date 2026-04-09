@@ -49,9 +49,27 @@ export class StockLedgerService {
       this.prisma.stockLedger.count({ where }),
     ]);
 
+    // Enrich entries with location name (locationId is a plain FK with no Prisma relation)
+    const locationIds = [...new Set(data.map((d) => d.locationId).filter(Boolean))] as string[];
+    const locationMap = new Map<string, { name: string; code: string }>();
+    if (locationIds.length > 0) {
+      const locations = await this.prisma.location.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true, code: true },
+      });
+      for (const loc of locations) {
+        locationMap.set(loc.id, { name: loc.name, code: loc.code });
+      }
+    }
+
+    const enrichedData = data.map((entry) => ({
+      ...entry,
+      location: entry.locationId ? (locationMap.get(entry.locationId) ?? null) : null,
+    }));
+
     return {
       status: true,
-      data,
+      data: enrichedData,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
