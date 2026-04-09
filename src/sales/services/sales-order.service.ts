@@ -44,6 +44,30 @@ export class SalesOrderService {
     return { status: true, data: orders };
   }
 
+  async findAvailableForDelivery() {
+    // Find confirmed orders that don't have delivery challans yet
+    const orders = await this.prisma.eRPSalesOrder.findMany({
+      where: {
+        status: 'CONFIRMED',
+        deliveryChallans: {
+          none: {} // No delivery challans created yet
+        }
+      },
+      include: {
+        customer: true,
+        warehouse: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { status: true, data: orders };
+  }
+
   async findOne(id: string) {
     console.log('Finding sales order with ID:', id); // Debug log
     
@@ -164,7 +188,8 @@ export class SalesOrderService {
   }
 
   async update(id: string, updateSalesOrderDto: UpdateSalesOrderDto) {
-    const salesOrder = await this.findOne(id);
+    const salesOrderResponse = await this.findOne(id);
+    const salesOrder = salesOrderResponse.data; // Extract data from response
 
     if (salesOrder.status === 'CONFIRMED') {
       throw new BadRequestException('Cannot update confirmed sales order');
@@ -245,7 +270,8 @@ export class SalesOrderService {
   }
 
   async confirm(id: string) {
-    const salesOrder = await this.findOne(id);
+    const salesOrderResponse = await this.findOne(id);
+    const salesOrder = salesOrderResponse.data; // Extract data from response
 
     if (salesOrder.status !== 'DRAFT') {
       throw new BadRequestException('Only draft orders can be confirmed');
@@ -270,7 +296,8 @@ export class SalesOrderService {
   }
 
   async cancel(id: string) {
-    const salesOrder = await this.findOne(id);
+    const salesOrderResponse = await this.findOne(id);
+    const salesOrder = salesOrderResponse.data; // Extract data from response
 
     if (salesOrder.status === 'CANCELLED') {
       throw new BadRequestException('Order is already cancelled');
@@ -296,7 +323,8 @@ export class SalesOrderService {
   }
 
   async createDeliveryChallan(id: string, data: any) {
-    const salesOrder = await this.findOne(id);
+    const salesOrderResponse = await this.findOne(id);
+    const salesOrder = salesOrderResponse.data; // Extract data from response
 
     if (salesOrder.status !== 'CONFIRMED') {
       throw new BadRequestException('Only confirmed orders can have delivery challans');
