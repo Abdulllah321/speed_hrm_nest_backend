@@ -45,6 +45,15 @@ export class SalesOrderService {
   }
 
   async findOne(id: string) {
+    console.log('Finding sales order with ID:', id); // Debug log
+    
+    // First, let's check if any sales orders exist at all
+    const allOrders = await this.prisma.eRPSalesOrder.findMany({
+      take: 5,
+      select: { id: true, orderNo: true }
+    });
+    console.log('Sample orders in database:', allOrders); // Debug log
+    
     const salesOrder = await this.prisma.eRPSalesOrder.findUnique({
       where: { id },
       include: {
@@ -60,11 +69,13 @@ export class SalesOrderService {
       },
     });
 
+    console.log('Found sales order:', salesOrder ? 'Yes' : 'No'); // Debug log
+
     if (!salesOrder) {
-      throw new NotFoundException('Sales order not found');
+      throw new NotFoundException(`Sales order with ID ${id} not found`);
     }
 
-    return salesOrder;
+    return { status: true, data: salesOrder };
   }
 
   async create(createSalesOrderDto: CreateSalesOrderDto) {
