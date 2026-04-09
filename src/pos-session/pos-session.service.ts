@@ -119,4 +119,91 @@ export class PosSessionService {
             variance: difference,
         };
     }
+
+    /**
+     * Get paginated shift history for the terminal with per-session sales aggregates
+     */
+    async getSessionHistory(
+        terminalId: string,
+        posId: string,
+        page: number = 1,
+        limit: number = 20,
+    ) {
+        const skip = (page - 1) * limit;
+
+        const [sessions, total] = await Promise.all([
+            this.prisma.posSession.findMany({
+                where: { posId: terminalId },
+                orderBy: { openedAt: 'desc' },
+                skip,
+                take: limit,
+            }),
+            this.prisma.posSession.count({ where: { posId: terminalId } }),
+        ]);
+
+        // For each session, aggregate sales that occurred within its timeframe
+        const enriched = await Promise.all(
+            sessions.map(async (session) => {
+                const timeFilter: any = { gte: session.openedAt };
+                if (session.closedAt) timeFilter.lte = session.closedAt;
+
+                const [salesAgg, orderCount] = await Promise.all([
+                    this.prisma.salesOrder.aggregate({
+                        where: {
+                            posId: posId,
+                            status: 'completed',
+                            createdAt: timeFilter,
+                        },
+                        _sum: {
+                            grandTotal: true,
+                            cashAmount: true,
+                            cardAmount: true,
+                        },
+                        _count: { id: true },
+                    }),
+                    this.prisma.salesOrder.count({
+                        where: {
+                            posId: posId,
+                            status: 'completed',
+                            createdAt: timeFilter,
+                        },
+                    }),
+                ]);
+
+                const totalSales = Number(salesAgg._sum.grandTotal ?? 0);
+                const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
+                const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
+                const openingFloat = Number(session.openingFloat ?? 0);
+
+                return {
+                    id: session.id,
+                    status: session.status,
+                    openedAt: session.openedAt,
+                    closedAt: session.closedAt,
+                    openingFloat,
+                    openingNote: session.openingNote,
+                    expectedCash: session.expectedCash ? Number(session.expectedCash) : openingFloat + cashSales,
+                    actualCash: session.actualCash ? Number(session.actualCash) : null,
+                    difference: session.difference ? Number(session.difference) : null,
+                    closingNote: session.closingNote,
+                    metrics: {
+                        totalSales,
+                        cashSales,
+                        cardSales,
+                        orderCount,
+                    },
+                };
+            }),
+        );
+
+        return {
+            data: enriched,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        };
+    }
 }
