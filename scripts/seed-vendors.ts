@@ -10,13 +10,19 @@ import * as crypto from 'crypto';
  * ─────────────────────
  * Vendors link to Chart of Accounts via the payables section (Current Liabilities):
  *
+ *  LOCAL VENDORS
  *  GOODS          → 12010004  BILLS PAYABLE-LOCAL
  *  SERVICES       → 12030001  A/P PARTIES
  *  RENT           → 12030001  A/P PARTIES  (rent accruals go here)
  *  GOODS/SERVICES → 12010004 + 12030001  (both accounts)
  *
- * The vendor codes (120001...) are the client's own reference numbers,
- * completely separate from chart of account codes (12010004 etc.)
+ *  IMPORT VENDORS
+ *  SPORTS BRANDS  → 12010001  BILLS PAYABLE-IMPORTS SPORTS BRANDS
+ *  FASHION BRANDS → 12010002  BILLS PAYABLE-IMPORTS FASHION BRANDS
+ *  WATCH BRANDS   → 12010003  BILLS PAYABLE-IMPORTS WATCH BRNDS
+ *
+ * The vendor codes (120001..., IMP001...) are the client's own reference numbers,
+ * completely separate from chart of account codes (12010001 etc.)
  */
 
 type VendorNature = 'GOODS' | 'SERVICES' | 'RENT' | 'GOODS / SERVICES';
@@ -24,6 +30,7 @@ type VendorNature = 'GOODS' | 'SERVICES' | 'RENT' | 'GOODS / SERVICES';
 interface VendorSeed {
   code: string;
   name: string;
+  brand?: string;
   nature: VendorNature;
   address: string;
   contactNo?: string;
@@ -208,7 +215,46 @@ const vendors3: VendorSeed[] = [
   { code: '120150', name: 'OTHERS P/A', nature: 'SERVICES', address: 'Office No. 1st Floor, Services Club, Ext. Building Mereweather Road, Karachi', contactNo: '021-35652161', accountCodes: getAccountCodes('SERVICES') },
 ];
 
-const allVendors = [...vendors, ...vendors2, ...vendors3];
+// Import Vendors (IMP001-IMP019)
+type ImportBrandCategory = 'SPORTS' | 'FASHION' | 'WATCHES';
+
+function getImportAccountCodes(category: ImportBrandCategory): string[] {
+  switch (category) {
+    case 'SPORTS':  return ['12010001']; // BILLS PAYABLE-IMPORTS SPORTS BRANDS
+    case 'FASHION': return ['12010002']; // BILLS PAYABLE-IMPORTS FASHION BRANDS
+    case 'WATCHES': return ['12010003']; // BILLS PAYABLE-IMPORTS WATCH BRNDS
+  }
+}
+
+const vendorsImport: VendorSeed[] = [
+  // Sports Brands → 12010001
+  { code: 'IMP001', brand: 'NIKE',         name: 'NIKE GLOBAL TRADING BV SINGAPORE BRANCH', nature: 'GOODS', address: '30 Pasir Panjang Road No. 10-31/32, Mapletree Business City, Singapore 117440', accountCodes: getImportAccountCodes('SPORTS') },
+  { code: 'IMP002', brand: 'NIKE',         name: 'OD360 PTE LTD',                            nature: 'GOODS', address: '119 Genting Lane, #03-00, HB@ 119 Genting, Singapore, 349570', accountCodes: getImportAccountCodes('SPORTS') },
+  { code: 'IMP003', brand: 'ADIDAS',       name: 'ADIDAS EMERGING MARKETS FZE',              nature: 'GOODS', address: 'Dubai Design District (d3), Building No.2 4th Floor 32512 Dubai, UAE', contactNo: '971-4-5123500', accountCodes: getImportAccountCodes('SPORTS') },
+  { code: 'IMP004', brand: 'ASICS',        name: 'ASICS ARABIA FZE',                         nature: 'GOODS', address: 'ASICS Middle East Trading L.L.C. Unit 307B, Building No. 5, P.O. Box 49774 Dubai Design District, Dubai, UAE', accountCodes: getImportAccountCodes('SPORTS') },
+  { code: 'IMP005', brand: 'BIRKENSTOCK',  name: 'BIRKENSTOCK GLOBAL SALES GMBH',            nature: 'GOODS', address: 'Birkenstock Logistics GmbH Burg Ockenfels 53545 Linz am Rhein Germany', contactNo: '+49 2683 9359 0', accountCodes: getImportAccountCodes('SPORTS') },
+  { code: 'IMP006', brand: 'PUMA',         name: 'PUMA SOUTH EAST ASIA PTE LTD',             nature: 'GOODS', address: 'PUMA MIDDLE EAST FZ-LLC P.O. BOX 500626 DUBAI, UAE', contactNo: '971-4-5621222', accountCodes: getImportAccountCodes('SPORTS') },
+  { code: 'IMP007', brand: 'UNDER ARMOUR', name: 'UA SPORTS (S.E.A.) PTE. LTD.',             nature: 'GOODS', address: '7 Temasek Boulevard, #25-01, Suntec Tower One Singapore 038987 SGP', contactNo: '+65 6225 2881', accountCodes: getImportAccountCodes('SPORTS') },
+  // Fashion Brands → 12010002
+  { code: 'IMP008', brand: 'CHARLES & KEITH', name: 'CHARLES & KEITH INTERNATIONAL PTE LTD', nature: 'GOODS', address: '6 Tai Seng Link, Level 8 Charles & Keith Group Headquarters Singapore 534101', contactNo: '+65 6488 2688', accountCodes: getImportAccountCodes('FASHION') },
+  { code: 'IMP009', brand: 'PEDRO',            name: 'CHARLES & KEITH INTERNATIONAL PTE LTD', nature: 'GOODS', address: '6 Tai Seng Link, Level 8 Charles & Keith Group Headquarters Singapore 534101', contactNo: '+65 6488 2688', accountCodes: getImportAccountCodes('FASHION') },
+  // Watch Brands → 12010003
+  { code: 'IMP010', brand: 'TAG HEUER',    name: 'TAG HEUER',              nature: 'GOODS', address: 'Tag Heuer Branch of LVMH Swiss Manufactures SA Av. Luis-Joseph Chevrolet 4-6A CH-2300 La Chaux-de-Fond', accountCodes: getImportAccountCodes('WATCHES') },
+  { code: 'IMP011', brand: 'TIMEX',        name: 'TIMEX NEDERLAND B.V.',   nature: 'GOODS', address: 'TIMEX NEDERLAND B.V. TAURUSAVENUE 17A, 2132 LS HOOFDDORP, THE NETHERLANDS.', contactNo: '+31 23 556 3664', accountCodes: getImportAccountCodes('WATCHES') },
+  { code: 'IMP012', brand: 'TIMBERLAND',   name: 'ILG EMEA DWC LLC',       nature: 'GOODS', address: 'Plot No: WB27-WB28, Logistics District Dubai World Central, DUBAI, UNITED ARAB EMIRATES', contactNo: '+971 4 803 2222', accountCodes: getImportAccountCodes('WATCHES') },
+  { code: 'IMP013', brand: 'POLICE',       name: 'ILG EMEA DWC LLC',       nature: 'GOODS', address: 'Plot No: WB27-WB28, Logistics District Dubai World Central, DUBAI, UNITED ARAB EMIRATES', contactNo: '+971 4 803 2222', accountCodes: getImportAccountCodes('WATCHES') },
+  // Fashion Brands → 12010002
+  { code: 'IMP014', brand: 'USPA',         name: 'SAAT VE SAAT SAN.VETİC.A.Ş.', nature: 'GOODS', address: 'Büyükdere Cad. Noramin İş Merkezi No:237/D Kat:B2 Maslak, İstanbul/Türkiye', contactNo: '+90 (212) 232 7 228', accountCodes: getImportAccountCodes('FASHION') },
+  { code: 'IMP015', brand: 'DANISH DESIGN', name: 'WEISZ GROUP',               nature: 'GOODS', address: 'Weisz Group Heijermanslaan 47A 1422 GV Uithoorn The Netherlands', contactNo: '+31 (0)20 679 46 33', accountCodes: getImportAccountCodes('FASHION') },
+  { code: 'IMP016', brand: 'NAUTICA',      name: 'TIMEX NEDERLAND B.V.',   nature: 'GOODS', address: 'TIMEX NEDERLAND B.V. TAURUSAVENUE 17A, 2132 LS HOOFDDORP, THE NETHERLANDS.', accountCodes: getImportAccountCodes('WATCHES') },
+  // Watch Brands → 12010003
+  { code: 'IMP017', brand: 'TISSOT',       name: 'THE LEGEND',             nature: 'GOODS', address: '1-C Street 7A, Badar Commercial Area, DHA Ph V ext., Karachi.', contactNo: '021 35205108', accountCodes: getImportAccountCodes('WATCHES') },
+  { code: 'IMP018', brand: 'RADO',         name: 'THE LEGEND',             nature: 'GOODS', address: '1-C Street 7A, Badar Commercial Area, DHA Ph V ext., Karachi.', accountCodes: getImportAccountCodes('WATCHES') },
+  // Fashion Brands → 12010002
+  { code: 'IMP019', brand: 'GUESS',        name: 'PARAMOUNT ENTERPRISES PVT LTD.', nature: 'GOODS', address: '1 Dean Arcade Khy-Jami Block 8 Clifton Karachi Pakistan', accountCodes: getImportAccountCodes('FASHION') },
+];
+
+const allVendors = [...vendors, ...vendors2, ...vendors3, ...vendorsImport];
 
 function decrypt(encryptedText: string, masterKeyString: string): string {
   const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
@@ -260,7 +306,8 @@ async function seedVendors(prisma: PrismaClient) {
     const data = {
       code: v.code,
       name: v.name,
-      type: 'LOCAL',
+      brand: v.brand ?? null,
+      type: v.code.startsWith('IMP') ? 'IMPORT' : 'LOCAL',
       nature: v.nature === 'GOODS / SERVICES' ? 'GOODS' : v.nature, // normalize
       address: v.address,
       contactNo: v.contactNo ?? null,

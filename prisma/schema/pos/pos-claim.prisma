@@ -1,0 +1,49 @@
+model PosClaim {
+  id              String          @id @default(uuid())
+  claimNumber     String          @unique @map("claim_number")
+  salesOrderId    String          @map("sales_order_id")
+  claimType       String          @default("RETURN") @map("claim_type") // RETURN | EXCHANGE | DEFECTIVE
+  reasonCode      String          @map("reason_code")
+  reasonNotes     String?         @map("reason_notes")
+  status          String          @default("SUBMITTED") @map("status")
+  // SUBMITTED → UNDER_REVIEW → APPROVED | PARTIALLY_APPROVED | REJECTED | CANCELLED
+  claimedAmount   Decimal         @default(0) @map("claimed_amount") @db.Decimal(15, 2)
+  approvedAmount  Decimal         @default(0) @map("approved_amount") @db.Decimal(15, 2)
+  reviewNotes     String?         @map("review_notes")
+  submittedAt     DateTime        @default(now()) @map("submitted_at")
+  reviewedAt      DateTime?       @map("reviewed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdBy       String?         @map("created_by")
+  reviewedBy      String?         @map("reviewed_by")
+
+  salesOrder      SalesOrder      @relation(fields: [salesOrderId], references: [id])
+  items           PosClaimItem[]
+
+  @@index([salesOrderId])
+  @@index([status])
+  @@map("pos_claims")
+}
+
+model PosClaimItem {
+  id                String    @id @default(uuid())
+  claimId           String    @map("claim_id")
+  salesOrderItemId  String    @map("sales_order_item_id")
+  itemId            String    @map("item_id")
+  claimedQty        Int       @map("claimed_qty")
+  approvedQty       Int       @default(0) @map("approved_qty")
+  unitPaidPrice     Decimal   @map("unit_paid_price") @db.Decimal(15, 2)
+  claimedAmount     Decimal   @map("claimed_amount") @db.Decimal(15, 2)
+  approvedAmount    Decimal   @default(0) @map("approved_amount") @db.Decimal(15, 2)
+  itemStatus        String    @default("PENDING") @map("item_status") // PENDING | APPROVED | PARTIALLY_APPROVED | REJECTED
+  reviewNotes       String?   @map("review_notes")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  claim             PosClaim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  item              Item      @relation(fields: [itemId], references: [id])
+
+  @@index([claimId])
+  @@index([itemId])
+  @@map("pos_claim_items")
+}
