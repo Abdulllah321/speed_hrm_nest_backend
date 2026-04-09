@@ -11,6 +11,7 @@ model PaymentVoucher {
   supplierId      String?
   creditAmount    Decimal                @default(0.0) @db.Decimal(15, 2)
   isAdvance       Boolean                @default(false)
+  advanceApplied  Decimal                @default(0.0) @db.Decimal(15, 2)
   isTaxApplicable Boolean                @default(false)
   description     String
   status          String                 @default("approved")
@@ -21,6 +22,8 @@ model PaymentVoucher {
   supplier        Supplier?              @relation(fields: [supplierId], references: [id])
   details         PaymentVoucherDetail[]
   invoices        PaymentVoucherToInvoice[]
+  // Advances applied FROM this voucher (when this is an advance PV being consumed)
+  advanceUsages   AdvanceApplication[]   @relation("SourceAdvance")
 }
 
 model PaymentVoucherToInvoice {
@@ -48,4 +51,18 @@ model PaymentVoucherDetail {
 
   @@index([paymentVoucherId])
   @@index([accountId])
+}
+
+/// Tracks how much of an advance PV has been applied to settle invoices
+model AdvanceApplication {
+  id                    String         @id @default(uuid())
+  sourceAdvanceId       String         @map("source_advance_id")
+  appliedInVoucherId    String         @map("applied_in_voucher_id")
+  appliedAmount         Decimal        @map("applied_amount") @db.Decimal(15, 2)
+  createdAt             DateTime       @default(now())
+  sourceAdvance         PaymentVoucher @relation("SourceAdvance", fields: [sourceAdvanceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceAdvanceId])
+  @@index([appliedInVoucherId])
+  @@map("advance_applications")
 }
