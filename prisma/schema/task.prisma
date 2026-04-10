@@ -1,0 +1,201 @@
+// ─── Task Assessment Module — Prisma Schema ──────────────────────────────────
+
+model TaskProject {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  code        String   @unique // e.g. "PROJ-001"
+  color       String?
+  icon        String?
+  status      String   @default("active") // "active" | "archived" | "on_hold"
+  ownerId     String   // employeeId
+  departmentId String?
+  startDate   DateTime?
+  dueDate     DateTime?
+  visibility  String   @default("public") // "public" | "private" | "department"
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lists   TaskList[]
+  members ProjectMember[]
+  labels  TaskLabel[]
+
+  @@index([ownerId])
+  @@index([departmentId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id         String   @id @default(uuid())
+  projectId  String
+  employeeId String
+  role       String   @default("member") // "owner" | "manager" | "member" | "viewer"
+  addedById  String?
+  createdAt  DateTime @default(now())
+
+  project TaskProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, employeeId])
+  @@index([projectId])
+  @@index([employeeId])
+}
+
+model TaskList {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  color       String?
+  position    Int      @default(0)
+  status      String   @default("active") // "active" | "archived"
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project TaskProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([projectId])
+}
+
+model TaskLabel {
+  id        String @id @default(uuid())
+  projectId String
+  name      String
+  color     String @default("#6366f1")
+
+  project     TaskProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignments TaskLabelAssignment[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model Task {
+  id                   String    @id @default(uuid())
+  projectId            String
+  listId               String
+  title                String
+  description          String?
+  status               String    @default("todo") // "todo" | "in_progress" | "in_review" | "done" | "cancelled"
+  priority             String    @default("none") // "none" | "low" | "medium" | "high" | "urgent"
+  type                 String    @default("task") // "task" | "bug" | "feature" | "improvement"
+  position             Int       @default(0)
+  parentTaskId         String?
+  startDate            DateTime?
+  dueDate              DateTime?
+  estimatedHours       Decimal?  @db.Decimal(8, 2)
+  actualHours          Decimal?  @db.Decimal(8, 2)
+  completionPercentage Int       @default(0)
+  isBlocked            Boolean   @default(false)
+  blockedReason        String?
+  notifiedAt           DateTime? // for due-date reminder deduplication
+  completedAt          DateTime?
+  createdById          String?
+  updatedById          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  list        TaskList             @relation(fields: [listId], references: [id], onDelete: Cascade)
+  parent      Task?                @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subtasks    Task[]               @relation("TaskSubtasks")
+  assignees   TaskAssignee[]
+  comments    TaskComment[]
+  activities  TaskActivity[]
+  attachments TaskAttachment[]
+  labels      TaskLabelAssignment[]
+  review      TaskReview?
+
+  @@index([projectId])
+  @@index([listId])
+  @@index([parentTaskId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+}
+
+model TaskAssignee {
+  id         String   @id @default(uuid())
+  taskId     String
+  employeeId String
+  role       String   @default("collaborator") // "primary" | "collaborator" | "reviewer"
+  assignedAt DateTime @default(now())
+  assignedById String?
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, employeeId])
+  @@index([taskId])
+  @@index([employeeId])
+}
+
+model TaskLabelAssignment {
+  taskId  String
+  labelId String
+
+  task  Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label TaskLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+}
+
+model TaskAttachment {
+  id           String   @id @default(uuid())
+  taskId       String
+  fileName     String
+  fileUrl      String
+  fileSize     Int?
+  mimeType     String?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TaskComment {
+  id              String    @id @default(uuid())
+  taskId          String
+  authorId        String    // userId from master DB
+  content         String
+  parentCommentId String?
+  isEdited        Boolean   @default(false)
+  editedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  task   Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  parent TaskComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies TaskComment[] @relation("CommentReplies")
+
+  @@index([taskId])
+  @@index([parentCommentId])
+}
+
+model TaskActivity {
+  id        String   @id @default(uuid())
+  taskId    String
+  actorId   String   // userId
+  action    String   // "created" | "status_changed" | "assigned" | "unassigned" | "priority_changed" | "due_date_changed" | "commented" | "attachment_added" | "subtask_added" | "completed"
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([actorId])
+}
+
+model TaskReview {
+  id         String   @id @default(uuid())
+  taskId     String   @unique
+  reviewerId String   // userId
+  rating     Int      // 1-5
+  feedback   String?
+  createdAt  DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
