@@ -112,6 +112,11 @@ import { PurchaseReturnModule } from './purchase/purchase-return/purchase-return
 import { PosSessionModule } from './pos-session/pos-session.module';
 import { DebitNoteModule } from './purchase/debit-note/debit-note.module';
 import { SalesModule } from './sales/sales.module';
+import { KpiModule } from './kpi/kpi.module';
+import { TaskProjectModule } from './task-project/task-project.module';
+import { TaskListModule } from './task-list/task-list.module';
+import { TaskModule } from './task/task.module';
+import { TaskReportsModule } from './task-reports/task-reports.module';
 
 @Module({
   imports: [
@@ -248,6 +253,11 @@ import { SalesModule } from './sales/sales.module';
     PosSessionModule,
     DebitNoteModule,
     SalesModule,
+    KpiModule,
+    TaskProjectModule,
+    TaskListModule,
+    TaskModule,
+    TaskReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
