@@ -1,0 +1,47 @@
+model KpiTemplate {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  category    String      // "attendance" | "performance" | "productivity" | "custom"
+  metricType  String      // "manual" | "auto"
+  formula     String?     // e.g. "attendance_rate", "leave_utilization" (used when metricType = "auto")
+  unit        String?     // "%", "score", "count", "hours"
+  targetValue Decimal?    @db.Decimal(10, 2)
+  weight      Decimal     @default(1) @db.Decimal(5, 2)
+  status      String      @default("active")
+  createdById String?
+  updatedById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  reviews     KpiReview[]
+
+  @@index([category])
+  @@index([status])
+}
+
+model KpiReview {
+  id            String      @id @default(uuid())
+  employeeId    String
+  kpiTemplateId String
+  period        String      // "2026-Q1", "2026-04"
+  periodType    String      // "monthly" | "quarterly" | "yearly"
+  targetValue   Decimal     @db.Decimal(10, 2)
+  actualValue   Decimal?    @db.Decimal(10, 2)
+  score         Decimal?    @db.Decimal(5, 2) // 0-100
+  notes         String?
+  reviewedById  String?
+  rejectionReason String?
+  status        String      @default("pending") // "pending" | "submitted" | "approved" | "rejected"
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kpiTemplate   KpiTemplate @relation(fields: [kpiTemplateId], references: [id])
+
+  @@unique([employeeId, kpiTemplateId, period])
+  @@index([employeeId])
+  @@index([kpiTemplateId])
+  @@index([period])
+  @@index([status])
+}
