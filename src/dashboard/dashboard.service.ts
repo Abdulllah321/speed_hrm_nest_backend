@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
+import { TaskReportsService } from '../task-reports/task-reports.service';
 
 @Injectable()
 export class DashboardService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
+    private taskReports: TaskReportsService,
   ) { }
 
   async getDashboardStats() {
@@ -268,9 +270,9 @@ export class DashboardService {
         pendingAttendanceQueries: { value: pendingAttendanceQueriesStatus, trend: queriesTrend, trendType: queriesTrend >= 0 ? 'up' : 'down' },
       },
       departmentStats, upcomingBirthdays, upcomingAnniversaries, criticalAlerts, analyticsSuggestions, attendanceTrend, recentLeaveRequests: formattedRecentLeaves,
+      taskWidgets: await this.taskReports.adminWidgets().catch(() => null),
     };
   }
-
   async getEmployeeDashboardStats(userId: string) {
     this.prisma.ensureTenantContext();
     console.log(`[Dashboard] Fetching stats for userId: ${userId}`);
@@ -491,6 +493,7 @@ export class DashboardService {
       },
       upcomingHoliday,
       recentActivities,
+      taskWidgets: await this.taskReports.employeeWidgets(employee.id).catch(() => null),
     };
   }
 }
