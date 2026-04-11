@@ -145,8 +145,31 @@ export class GrnService {
 
     return this.prisma.$transaction(async (tx) => {
       try {
+        // 0. Resolve items to UUIDs
+        const resolvedItems = await Promise.all(
+          dto.items.map(async (item) => {
+            const itemRecord = await tx.item.findFirst({
+              where: {
+                OR: [{ id: item.itemId }, { itemId: item.itemId }],
+              },
+              select: { id: true },
+            });
+
+            if (!itemRecord) {
+              throw new BadRequestException(
+                `Item with ID or code ${item.itemId} not found in database master`,
+              );
+            }
+
+            return {
+              ...item,
+              itemId: itemRecord.id, // Use the proper UUID
+            };
+          }),
+        );
+
         this.logger.log(`Creating GRN record in database`);
-        
+
         // 1. Create GRN
         const grn = await tx.goodsReceiptNote.create({
           data: {
@@ -158,7 +181,7 @@ export class GrnService {
             orderType: po.orderType || null,
             goodsType: po.goodsType || po.purchaseRequisition?.goodsType || null,
             items: {
-              create: dto.items.map((item) => ({
+              create: resolvedItems.map((item) => ({
                 itemId: item.itemId,
                 description: item.description,
                 receivedQty: new Prisma.Decimal(item.receivedQty),
@@ -171,11 +194,11 @@ export class GrnService {
         this.logger.log(`GRN created successfully with ID: ${grn.id}`);
 
         // 2. Process each item
-        this.logger.log(`Processing ${dto.items.length} items`);
-        for (const grnItem of dto.items) {
+        this.logger.log(`Processing ${resolvedItems.length} items`);
+        for (const grnItem of resolvedItems) {
           this.logger.debug(`Processing item: ${grnItem.itemId}, qty: ${grnItem.receivedQty}`);
           
-          const poItem = po.items.find((i) => i.itemId === grnItem.itemId);
+          const poItem = po.items.find((i) => i.itemId === grnItem.itemId || i.id === grnItem.itemId);
           if (!poItem) {
             this.logger.error(`Item ${grnItem.itemId} not found in PO`);
             throw new BadRequestException(
@@ -183,18 +206,8 @@ export class GrnService {
             );
           }
 
-          // Resolve internal Item UUID
-          const itemRecord = await tx.item.findUnique({
-            where: { id: grnItem.itemId },
-            select: { id: true },
-          });
-
-          if (!itemRecord) {
-            this.logger.error(`Item with ID ${grnItem.itemId} not found in database master`);
-            throw new BadRequestException(
-              `Item with ID ${grnItem.itemId} not found in database master`,
-            );
-          }
+          // Use the itemId which is already resolved to a UUID
+          const itemRecord = { id: grnItem.itemId };
 
           const remainingQty = new Prisma.Decimal(poItem.quantity).minus(
             new Prisma.Decimal(poItem.receivedQty),

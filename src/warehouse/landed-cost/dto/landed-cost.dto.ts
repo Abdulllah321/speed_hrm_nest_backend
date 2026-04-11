@@ -174,6 +174,10 @@ export class LandedCostItemDto {
 
   @IsNumber()
   @IsOptional()
+  unitPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
   otherChargesPKR?: number;
 }
 

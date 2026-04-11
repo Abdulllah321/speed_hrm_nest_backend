@@ -62,7 +62,8 @@ model ERPSalesInvoiceItem {
 }
 
 enum ERPSalesInvoiceStatus {
-  PENDING   // Invoice created, payment pending
+  PENDING   // Invoice created, not posted yet
+  POSTED    // Invoice posted, ready for payment
   PARTIAL   // Partially paid
   PAID      // Fully paid
   CANCELLED // Invoice cancelled
