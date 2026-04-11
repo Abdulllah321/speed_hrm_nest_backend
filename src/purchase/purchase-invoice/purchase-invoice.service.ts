@@ -2,12 +2,15 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseInvoiceDto, UpdatePurchaseInvoiceDto } from './dto';
 import { AccountingService } from '../../finance/accounting/accounting.service';
+import { StockLedgerService } from '../../warehouse/stock-ledger/stock-ledger.service';
+import { MovementType, Prisma } from '@prisma/client';
 
 @Injectable()
 export class PurchaseInvoiceService {
   constructor(
     private prisma: PrismaService,
     private accounting: AccountingService,
+    private stockLedger: StockLedgerService,
   ) {}
 
   async create(createDto: CreatePurchaseInvoiceDto) {
@@ -16,6 +19,10 @@ export class PurchaseInvoiceService {
 
     // Calculate totals
     const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+
+    // Derive invoiceType if not explicitly provided
+    const invoiceType = createDto.invoiceType
+      ?? (createDto.grnId ? 'GRN_BASED' : createDto.landedCostId ? 'LANDED_COST_BASED' : 'DIRECT');
 
     // Resolve true UUIDs for all items to fix legacy string IDs
     const resolvedItems = await Promise.all(createDto.items.map(async (item) => {
@@ -42,6 +49,8 @@ export class PurchaseInvoiceService {
         supplierId: createDto.supplierId,
         grnId: createDto.grnId,
         landedCostId: createDto.landedCostId,
+        warehouseId: createDto.warehouseId,
+        invoiceType,
         subtotal,
         taxAmount,
         discountAmount: createDto.discountAmount || 0,
@@ -91,6 +100,7 @@ export class PurchaseInvoiceService {
     if (filters?.supplierId) where.supplierId = filters.supplierId;
     if (filters?.status) where.status = filters.status;
     if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
+    if (filters?.invoiceType) where.invoiceType = filters.invoiceType;
     
     if (filters?.search) {
       where.OR = [
@@ -613,6 +623,36 @@ export class PurchaseInvoiceService {
       }
     }
 
+    // For DIRECT invoices — validate each item exists in master
+    const isDirect = !createDto.grnId && !createDto.landedCostId;
+    if (isDirect) {
+      if (!createDto.warehouseId) {
+        throw new BadRequestException('warehouseId is required for Direct Purchase Invoices');
+      }
+      const warehouse = await this.prisma.warehouse.findUnique({
+        where: { id: createDto.warehouseId },
+        select: { id: true },
+      });
+      if (!warehouse) {
+        throw new BadRequestException('Warehouse not found');
+      }
+      for (const item of createDto.items) {
+        const exists = await this.prisma.item.findFirst({
+          where: { OR: [{ id: item.itemId }, { itemId: item.itemId }] },
+          select: { id: true },
+        });
+        if (!exists) {
+          throw new BadRequestException(`Item ${item.itemId} not found in master`);
+        }
+        if (item.quantity <= 0) {
+          throw new BadRequestException(`Quantity must be greater than 0 for item ${item.itemId}`);
+        }
+        if (item.unitPrice <= 0) {
+          throw new BadRequestException(`Unit price must be greater than 0 for item ${item.itemId}`);
+        }
+      }
+    }
+
     // Check for duplicate invoice number
     const existingInvoice = await this.prisma.purchaseInvoice.findUnique({
       where: { invoiceNumber: createDto.invoiceNumber },
@@ -816,6 +856,44 @@ export class PurchaseInvoiceService {
         });
       }
 
+      // ── DIRECT invoice: update warehouse inventory on approval ────────────
+      if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
+        const warehouseId = (invoice as any).warehouseId as string;
+        for (const item of invoice.items) {
+          const qty = new Prisma.Decimal(item.quantity);
+          const unitPrice = new Prisma.Decimal(item.unitPrice);
+
+          // Stock ledger entry (INBOUND)
+          await this.stockLedger.createEntry(
+            {
+              itemId: item.itemId,
+              warehouseId,
+              qty,
+              movementType: MovementType.INBOUND,
+              referenceType: 'PURCHASE_INVOICE',
+              referenceId: id,
+              rate: unitPrice,
+            },
+            tx,
+          );
+
+          // Upsert InventoryItem (warehouse stock)
+          const existing = await tx.inventoryItem.findFirst({
+            where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
+          });
+          if (existing) {
+            await tx.inventoryItem.update({
+              where: { id: existing.id },
+              data: { quantity: { increment: qty } },
+            });
+          } else {
+            await tx.inventoryItem.create({
+              data: { warehouseId, locationId: null, itemId: item.itemId, quantity: qty, status: 'AVAILABLE' },
+            });
+          }
+        }
+      }
+
       return updated;
     });
   }
@@ -862,6 +940,38 @@ export class PurchaseInvoiceService {
             description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
             transactionDate: new Date(),
           }, tx);
+        }
+
+        // ── DIRECT invoice: reverse warehouse inventory on cancellation ──────
+        if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
+          const warehouseId = (invoice as any).warehouseId as string;
+          for (const item of invoice.items) {
+            const qty = new Prisma.Decimal(item.quantity).negated();
+
+            // OUTBOUND ledger entry to reverse the INBOUND
+            await this.stockLedger.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId,
+                qty,
+                movementType: MovementType.OUTBOUND,
+                referenceType: 'PURCHASE_INVOICE_CANCEL',
+                referenceId: id,
+              },
+              tx,
+            );
+
+            // Decrement InventoryItem
+            const existing = await tx.inventoryItem.findFirst({
+              where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
+            });
+            if (existing) {
+              await tx.inventoryItem.update({
+                where: { id: existing.id },
+                data: { quantity: { decrement: new Prisma.Decimal(item.quantity) } },
+              });
+            }
+          }
         }
       }
 
