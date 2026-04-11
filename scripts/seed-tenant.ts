@@ -118,43 +118,37 @@ async function restoreDatabase(connectionString: string, filePath: string): Prom
                 shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
             });
         } else {
-            // Using a temporary bridge file to run SQL and psql meta-commands together correctly
+            const { writeFileSync, unlinkSync } = require('fs');
             const bridgeFilePath = join(process.cwd(), `tmp_restore_${config.database}.sql`);
             const normalizedPath = filePath.replace(/\\/g, '/');
-            // We still try replica role just in case the user has permissions
-            const bridgeContent = `SET session_replication_role = 'replica';\n\\i '${normalizedPath}'\nSET session_replication_role = 'origin';`;
 
-            const { writeFileSync, unlinkSync } = require('fs');
+            // Build bridge: truncate all non-migration tables, then load data with FK checks disabled
+            const truncateBlock = `
+DO $$
+DECLARE r RECORD;
+BEGIN
+  SET session_replication_role = 'replica';
+  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != '_prisma_migrations') LOOP
+    EXECUTE 'TRUNCATE TABLE "' || r.tablename || '" CASCADE';
+  END LOOP;
+  SET session_replication_role = 'origin';
+END $$;
+`;
+            const bridgeContent = `${truncateBlock}\nSET session_replication_role = 'replica';\n\\i '${normalizedPath}'\nSET session_replication_role = 'origin';`;
             writeFileSync(bridgeFilePath, bridgeContent);
 
             try {
-                console.log('   ↳ Phase 1: Loading available records (ignoring sequence errors)...');
-                const psqlCmd1 = `psql -h ${config.host} -p ${config.port} -U ${config.username} -d ${config.database} -f "${bridgeFilePath}" -v ON_ERROR_STOP=0 --quiet`;
+                console.log('   ↳ Truncating existing data and restoring from backup...');
+                const psqlCmd = `psql -h ${config.host} -p ${config.port} -U ${config.username} -d ${config.database} -f "${bridgeFilePath}" -v ON_ERROR_STOP=0 --quiet`;
                 try {
-                    execSync(psqlCmd1, {
-                        env: { ...process.env, PGPASSWORD: config.password },
-                        stdio: 'ignore', // Keep it clean as it will have many errors
-                        shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
-                    });
-                } catch (e) {
-                    // Ignore exit code 1 in phase 1
-                }
-
-                console.log('   ↳ Phase 2: Resolving missing child records...');
-                // Second pass to pick up records that failed FK checks in phase 1
-                const psqlCmd2 = `psql -h ${config.host} -p ${config.port} -U ${config.username} -d ${config.database} -f "${bridgeFilePath}" -v ON_ERROR_STOP=0 --quiet`;
-                try {
-                    execSync(psqlCmd2, {
+                    execSync(psqlCmd, {
                         env: { ...process.env, PGPASSWORD: config.password },
                         stdio: 'ignore',
                         shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
                     });
                 } catch (e) {
-                    // Phase 2 might still have "duplicate key" errors which return exit code 1
-                    // We assume it's okay unless we want to be very strict.
-                    console.log('   ⚠️  Phase 2 completed with some warnings (likely duplicates).');
+                    // Non-zero exit is expected due to pre-existing schema constraints in the SQL file
                 }
-
             } finally {
                 if (existsSync(bridgeFilePath)) unlinkSync(bridgeFilePath);
             }

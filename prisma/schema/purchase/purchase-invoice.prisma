@@ -6,6 +6,7 @@ model PurchaseInvoice {
   supplierId      String                @map("supplier_id")
   grnId           String?               @map("grn_id")
   landedCostId    String?               @map("landed_cost_id")
+  warehouseId     String?               @map("warehouse_id")
   subtotal        Decimal               @default(0.0) @db.Decimal(15, 2)
   taxAmount       Decimal               @default(0.0) @map("tax_amount") @db.Decimal(15, 2)
   discountAmount  Decimal               @default(0.0) @map("discount_amount") @db.Decimal(15, 2)
@@ -15,6 +16,7 @@ model PurchaseInvoice {
   returnAmount    Decimal               @default(0.0) @map("return_amount") @db.Decimal(15, 2)
   paymentStatus   String                @default("UNPAID") @map("payment_status")
   status          String                @default("DRAFT")
+  invoiceType     String                @default("GRN_BASED") @map("invoice_type")
   notes           String?
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
@@ -22,6 +24,7 @@ model PurchaseInvoice {
   supplier        Supplier              @relation(fields: [supplierId], references: [id])
   grn             GoodsReceiptNote?     @relation(fields: [grnId], references: [id])
   landedCost      LandedCost?           @relation(fields: [landedCostId], references: [id])
+  warehouse       Warehouse?            @relation(fields: [warehouseId], references: [id])
   paymentVouchers PaymentVoucherToInvoice[]
   debitNotes      DebitNote[]
 

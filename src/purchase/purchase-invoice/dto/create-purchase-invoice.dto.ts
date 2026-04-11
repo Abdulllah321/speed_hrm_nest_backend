@@ -64,6 +64,16 @@ export class CreatePurchaseInvoiceDto {
   landedCostId?: string;
 
   @IsOptional()
+  @IsUUID()
+  @Transform(({ value }) => value === '' ? undefined : value)
+  warehouseId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['GRN_BASED', 'LANDED_COST_BASED', 'DIRECT'])
+  invoiceType?: 'GRN_BASED' | 'LANDED_COST_BASED' | 'DIRECT';
+
+  @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseFloat(value))
   discountAmount?: number;
