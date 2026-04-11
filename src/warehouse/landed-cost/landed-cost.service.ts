@@ -31,7 +31,28 @@ export class LandedCostService {
     const landedCostNumber = `LC-${(count + 1).toString().padStart(6, '0')}`;
 
     return this.prisma.$transaction(async (tx) => {
-      // 1) Create Landed Cost Header
+      // 1) Prepare and resolve items to UUIDs
+      const resolvedItems = await Promise.all(
+        dto.items.map(async (item) => {
+          const itemRecord = await tx.item.findFirst({
+            where: {
+              OR: [{ id: item.itemId }, { itemId: item.itemId }],
+            },
+            select: { id: true },
+          });
+
+          if (!itemRecord) {
+            throw new BadRequestException(`Item with ID or code ${item.itemId} not found`);
+          }
+
+          return {
+            ...item,
+            itemId: itemRecord.id, // Ensure we use the UUID
+          };
+        }),
+      );
+
+      // 2) Create Landed Cost Header
       const landedCost = await tx.landedCost.create({
         data: {
           landedCostNumber,
@@ -51,7 +72,7 @@ export class LandedCostService {
           exchangeRate: dto.exchangeRate,
           status: 'SUBMITTED',
           items: {
-            create: dto.items.map((item) => ({
+            create: resolvedItems.map((item) => ({
               itemId: item.itemId,
               sku: item.sku,
               description: item.description,
@@ -143,15 +164,10 @@ export class LandedCostService {
         },
       });
 
-      // 2) Update Stock Ledger for each item with the new Landed Cost
-      for (const item of dto.items) {
-        const itemRecord = await tx.item.findUnique({
-          where: { id: item.itemId },
-          select: { id: true },
-        });
-        if (!itemRecord) {
-          throw new BadRequestException(`Item with code ${item.itemId} not found`);
-        }
+      // 3) Update Stock Ledger for each item with the new Landed Cost
+      for (const item of resolvedItems) {
+        // The itemId is already resolved to a valid UUID in Step 1
+        const itemRecord = { id: item.itemId };
 
         await this.stockLedgerService.createEntry(
           {
@@ -308,8 +324,10 @@ export class LandedCostService {
     return this.prisma.$transaction(async (tx) => {
       // Update stock ledger for fresh goods or direct PO
       for (const item of dto.items) {
-        const itemRecord = await tx.item.findUnique({
-          where: { itemId: item.itemId },
+        const itemRecord = await tx.item.findFirst({
+          where: {
+            OR: [{ id: item.itemId }, { itemId: item.itemId }],
+          },
           select: { id: true },
         });
         if (!itemRecord) {
@@ -390,8 +408,10 @@ export class LandedCostService {
     return this.prisma.$transaction(async (tx) => {
       // Simple posting logic - just mark GRN as valued and create stock entries
       for (const grnItem of grn.items) {
-        const itemRecord = await tx.item.findUnique({
-          where: { itemId: grnItem.itemId },
+        const itemRecord = await tx.item.findFirst({
+          where: {
+            OR: [{ id: grnItem.itemId }, { itemId: grnItem.itemId }],
+          },
           select: { id: true },
         });
         if (!itemRecord) continue;
