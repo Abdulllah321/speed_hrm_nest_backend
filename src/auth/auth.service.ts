@@ -1719,6 +1719,16 @@ export class AuthService {
     return { status: true, data: sessions };
   }
 
+  async terminateSession(userId: string, sessionId: string) {
+    const session = await this.prismaMaster.userSession.findFirst({
+      where: { id: sessionId, userId },
+    });
+    if (!session) return { status: false, message: 'Session not found' };
+
+    await this.prismaMaster.userSession.delete({ where: { id: sessionId } });
+    return { status: true, message: 'Session terminated' };
+  }
+
   async posUserLoginStandard(
     email: string,
     pass: string,

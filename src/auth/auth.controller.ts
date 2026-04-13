@@ -847,4 +847,13 @@ export class AuthController {
   async getSessions(@Req() req: any) {
     return this.service.getUserSessions(req.user.userId);
   }
+
+  @Post('sessions/terminate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Terminate a specific session by ID' })
+  async terminateSession(@Req() req: any, @Body('sessionId') sessionId: string, @Res() res: any) {
+    const result = await this.service.terminateSession(req.user.userId, sessionId);
+    return res.status(result.status ? 200 : 400).send(result);
+  }
 }
