@@ -63,12 +63,7 @@ export class ReceiptVoucherService {
           customerId: data.customerId || undefined,
           description: data.description,
           status: data.status || 'approved',
-          details: { 
-            create: details.map(d => ({
-              accountId: d.accountId,
-              credit: Number(d.credit)
-            }))
-          },
+          details: { create: details },
         },
         include: {
           details: { include: { account: true } },
@@ -214,8 +209,7 @@ export class ReceiptVoucherService {
     return this.prisma.eRPSalesInvoice.findMany({
       where: {
         customerId,
-        status: { in: ['POSTED', 'PARTIAL'] }, // Changed from PENDING to POSTED
-        balanceAmount: { gt: 0 }, // Only invoices with outstanding balance
+        status: { in: ['PENDING', 'PARTIAL'] },
       },
       select: {
         id: true,

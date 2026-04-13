@@ -44,40 +44,7 @@ export class SalesOrderService {
     return { status: true, data: orders };
   }
 
-  async findAvailableForDelivery() {
-    // Find confirmed orders that don't have delivery challans yet
-    const orders = await this.prisma.eRPSalesOrder.findMany({
-      where: {
-        status: 'CONFIRMED',
-        deliveryChallans: {
-          none: {} // No delivery challans created yet
-        }
-      },
-      include: {
-        customer: true,
-        warehouse: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return { status: true, data: orders };
-  }
-
   async findOne(id: string) {
-    console.log('Finding sales order with ID:', id); // Debug log
-    
-    // First, let's check if any sales orders exist at all
-    const allOrders = await this.prisma.eRPSalesOrder.findMany({
-      take: 5,
-      select: { id: true, orderNo: true }
-    });
-    console.log('Sample orders in database:', allOrders); // Debug log
-    
     const salesOrder = await this.prisma.eRPSalesOrder.findUnique({
       where: { id },
       include: {
@@ -93,13 +60,11 @@ export class SalesOrderService {
       },
     });
 
-    console.log('Found sales order:', salesOrder ? 'Yes' : 'No'); // Debug log
-
     if (!salesOrder) {
-      throw new NotFoundException(`Sales order with ID ${id} not found`);
+      throw new NotFoundException('Sales order not found');
     }
 
-    return { status: true, data: salesOrder };
+    return salesOrder;
   }
 
   async create(createSalesOrderDto: CreateSalesOrderDto) {
@@ -188,8 +153,7 @@ export class SalesOrderService {
   }
 
   async update(id: string, updateSalesOrderDto: UpdateSalesOrderDto) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
+    const salesOrder = await this.findOne(id);
 
     if (salesOrder.status === 'CONFIRMED') {
       throw new BadRequestException('Cannot update confirmed sales order');
@@ -270,8 +234,7 @@ export class SalesOrderService {
   }
 
   async confirm(id: string) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
+    const salesOrder = await this.findOne(id);
 
     if (salesOrder.status !== 'DRAFT') {
       throw new BadRequestException('Only draft orders can be confirmed');
@@ -296,8 +259,7 @@ export class SalesOrderService {
   }
 
   async cancel(id: string) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
+    const salesOrder = await this.findOne(id);
 
     if (salesOrder.status === 'CANCELLED') {
       throw new BadRequestException('Order is already cancelled');
@@ -323,8 +285,7 @@ export class SalesOrderService {
   }
 
   async createDeliveryChallan(id: string, data: any) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
+    const salesOrder = await this.findOne(id);
 
     if (salesOrder.status !== 'CONFIRMED') {
       throw new BadRequestException('Only confirmed orders can have delivery challans');

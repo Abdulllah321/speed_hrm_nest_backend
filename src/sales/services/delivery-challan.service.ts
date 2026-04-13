@@ -191,16 +191,11 @@ export class DeliveryChallanService {
       throw new NotFoundException('Delivery challan not found');
     }
 
-    console.log('FindOne - Challan ID:', id);
-    console.log('FindOne - Challan status from DB:', deliveryChallan.status);
-    console.log('FindOne - Challan invoices count:', deliveryChallan.invoices?.length || 0);
-
-    return { status: true, data: deliveryChallan };
+    return deliveryChallan;
   }
 
   async update(id: string, updateData: any) {
-    const deliveryChallanResponse = await this.findOne(id);
-    const deliveryChallan = deliveryChallanResponse.data;
+    const deliveryChallan = await this.findOne(id);
 
     if (deliveryChallan.status === 'DELIVERED') {
       throw new BadRequestException('Cannot update delivered challan');
@@ -223,8 +218,7 @@ export class DeliveryChallanService {
   }
 
   async cancel(id: string) {
-    const deliveryChallanResponse = await this.findOne(id);
-    const deliveryChallan = deliveryChallanResponse.data; // Extract data from response
+    const deliveryChallan = await this.findOne(id);
 
     if (deliveryChallan.status === 'DELIVERED') {
       throw new BadRequestException('Cannot cancel delivered challan');
@@ -297,19 +291,18 @@ export class DeliveryChallanService {
         }
       }
 
-      return { status: true, data: updatedChallan };
+      return updatedChallan;
     });
   }
 
   async deliver(id: string) {
     const deliveryChallan = await this.findOne(id);
-    const challanData = deliveryChallan.data; // Extract data from response
 
-    if (challanData.status !== 'PENDING') {
+    if (deliveryChallan.status !== 'PENDING') {
       throw new BadRequestException('Only pending challans can be delivered');
     }
 
-    const updatedChallan = await this.prisma.deliveryChallan.update({
+    return this.prisma.deliveryChallan.update({
       where: { id },
       data: { status: 'DELIVERED' },
       include: {
@@ -323,113 +316,64 @@ export class DeliveryChallanService {
         },
       },
     });
-
-    return { status: true, data: updatedChallan };
   }
 
   async createInvoice(id: string, data: any) {
-    // First, let's do a direct database query to see the actual status
-    const directQuery = await this.prisma.deliveryChallan.findUnique({
-      where: { id },
-      select: { 
-        id: true, 
-        status: true, 
-        challanNo: true,
-        invoices: {
-          select: { id: true, invoiceNo: true }
-        }
-      }
-    });
-
-    console.log('=== DIRECT DB QUERY ===');
-    console.log('Challan ID:', id);
-    console.log('Direct query result:', directQuery);
-    console.log('Status from direct query:', directQuery?.status);
-    console.log('Invoices from direct query:', directQuery?.invoices);
-    console.log('======================');
-
-    const deliveryChallanResponse = await this.findOne(id);
-    const deliveryChallan = deliveryChallanResponse.data; // Extract data from response
-
-    console.log('Creating invoice for challan:', id);
-    console.log('Challan status:', deliveryChallan.status);
-    console.log('Challan status type:', typeof deliveryChallan.status);
-    console.log('Status comparison:', deliveryChallan.status === 'DELIVERED');
-    console.log('Existing invoices:', deliveryChallan.invoices?.length || 0);
-
-    // Check if already invoiced
-    if (deliveryChallan.status === 'INVOICED') {
-      throw new BadRequestException('This delivery challan has already been invoiced');
-    }
-
-    // Check if challan already has invoices
-    if (deliveryChallan.invoices && deliveryChallan.invoices.length > 0) {
-      throw new BadRequestException('This delivery challan already has an invoice created');
-    }
+    const deliveryChallan = await this.findOne(id);
 
     if (deliveryChallan.status !== 'DELIVERED') {
-      throw new BadRequestException(`Only delivered challans can be invoiced. Current status: "${deliveryChallan.status}" (type: ${typeof deliveryChallan.status}). Please mark the challan as delivered first.`);
+      throw new BadRequestException('Only delivered challans can be invoiced');
     }
 
-    return await this.prisma.$transaction(async (tx) => {
-      // Generate invoice number
-      const lastInvoice = await tx.eRPSalesInvoice.findFirst({
-        orderBy: { invoiceNo: 'desc' },
-      });
-      
-      const lastNumber = lastInvoice?.invoiceNo ? parseInt(lastInvoice.invoiceNo.split('-')[1]) : 0;
-      const invoiceNo = `INV-${String(lastNumber + 1).padStart(3, '0')}`;
+    // Generate invoice number
+    const lastInvoice = await this.prisma.eRPSalesInvoice.findFirst({
+      orderBy: { invoiceNo: 'desc' },
+    });
+    
+    const lastNumber = lastInvoice?.invoiceNo ? parseInt(lastInvoice.invoiceNo.split('-')[1]) : 0;
+    const invoiceNo = `INV-${String(lastNumber + 1).padStart(3, '0')}`;
 
-      const invoice = await tx.eRPSalesInvoice.create({
-        data: {
-          invoiceNo,
-          salesOrderId: deliveryChallan.salesOrderId,
-          deliveryChallanId: id,
-          customerId: deliveryChallan.customerId,
-          warehouseId: deliveryChallan.warehouseId,
-          subtotal: deliveryChallan.totalAmount,
-          taxRate: data.taxRate || 0,
-          taxAmount: Number(deliveryChallan.totalAmount) * (data.taxRate || 0) / 100,
-          discount: data.discount || 0,
-          grandTotal: Number(deliveryChallan.totalAmount) + (Number(deliveryChallan.totalAmount) * (data.taxRate || 0) / 100) - (data.discount || 0),
-          items: {
-            create: await Promise.all(deliveryChallan.items.map(async (item: any) => {
-              // Fetch item cost from item master
-              const itemRecord = await tx.item.findUnique({
-                where: { id: item.itemId },
-                select: { unitCost: true }
-              });
-              
-              return {
-                itemId: item.itemId,
-                quantity: item.deliveredQty,
-                costPrice: itemRecord?.unitCost || 0,
-                salePrice: item.salePrice,
-                total: item.total,
-              };
-            })),
+    return this.prisma.eRPSalesInvoice.create({
+      data: {
+        invoiceNo,
+        salesOrderId: deliveryChallan.salesOrderId,
+        deliveryChallanId: id,
+        customerId: deliveryChallan.customerId,
+        warehouseId: deliveryChallan.warehouseId,
+        subtotal: deliveryChallan.totalAmount,
+        taxRate: data.taxRate || 0,
+        taxAmount: Number(deliveryChallan.totalAmount) * (data.taxRate || 0) / 100,
+        discount: data.discount || 0,
+        grandTotal: Number(deliveryChallan.totalAmount) + (Number(deliveryChallan.totalAmount) * (data.taxRate || 0) / 100) - (data.discount || 0),
+        items: {
+          create: await Promise.all(deliveryChallan.items.map(async (item) => {
+            // Fetch item cost from item master
+            const itemRecord = await this.prisma.item.findUnique({
+              where: { id: item.itemId },
+              select: { unitCost: true }
+            });
+            
+            return {
+              itemId: item.itemId,
+              quantity: item.deliveredQty,
+              costPrice: itemRecord?.unitCost || 0,
+              salePrice: item.salePrice,
+              total: item.total,
+            };
+          })),
+        },
+      },
+      include: {
+        customer: true,
+        warehouse: true,
+        salesOrder: true,
+        deliveryChallan: true,
+        items: {
+          include: {
+            item: true,
           },
         },
-        include: {
-          customer: true,
-          warehouse: true,
-          salesOrder: true,
-          deliveryChallan: true,
-          items: {
-            include: {
-              item: true,
-            },
-          },
-        },
-      });
-
-      // Update delivery challan status to INVOICED
-      await tx.deliveryChallan.update({
-        where: { id },
-        data: { status: 'INVOICED' },
-      });
-
-      return { status: true, data: invoice };
+      },
     });
   }
 }
