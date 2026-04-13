@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosConfigService } from './pos-config.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../common/guards/permission.guard';
 
 @ApiTags('POS Configuration')
 @Controller('api/pos-config')
@@ -26,24 +27,28 @@ export class PosConfigController {
     // ══════════════════════════════════════════════════════════════
 
     @Get('promos')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.read'))
     @ApiOperation({ summary: 'List all promo campaigns' })
     async listPromos() {
         return this.service.listPromos();
     }
 
     @Post('promos')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.create'))
     @ApiOperation({ summary: 'Create a promo campaign' })
     async createPromo(@Body() body: any) {
         return this.service.createPromo(body);
     }
 
     @Put('promos/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.update'))
     @ApiOperation({ summary: 'Update a promo campaign' })
     async updatePromo(@Param('id') id: string, @Body() body: any) {
         return this.service.updatePromo(id, body);
     }
 
     @Delete('promos/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.delete'))
     @ApiOperation({ summary: 'Delete a promo campaign' })
     async deletePromo(@Param('id') id: string) {
         return this.service.deletePromo(id);
@@ -54,24 +59,28 @@ export class PosConfigController {
     // ══════════════════════════════════════════════════════════════
 
     @Get('coupons')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.read'))
     @ApiOperation({ summary: 'List all coupon codes' })
     async listCoupons() {
         return this.service.listCoupons();
     }
 
     @Post('coupons')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.create'))
     @ApiOperation({ summary: 'Create a coupon code' })
     async createCoupon(@Body() body: any) {
         return this.service.createCoupon(body);
     }
 
     @Put('coupons/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.update'))
     @ApiOperation({ summary: 'Update a coupon code' })
     async updateCoupon(@Param('id') id: string, @Body() body: any) {
         return this.service.updateCoupon(id, body);
     }
 
     @Delete('coupons/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.delete'))
     @ApiOperation({ summary: 'Delete a coupon code' })
     async deleteCoupon(@Param('id') id: string) {
         return this.service.deleteCoupon(id);
@@ -82,24 +91,28 @@ export class PosConfigController {
     // ══════════════════════════════════════════════════════════════
 
     @Get('alliances')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.read'))
     @ApiOperation({ summary: 'List all alliance discounts' })
     async listAlliances() {
         return this.service.listAlliances();
     }
 
     @Post('alliances')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.create'))
     @ApiOperation({ summary: 'Create an alliance discount' })
     async createAlliance(@Body() body: any) {
         return this.service.createAlliance(body);
     }
 
     @Put('alliances/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.update'))
     @ApiOperation({ summary: 'Update an alliance discount' })
     async updateAlliance(@Param('id') id: string, @Body() body: any) {
         return this.service.updateAlliance(id, body);
     }
 
     @Delete('alliances/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.delete'))
     @ApiOperation({ summary: 'Delete an alliance discount' })
     async deleteAlliance(@Param('id') id: string) {
         return this.service.deleteAlliance(id);
