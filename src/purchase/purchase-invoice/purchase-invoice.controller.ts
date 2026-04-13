@@ -37,6 +37,7 @@ export class PurchaseInvoiceController {
   @ApiQuery({ name: 'supplierId', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'] })
   @ApiQuery({ name: 'paymentStatus', required: false, enum: ['UNPAID', 'PARTIAL', 'PAID'] })
+  @ApiQuery({ name: 'invoiceType', required: false, enum: ['GRN_BASED', 'LANDED_COST_BASED', 'DIRECT'] })
   @ApiQuery({ name: 'search', required: false, type: String })
   findAll(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
@@ -44,16 +45,16 @@ export class PurchaseInvoiceController {
     @Query('supplierId') supplierId?: string,
     @Query('status') status?: string,
     @Query('paymentStatus') paymentStatus?: string,
+    @Query('invoiceType') invoiceType?: string,
     @Query('search') search?: string,
   ) {
-    const filters = {
+    return this.purchaseInvoiceService.findAll(page, limit, {
       supplierId,
       status,
       paymentStatus,
+      invoiceType,
       search,
-    };
-
-    return this.purchaseInvoiceService.findAll(page, limit, filters);
+    });
   }
 
   @Get('next-invoice-number')

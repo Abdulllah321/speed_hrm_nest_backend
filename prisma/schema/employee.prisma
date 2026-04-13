@@ -97,6 +97,7 @@ model Employee {
   requestForwardingApprovalLevels RequestForwardingApprovalLevel[] @relation("RequestForwardingSpecificEmployee")
   headedSubDepartment             SubDepartment?                   @relation("SubDepartmentHead")
   policyAssignments               WorkingHoursPolicyAssignment[]
+  kpiReviews                      KpiReview[]
 }
 
 model EmployeeRejoiningHistory {
