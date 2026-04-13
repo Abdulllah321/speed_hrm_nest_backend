@@ -1771,4 +1771,16 @@ export const PERMISSIONS = [
   // Reviews & Reports
   { name: 'task.review', description: 'Submit Task Quality Review' },
   { name: 'task.report.read', description: 'Read Task Reports' },
+
+  // ── ERP Dashboard ──────────────────────────────────────────────────────────
+  // Overview Tab
+  { name: 'erp.dashboard.view', description: 'View ERP Dashboard' },
+  { name: 'erp.dashboard.overview.view', description: 'View ERP Dashboard Overview Tab' },
+  { name: 'erp.dashboard.overview.export', description: 'Export ERP Dashboard Data' },
+  // Analytics Tab
+  { name: 'erp.dashboard.analytics.view', description: 'View ERP Dashboard Analytics Tab' },
+  // Inventory Tab
+  { name: 'erp.dashboard.inventory.view', description: 'View ERP Dashboard Inventory Tab' },
+  { name: 'erp.dashboard.inventory.refresh', description: 'Refresh ERP Inventory Data' },
 ];
+
