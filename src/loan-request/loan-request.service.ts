@@ -190,15 +190,28 @@ export class LoanRequestService {
     try {
       const where: any = {};
 
-      // If user is not admin, they only see their own requests
+      // If user is not admin, they see:
+      // 1. Requests they created (createdById)
+      // 2. Requests for their employee record (employeeId)
+      // 3. Requests where they are an approver (approval1 or approval2)
       const roleName = (user?.roleName || '').toLowerCase();
       const isAdmin = ['admin', 'super admin', 'super_admin'].includes(
         roleName,
       );
 
-      if (!isAdmin && user?.employeeId) {
-        where.employeeId = user.employeeId;
+      if (!isAdmin && user?.userId) {
+        // Show requests created by user OR for user's employee record OR where user is an approver
+        where.OR = [
+          { createdById: user.userId },           // Requests they created
+          { employeeId: user.employeeId },        // Requests for their employee record
+          { approval1: user.userId },             // Requests where they are level 1 approver
+          { approval2: user.userId },             // Requests where they are level 2 approver
+        ];
       } else if (params?.employeeId) {
+        where.employeeId = params.employeeId;
+      }
+
+      if (params?.employeeId && isAdmin) {
         where.employeeId = params.employeeId;
       }
 
@@ -562,13 +575,11 @@ export class LoanRequestService {
                 reportingManager: employee.reportingManager,
               },
             });
-            if (!approver1UserId) {
-              throw new Error(
-                'Could not resolve approver for approval level 1',
-              );
+            // If approver cannot be resolved, allow creation without approver (will require admin approval)
+            if (approver1UserId) {
+              approval1 = approver1UserId;
+              approval1Status = 'pending';
             }
-            approval1 = approver1UserId;
-            approval1Status = 'pending';
 
             const level2 = activeForwarding.approvalLevels.find(
               (l) => l.level === 2,
@@ -582,13 +593,11 @@ export class LoanRequestService {
                   reportingManager: employee.reportingManager,
                 },
               });
-              if (!approver2UserId) {
-                throw new Error(
-                  'Could not resolve approver for approval level 2',
-                );
+              // If approver cannot be resolved, allow creation without approver
+              if (approver2UserId) {
+                approval2 = approver2UserId;
+                approval2Status = 'pending';
               }
-              approval2 = approver2UserId;
-              approval2Status = 'pending';
             }
           }
 
@@ -960,16 +969,61 @@ export class LoanRequestService {
       }
 
       if (effectiveLevel === 1) {
+        // If no approval1 is set, allow admin to approve directly (auto-approve)
         if (!(existing as any).approval1) {
+          const nextApprovalStatus = (existing as any).approval2
+            ? 'pending'
+            : 'approved';
+          const nextStatus =
+            nextApprovalStatus === 'approved' ? 'approved' : 'pending';
+
+          const updated = await this.prisma.loanRequest.update({
+            where: { id },
+            data: {
+              approval1Status: 'approved',
+              approval1Date: new Date(),
+              approval1: ctx.userId,
+              approvalStatus: nextApprovalStatus,
+              status: nextStatus,
+              approvedById: nextApprovalStatus === 'approved' ? ctx.userId : null,
+              approvedAt: nextApprovalStatus === 'approved' ? new Date() : null,
+              updatedById: ctx.userId,
+            } as any,
+            include: {
+              employee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  employeeName: true,
+                  departmentId: true,
+                  subDepartmentId: true,
+                },
+              },
+            },
+          });
+
+          await this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'approve',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Approved loan request (Level 1)',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          });
+
+          const enriched = await this.enrichSingleLoanRequest(updated);
+
           return {
-            status: false,
-            message: 'No approver configured for level 1',
+            status: true,
+            data: enriched,
+            message: 'Loan request approved successfully',
           };
         }
-        if ((existing as any).approval1 !== ctx.userId) {
-          return { status: false, message: 'Forbidden' };
-        }
 
+        // Allow any authorized admin to approve (permission already checked by @Permissions guard)
         const nextApprovalStatus = (existing as any).approval2
           ? 'pending'
           : 'approved';
@@ -1143,16 +1197,56 @@ export class LoanRequestService {
       }
 
       if (effectiveLevel === 1) {
+        // If no approval1 is set, allow admin to reject directly
         if (!(existing as any).approval1) {
+          const updated = await this.prisma.loanRequest.update({
+            where: { id },
+            data: {
+              approval1Status: 'rejected',
+              approval1Date: new Date(),
+              approval1: ctx.userId,
+              approvalStatus: 'rejected',
+              status: 'rejected',
+              rejectionReason: body.rejectionReason || null,
+              approvedById: ctx.userId,
+              approvedAt: new Date(),
+              updatedById: ctx.userId,
+            } as any,
+            include: {
+              employee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  employeeName: true,
+                  departmentId: true,
+                  subDepartmentId: true,
+                },
+              },
+            },
+          });
+
+          await this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'reject',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Rejected loan request (Level 1)',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          });
+
+          const enriched = await this.enrichSingleLoanRequest(updated);
+
           return {
-            status: false,
-            message: 'No approver configured for level 1',
+            status: true,
+            data: enriched,
+            message: 'Loan request rejected successfully',
           };
         }
-        if ((existing as any).approval1 !== ctx.userId) {
-          return { status: false, message: 'Forbidden' };
-        }
 
+        // Allow any authorized admin to reject (permission already checked by @Permissions guard)
         const updated = await this.prisma.loanRequest.update({
           where: { id },
           data: {

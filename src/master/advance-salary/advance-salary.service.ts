@@ -114,11 +114,32 @@ export class AdvanceSalaryService {
     deductionMonthYear?: string;
     approvalStatus?: string;
     status?: string;
-  }) {
+  }, user?: any) {
     try {
       const where: any = {};
 
-      if (params?.employeeId) {
+      // If user is not admin, they see:
+      // 1. Requests they created (createdById)
+      // 2. Requests for their employee record (employeeId)
+      // 3. Requests where they are an approver (approval1 or approval2)
+      const roleName = (user?.roleName || '').toLowerCase();
+      const isAdmin = ['admin', 'super admin', 'super_admin'].includes(
+        roleName,
+      );
+
+      if (!isAdmin && user?.userId) {
+        // Show requests created by user OR for user's employee record OR where user is an approver
+        where.OR = [
+          { createdById: user.userId },           // Requests they created
+          { employeeId: user.employeeId },        // Requests for their employee record
+          { approval1: user.userId },             // Requests where they are level 1 approver
+          { approval2: user.userId },             // Requests where they are level 2 approver
+        ];
+      } else if (params?.employeeId) {
+        where.employeeId = params.employeeId;
+      }
+
+      if (params?.employeeId && isAdmin) {
         where.employeeId = params.employeeId;
       }
 
@@ -395,13 +416,11 @@ export class AdvanceSalaryService {
                 reportingManager: employee.reportingManager,
               },
             });
-            if (!approver1UserId) {
-              throw new Error(
-                'Could not resolve approver for approval level 1',
-              );
+            // If approver cannot be resolved, allow creation without approver (will require admin approval)
+            if (approver1UserId) {
+              approval1 = approver1UserId;
+              approval1Status = 'pending';
             }
-            approval1 = approver1UserId;
-            approval1Status = 'pending';
 
             const level2 = activeForwarding.approvalLevels.find(
               (l) => l.level === 2,
@@ -415,13 +434,11 @@ export class AdvanceSalaryService {
                   reportingManager: employee.reportingManager,
                 },
               });
-              if (!approver2UserId) {
-                throw new Error(
-                  'Could not resolve approver for approval level 2',
-                );
+              // If approver cannot be resolved, allow creation without approver
+              if (approver2UserId) {
+                approval2 = approver2UserId;
+                approval2Status = 'pending';
               }
-              approval2 = approver2UserId;
-              approval2Status = 'pending';
             }
           }
 
@@ -662,13 +679,100 @@ export class AdvanceSalaryService {
         return { status: false, message: 'No pending approval found' };
 
       if (effectiveLevel === 1) {
-        if (!(existing as any).approval1)
+        // If no approval1 is set, allow any authorized admin to approve directly
+        if (!(existing as any).approval1) {
+          const nextApprovalStatus = (existing as any).approval2
+            ? 'pending'
+            : 'approved';
+          const nextStatus =
+            nextApprovalStatus === 'approved' ? 'active' : 'pending';
+
+          const updated = await this.prisma.advanceSalary.update({
+            where: { id },
+            data: {
+              approval1Status: 'approved',
+              approval1Date: new Date(),
+              approval1: ctx.userId,
+              approvalStatus: nextApprovalStatus,
+              status: nextStatus,
+              approvedById: nextApprovalStatus === 'approved' ? ctx.userId : null,
+              approvedAt: nextApprovalStatus === 'approved' ? new Date() : null,
+              updatedById: ctx.userId,
+            } as any,
+            include: {
+              employee: {
+                select: { id: true, employeeName: true, userId: true },
+              },
+            },
+          });
+
+          await this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'approve',
+            module: 'advance-salary',
+            entity: 'AdvanceSalary',
+            entityId: id,
+            description: `Approved advance salary (Level 1) for ${updated.employee.employeeName}`,
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          });
+
+          await this.notifications.markRelatedAsRead(ctx.userId, {
+            entityType: 'AdvanceSalary',
+            entityId: id,
+          });
+
+          const requesterUserId =
+            existing.createdById || (existing as any).employee?.userId || null;
+          if ((existing as any).approval2 && nextApprovalStatus === 'pending') {
+            await this.notifications.create({
+              userId: (existing as any).approval2,
+              title: 'Advance salary request awaiting approval',
+              message: `${updated.employee.employeeName} is awaiting Level 2 approval`,
+              category: 'advance-salary',
+              priority: 'high',
+              actionType: 'advance-salary.pending-approval',
+              actionPayload: { requestId: id, level: 2 },
+              entityType: 'AdvanceSalary',
+              entityId: id,
+              channels: ['inApp', 'email', 'sms'],
+            });
+          }
+
+          if (requesterUserId) {
+            await this.notifications.create({
+              userId: requesterUserId,
+              title:
+                nextApprovalStatus === 'approved'
+                  ? 'Advance salary request approved'
+                  : 'Advance salary request partially approved',
+              message:
+                nextApprovalStatus === 'approved'
+                  ? 'Approved'
+                  : 'Approved at Level 1',
+              category: 'advance-salary',
+              priority: nextApprovalStatus === 'approved' ? 'normal' : 'low',
+              actionType: 'advance-salary.view',
+              actionPayload: { requestId: id },
+              entityType: 'AdvanceSalary',
+              entityId: id,
+              channels: ['inApp'],
+            });
+          }
+
           return {
-            status: false,
-            message: 'No approver configured for level 1',
+            status: true,
+            data: updated,
+            message: 'Advance salary approved successfully',
           };
-        if ((existing as any).approval1 !== ctx.userId)
-          return { status: false, message: 'Forbidden' };
+        }
+
+        // If approval1 is set, check if current user is the approver OR has permission to override
+        if ((existing as any).approval1 !== ctx.userId) {
+          // Allow override if user has the permission (already checked by @Permissions guard)
+          // Just proceed with approval
+        }
 
         const nextApprovalStatus = (existing as any).approval2
           ? 'pending'
@@ -893,11 +997,22 @@ export class AdvanceSalaryService {
       };
 
       if (effectiveLevel === 1) {
-        if ((existing as any).approval1 !== ctx.userId)
-          return { status: false, message: 'Forbidden' };
-        updateData.approval1Status = 'rejected';
-        updateData.approval1Date = new Date();
+        // If no approval1 is set, allow admin to reject directly
+        if (!(existing as any).approval1) {
+          updateData.approval1Status = 'rejected';
+          updateData.approval1Date = new Date();
+          updateData.approval1 = ctx.userId;
+        } else {
+          // Allow any authorized admin to reject (permission already checked by @Permissions guard)
+          updateData.approval1Status = 'rejected';
+          updateData.approval1Date = new Date();
+        }
       } else if (effectiveLevel === 2) {
+        if (!(existing as any).approval2)
+          return {
+            status: false,
+            message: 'No approver configured for level 2',
+          };
         if ((existing as any).approval2 !== ctx.userId)
           return { status: false, message: 'Forbidden' };
         updateData.approval2Status = 'rejected';
