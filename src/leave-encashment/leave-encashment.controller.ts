@@ -45,6 +45,7 @@ export class LeaveEncashmentController {
   @ApiQuery({ name: 'approvalStatus', required: false })
   @ApiQuery({ name: 'status', required: false })
   async list(
+    @Req() req: any,
     @Query('employeeId') employeeId?: string,
     @Query('paymentMonth') paymentMonth?: string,
     @Query('paymentYear') paymentYear?: string,
@@ -59,7 +60,7 @@ export class LeaveEncashmentController {
       paymentMonthYear,
       approvalStatus,
       status,
-    });
+    }, req.user);
   }
 
   @Get('leave-encashments/:id')
