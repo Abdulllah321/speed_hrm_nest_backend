@@ -18,6 +18,56 @@ export class GrnService {
     private stockLedgerService: StockLedgerService,
   ) { }
 
+  private async calculateAndApplyWeightedAverage(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+    warehouseId: string,
+    incomingQty: Prisma.Decimal,
+    incomingRate: Prisma.Decimal,
+  ): Promise<Prisma.Decimal> {
+    const currentStock = await tx.inventoryItem.aggregate({
+      where: {
+        itemId,
+        warehouseId,
+        locationId: null,
+        status: 'AVAILABLE',
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const oldQty = currentStock._sum.quantity || new Prisma.Decimal(0);
+    const item = await tx.item.findUnique({
+      where: { id: itemId },
+      select: { unitCost: true },
+    });
+    const oldAvg = new Prisma.Decimal(item?.unitCost || 0);
+
+    const totalQty = oldQty.plus(incomingQty);
+    const weightedAvg = totalQty.gt(0)
+      ? oldQty.mul(oldAvg).plus(incomingQty.mul(incomingRate)).div(totalQty)
+      : incomingRate;
+
+    await tx.item.update({
+      where: { id: itemId },
+      data: { unitCost: weightedAvg.toNumber() },
+    });
+
+    await tx.tenantItemSetting.upsert({
+      where: { itemId },
+      create: {
+        itemId,
+        averageCost: weightedAvg,
+      },
+      update: {
+        averageCost: weightedAvg,
+      },
+    });
+
+    return weightedAvg;
+  }
+
   async findAll() {
     return this.prisma.goodsReceiptNote.findMany({
       include: {
@@ -233,6 +283,17 @@ export class GrnService {
 
           // 4. Create stock ledger entry only if shouldUpdateInventory is true
           if (shouldUpdateInventory) {
+            const incomingRate = poItem.unitPrice
+              ? new Prisma.Decimal(poItem.unitPrice)
+              : new Prisma.Decimal(0);
+            const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
+              tx,
+              itemRecord.id,
+              dto.warehouseId,
+              new Prisma.Decimal(grnItem.receivedQty),
+              incomingRate,
+            );
+
             this.logger.debug(`Creating stock ledger entry for item: ${grnItem.itemId}`);
             await this.stockLedgerService.createEntry(
               {
@@ -242,7 +303,7 @@ export class GrnService {
                 movementType: MovementType.INBOUND,
                 referenceType: 'GRN',
                 referenceId: grn.id,
-                rate: poItem.unitPrice ? new Prisma.Decimal(poItem.unitPrice) : undefined,
+                rate: weightedAvgRate,
               },
               tx,
             );

@@ -877,13 +877,17 @@ export class PosSalesService implements OnModuleInit {
 
         return items.map((item) => {
             const stockQty = stockMap.get(item.id) || 0;
+            const latestPrice = Number(item.unitCost || 0) > 0
+                ? Number(item.unitCost)
+                : Number(item.unitPrice || 0);
             return {
                 id: item.id,
                 itemId: item.itemId,
                 sku: item.sku,
                 barCode: item.barCode,
                 description: item.description,
-                unitPrice: Number(item.unitPrice),
+                unitPrice: latestPrice,
+                unitCost: Number(item.unitCost || 0),
                 taxRate1: Number(item.taxRate1 || 0),
                 taxRate2: Number(item.taxRate2 || 0),
                 discountRate: Number(item.discountRate || 0),
