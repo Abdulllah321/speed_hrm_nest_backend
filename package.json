@@ -29,6 +29,7 @@
     "prisma:tenant:generate": "prisma generate --schema prisma/schema",
     "prisma:tenant:push": "bun scripts/push-tenants-schema.ts",
     "prisma:tenant:seed": "bun scripts/seed-tenant.ts",
+    "seed:kpi-templates": "bun scripts/seed-kpi-templates.ts",
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
     "prisma:studio": "prisma studio"
   },
