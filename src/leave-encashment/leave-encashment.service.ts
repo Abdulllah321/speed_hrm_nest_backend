@@ -185,11 +185,32 @@ export class LeaveEncashmentService {
     paymentMonthYear?: string;
     approvalStatus?: string;
     status?: string;
-  }) {
+  }, user?: any) {
     try {
       const where: any = {};
 
-      if (params?.employeeId) {
+      // If user is not admin, they see:
+      // 1. Requests they created (createdById)
+      // 2. Requests for their employee record (employeeId)
+      // 3. Requests where they are an approver (approval1 or approval2)
+      const roleName = (user?.roleName || '').toLowerCase();
+      const isAdmin = ['admin', 'super admin', 'super_admin'].includes(
+        roleName,
+      );
+
+      if (!isAdmin && user?.userId) {
+        // Show requests created by user OR for user's employee record OR where user is an approver
+        where.OR = [
+          { createdById: user.userId },           // Requests they created
+          { employeeId: user.employeeId },        // Requests for their employee record
+          { approval1: user.userId },             // Requests where they are level 1 approver
+          { approval2: user.userId },             // Requests where they are level 2 approver
+        ];
+      } else if (params?.employeeId) {
+        where.employeeId = params.employeeId;
+      }
+
+      if (params?.employeeId && isAdmin) {
         where.employeeId = params.employeeId;
       }
 

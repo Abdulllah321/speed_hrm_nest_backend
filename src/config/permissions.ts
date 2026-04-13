@@ -1206,81 +1206,520 @@ export const PERMISSIONS = [
     action: 'approve',
     description: 'Approve Receipt Voucher',
   },
+
+  // Brand
+  {
+    name: 'master.brand.create',
+    module: 'master.brand',
+    action: 'create',
+    description: 'Create Brand',
+  },
+  {
+    name: 'master.brand.read',
+    module: 'master.brand',
+    action: 'read',
+    description: 'Read Brand',
+  },
+  {
+    name: 'master.brand.update',
+    module: 'master.brand',
+    action: 'update',
+    description: 'Update Brand',
+  },
+  {
+    name: 'master.brand.delete',
+    module: 'master.brand',
+    action: 'delete',
+    description: 'Delete Brand',
+  },
+
+  // Division
+  {
+    name: 'master.division.create',
+    module: 'master.division',
+    action: 'create',
+    description: 'Create Division',
+  },
+  {
+    name: 'master.division.read',
+    module: 'master.division',
+    action: 'read',
+    description: 'Read Division',
+  },
+  {
+    name: 'master.division.update',
+    module: 'master.division',
+    action: 'update',
+    description: 'Update Division',
+  },
+  {
+    name: 'master.division.delete',
+    module: 'master.division',
+    action: 'delete',
+    description: 'Delete Division',
+  },
+
+  // Channel Class
+  {
+    name: 'master.channel-class.create',
+    module: 'master.channel-class',
+    action: 'create',
+    description: 'Create Channel Class',
+  },
+  {
+    name: 'master.channel-class.read',
+    module: 'master.channel-class',
+    action: 'read',
+    description: 'Read Channel Class',
+  },
+  {
+    name: 'master.channel-class.update',
+    module: 'master.channel-class',
+    action: 'update',
+    description: 'Update Channel Class',
+  },
+  {
+    name: 'master.channel-class.delete',
+    module: 'master.channel-class',
+    action: 'delete',
+    description: 'Delete Channel Class',
+  },
+
+  // Color
+  {
+    name: 'master.color.create',
+    module: 'master.color',
+    action: 'create',
+    description: 'Create Color',
+  },
+  {
+    name: 'master.color.read',
+    module: 'master.color',
+    action: 'read',
+    description: 'Read Color',
+  },
+  {
+    name: 'master.color.update',
+    module: 'master.color',
+    action: 'update',
+    description: 'Update Color',
+  },
+  {
+    name: 'master.color.delete',
+    module: 'master.color',
+    action: 'delete',
+    description: 'Delete Color',
+  },
+
+  // Gender
+  {
+    name: 'master.gender.create',
+    module: 'master.gender',
+    action: 'create',
+    description: 'Create Gender',
+  },
+  {
+    name: 'master.gender.read',
+    module: 'master.gender',
+    action: 'read',
+    description: 'Read Gender',
+  },
+  {
+    name: 'master.gender.update',
+    module: 'master.gender',
+    action: 'update',
+    description: 'Update Gender',
+  },
+  {
+    name: 'master.gender.delete',
+    module: 'master.gender',
+    action: 'delete',
+    description: 'Delete Gender',
+  },
+
+  // Size
+  {
+    name: 'master.size.create',
+    module: 'master.size',
+    action: 'create',
+    description: 'Create Size',
+  },
+  {
+    name: 'master.size.read',
+    module: 'master.size',
+    action: 'read',
+    description: 'Read Size',
+  },
+  {
+    name: 'master.size.update',
+    module: 'master.size',
+    action: 'update',
+    description: 'Update Size',
+  },
+  {
+    name: 'master.size.delete',
+    module: 'master.size',
+    action: 'delete',
+    description: 'Delete Size',
+  },
+
+  // Silhouette
+  {
+    name: 'master.silhouette.create',
+    module: 'master.silhouette',
+    action: 'create',
+    description: 'Create Silhouette',
+  },
+  {
+    name: 'master.silhouette.read',
+    module: 'master.silhouette',
+    action: 'read',
+    description: 'Read Silhouette',
+  },
+  {
+    name: 'master.silhouette.update',
+    module: 'master.silhouette',
+    action: 'update',
+    description: 'Update Silhouette',
+  },
+  {
+    name: 'master.silhouette.delete',
+    module: 'master.silhouette',
+    action: 'delete',
+    description: 'Delete Silhouette',
+  },
+
+  // Tax Rate
+  {
+    name: 'master.tax-rate.create',
+    module: 'master.tax-rate',
+    action: 'create',
+    description: 'Create Tax Rate',
+  },
+  {
+    name: 'master.tax-rate.read',
+    module: 'master.tax-rate',
+    action: 'read',
+    description: 'Read Tax Rate',
+  },
+  {
+    name: 'master.tax-rate.update',
+    module: 'master.tax-rate',
+    action: 'update',
+    description: 'Update Tax Rate',
+  },
+  {
+    name: 'master.tax-rate.delete',
+    module: 'master.tax-rate',
+    action: 'delete',
+    description: 'Delete Tax Rate',
+  },
+
+  // Item Class
+  {
+    name: 'master.item-class.create',
+    module: 'master.item-class',
+    action: 'create',
+    description: 'Create Item Class',
+  },
+  {
+    name: 'master.item-class.read',
+    module: 'master.item-class',
+    action: 'read',
+    description: 'Read Item Class',
+  },
+  {
+    name: 'master.item-class.update',
+    module: 'master.item-class',
+    action: 'update',
+    description: 'Update Item Class',
+  },
+  {
+    name: 'master.item-class.delete',
+    module: 'master.item-class',
+    action: 'delete',
+    description: 'Delete Item Class',
+  },
+
+  // Item Subclass
+  {
+    name: 'master.item-subclass.create',
+    module: 'master.item-subclass',
+    action: 'create',
+    description: 'Create Item Subclass',
+  },
+  {
+    name: 'master.item-subclass.read',
+    module: 'master.item-subclass',
+    action: 'read',
+    description: 'Read Item Subclass',
+  },
+  {
+    name: 'master.item-subclass.update',
+    module: 'master.item-subclass',
+    action: 'update',
+    description: 'Update Item Subclass',
+  },
+  {
+    name: 'master.item-subclass.delete',
+    module: 'master.item-subclass',
+    action: 'delete',
+    description: 'Delete Item Subclass',
+  },
+
+  // Old Season
+  {
+    name: 'master.old-season.create',
+    module: 'master.old-season',
+    action: 'create',
+    description: 'Create Old Season',
+  },
+  {
+    name: 'master.old-season.read',
+    module: 'master.old-season',
+    action: 'read',
+    description: 'Read Old Season',
+  },
+  {
+    name: 'master.old-season.update',
+    module: 'master.old-season',
+    action: 'update',
+    description: 'Update Old Season',
+  },
+  {
+    name: 'master.old-season.delete',
+    module: 'master.old-season',
+    action: 'delete',
+    description: 'Delete Old Season',
+  },
+
+  // Season
+  {
+    name: 'master.season.create',
+    module: 'master.season',
+    action: 'create',
+    description: 'Create Season',
+  },
+  {
+    name: 'master.season.read',
+    module: 'master.season',
+    action: 'read',
+    description: 'Read Season',
+  },
+  {
+    name: 'master.season.update',
+    module: 'master.season',
+    action: 'update',
+    description: 'Update Season',
+  },
+  {
+    name: 'master.season.delete',
+    module: 'master.season',
+    action: 'delete',
+    description: 'Delete Season',
+  },
+
+  // Segment
+  {
+    name: 'master.segment.create',
+    module: 'master.segment',
+    action: 'create',
+    description: 'Create Segment',
+  },
+  {
+    name: 'master.segment.read',
+    module: 'master.segment',
+    action: 'read',
+    description: 'Read Segment',
+  },
+  {
+    name: 'master.segment.update',
+    module: 'master.segment',
+    action: 'update',
+    description: 'Update Segment',
+  },
+  {
+    name: 'master.segment.delete',
+    module: 'master.segment',
+    action: 'delete',
+    description: 'Delete Segment',
+  },
+
+  // HS Code
+  {
+    name: 'master.hs-code.create',
+    module: 'master.hs-code',
+    action: 'create',
+    description: 'Create HS Code',
+  },
+  {
+    name: 'master.hs-code.read',
+    module: 'master.hs-code',
+    action: 'read',
+    description: 'Read HS Code',
+  },
+  {
+    name: 'master.hs-code.update',
+    module: 'master.hs-code',
+    action: 'update',
+    description: 'Update HS Code',
+  },
+  {
+    name: 'master.hs-code.delete',
+    module: 'master.hs-code',
+    action: 'delete',
+    description: 'Delete HS Code',
+  },
   // ERP Category
   {
-    name: 'erp.category.create',
-    module: 'erp.category',
+    name: 'master.category.create',
+    module: 'master.category',
     action: 'create',
     description: 'Create Category',
   },
   {
-    name: 'erp.category.read',
-    module: 'erp.category',
+    name: 'master.category.read',
+    module: 'master.category',
     action: 'read',
     description: 'Read Category',
   },
   {
-    name: 'erp.category.update',
-    module: 'erp.category',
+    name: 'master.category.update',
+    module: 'master.category',
     action: 'update',
     description: 'Update Category',
   },
   {
-    name: 'erp.category.delete',
-    module: 'erp.category',
+    name: 'master.category.delete',
+    module: 'master.category',
     action: 'delete',
     description: 'Delete Category',
   },
 
   // ERP Sub-category
   {
-    name: 'erp.sub-category.create',
-    module: 'erp.sub-category',
+    name: 'master.sub-category.create',
+    module: 'master.sub-category',
     action: 'create',
     description: 'Create Sub-category',
   },
   {
-    name: 'erp.sub-category.read',
-    module: 'erp.sub-category',
+    name: 'master.sub-category.read',
+    module: 'master.sub-category',
     action: 'read',
     description: 'Read Sub-category',
   },
   {
-    name: 'erp.sub-category.update',
-    module: 'erp.sub-category',
+    name: 'master.sub-category.update',
+    module: 'master.sub-category',
     action: 'update',
     description: 'Update Sub-category',
   },
   {
-    name: 'erp.sub-category.delete',
-    module: 'erp.sub-category',
+    name: 'master.sub-category.delete',
+    module: 'master.sub-category',
     action: 'delete',
     description: 'Delete Sub-category',
   },
   // ERP UOM
+  // {
+  //   name: 'master.uom.create',
+  //   module: 'master.uom',
+  //   action: 'create',
+  //   description: 'Create UOM',
+  // },
+  // {
+  //   name: 'master.uom.read',
+  //   module: 'master.uom',
+  //   action: 'read',
+  //   description: 'Read UOM',
+  // },
+  // {
+  //   name: 'master.uom.update',
+  //   module: 'master.uom',
+  //   action: 'update',
+  //   description: 'Update UOM',
+  // },
+  // {
+  //   name: 'master.uom.delete',
+  //   module: 'master.uom',
+  //   action: 'delete',
+  //   description: 'Delete UOM',
+  // },
+  // POS Master - Promos
   {
-    name: 'erp.uom.create',
-    module: 'erp.uom',
+    name: 'master.promo.create',
+    module: 'master.promo',
     action: 'create',
-    description: 'Create UOM',
+    description: 'Create Promo',
   },
   {
-    name: 'erp.uom.read',
-    module: 'erp.uom',
+    name: 'master.promo.read',
+    module: 'master.promo',
     action: 'read',
-    description: 'Read UOM',
+    description: 'Read Promo',
   },
   {
-    name: 'erp.uom.update',
-    module: 'erp.uom',
+    name: 'master.promo.update',
+    module: 'master.promo',
     action: 'update',
-    description: 'Update UOM',
+    description: 'Update Promo',
   },
   {
-    name: 'erp.uom.delete',
-    module: 'erp.uom',
+    name: 'master.promo.delete',
+    module: 'master.promo',
     action: 'delete',
-    description: 'Delete UOM',
+    description: 'Delete Promo',
+  },
+  // POS Master - Coupons
+  {
+    name: 'master.coupon.create',
+    module: 'master.coupon',
+    action: 'create',
+    description: 'Create Coupon',
+  },
+  {
+    name: 'master.coupon.read',
+    module: 'master.coupon',
+    action: 'read',
+    description: 'Read Coupon',
+  },
+  {
+    name: 'master.coupon.update',
+    module: 'master.coupon',
+    action: 'update',
+    description: 'Update Coupon',
+  },
+  {
+    name: 'master.coupon.delete',
+    module: 'master.coupon',
+    action: 'delete',
+    description: 'Delete Coupon',
+  },
+  // POS Master - Alliances
+  {
+    name: 'master.alliance.create',
+    module: 'master.alliance',
+    action: 'create',
+    description: 'Create Alliance',
+  },
+  {
+    name: 'master.alliance.read',
+    module: 'master.alliance',
+    action: 'read',
+    description: 'Read Alliance',
+  },
+  {
+    name: 'master.alliance.update',
+    module: 'master.alliance',
+    action: 'update',
+    description: 'Update Alliance',
+  },
+  {
+    name: 'master.alliance.delete',
+    module: 'master.alliance',
+    action: 'delete',
+    description: 'Delete Alliance',
   },
   // KPI
   {
