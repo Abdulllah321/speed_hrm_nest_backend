@@ -839,4 +839,12 @@ export class AuthController {
     const profiles = await this.service.getAvailableProfiles(browserId);
     return { status: true, data: profiles };
   }
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get active sessions for the current user' })
+  async getSessions(@Req() req: any) {
+    return this.service.getUserSessions(req.user.userId);
+  }
 }

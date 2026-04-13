@@ -1306,24 +1306,30 @@ export const PERMISSIONS = [
 
   // ── Task Assessment ────────────────────────────────────────────────────────
   // Projects
-  { name: 'task.project.read',           description: 'Read Task Projects' },
-  { name: 'task.project.create',         description: 'Create Task Project' },
-  { name: 'task.project.update',         description: 'Update Task Project' },
-  { name: 'task.project.delete',         description: 'Delete Task Project' },
-  { name: 'task.project.manage-members', description: 'Manage Task Project Members' },
+  { name: 'task.project.read', description: 'Read Task Projects' },
+  { name: 'task.project.create', description: 'Create Task Project' },
+  { name: 'task.project.update', description: 'Update Task Project' },
+  { name: 'task.project.delete', description: 'Delete Task Project' },
+  {
+    name: 'task.project.manage-members',
+    description: 'Manage Task Project Members',
+  },
   // Tasks
-  { name: 'task.read',                   description: 'Read Tasks' },
-  { name: 'task.create',                 description: 'Create Task' },
-  { name: 'task.update',                 description: 'Update Task' },
-  { name: 'task.delete',                 description: 'Delete Task' },
-  { name: 'task.assign',                 description: 'Assign Task to Employees' },
-  { name: 'task.manage-all',             description: 'View All Tasks Regardless of Assignment' },
+  { name: 'task.read', description: 'Read Tasks' },
+  { name: 'task.create', description: 'Create Task' },
+  { name: 'task.update', description: 'Update Task' },
+  { name: 'task.delete', description: 'Delete Task' },
+  { name: 'task.assign', description: 'Assign Task to Employees' },
+  {
+    name: 'task.manage-all',
+    description: 'View All Tasks Regardless of Assignment',
+  },
   // Comments
-  { name: 'task.comment.read',           description: 'Read Task Comments' },
-  { name: 'task.comment.create',         description: 'Create Task Comment' },
-  { name: 'task.comment.update',         description: 'Update Task Comment' },
-  { name: 'task.comment.delete',         description: 'Delete Task Comment' },
+  { name: 'task.comment.read', description: 'Read Task Comments' },
+  { name: 'task.comment.create', description: 'Create Task Comment' },
+  { name: 'task.comment.update', description: 'Update Task Comment' },
+  { name: 'task.comment.delete', description: 'Delete Task Comment' },
   // Reviews & Reports
-  { name: 'task.review',                 description: 'Submit Task Quality Review' },
-  { name: 'task.report.read',            description: 'Read Task Reports' },
+  { name: 'task.review', description: 'Submit Task Quality Review' },
+  { name: 'task.report.read', description: 'Read Task Reports' },
 ];
