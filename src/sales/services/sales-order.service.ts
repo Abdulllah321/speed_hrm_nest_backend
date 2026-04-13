@@ -44,6 +44,30 @@ export class SalesOrderService {
     return { status: true, data: orders };
   }
 
+  async findAvailableForDelivery() {
+    // Find confirmed orders that don't have delivery challans yet
+    const orders = await this.prisma.eRPSalesOrder.findMany({
+      where: {
+        status: 'CONFIRMED',
+        deliveryChallans: {
+          none: {} // No delivery challans created yet
+        }
+      },
+      include: {
+        customer: true,
+        warehouse: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { status: true, data: orders };
+  }
+
   async findOne(id: string) {
     const salesOrder = await this.prisma.eRPSalesOrder.findUnique({
       where: { id },

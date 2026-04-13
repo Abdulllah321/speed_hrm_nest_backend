@@ -79,7 +79,6 @@ import { SalePoolModule } from './master/sale-pool/sale-pool.module';
 import { SaleTypeModule } from './master/sale-type/sale-type.module';
 import { SalesmanModule } from './master/salesman/salesman.module';
 import { StorageDimensionModule } from './master/storage-dimension/storage-dimension.module';
-import { MachineModule } from './master/machine/machine.module';
 import { CategoryModule } from './master/category/category.module';
 import { TaxRateModule } from './master/tax-rate/tax-rate.module';
 import { ItemClassModule } from './master/item-class/item-class.module';
@@ -215,7 +214,6 @@ import { TaskReportsModule } from './task-reports/task-reports.module';
     SaleTypeModule,
     SalesmanModule,
     StorageDimensionModule,
-    MachineModule,
     BrandModule,
     GenderModule,
     SizeModule,
