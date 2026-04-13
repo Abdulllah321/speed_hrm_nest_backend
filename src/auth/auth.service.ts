@@ -1639,6 +1639,27 @@ export class AuthService {
     return Array.from(profiles.values());
   }
 
+  async getUserSessions(userId: string) {
+    const sessions = await this.prismaMaster.userSession.findMany({
+      where: {
+        userId,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        ipAddress: true,
+        userAgent: true,
+        deviceType: true,
+        deviceInfo: true,
+        createdAt: true,
+        updatedAt: true,
+        expiresAt: true,
+      },
+    });
+    return { status: true, data: sessions };
+  }
+
   async posUserLoginStandard(
     email: string,
     pass: string,
