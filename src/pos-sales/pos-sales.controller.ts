@@ -145,8 +145,10 @@ export class PosSalesController {
     async returnOrder(
         @Param('id') id: string,
         @Body() body: { items: { orderItemId: string; itemId: string; quantity: number }[]; reason?: string },
+        @Req() req: any,
     ) {
-        return this.posSalesService.returnItems(id, body.items, body.reason);
+        const returnLocationId = req.user?.locationId;
+        return this.posSalesService.returnItems(id, body.items, body.reason, returnLocationId);
     }
 
     // ─── Exchange items ───────────────────────────────────────────────
