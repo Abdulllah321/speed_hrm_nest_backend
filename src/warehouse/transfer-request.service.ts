@@ -12,6 +12,14 @@ export class TransferRequestService {
         private stockLedgerService: StockLedgerService
     ) { }
 
+    private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
+        const item = await tx.item.findUnique({
+            where: { id: itemId },
+            select: { unitCost: true },
+        });
+        return Number(item?.unitCost || 0);
+    }
+
     async createRequest(data: {
         fromWarehouseId?: string; // Optional for outlet-to-warehouse
         fromLocationId?: string;  // Source outlet for returns and outlet-to-outlet
@@ -313,6 +321,7 @@ export class TransferRequestService {
 
                 // Use actual warehouseId from the inventoryItem record
                 const actualWarehouseId = sourceStock.warehouseId;
+                const transferRate = await this.getCurrentItemRate(tx, item.itemId);
 
                 // Create outbound ledger entry
                 await this.stockLedgerService.createEntry({
@@ -323,6 +332,7 @@ export class TransferRequestService {
                     movementType: 'OUTBOUND' as any,
                     referenceType: 'OUTLET_TRANSFER_OUT',
                     referenceId: request.id,
+                    rate: transferRate,
                 }, tx);
             }
 
@@ -428,6 +438,7 @@ export class TransferRequestService {
                         },
                     });
                     const actualWarehouseId = sourceStock?.warehouseId || request.fromWarehouseId!;
+                    const transferRate = await this.getCurrentItemRate(tx, item.itemId);
 
                     if (destItem) {
                         // Update existing stock at destination
@@ -457,6 +468,7 @@ export class TransferRequestService {
                         movementType: 'INBOUND' as any,
                         referenceType: 'OUTLET_TRANSFER_IN',
                         referenceId: request.id,
+                        rate: transferRate,
                     }, tx);
                 }
             }

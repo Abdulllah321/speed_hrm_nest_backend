@@ -173,6 +173,19 @@ export class PosSalesService implements OnModuleInit {
                     globalDiscAmt = Math.min(dto.globalDiscountAmount, lineItemTotal);
                 }
 
+                // ── Auto-calculate Coupon / Voucher Discount ───────────
+                if (dto.couponId && globalDiscAmt === 0) {
+                    const coupon = await tx.couponCode.findUnique({ where: { id: dto.couponId } });
+                    if (coupon) {
+                        if (coupon.discountType === 'percent') {
+                            const disc = Math.round(lineItemTotal * (Number(coupon.discountValue) / 100) * 100) / 100;
+                            globalDiscAmt = coupon.maxDiscount ? Math.min(disc, Number(coupon.maxDiscount)) : disc;
+                        } else {
+                            globalDiscAmt = Math.min(Number(coupon.discountValue), lineItemTotal);
+                        }
+                    }
+                }
+
                 const totalDiscount = lineItemDiscount + globalDiscAmt;
                 const grandTotal = Math.max(0, Math.round((lineItemTotal - globalDiscAmt) * 100) / 100);
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
@@ -421,18 +434,21 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Partial return ───────────────────────────────────────────────
-    async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string) {
+    async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, returnLocationId?: string) {
         try {
             return await this.prisma.$transaction(async (tx) => {
                 const order = await tx.salesOrder.findUnique({
                     where: { id },
-                    include: { items: true },
+                    include: { items: true, coupon: true },
                 });
                 if (!order) return { status: false, message: 'Order not found' };
                 if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
 
                 const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
                 if (!warehouse) throw new Error('No active warehouse found');
+
+                // Determine effective location for return (where stock goes back)
+                const effectiveLocationId = returnLocationId || order.locationId;
 
                 for (const returnItem of items) {
                     const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
@@ -444,7 +460,7 @@ export class PosSalesService implements OnModuleInit {
                     await this.stockLedgerService.createEntry({
                         itemId: returnItem.itemId,
                         warehouseId: warehouse.id,
-                        locationId: order.locationId,
+                        locationId: effectiveLocationId,
                         qty: returnItem.quantity,
                         movementType: MovementType.INBOUND,
                         referenceType: 'POS_RETURN',
@@ -452,7 +468,7 @@ export class PosSalesService implements OnModuleInit {
                     }, tx);
 
                     const existing = await tx.inventoryItem.findFirst({
-                        where: { itemId: returnItem.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                        where: { itemId: returnItem.itemId, locationId: effectiveLocationId, status: 'AVAILABLE' },
                     });
                     if (existing) {
                         await tx.inventoryItem.update({
@@ -463,7 +479,7 @@ export class PosSalesService implements OnModuleInit {
                         await tx.inventoryItem.create({
                             data: {
                                 itemId: returnItem.itemId,
-                                locationId: order.locationId,
+                                locationId: effectiveLocationId,
                                 warehouseId: warehouse.id,
                                 quantity: returnItem.quantity,
                                 status: 'AVAILABLE',
@@ -472,12 +488,64 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                const updatedOrder = await tx.salesOrder.update({
-                    where: { id },
-                    data: { status: 'partially_returned', notes: reason ? `Return: ${reason}` : order.notes },
+                // Determine if this is a full return
+                const allItemsReturned = order.items.every(oi => {
+                    const returnItem = items.find(ri => ri.orderItemId === oi.id);
+                    return returnItem && returnItem.quantity === oi.quantity;
                 });
 
-                return { status: true, data: updatedOrder, message: 'Return processed and inventory restored' };
+                const newStatus = allItemsReturned ? 'returned' : 'partially_returned';
+                const updatedOrder = await tx.salesOrder.update({
+                    where: { id },
+                    data: { status: newStatus, notes: reason ? `Return (${newStatus}): ${reason}` : order.notes },
+                });
+
+                // ── Restore Voucher / Coupon ────────────────────────────
+                // Ensure voucher is only restored once per order
+                if (order.couponId && !order.isVoucherRestored) {
+                    const coupon = await tx.couponCode.findUnique({ where: { id: order.couponId } });
+                    if (coupon && (coupon.discountType === 'voucher' || coupon.discountType === 'fixed')) {
+                        // 1. Decrement used count (restore validity)
+                        if (coupon.usedCount > 0) {
+                            await tx.couponCode.update({
+                                where: { id: order.couponId },
+                                data: { usedCount: { decrement: 1 } },
+                            });
+
+                            // Create Audit Log
+                            await tx.voucherAuditLog.create({
+                                data: {
+                                    couponId: order.couponId,
+                                    orderId: id,
+                                    locationId: effectiveLocationId,
+                                    action: 'RESTORED_VIA_RETURN',
+                                    previousValue: coupon.usedCount,
+                                    newValue: coupon.usedCount - 1,
+                                    details: `Voucher restored during return of order ${order.orderNumber}`,
+                                },
+                            });
+
+                            // Update order flag
+                            await tx.salesOrder.update({
+                                where: { id },
+                                data: { isVoucherRestored: true },
+                            });
+                        }
+
+                        // 2. Restrict to the return location as requested
+                        if (effectiveLocationId) {
+                            await tx.couponCodeLocation.deleteMany({ where: { couponId: order.couponId } });
+                            await tx.couponCodeLocation.create({
+                                data: {
+                                    couponId: order.couponId,
+                                    locationId: effectiveLocationId,
+                                },
+                            });
+                        }
+                    }
+                }
+
+                return { status: true, data: updatedOrder, message: `Return processed (${newStatus}) and inventory restored` };
             });
         } catch (error: any) {
             return { status: false, message: error.message };
@@ -491,7 +559,7 @@ export class PosSalesService implements OnModuleInit {
                 // Get the order with items first
                 const order = await tx.salesOrder.findUnique({
                     where: { id },
-                    include: { items: true },
+                    include: { items: true, coupon: true },
                 });
 
                 if (!order) {
@@ -556,6 +624,38 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
+                // ── Restore Voucher / Coupon (for voided orders) ─────────
+                if (order.couponId && !order.isVoucherRestored) {
+                    const coupon = await tx.couponCode.findUnique({ where: { id: order.couponId } });
+                    if (coupon && (coupon.discountType === 'voucher' || coupon.discountType === 'fixed')) {
+                        if (coupon.usedCount > 0) {
+                            await tx.couponCode.update({
+                                where: { id: order.couponId },
+                                data: { usedCount: { decrement: 1 } },
+                            });
+
+                            // Create Audit Log
+                            await tx.voucherAuditLog.create({
+                                data: {
+                                    couponId: order.couponId,
+                                    orderId: id,
+                                    locationId: order.locationId,
+                                    action: 'RESTORED_VIA_VOID',
+                                    previousValue: coupon.usedCount,
+                                    newValue: coupon.usedCount - 1,
+                                    details: `Voucher restored due to voiding order ${order.orderNumber}`,
+                                },
+                            });
+
+                            // Update order flag
+                            await tx.salesOrder.update({
+                                where: { id },
+                                data: { isVoucherRestored: true },
+                            });
+                        }
+                    }
+                }
+
                 return { status: true, data: voidedOrder, message: 'Order voided and inventory restored' };
             });
         } catch (error: any) {
@@ -571,7 +671,7 @@ export class PosSalesService implements OnModuleInit {
     ) {
         try {
             return await this.prisma.$transaction(async (tx) => {
-                const order = await tx.salesOrder.findUnique({ where: { id }, include: { items: true } });
+                const order = await tx.salesOrder.findUnique({ where: { id }, include: { items: true, coupon: true } });
                 if (!order) return { status: false, message: 'Order not found' };
                 if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
 
@@ -628,6 +728,49 @@ export class PosSalesService implements OnModuleInit {
                     where: { id },
                     data: { status: 'exchanged', notes: reason ? `Exchange: ${reason}` : order.notes },
                 });
+
+                // ── Restore Voucher / Coupon (for exchanges) ──────────────
+                if (order.couponId && !order.isVoucherRestored) {
+                    const coupon = await tx.couponCode.findUnique({ where: { id: order.couponId } });
+                    if (coupon && (coupon.discountType === 'voucher' || coupon.discountType === 'fixed')) {
+                        if (coupon.usedCount > 0) {
+                            await tx.couponCode.update({
+                                where: { id: order.couponId },
+                                data: { usedCount: { decrement: 1 } },
+                            });
+
+                            // Create Audit Log
+                            await tx.voucherAuditLog.create({
+                                data: {
+                                    couponId: order.couponId,
+                                    orderId: id,
+                                    locationId: order.locationId,
+                                    action: 'RESTORED_VIA_EXCHANGE',
+                                    previousValue: coupon.usedCount,
+                                    newValue: coupon.usedCount - 1,
+                                    details: `Voucher restored during exchange in order ${order.orderNumber}`,
+                                },
+                            });
+
+                            // Update order flag
+                            await tx.salesOrder.update({
+                                where: { id },
+                                data: { isVoucherRestored: true },
+                            });
+                        }
+
+                        // Restrict to exchange location
+                        if (order.locationId) {
+                            await tx.couponCodeLocation.deleteMany({ where: { couponId: order.couponId } });
+                            await tx.couponCodeLocation.create({
+                                data: {
+                                    couponId: order.couponId,
+                                    locationId: order.locationId,
+                                },
+                            });
+                        }
+                    }
+                }
 
                 return { status: true, data: { ...updatedOrder, difference }, message: 'Exchange processed successfully' };
             });
@@ -877,13 +1020,17 @@ export class PosSalesService implements OnModuleInit {
 
         return items.map((item) => {
             const stockQty = stockMap.get(item.id) || 0;
+            const latestPrice = Number(item.unitCost || 0) > 0
+                ? Number(item.unitCost)
+                : Number(item.unitPrice || 0);
             return {
                 id: item.id,
                 itemId: item.itemId,
                 sku: item.sku,
                 barCode: item.barCode,
                 description: item.description,
-                unitPrice: Number(item.unitPrice),
+                unitPrice: latestPrice,
+                unitCost: Number(item.unitCost || 0),
                 taxRate1: Number(item.taxRate1 || 0),
                 taxRate2: Number(item.taxRate2 || 0),
                 discountRate: Number(item.discountRate || 0),
