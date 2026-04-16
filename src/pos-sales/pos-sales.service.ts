@@ -329,6 +329,10 @@ export class PosSalesService implements OnModuleInit {
     ) {
         const skip = (page - 1) * limit;
         const where: any = {};
+
+        console.log("=================")
+        console.log(locationId)
+        console.log("=================")
         if (posId) {
             // If posId is a UUID, search by terminalId, otherwise by posId (code)
             if (posId.length > 20) {

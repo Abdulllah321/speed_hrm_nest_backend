@@ -117,8 +117,13 @@ export class PosSalesController {
             try {
                 const decoded: any = jwt.decode(req.cookies.posTerminalToken);
                 effectivePosId = decoded?.posId || decoded?.terminalId;
-                effectiveLocationId = decoded?.locationId;
+                if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
             } catch (e) { }
+        }
+
+        // 3. Fallback: any user with a locationId on their token (e.g. manager/admin scoped to a location)
+        if (!effectiveLocationId && req.user?.locationId) {
+            effectiveLocationId = req.user.locationId;
         }
 
         return this.posSalesService.listOrders(
