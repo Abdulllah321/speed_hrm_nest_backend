@@ -130,10 +130,10 @@ export class CreateWorkingHoursPolicyDto {
 }
 
 export class UpdateWorkingHoursPolicyDto {
-  @ApiProperty({ example: 'policy-uuid' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'policy-uuid' })
+  @IsOptional()
   @IsString()
-  id: string;
+  id?: string;
 
   @ApiProperty({ example: 'Updated Policy' })
   @IsNotEmpty()

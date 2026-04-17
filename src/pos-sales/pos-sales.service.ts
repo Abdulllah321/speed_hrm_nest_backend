@@ -437,6 +437,59 @@ export class PosSalesService implements OnModuleInit {
         return { status: true, data: { ...order, tenders } };
     }
 
+    // ─── Return details (price-adjusted refund preview) ───────────────
+    async getReturnDetails(id: string) {
+        try {
+            const order = await this.prisma.salesOrder.findUnique({
+                where: { id },
+                include: { items: { include: { item: true } } },
+            });
+            if (!order) return { status: false, message: 'Order not found' };
+
+            let totalRefundAmount = 0;
+            const itemRefundDetails = await Promise.all(
+                order.items.map(async (orderItem) => {
+                    const originalPaidPerUnit = Number(orderItem.lineTotal) / Number(orderItem.quantity);
+
+                    const currentItem = await this.prisma.item.findUnique({
+                        where: { id: orderItem.itemId },
+                        select: { unitPrice: true, unitCost: true },
+                    });
+                    const baseCurrentPrice = currentItem
+                        ? (Number(currentItem.unitCost) > 0 ? Number(currentItem.unitCost) : Number(currentItem.unitPrice))
+                        : originalPaidPerUnit;
+
+                    const taxPercent = Number(orderItem.taxPercent) || 0;
+                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    const lineRefund = Math.round(refundPerUnit * Number(orderItem.quantity) * 100) / 100;
+                    totalRefundAmount += lineRefund;
+
+                    return {
+                        orderItemId: orderItem.id,
+                        itemId: orderItem.itemId,
+                        quantity: Number(orderItem.quantity),
+                        originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+                        refundPerUnit: Math.round(refundPerUnit * 100) / 100,
+                        priceAdjusted: currentPriceWithTax < originalPaidPerUnit,
+                    };
+                }),
+            );
+
+            return {
+                status: true,
+                data: {
+                    orderId: id,
+                    orderNumber: order.orderNumber,
+                    refundTotal: Math.round(totalRefundAmount * 100) / 100,
+                    itemRefundDetails,
+                },
+            };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
     // ─── Partial return ───────────────────────────────────────────────
     async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, returnLocationId?: string) {
         try {
@@ -454,12 +507,54 @@ export class PosSalesService implements OnModuleInit {
                 // Determine effective location for return (where stock goes back)
                 const effectiveLocationId = returnLocationId || order.locationId;
 
+                let totalRefundAmount = 0;
+                const itemRefundDetails: {
+                    orderItemId: string;
+                    itemId: string;
+                    quantity: number;
+                    originalPaidPerUnit: number;
+                    refundPerUnit: number;
+                    priceAdjusted: boolean;
+                }[] = [];
+
                 for (const returnItem of items) {
                     const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
                     if (!orderItem) continue;
                     if (returnItem.quantity > orderItem.quantity) {
                         throw new Error(`Return qty exceeds ordered qty for item ${returnItem.itemId}`);
                     }
+
+                    // ── Refund price rule ─────────────────────────────────
+                    // Original paid price per unit (lineTotal already includes discounts + tax)
+                    const originalPaidPerUnit = Number(orderItem.lineTotal) / Number(orderItem.quantity);
+
+                    // Current item price — POS uses unitCost when set, otherwise unitPrice
+                    const currentItem = await tx.item.findUnique({
+                        where: { id: returnItem.itemId },
+                        select: { unitPrice: true, unitCost: true },
+                    });
+                    const baseCurrentPrice = currentItem
+                        ? (Number(currentItem.unitCost) > 0 ? Number(currentItem.unitCost) : Number(currentItem.unitPrice))
+                        : originalPaidPerUnit;
+
+                    // Apply the same tax rate that was charged at sale time
+                    const taxPercent = Number(orderItem.taxPercent) || 0;
+                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+
+                    // Rule: refund = min(originalPaid, currentPriceWithTax)
+                    // i.e. if price dropped/discounted → refund current (lower) price
+                    //      if price rose               → refund original (lower) price
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    totalRefundAmount += refundPerUnit * returnItem.quantity;
+
+                    itemRefundDetails.push({
+                        orderItemId: returnItem.orderItemId,
+                        itemId: returnItem.itemId,
+                        quantity: returnItem.quantity,
+                        originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+                        refundPerUnit: Math.round(refundPerUnit * 100) / 100,
+                        priceAdjusted: currentPriceWithTax < originalPaidPerUnit,
+                    });
 
                     await this.stockLedgerService.createEntry({
                         itemId: returnItem.itemId,
@@ -549,7 +644,7 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                return { status: true, data: updatedOrder, message: `Return processed (${newStatus}) and inventory restored` };
+                return { status: true, data: updatedOrder, refundAmount: Math.round(totalRefundAmount * 100) / 100, itemRefundDetails, message: `Return processed (${newStatus}) and inventory restored` };
             });
         } catch (error: any) {
             return { status: false, message: error.message };
@@ -723,7 +818,8 @@ export class PosSalesService implements OnModuleInit {
 
                 const returnedValue = returnedItems.reduce((s, ri) => {
                     const oi = order.items.find(i => i.id === ri.orderItemId);
-                    return s + (oi ? Number(oi.unitPrice) * ri.quantity : 0);
+                    // Use lineTotal/quantity so discounts & tax are correctly reflected
+                    return s + (oi ? (Number(oi.lineTotal) / Number(oi.quantity)) * ri.quantity : 0);
                 }, 0);
                 const newValue = newItems.reduce((s, ni) => s + ni.unitPrice * ni.quantity, 0);
                 const difference = newValue - returnedValue; // positive = customer pays more, negative = refund
