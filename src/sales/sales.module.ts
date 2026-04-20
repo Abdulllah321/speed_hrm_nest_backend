@@ -7,8 +7,10 @@ import { SalesInvoiceService } from './services/sales-invoice.service';
 import { DeliveryChallanService } from './services/delivery-challan.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
+import { FinanceAccountConfigModule } from '../finance/finance-account-config/finance-account-config.module';
 
 @Module({
+  imports: [FinanceAccountConfigModule],
   controllers: [
     SalesOrderController,
     SalesInvoiceController,
