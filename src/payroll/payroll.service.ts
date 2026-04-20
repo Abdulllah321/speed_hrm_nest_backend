@@ -2101,7 +2101,6 @@ export class PayrollService {
       return assignment?.workingHoursPolicy || defaultPolicy;
     };
 
-    const monthEndDate = new Date(Number(year), Number(month), 0);
     const totalDaysInMonth = monthEndDate.getDate();
     const hourlyRate = basicSalary.div(totalDaysInMonth).div(8); // Use calculated basic salary
 
