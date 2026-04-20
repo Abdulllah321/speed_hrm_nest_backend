@@ -71,6 +71,7 @@ import { AccountingModule } from './finance/accounting/accounting.module';
 import { JournalVoucherModule } from './finance/journal-voucher/journal-voucher.module';
 import { PaymentVoucherModule } from './finance/payment-voucher/payment-voucher.module';
 import { ReceiptVoucherModule } from './finance/receipt-voucher/receipt-voucher.module';
+import { FinanceAccountConfigModule } from './finance/finance-account-config/finance-account-config.module';
 import { TransferModule } from './employee/transfer/transfer.module';
 import { DatabaseModule } from './database/database.module';
 import { CompanyModule } from './admin/company/company.module';
@@ -202,6 +203,7 @@ import { TaskReportsModule } from './task-reports/task-reports.module';
     JournalVoucherModule,
     PaymentVoucherModule,
     ReceiptVoucherModule,
+    FinanceAccountConfigModule,
     TransferModule,
     CompanyModule,
     BrandModule,

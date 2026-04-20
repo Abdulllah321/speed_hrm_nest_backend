@@ -719,6 +719,12 @@ model Location {
   createdById               String?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
+  // ── FBR POS credentials (per-location) ──────────────────────────────
+  fbrBposId                 String?                    @map("fbr_bpos_id")
+  fbrBearerToken            String?                    @map("fbr_bearer_token") @db.Text
+  fbrNtn                    String?                    @map("fbr_ntn")
+  fbrSellerName             String?                    @map("fbr_seller_name")
+  fbrEnabled                Boolean                    @default(false) @map("fbr_enabled")
   employees                 Employee[]
   transferHistoriesNew      EmployeeTransferHistory[]  @relation("TransferNewLoc")
   transferHistoriesPrev     EmployeeTransferHistory[]  @relation("TransferPrevLoc")
