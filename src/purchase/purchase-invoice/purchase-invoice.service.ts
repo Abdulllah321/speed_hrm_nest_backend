@@ -3,6 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseInvoiceDto, UpdatePurchaseInvoiceDto } from './dto';
 import { AccountingService } from '../../finance/accounting/accounting.service';
 import { StockLedgerService } from '../../warehouse/stock-ledger/stock-ledger.service';
+import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
+import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 import { MovementType, Prisma } from '@prisma/client';
 
 @Injectable()
@@ -11,6 +13,7 @@ export class PurchaseInvoiceService {
     private prisma: PrismaService,
     private accounting: AccountingService,
     private stockLedger: StockLedgerService,
+    private financeConfig: FinanceAccountConfigService,
   ) {}
 
   async create(createDto: CreatePurchaseInvoiceDto) {
@@ -801,23 +804,12 @@ export class PurchaseInvoiceService {
         credit: creditPerAccount,
       }));
 
-      // Debit side — purchases/expense account
-      // Use the first item's chartOfAccountId if set, otherwise fall back to a
-      // general purchases account (code 60020002 = PURCHASES LOCAL)
-      const purchasesAccount = await tx.chartOfAccount.findFirst({
-        where: { code: '60020002' },
-        select: { id: true },
-      });
+      // Debit side — purchases/expense account resolved from finance configuration
+      const purchasesAccountId = await this.financeConfig.resolveAccount(
+        AccountRoleKey.PURCHASES_LOCAL,
+      );
 
-      const debitLines = purchasesAccount
-        ? [{ accountId: purchasesAccount.id, debit: totalAmount, credit: 0 }]
-        : [];
-
-      if (debitLines.length === 0) {
-        throw new BadRequestException(
-          'Purchases account (60020002) not found. Run chart-of-accounts seed first.',
-        );
-      }
+      const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
 
       await this.accounting.postLines([...debitLines, ...creditLines], {
         sourceType: 'PURCHASE_INVOICE',
@@ -917,17 +909,16 @@ export class PurchaseInvoiceService {
           include: { chartOfAccounts: { select: { id: true } } },
         });
 
-        const purchasesAccount = await tx.chartOfAccount.findFirst({
-          where: { code: '60020002' },
-          select: { id: true },
-        });
+        const purchasesAccount = await this.financeConfig.resolveAccount(
+          AccountRoleKey.PURCHASES_LOCAL,
+        );
 
-        if (supplier?.chartOfAccounts?.length && purchasesAccount) {
+        if (supplier?.chartOfAccounts?.length) {
           const totalAmount = Number(invoice.totalAmount);
           const creditPerAccount = totalAmount / supplier.chartOfAccounts.length;
 
           const originalLines = [
-            { accountId: purchasesAccount.id, debit: totalAmount, credit: 0 },
+            { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
             ...supplier.chartOfAccounts.map(acc => ({
               accountId: acc.id, debit: 0, credit: creditPerAccount,
             })),
