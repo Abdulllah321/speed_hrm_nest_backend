@@ -20,7 +20,8 @@ model ChartOfAccount {
   landedCostChargeTypes LandedCostChargeType[]
   suppliers             Supplier[]             @relation("ChartOfAccountToSupplier")
   transactions          AccountTransaction[]
-  
+  financeConfigs        FinanceAccountConfig[]
+
   // Sales Relations
 
   @@index([parentId])

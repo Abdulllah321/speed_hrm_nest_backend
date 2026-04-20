@@ -4,6 +4,7 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
 import { MovementType, Prisma } from '@prisma/client';
+import { FbrService } from './fbr.service';
 
 
 @Injectable()
@@ -12,6 +13,7 @@ export class PosSalesService implements OnModuleInit {
         private prisma: PrismaService,
         private prismaMaster: PrismaMasterService,
         private stockLedgerService: StockLedgerService,
+        private fbrService: FbrService,
     ) { }
 
       // ─── Schedule midnight hold-clear ─────────────────────────────────
@@ -105,8 +107,19 @@ export class PosSalesService implements OnModuleInit {
 
     // ─── Create sales order ───────────────────────────────────────────
     async createOrder(dto: CreateSalesOrderDto, cashierUserId?: string) {
+        let itemsData: Array<{
+            itemId: string;
+            quantity: number;
+            unitPrice: number;
+            discountPercent: number;
+            discountAmount: number;
+            taxPercent: number;
+            taxAmount: number;
+            lineTotal: number;
+        }> = [];
+
         try {
-            return await this.prisma.$transaction(async (tx) => {
+            const result = await this.prisma.$transaction(async (tx) => {
                 const orderNumber = await this.generateOrderNumber();
                 const locationId = dto.locationId;
 
@@ -135,7 +148,7 @@ export class PosSalesService implements OnModuleInit {
                     : null; // null = apply to all
 
                 // ── Calculate line items ─────────────────────────────────
-                const itemsData = dto.items.map((lineItem) => {
+                itemsData = dto.items.map((lineItem) => {
                     const subtotal = lineItem.unitPrice * lineItem.quantity;
                     const discPct = lineItem.discountPercent || 0;
                     const discAmt = Math.round(subtotal * (discPct / 100) * 100) / 100;
@@ -312,8 +325,124 @@ export class PosSalesService implements OnModuleInit {
                     message: `Order ${orderNumber} created successfully`,
                 };
             });
+
+            // ── FBR Sync (outside transaction — never rolls back local DB) ──
+            await this.syncWithFbr(result.data, itemsData);
+
+            return result;
         } catch (error: any) {
             return { status: false, message: error.message };
+        }
+    }
+
+    // ─── FBR sync helper ──────────────────────────────────────────────
+    private async syncWithFbr(
+        order: any,
+        itemsData: Array<{
+            itemId: string;
+            quantity: number;
+            unitPrice: number;
+            taxAmount: number;
+            lineTotal: number;
+        }>,
+    ) {
+        try {
+            // ── Load location FBR config ───────────────────────────────
+            if (!order.locationId) {
+                console.warn(`[FBR] Order ${order.orderNumber} has no locationId — skipping FBR sync`);
+                return;
+            }
+
+            const location = await this.prisma.location.findUnique({
+                where: { id: order.locationId },
+                select: {
+                    fbrEnabled: true,
+                    fbrBposId: true,
+                    fbrBearerToken: true,
+                    fbrNtn: true,
+                    fbrSellerName: true,
+                    address: true,
+                },
+            });
+
+            if (!location?.fbrEnabled) {
+                // FBR not configured / enabled for this location — skip silently
+                return;
+            }
+
+            if (!location.fbrBposId || !location.fbrBearerToken) {
+                console.warn(`[FBR] Location ${order.locationId} is FBR-enabled but missing bposId or token — skipping`);
+                await this.prisma.salesOrder.update({
+                    where: { id: order.id },
+                    data: { fbrStatus: 'PENDING' },
+                });
+                return;
+            }
+
+            // ── Fetch item details (sku, description, hsCode) ──────────
+            const itemIds = itemsData.map((i) => i.itemId);
+            const itemRecords = await this.prisma.item.findMany({
+                where: { id: { in: itemIds } },
+                select: { id: true, sku: true, description: true, hsCodeStr: true },
+            });
+            const itemMap = new Map(itemRecords.map((r) => [r.id, r]));
+
+            // Walk-in buyer defaults when no customer is attached
+            const buyerNtn = '9999999-9';
+            const buyerName = 'Guest';
+            const buyerAddress = location.address || '';
+
+            const fbrItems = itemsData.map((line) => {
+                const rec = itemMap.get(line.itemId);
+                return {
+                    itemId: line.itemId,
+                    sku: rec?.sku ?? line.itemId,
+                    description: rec?.description ?? null,
+                    hsCode: rec?.hsCodeStr ?? null,
+                    quantity: line.quantity,
+                    unitPrice: line.unitPrice,
+                    taxAmount: line.taxAmount,
+                    lineTotal: line.lineTotal,
+                };
+            });
+
+            const payload = this.fbrService.buildPayload({
+                bposId: location.fbrBposId,
+                orderDate: new Date(order.createdAt),
+                buyerNtn,
+                buyerName,
+                buyerAddress,
+                sellerNtn: location.fbrNtn || '',
+                sellerName: location.fbrSellerName || '',
+                items: fbrItems,
+            });
+
+            // Override the bearer token with the per-location token
+            const fbrResponse = await this.fbrService.postInvoice(payload, location.fbrBearerToken);
+
+            if (fbrResponse.Code === 100) {
+                await this.prisma.salesOrder.update({
+                    where: { id: order.id },
+                    data: {
+                        fbrInvoiceNumber: fbrResponse.InvoiceNumber,
+                        fbrQrCode: fbrResponse.QRCode,
+                        fbrStatus: 'SYNCED',
+                    },
+                });
+                order.fbrInvoiceNumber = fbrResponse.InvoiceNumber;
+                order.fbrQrCode = fbrResponse.QRCode;
+                order.fbrStatus = 'SYNCED';
+            } else {
+                const errMsg = `FBR non-success code ${fbrResponse.Code}: ${fbrResponse.Errors ?? ''}`;
+                console.error(`[FBR] Order ${order.orderNumber} — ${errMsg}`);
+                await this.prisma.salesOrder.update({
+                    where: { id: order.id },
+                    data: { fbrStatus: 'PENDING' },
+                });
+            }
+        } catch (err: any) {
+            // Never throw — log and leave fbrStatus as PENDING
+            console.error(`[FBR] Sync failed for order ${order?.orderNumber}: ${err.message}`);
         }
     }
 

@@ -24,6 +24,9 @@ model SalesOrder {
   cardAmount            Decimal?          @map("card_amount") @db.Decimal(15, 2)
   changeAmount          Decimal?          @map("change_amount") @db.Decimal(15, 2)
   holdExpiresAt         DateTime?         @map("hold_expires_at")
+  fbrInvoiceNumber      String?           @map("fbr_invoice_number")
+  fbrQrCode             String?           @map("fbr_qr_code") @db.Text
+  fbrStatus             String            @default("PENDING") @map("fbr_status")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   items                 SalesOrderItem[]

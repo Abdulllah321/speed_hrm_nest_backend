@@ -1,0 +1,336 @@
+/// Maps a named account role to a specific ChartOfAccount.
+/// Admins configure these once in Finance → Account Configuration.
+/// Services call FinanceAccountConfigService.resolveAccount(key) instead of
+/// hardcoding account codes.
+///
+/// ═══════════════════════════════════════════════════════════════════════════
+/// JOURNAL ENTRY REFERENCE  (Dr = Debit, Cr = Credit)
+/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// PURCHASE INVOICE APPROVAL
+///   Dr  PURCHASES_LOCAL | PURCHASES_IMPORT | PURCHASES_CONSIGNMENT
+///   Cr  Supplier linked payable account(s)   [set on Supplier master]
+///
+/// PURCHASE INVOICE CANCELLATION  (reversal)
+///   Dr  Supplier linked payable account(s)
+///   Cr  PURCHASES_LOCAL | PURCHASES_IMPORT | PURCHASES_CONSIGNMENT
+///
+/// PURCHASE RETURN / DEBIT NOTE
+///   Dr  Supplier linked payable account(s)
+///   Cr  PURCHASES_RETURN
+///
+/// PAYMENT VOUCHER — regular supplier payment
+///   Dr  Supplier linked payable account(s)   [passed in PV details]
+///   Cr  Bank / Cash account                  [passed as creditAccountId]
+///
+/// PAYMENT VOUCHER — advance to supplier
+///   Dr  ADVANCE_TO_SUPPLIERS
+///   Cr  Bank / Cash account
+///
+/// ADVANCE APPLICATION (settling advance against invoice)
+///   Dr  Supplier linked payable account(s)
+///   Cr  ADVANCE_TO_SUPPLIERS
+///
+/// RECEIPT VOUCHER — customer payment received
+///   Dr  Bank / Cash account                  [passed as debitAccountId]
+///   Cr  Customer linked receivable account   [passed in RV details]
+///
+/// SALES INVOICE — ERP wholesale
+///   Dr  ACCOUNTS_RECEIVABLE
+///   Cr  SALES_REVENUE_WHOLESALE              [subtotal]
+///   Cr  SALES_TAX_PAYABLE_FEDERAL            [tax portion, if applicable]
+///
+/// SALES INVOICE — POS retail (cash)
+///   Dr  CASH_IN_HAND
+///   Cr  SALES_REVENUE_RETAIL                 [subtotal]
+///   Cr  SALES_TAX_PAYABLE_FEDERAL            [tax portion, if applicable]
+///
+/// SALES INVOICE — POS retail (card)
+///   Dr  BANK_MERCHANT                        [gross card amount]
+///   Cr  SALES_REVENUE_RETAIL                 [subtotal]
+///   Cr  SALES_TAX_PAYABLE_FEDERAL            [tax portion]
+///   Dr  BANK_COMMISSION_SELLING              [merchant commission expense]
+///   Cr  BANK_MERCHANT                        [commission deducted from settlement]
+///
+/// POS VOUCHER ISSUANCE (credit / gift / exchange / claim)
+///   Dr  SALES_REVENUE_RETAIL
+///   Cr  CREDIT_VOUCHERS | GIFT_VOUCHERS | GIFT_VOUCHERS_CORPORATE
+///       | CLAIM_VOUCHERS | EXCHANGE_VOUCHERS
+///
+/// POS VOUCHER REDEMPTION
+///   Dr  CREDIT_VOUCHERS | GIFT_VOUCHERS | ... (same as above)
+///   Cr  SALES_REVENUE_RETAIL
+///
+/// ALLIANCE / REWARD PROGRAM ACCRUAL
+///   Dr  SALES_REVENUE_RETAIL
+///   Cr  ALLIANCE_REWARD
+///
+/// POS INTEGRATION FEE (FBR / integrator)
+///   Dr  POS_INTEGRATION_FEE_EXPENSE
+///   Cr  POS_INTEGRATION_FEE_PAYABLE
+///
+/// PAYROLL POSTING — admin department (code 70)
+///   Dr  SALARIES_EXPENSE_ADMIN               [gross salary]
+///   Dr  EOBI_EXPENSE_ADMIN                   [employer EOBI share]
+///   Dr  PF_EXPENSE_ADMIN                     [employer PF share]
+///   Cr  AP_SALARIES                          [net payable to employees]
+///   Cr  AP_EOBI                              [EOBI payable to authority]
+///   Cr  AP_PROVIDENT_FUND                    [PF payable to fund]
+///   Cr  AP_SESSI                             [SESSI/PESSI/IESSI payable]
+///   Cr  WHT_SALARY                           [income tax withheld]
+///
+/// PAYROLL POSTING — selling / store department (code 80)
+///   Dr  SALARIES_EXPENSE_SELLING
+///   Dr  EOBI_EXPENSE_SELLING
+///   Dr  PF_EXPENSE_SELLING
+///   Cr  AP_SALARIES | AP_EOBI | AP_PROVIDENT_FUND | AP_SESSI | WHT_SALARY
+///
+/// STOCK INBOUND (GRN / Direct Purchase Invoice)
+///   Dr  STOCK_IN_TRADE_WAREHOUSE | STOCK_IN_TRADE_STORES
+///   Cr  PURCHASES_LOCAL | PURCHASES_IMPORT
+///
+/// COST OF GOODS SOLD (on sales delivery)
+///   Dr  COST_OF_GOODS_SOLD
+///   Cr  STOCK_IN_TRADE_WAREHOUSE | STOCK_IN_TRADE_STORES
+///
+/// STOCK ADJUSTMENT / WRITE-OFF
+///   Dr  STOCK_ADJUSTMENTS | INVENTORY_SHORTAGE
+///   Cr  STOCK_IN_TRADE_WAREHOUSE | STOCK_IN_TRADE_STORES
+///
+/// CASH SHORTAGE / OVERAGE (POS end-of-day)
+///   Dr/Cr  CASH_SHORTAGE_OVERAGE
+///   Cr/Dr  CASH_IN_HAND
+///
+/// BANK CHARGES (general banking)
+///   Dr  BANK_CHARGES
+///   Cr  Bank account
+///
+/// IMPORT BANK CHARGES / EXCHANGE LOSS
+///   Dr  BANK_CHARGES_IMPORT | EXCHANGE_LOSS_IMPORT
+///   Cr  Bank account
+///
+/// ═══════════════════════════════════════════════════════════════════════════
+
+model FinanceAccountConfig {
+  id          String         @id @default(uuid())
+  key         AccountRoleKey @unique
+  accountId   String
+  description String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  account ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  @@index([key])
+}
+
+enum AccountRoleKey {
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PURCHASES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr when a LOCAL purchase invoice is approved                 (60020002)
+  PURCHASES_LOCAL
+
+  /// Dr when an IMPORT purchase invoice is approved               (60020001)
+  PURCHASES_IMPORT
+
+  /// Dr when a CONSIGNMENT purchase invoice is approved           (60020003)
+  PURCHASES_CONSIGNMENT
+
+  /// Cr on purchase return / debit note (reversal of purchase)
+  PURCHASES_RETURN
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SUPPLIER / ACCOUNTS PAYABLE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Asset Dr when advance payment is made to supplier            (31030004)
+  /// Cr when that advance is later applied against an invoice
+  ADVANCE_TO_SUPPLIERS
+
+  /// Generic AP liability Cr on purchase invoice — used as fallback
+  /// when supplier has no linked payable account configured       (12030001)
+  AP_PARTIES
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SALES / ACCOUNTS RECEIVABLE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Cr on retail / POS sales invoice (subtotal excl. tax)        (40020001)
+  SALES_REVENUE_RETAIL
+
+  /// Cr on wholesale / ERP sales invoice (subtotal excl. tax)     (40010001)
+  SALES_REVENUE_WHOLESALE
+
+  /// Dr on ERP sales invoice (trade debts receivable)             (31020001)
+  ACCOUNTS_RECEIVABLE
+
+  /// Cr when customer advance / deposit is received               (12020001)
+  ADVANCE_FROM_CUSTOMERS
+
+  /// Dr on retail sales return / credit note                      (40020007)
+  SALES_RETURN_RETAIL
+
+  /// Dr on wholesale sales return                                  (40010007)
+  SALES_RETURN_WHOLESALE
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TAX
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Cr for output sales tax collected — federal                   (12040001)
+  SALES_TAX_PAYABLE_FEDERAL
+
+  /// Cr for output sales tax collected — provincial                (12040002)
+  SALES_TAX_PAYABLE_PROVINCIAL
+
+  /// Dr for input tax recoverable on goods purchases               (31070003)
+  INPUT_TAX_RECOVERABLE
+
+  /// Cr income tax withheld on employee salaries                   (12060001)
+  WHT_SALARY
+
+  /// Cr withholding tax on goods purchases                         (12060003)
+  WHT_GOODS
+
+  /// Cr withholding tax on services                                (12060004)
+  WHT_SERVICES
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAYROLL — ADMIN DEPARTMENT  (expense codes 70xxxxx)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr gross salary expense — admin / head-office staff           (70010001)
+  SALARIES_EXPENSE_ADMIN
+
+  /// Dr employer EOBI contribution expense — admin                 (70010005)
+  EOBI_EXPENSE_ADMIN
+
+  /// Dr employer PF contribution expense — admin                   (70010009)
+  PF_EXPENSE_ADMIN
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAYROLL — SELLING & DISTRIBUTION DEPARTMENT  (expense codes 80xxxxx)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr gross salary expense — selling / store staff               (80010001)
+  SALARIES_EXPENSE_SELLING
+
+  /// Dr employer EOBI contribution expense — selling               (80010005)
+  EOBI_EXPENSE_SELLING
+
+  /// Dr employer PF contribution expense — selling                 (80010009)
+  PF_EXPENSE_SELLING
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAYROLL — SHARED PAYABLE ACCOUNTS  (Cr side, both departments)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Cr net salary payable to employees after all deductions       (12030003)
+  AP_SALARIES
+
+  /// Cr employer + employee EOBI contribution payable              (12030005)
+  AP_EOBI
+
+  /// Cr employer + employee provident fund payable                 (12030004)
+  AP_PROVIDENT_FUND
+
+  /// Cr SESSI / PESSI / IESSI contribution payable                 (12030006)
+  AP_SESSI
+
+  /// Cr final settlement payable (gratuity / end-of-service)       (12030007)
+  AP_SALARIES_FINAL_SETTLEMENT
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // INVENTORY / STOCK
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr on GRN inbound; Cr on COGS outbound — warehouse stock      (31010002)
+  STOCK_IN_TRADE_WAREHOUSE
+
+  /// Dr on store transfer inbound; Cr on COGS outbound — store     (31010001)
+  STOCK_IN_TRADE_STORES
+
+  /// Dr cost of goods sold on sales delivery
+  COST_OF_GOODS_SOLD
+
+  /// Dr/Cr stock adjustment write-offs                             (60040001)
+  STOCK_ADJUSTMENTS
+
+  /// Dr inventory shortage / excess expense                        (60040002)
+  INVENTORY_SHORTAGE
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POS — PAYMENT METHODS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr cash received at POS counter                               (31090001)
+  CASH_IN_HAND
+
+  /// Dr card / digital payment received (gross before commission)
+  /// Maps to the bank current account used for merchant settlements
+  BANK_MERCHANT
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POS — VOUCHERS & LOYALTY  (all LIABILITY accounts)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Cr on issuance; Dr on redemption — credit vouchers            (12070006)
+  CREDIT_VOUCHERS
+
+  /// Cr on issuance; Dr on redemption — gift vouchers              (12070007)
+  GIFT_VOUCHERS
+
+  /// Cr on issuance; Dr on redemption — corporate gift vouchers    (12070008)
+  GIFT_VOUCHERS_CORPORATE
+
+  /// Cr on issuance; Dr on redemption — claim vouchers             (12070009)
+  CLAIM_VOUCHERS
+
+  /// Cr on issuance; Dr on redemption — exchange vouchers          (12070010)
+  EXCHANGE_VOUCHERS
+
+  /// Cr for alliance / reward program points accrued               (12070011)
+  ALLIANCE_REWARD
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POS — FEES & CHARGES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Cr POS integration fee payable to FBR / integrator            (12060009)
+  POS_INTEGRATION_FEE_PAYABLE
+
+  /// Dr POS integration fee expense — selling dept                 (80210001)
+  POS_INTEGRATION_FEE_EXPENSE
+
+  /// Dr bank merchant commission expense — selling dept            (80210001)
+  BANK_COMMISSION_SELLING
+
+  /// Dr bank merchant commission expense — admin dept              (70210001)
+  BANK_COMMISSION_ADMIN
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POS — CASH MANAGEMENT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr/Cr cash shortage or overage at POS end-of-day              (80220013)
+  CASH_SHORTAGE_OVERAGE
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FINANCIAL CHARGES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Dr bank charges and commission on general banking              (90010001)
+  BANK_CHARGES
+
+  /// Dr mark-up / interest on short-term or long-term loans        (90010002)
+  MARKUP_ON_LOAN
+
+  /// Dr import-related bank charges (LC, confirmation, etc.)       (90030001)
+  BANK_CHARGES_IMPORT
+
+  /// Dr exchange loss on import transactions                        (90030003)
+  EXCHANGE_LOSS_IMPORT
+}
