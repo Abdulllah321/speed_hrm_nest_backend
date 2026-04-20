@@ -1780,8 +1780,8 @@ export class PayrollService {
 
     let totalDeduction = new Decimal(0);
 
-    // Calculate per day salary (assuming 30 days) - using total salary
-    const perDaySalary = totalSalary.div(30);
+    // Calculate per day salary based on actual days in month - using total salary
+    const perDaySalary = totalSalary.div(totalDaysInMonth);
 
     // Helper to check if date has approved leave
     const hasApprovedLeave = (date: Date): boolean => {
@@ -2101,7 +2101,9 @@ export class PayrollService {
       return assignment?.workingHoursPolicy || defaultPolicy;
     };
 
-    const hourlyRate = basicSalary.div(30).div(8); // Use calculated basic salary
+    const monthEndDate = new Date(Number(year), Number(month), 0);
+    const totalDaysInMonth = monthEndDate.getDate();
+    const hourlyRate = basicSalary.div(totalDaysInMonth).div(8); // Use calculated basic salary
 
     // Process overtime requests
     for (const ot of overtimes) {
