@@ -458,6 +458,10 @@ export class PosSalesService implements OnModuleInit {
     ) {
         const skip = (page - 1) * limit;
         const where: any = {};
+
+        console.log("=================")
+        console.log(locationId)
+        console.log("=================")
         if (posId) {
             // If posId is a UUID, search by terminalId, otherwise by posId (code)
             if (posId.length > 20) {
@@ -518,6 +522,23 @@ export class PosSalesService implements OnModuleInit {
         ]);
 
         // Reconstruct tenders from stored columns since they aren't persisted separately
+        // Also attach already-returned qty per item for partially_returned orders
+        // Attach already-returned qty per item for any order that may have returns
+        const returnLedgerEntries = rawOrders.length > 0
+            ? await this.prisma.stockLedger.findMany({
+                where: { referenceId: { in: rawOrders.map(o => o.id) }, referenceType: 'POS_RETURN', movementType: 'INBOUND' },
+                select: { referenceId: true, itemId: true, qty: true },
+            })
+            : [];
+
+        // Map: orderId → itemId → totalReturnedQty
+        const returnedQtyMap = new Map<string, Map<string, number>>();
+        for (const entry of returnLedgerEntries) {
+            if (!returnedQtyMap.has(entry.referenceId)) returnedQtyMap.set(entry.referenceId, new Map());
+            const itemMap = returnedQtyMap.get(entry.referenceId)!;
+            itemMap.set(entry.itemId, (itemMap.get(entry.itemId) ?? 0) + Math.abs(Number(entry.qty)));
+        }
+
         const orders = rawOrders.map(order => {
             const tenders: { method: string; amount: number }[] = [];
             if (order.tenderType === 'split') {
@@ -527,7 +548,14 @@ export class PosSalesService implements OnModuleInit {
                 const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
                 tenders.push({ method: order.paymentMethod, amount });
             }
-            return { ...order, tenders };
+
+            const itemReturnedMap = returnedQtyMap.get(order.id);
+            const itemsWithReturned = order.items.map(item => ({
+                ...item,
+                returnedQty: itemReturnedMap?.get(item.itemId) ?? 0,
+            }));
+
+            return { ...order, items: itemsWithReturned, tenders };
         });
 
         return {
@@ -562,6 +590,107 @@ export class PosSalesService implements OnModuleInit {
         return { status: true, data: { ...order, tenders } };
     }
 
+    // ─── Return details (price-adjusted refund preview) ───────────────
+    async getReturnDetails(id: string) {
+        try {
+            const order = await this.prisma.salesOrder.findUnique({
+                where: { id },
+                include: { items: { include: { item: true } }, coupon: true, promo: true, alliance: true },
+            });
+            if (!order) return { status: false, message: 'Order not found' };
+
+            // Fetch already-returned quantities from stock ledger
+            const returnedEntries = await this.prisma.stockLedger.findMany({
+                where: { referenceId: order.id, referenceType: 'POS_RETURN', movementType: 'INBOUND' },
+                select: { itemId: true, qty: true },
+            });
+            const returnedQtyMap = new Map<string, number>();
+            for (const entry of returnedEntries) {
+                const prev = returnedQtyMap.get(entry.itemId) ?? 0;
+                returnedQtyMap.set(entry.itemId, prev + Math.abs(Number(entry.qty)));
+            }
+
+            let totalRefundAmount = 0;
+            const lineTotalsSum = order.items.reduce((s, i) => s + Number(i.lineTotal), 0);
+            const orderLevelDiscount = lineTotalsSum - Number(order.grandTotal);
+
+            const itemRefundDetails = await Promise.all(
+                order.items.map(async (orderItem) => {
+                    const orderedQty = Number(orderItem.quantity);
+                    const alreadyReturned = returnedQtyMap.get(orderItem.itemId) ?? 0;
+                    // Remaining qty that can still be returned
+                    const returnableQty = Math.max(0, orderedQty - alreadyReturned);
+
+                    const unitPrice = Number(orderItem.unitPrice);
+                    const lineTotal = Number(orderItem.lineTotal); // total for full ordered qty
+
+                    // Scale lineTotal to returnableQty only
+                    const scaleFactor = orderedQty > 0 ? returnableQty / orderedQty : 0;
+                    const scaledLineTotal = lineTotal * scaleFactor;
+
+                    // Item-level discount and tax — scale to returnable qty
+                    const discountAmount = Number(orderItem.discountAmount ?? 0) * scaleFactor;
+                    const taxAmount = Number(orderItem.taxAmount ?? 0) * scaleFactor;
+
+                    // Proportional coupon deduction for this item's returnable share
+                    const itemCouponDeduction = lineTotalsSum > 0
+                        ? (scaledLineTotal / lineTotalsSum) * orderLevelDiscount
+                        : 0;
+
+                    const itemShare = scaledLineTotal - itemCouponDeduction;
+                    const originalPaidPerUnit = returnableQty > 0 ? itemShare / returnableQty : 0;
+
+                    const currentItem = await this.prisma.item.findUnique({
+                        where: { id: orderItem.itemId },
+                        select: { unitPrice: true, unitCost: true },
+                    });
+                    const baseCurrentPrice = currentItem
+                        ? (Number(currentItem.unitCost) > 0 ? Number(currentItem.unitCost) : Number(currentItem.unitPrice))
+                        : originalPaidPerUnit;
+
+                    const taxPercent = Number(orderItem.taxPercent) || 0;
+                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    const lineRefund = Math.round(refundPerUnit * returnableQty * 100) / 100;
+                    totalRefundAmount += lineRefund;
+
+                    return {
+                        orderItemId: orderItem.id,
+                        itemId: orderItem.itemId,
+                        quantity: returnableQty,           // ← only returnable qty
+                        orderedQty,
+                        alreadyReturnedQty: alreadyReturned,
+                        unitPrice: Math.round(unitPrice * 100) / 100,
+                        discountAmount: Math.round(discountAmount * 100) / 100,
+                        discountPercent: Number(orderItem.discountPercent ?? 0),
+                        taxAmount: Math.round(taxAmount * 100) / 100,
+                        taxPercent,
+                        couponDeduction: Math.round(itemCouponDeduction * 100) / 100,
+                        originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+                        refundPerUnit: Math.round(refundPerUnit * 100) / 100,
+                        priceAdjusted: currentPriceWithTax < originalPaidPerUnit,
+                    };
+                }),
+            );
+
+            return {
+                status: true,
+                data: {
+                    orderId: id,
+                    orderNumber: order.orderNumber,
+                    grandTotal: Number(order.grandTotal),
+                    orderLevelDiscount: Math.round(orderLevelDiscount * 100) / 100,
+                    couponCode: order.coupon?.code ?? null,
+                    promoCode: order.promo?.code ?? null,
+                    refundTotal: Math.round(totalRefundAmount * 100) / 100,
+                    itemRefundDetails,
+                },
+            };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
     // ─── Partial return ───────────────────────────────────────────────
     async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, returnLocationId?: string) {
         try {
@@ -579,12 +708,94 @@ export class PosSalesService implements OnModuleInit {
                 // Determine effective location for return (where stock goes back)
                 const effectiveLocationId = returnLocationId || order.locationId;
 
+                let totalRefundAmount = 0;
+                const itemRefundDetails: {
+                    orderItemId: string;
+                    itemId: string;
+                    quantity: number;
+                    unitPrice: number;
+                    discountAmount: number;
+                    discountPercent: number;
+                    taxAmount: number;
+                    taxPercent: number;
+                    couponDeduction: number;
+                    originalPaidPerUnit: number;
+                    refundPerUnit: number;
+                    priceAdjusted: boolean;
+                }[] = [];
+
+                // Pre-compute for proportional coupon distribution
+                const lineTotalsSum = order.items.reduce((s, i) => s + Number(i.lineTotal), 0);
+                const orderLevelDiscount = lineTotalsSum - Number(order.grandTotal);
+
+                // Pre-fetch already returned quantities per orderItem from stock ledger
+                // Use orderItemId-level tracking via a separate table isn't available,
+                // so we track by itemId but scope to this order only
+                const alreadyReturnedEntries = await tx.stockLedger.findMany({
+                    where: { referenceId: order.id, referenceType: 'POS_RETURN', movementType: 'INBOUND' },
+                    select: { itemId: true, qty: true },
+                });
+                const alreadyReturnedMap = new Map<string, number>();
+                for (const entry of alreadyReturnedEntries) {
+                    const prev = alreadyReturnedMap.get(entry.itemId) ?? 0;
+                    alreadyReturnedMap.set(entry.itemId, prev + Math.abs(Number(entry.qty)));
+                }
+
                 for (const returnItem of items) {
                     const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
                     if (!orderItem) continue;
-                    if (returnItem.quantity > orderItem.quantity) {
-                        throw new Error(`Return qty exceeds ordered qty for item ${returnItem.itemId}`);
+
+                    const alreadyReturned = alreadyReturnedMap.get(returnItem.itemId) ?? 0;
+                    const remainingReturnable = Number(orderItem.quantity) - alreadyReturned;
+                    if (returnItem.quantity > remainingReturnable) {
+                        throw new Error(`Return qty (${returnItem.quantity}) exceeds remaining returnable qty (${remainingReturnable}) for item ${returnItem.itemId}`);
                     }
+
+                    const qty = Number(orderItem.quantity);
+                    const lineTotal = Number(orderItem.lineTotal);
+
+                    // ── Refund price rule ─────────────────────────────────
+                    // Proportionally distribute grandTotal across items so order-level
+                    // coupon/voucher discounts are correctly reflected in the refund.
+                    const itemCouponDeduction = lineTotalsSum > 0
+                        ? (lineTotal / lineTotalsSum) * orderLevelDiscount
+                        : 0;
+                    const itemShare = lineTotal - itemCouponDeduction;
+                    const originalPaidPerUnit = itemShare / qty;
+
+                    // Current item price — POS uses unitCost when set, otherwise unitPrice
+                    const currentItem = await tx.item.findUnique({
+                        where: { id: returnItem.itemId },
+                        select: { unitPrice: true, unitCost: true },
+                    });
+                    const baseCurrentPrice = currentItem
+                        ? (Number(currentItem.unitCost) > 0 ? Number(currentItem.unitCost) : Number(currentItem.unitPrice))
+                        : originalPaidPerUnit;
+
+                    // Apply the same tax rate that was charged at sale time
+                    const taxPercent = Number(orderItem.taxPercent) || 0;
+                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+
+                    // Rule: refund = min(originalPaid, currentPriceWithTax)
+                    // i.e. if price dropped/discounted → refund current (lower) price
+                    //      if price rose               → refund original (lower) price
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    totalRefundAmount += refundPerUnit * returnItem.quantity;
+
+                    itemRefundDetails.push({
+                        orderItemId: returnItem.orderItemId,
+                        itemId: returnItem.itemId,
+                        quantity: returnItem.quantity,
+                        unitPrice: Math.round(Number(orderItem.unitPrice) * 100) / 100,
+                        discountAmount: Math.round(Number(orderItem.discountAmount ?? 0) * (returnItem.quantity / qty) * 100) / 100,
+                        discountPercent: Number(orderItem.discountPercent ?? 0),
+                        taxAmount: Math.round(Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty) * 100) / 100,
+                        taxPercent: Number(orderItem.taxPercent ?? 0),
+                        couponDeduction: Math.round(itemCouponDeduction * (returnItem.quantity / qty) * 100) / 100,
+                        originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+                        refundPerUnit: Math.round(refundPerUnit * 100) / 100,
+                        priceAdjusted: currentPriceWithTax < originalPaidPerUnit,
+                    });
 
                     await this.stockLedgerService.createEntry({
                         itemId: returnItem.itemId,
@@ -618,9 +829,13 @@ export class PosSalesService implements OnModuleInit {
                 }
 
                 // Determine if this is a full return
+                // Use alreadyReturnedMap (fetched BEFORE stock ledger entries were created)
+                // + current return quantities to avoid counting current entries twice
                 const allItemsReturned = order.items.every(oi => {
-                    const returnItem = items.find(ri => ri.orderItemId === oi.id);
-                    return returnItem && returnItem.quantity === oi.quantity;
+                    const prevQty = alreadyReturnedMap.get(oi.itemId) ?? 0;
+                    const currentReturnItem = items.find(ri => ri.orderItemId === oi.id);
+                    const currentQty = currentReturnItem?.quantity ?? 0;
+                    return (prevQty + currentQty) >= Number(oi.quantity);
                 });
 
                 const newStatus = allItemsReturned ? 'returned' : 'partially_returned';
@@ -674,7 +889,7 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                return { status: true, data: updatedOrder, message: `Return processed (${newStatus}) and inventory restored` };
+                return { status: true, data: updatedOrder, refundAmount: Math.round(totalRefundAmount * 100) / 100, itemRefundDetails, message: `Return processed (${newStatus}) and inventory restored` };
             });
         } catch (error: any) {
             return { status: false, message: error.message };
@@ -848,7 +1063,8 @@ export class PosSalesService implements OnModuleInit {
 
                 const returnedValue = returnedItems.reduce((s, ri) => {
                     const oi = order.items.find(i => i.id === ri.orderItemId);
-                    return s + (oi ? Number(oi.unitPrice) * ri.quantity : 0);
+                    // Use lineTotal/quantity so discounts & tax are correctly reflected
+                    return s + (oi ? (Number(oi.lineTotal) / Number(oi.quantity)) * ri.quantity : 0);
                 }, 0);
                 const newValue = newItems.reduce((s, ni) => s + ni.unitPrice * ni.quantity, 0);
                 const difference = newValue - returnedValue; // positive = customer pays more, negative = refund
