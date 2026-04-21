@@ -458,6 +458,10 @@ export class PosSalesService implements OnModuleInit {
     ) {
         const skip = (page - 1) * limit;
         const where: any = {};
+
+        console.log("=================")
+        console.log(locationId)
+        console.log("=================")
         if (posId) {
             // If posId is a UUID, search by terminalId, otherwise by posId (code)
             if (posId.length > 20) {
@@ -644,6 +648,26 @@ export class PosSalesService implements OnModuleInit {
                     alreadyReturnedMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
                 }
 
+                let totalRefundAmount = 0;
+                const itemRefundDetails: {
+                    orderItemId: string;
+                    itemId: string;
+                    quantity: number;
+                    unitPrice: number;
+                    discountAmount: number;
+                    discountPercent: number;
+                    taxAmount: number;
+                    taxPercent: number;
+                    couponDeduction: number;
+                    originalPaidPerUnit: number;
+                    refundPerUnit: number;
+                    priceAdjusted: boolean;
+                }[] = [];
+
+                // Pre-compute for proportional coupon distribution
+                const lineTotalsSum = order.items.reduce((s, i) => s + Number(i.lineTotal), 0);
+                const orderLevelDiscount = lineTotalsSum - Number(order.grandTotal);
+
                 // ── Validate and process return items ──
                 for (const returnItem of items) {
                     const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
@@ -655,6 +679,52 @@ export class PosSalesService implements OnModuleInit {
                     if (returnItem.quantity > remainingReturnable) {
                         throw new Error(`Cannot return ${returnItem.quantity} of item ${returnItem.itemId}. Only ${remainingReturnable} remaining (${alreadyReturned} already returned).`);
                     }
+
+                    const qty = Number(orderItem.quantity);
+                    const lineTotal = Number(orderItem.lineTotal);
+
+                    // ── Refund price rule ─────────────────────────────────
+                    // Proportionally distribute grandTotal across items so order-level
+                    // coupon/voucher discounts are correctly reflected in the refund.
+                    const itemCouponDeduction = lineTotalsSum > 0
+                        ? (lineTotal / lineTotalsSum) * orderLevelDiscount
+                        : 0;
+                    const itemShare = lineTotal - itemCouponDeduction;
+                    const originalPaidPerUnit = itemShare / qty;
+
+                    // Current item price — POS uses unitCost when set, otherwise unitPrice
+                    const currentItem = await tx.item.findUnique({
+                        where: { id: returnItem.itemId },
+                        select: { unitPrice: true, unitCost: true },
+                    });
+                    const baseCurrentPrice = currentItem
+                        ? (Number(currentItem.unitCost) > 0 ? Number(currentItem.unitCost) : Number(currentItem.unitPrice))
+                        : originalPaidPerUnit;
+
+                    // Apply the same tax rate that was charged at sale time
+                    const taxPercent = Number(orderItem.taxPercent) || 0;
+                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+
+                    // Rule: refund = min(originalPaid, currentPriceWithTax)
+                    // i.e. if price dropped/discounted → refund current (lower) price
+                    //      if price rose               → refund original (lower) price
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    totalRefundAmount += refundPerUnit * returnItem.quantity;
+
+                    itemRefundDetails.push({
+                        orderItemId: returnItem.orderItemId,
+                        itemId: returnItem.itemId,
+                        quantity: returnItem.quantity,
+                        unitPrice: Math.round(Number(orderItem.unitPrice) * 100) / 100,
+                        discountAmount: Math.round(Number(orderItem.discountAmount ?? 0) * (returnItem.quantity / qty) * 100) / 100,
+                        discountPercent: Number(orderItem.discountPercent ?? 0),
+                        taxAmount: Math.round(Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty) * 100) / 100,
+                        taxPercent: Number(orderItem.taxPercent ?? 0),
+                        couponDeduction: Math.round(itemCouponDeduction * (returnItem.quantity / qty) * 100) / 100,
+                        originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+                        refundPerUnit: Math.round(refundPerUnit * 100) / 100,
+                        priceAdjusted: currentPriceWithTax < originalPaidPerUnit,
+                    });
 
                     await this.stockLedgerService.createEntry({
                         itemId: returnItem.itemId,
@@ -747,7 +817,7 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                return { status: true, data: updatedOrder, message: `Return processed (${newStatus}) and inventory restored` };
+                return { status: true, data: updatedOrder, refundAmount: Math.round(totalRefundAmount * 100) / 100, itemRefundDetails, message: `Return processed (${newStatus}) and inventory restored` };
             });
         } catch (error: any) {
             return { status: false, message: error.message };
@@ -1059,7 +1129,8 @@ export class PosSalesService implements OnModuleInit {
 
                 const returnedValue = returnedItems.reduce((s, ri) => {
                     const oi = order.items.find(i => i.id === ri.orderItemId);
-                    return s + (oi ? Number(oi.unitPrice) * ri.quantity : 0);
+                    // Use lineTotal/quantity so discounts & tax are correctly reflected
+                    return s + (oi ? (Number(oi.lineTotal) / Number(oi.quantity)) * ri.quantity : 0);
                 }, 0);
                 const newValue = newItems.reduce((s, ni) => s + ni.unitPrice * ni.quantity, 0);
                 const difference = newValue - returnedValue; // positive = customer pays more, negative = refund
