@@ -132,6 +132,14 @@ export class PosSalesController {
         );
     }
 
+    // ─── Get return details for printing return slip ──────────────────
+    // IMPORTANT: This must come BEFORE @Get('orders/:id') to avoid route conflict
+    @Get('orders/:id/return-details')
+    @ApiOperation({ summary: 'Get return details for printing return slip' })
+    async getReturnDetails(@Param('id') id: string) {
+        return this.posSalesService.getReturnDetails(id);
+    }
+
     // ─── Get single order ─────────────────────────────────────────────
     @Get('orders/:id')
     @ApiOperation({ summary: 'Get sales order by ID' })
