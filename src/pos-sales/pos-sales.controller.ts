@@ -152,13 +152,6 @@ export class PosSalesController {
         return this.posSalesService.getOrder(id);
     }
 
-    // ─── Return details (price-adjusted refund preview) ───────────────
-    @Get('orders/:id/return-details')
-    @ApiOperation({ summary: 'Get return refund details with current price adjustments' })
-    async getReturnDetails(@Param('id') id: string) {
-        return this.posSalesService.getReturnDetails(id);
-    }
-
 
     @Post('orders/:id/return')
     @ApiOperation({ summary: 'Process a partial or full return for a sales order' })
