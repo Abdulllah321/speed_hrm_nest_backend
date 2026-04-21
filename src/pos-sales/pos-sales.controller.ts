@@ -117,8 +117,13 @@ export class PosSalesController {
             try {
                 const decoded: any = jwt.decode(req.cookies.posTerminalToken);
                 effectivePosId = decoded?.posId || decoded?.terminalId;
-                effectiveLocationId = decoded?.locationId;
+                if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
             } catch (e) { }
+        }
+
+        // 3. Fallback: any user with a locationId on their token (e.g. manager/admin scoped to a location)
+        if (!effectiveLocationId && req.user?.locationId) {
+            effectiveLocationId = req.user.locationId;
         }
 
         return this.posSalesService.listOrders(
@@ -147,7 +152,14 @@ export class PosSalesController {
         return this.posSalesService.getOrder(id);
     }
 
-    // ─── Partial return ───────────────────────────────────────────────
+    // ─── Return details (price-adjusted refund preview) ───────────────
+    @Get('orders/:id/return-details')
+    @ApiOperation({ summary: 'Get return refund details with current price adjustments' })
+    async getReturnDetails(@Param('id') id: string) {
+        return this.posSalesService.getReturnDetails(id);
+    }
+
+
     @Post('orders/:id/return')
     @ApiOperation({ summary: 'Process a partial or full return for a sales order' })
     async returnOrder(

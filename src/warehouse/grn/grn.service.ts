@@ -88,9 +88,14 @@ export class GrnService {
             purchaseRequisitionId: true,
             vendorQuotationId: true,
             rfqId: true,
+            goodsType: true,
+            orderType: true,
             items: true,
             vendor: {
               select: { id: true, name: true, code: true },
+            },
+            purchaseRequisition: {
+              select: { goodsType: true },
             },
           },
         },
@@ -173,11 +178,14 @@ export class GrnService {
       grnStatus = 'RECEIVED_UNVALUED';
       this.logger.log(`Direct PO Flow - shouldUpdateInventory: ${shouldUpdateInventory}, status: ${grnStatus}`);
     } else if (isRfqVqFlow || isPrDirectFlow) {
-      // PR-linked flows: Check PR goods type
-      const prGoodsType = po.purchaseRequisition?.goodsType;
+      // PR-linked flows: Check goods type
+      // For RFQ→VQ→PO flow, purchaseRequisitionId is null on PO but goodsType is
+      // copied from PR during PO creation (createFromQuotation / awardFromRfq).
+      // Always prefer po.goodsType first, fall back to po.purchaseRequisition?.goodsType.
+      const prGoodsType = po.goodsType || po.purchaseRequisition?.goodsType;
       const isConsumable = prGoodsType === 'CONSUMABLE' || !prGoodsType; // Default to consumable
 
-      this.logger.log(`PR Goods Type: ${prGoodsType}, isConsumable: ${isConsumable}`);
+      this.logger.log(`Resolved Goods Type: ${prGoodsType} (po.goodsType=${po.goodsType}, pr.goodsType=${po.purchaseRequisition?.goodsType}), isConsumable: ${isConsumable}`);
 
       if (isConsumable) {
         // CONSUMABLE: Update inventory at GRN
