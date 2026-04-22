@@ -24,6 +24,14 @@ export class StockMovementService {
     private stockLedgerService: StockLedgerService
   ) { }
 
+  private async getCurrentItemRate(tx: any, itemId: string): Promise<number> {
+    const item = await tx.item.findUnique({
+      where: { id: itemId },
+      select: { unitCost: true },
+    });
+    return Number(item?.unitCost || 0);
+  }
+
   async executeMovement(dto: CreateStockMovementDto) {
     // Validate that locations exist before processing
     if (dto.toLocationId) {
@@ -74,6 +82,8 @@ export class StockMovementService {
   }
 
   private async executeWarehouseToOutletTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
+    const transferRate = await this.getCurrentItemRate(tx, dto.itemId);
+
     // 2. WAREHOUSE SIDE - Decrease Stock
     const sourceItem = await tx.inventoryItem.findFirst({
       where: {
@@ -98,6 +108,7 @@ export class StockMovementService {
         movementType: MovementType.OUTBOUND,
         referenceType: dto.referenceType || 'STOCK_MOVEMENT',
         referenceId: movementId,
+        rate: transferRate,
       }, tx);
     } else {
       throw new BadRequestException(`Insufficient warehouse stock for item ${dto.itemId}`);
@@ -141,11 +152,14 @@ export class StockMovementService {
         movementType: MovementType.INBOUND,
         referenceType: dto.referenceType || 'STOCK_MOVEMENT',
         referenceId: movementId,
+        rate: transferRate,
       }, tx);
     }
   }
 
   private async executeOutletToWarehouseTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
+    const transferRate = await this.getCurrentItemRate(tx, dto.itemId);
+
     // 1. OUTLET SIDE - Decrease Stock
     const sourceItem = await tx.inventoryItem.findFirst({
       where: {
@@ -170,6 +184,7 @@ export class StockMovementService {
         movementType: MovementType.OUTBOUND,
         referenceType: dto.referenceType || 'RETURN_MOVEMENT',
         referenceId: movementId,
+        rate: transferRate,
       }, tx);
     } else {
       throw new BadRequestException(`Insufficient outlet stock for item ${dto.itemId}`);
@@ -212,6 +227,7 @@ export class StockMovementService {
       movementType: MovementType.INBOUND,
       referenceType: dto.referenceType || 'RETURN_MOVEMENT',
       referenceId: movementId,
+      rate: transferRate,
     }, tx);
   }
 }

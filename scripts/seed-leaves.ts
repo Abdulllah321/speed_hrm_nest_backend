@@ -18,9 +18,11 @@ export const leaveTypesSeed: string[] = [
   'Unpaid Leave',
   'Half Day Leave',
   'Short Leave',
+  'Privilege Leave',
 ];
 
 export interface LeavePolicySeed {
+  id?: string;
   name: string;
   details: string;
   fullDayDeductionRate: number;
@@ -70,6 +72,20 @@ export const leavesPoliciesSeed: LeavePolicySeed[] = [
     leaveTypes: [
       { name: 'Sick Leave', numberOfLeaves: 5 },
       { name: 'Emergency Leave', numberOfLeaves: 2 },
+    ],
+  },
+  {
+    id: '9d080e70-d566-4d16-a819-5396a1ca1f5a',
+    name: 'Speed Sport Leave Policy',
+    details: 'Leave policy with casual, sick, and privilege leaves',
+    fullDayDeductionRate: 1.0,
+    halfDayDeductionRate: 0.5,
+    shortLeaveDeductionRate: 0.25,
+    isDefault: false,
+    leaveTypes: [
+      { name: 'Casual Leave', numberOfLeaves: 5 },
+      { name: 'Sick Leave', numberOfLeaves: 10 },
+      { name: 'Privilege Leave', numberOfLeaves: 15 },
     ],
   },
 ];
@@ -149,6 +165,7 @@ async function seedLeavesPolicies(
 
       const leavesPolicy = await prisma.leavesPolicy.create({
         data: {
+          ...(policy.id ? { id: policy.id } : {}),
           name: policy.name,
           details: policy.details,
           fullDayDeductionRate: policy.fullDayDeductionRate,

@@ -1,9 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
+import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 
 @Injectable()
 export class SalesInvoiceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private financeConfig: FinanceAccountConfigService,
+  ) {}
 
   async findAll(search?: string, status?: string) {
     const where: any = {};
@@ -20,7 +25,7 @@ export class SalesInvoiceService {
       where.status = status.toUpperCase();
     }
 
-    return this.prisma.eRPSalesInvoice.findMany({
+    const invoices = await this.prisma.eRPSalesInvoice.findMany({
       where,
       include: {
         customer: true,
@@ -35,6 +40,8 @@ export class SalesInvoiceService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return { status: true, data: invoices };
   }
 
   async findOne(id: string) {
@@ -58,17 +65,18 @@ export class SalesInvoiceService {
       throw new NotFoundException('Sales invoice not found');
     }
 
-    return salesInvoice;
+    return { status: true, data: salesInvoice };
   }
 
   async update(id: string, updateData: any) {
-    const salesInvoice = await this.findOne(id);
+    const salesInvoiceResponse = await this.findOne(id);
+    const salesInvoice = salesInvoiceResponse.data;
 
     if (salesInvoice.status === 'PAID') {
       throw new BadRequestException('Cannot update paid invoice');
     }
 
-    return this.prisma.eRPSalesInvoice.update({
+    const updatedInvoice = await this.prisma.eRPSalesInvoice.update({
       where: { id },
       data: updateData,
       include: {
@@ -83,10 +91,13 @@ export class SalesInvoiceService {
         },
       },
     });
+
+    return { status: true, data: updatedInvoice };
   }
 
   async post(id: string) {
-    const salesInvoice = await this.findOne(id);
+    const salesInvoiceResponse = await this.findOne(id);
+    const salesInvoice = salesInvoiceResponse.data;
 
     if (salesInvoice.status !== 'PENDING') {
       throw new BadRequestException('Only pending invoices can be posted');
@@ -94,10 +105,15 @@ export class SalesInvoiceService {
 
     // Start transaction
     return this.prisma.$transaction(async (tx) => {
-      // Update invoice status
+      // Update invoice status to POSTED (not PAID)
       const updatedInvoice = await tx.eRPSalesInvoice.update({
         where: { id },
-        data: { status: 'PAID' },
+        data: { 
+          status: 'POSTED',  // Changed from 'PAID' to 'POSTED'
+          balanceAmount: salesInvoice.grandTotal, // Set balance amount to full amount
+          paidAmount: 0, // No payment received yet
+          paymentStatus: 'UNPAID' // Set payment status to unpaid
+        },
         include: {
           customer: true,
           warehouse: true,
@@ -115,46 +131,42 @@ export class SalesInvoiceService {
 
       // Create journal entry for accounting
       const journalEntryNo = `JE-${Date.now()}`;
-      
-      // Get accounts receivable account (assuming it exists)
-      const receivableAccount = await tx.chartOfAccount.findFirst({
-        where: { name: { contains: 'Accounts Receivable', mode: 'insensitive' } },
-      });
 
-      const salesAccount = await tx.chartOfAccount.findFirst({
-        where: { name: { contains: 'Sales Revenue', mode: 'insensitive' } },
-      });
+      // Resolve accounts from finance configuration
+      const [receivableAccountId, salesAccountId] = await Promise.all([
+        this.financeConfig.resolveAccount(AccountRoleKey.ACCOUNTS_RECEIVABLE),
+        this.financeConfig.resolveAccount(AccountRoleKey.SALES_REVENUE_WHOLESALE),
+      ]);
 
-      if (receivableAccount && salesAccount) {
-        await tx.journalVoucher.create({
-          data: {
-            jvNo: journalEntryNo,
-            jvDate: new Date(),
-            description: `Sales Invoice: ${updatedInvoice.invoiceNo}`,
-            details: {
-              create: [
-                {
-                  accountId: receivableAccount.id,
-                  debit: updatedInvoice.grandTotal,
-                  credit: 0,
-                },
-                {
-                  accountId: salesAccount.id,
-                  debit: 0,
-                  credit: updatedInvoice.subtotal,
-                },
-              ],
-            },
+      await tx.journalVoucher.create({
+        data: {
+          jvNo: journalEntryNo,
+          jvDate: new Date(),
+          description: `Sales Invoice: ${updatedInvoice.invoiceNo}`,
+          details: {
+            create: [
+              {
+                accountId: receivableAccountId,
+                debit: updatedInvoice.grandTotal,
+                credit: 0,
+              },
+              {
+                accountId: salesAccountId,
+                debit: 0,
+                credit: updatedInvoice.subtotal,
+              },
+            ],
           },
-        });
-      }
+        },
+      });
 
-      return updatedInvoice;
+      return { status: true, data: updatedInvoice };
     });
   }
 
   async cancel(id: string) {
-    const salesInvoice = await this.findOne(id);
+    const salesInvoiceResponse = await this.findOne(id);
+    const salesInvoice = salesInvoiceResponse.data;
 
     if (salesInvoice.status === 'CANCELLED') {
       throw new BadRequestException('Invoice is already cancelled');
@@ -164,7 +176,7 @@ export class SalesInvoiceService {
       throw new BadRequestException('Cannot cancel paid invoice');
     }
 
-    return this.prisma.eRPSalesInvoice.update({
+    const updatedInvoice = await this.prisma.eRPSalesInvoice.update({
       where: { id },
       data: { status: 'CANCELLED' },
       include: {
@@ -179,5 +191,7 @@ export class SalesInvoiceService {
         },
       },
     });
+
+    return { status: true, data: updatedInvoice };
   }
 }

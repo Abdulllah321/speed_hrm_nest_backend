@@ -15,31 +15,28 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PosDashboardController {
-  constructor(private readonly posDashboardService: PosDashboardService) {}
+  constructor(private readonly posDashboardService: PosDashboardService) { }
 
-  private extractLocationId(req: any): string {
-    // 1. From combined POS user token (req.user populated by JwtAuthGuard)
-    if (req.user?.locationId) return req.user.locationId;
-
-    // 2. From dedicated terminal cookie
-    const token = req.cookies?.posTerminalToken;
-    if (token) {
+  private extractLocationFromCookie(req: any): string | undefined {
+    if (req.cookies?.posTerminalToken) {
       try {
-        const decoded: any = jwt.decode(token);
-        if (decoded?.locationId) return decoded.locationId;
-      } catch (_) {}
+        const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+        return decoded?.locationId;
+      } catch (e) {
+        return undefined;
+      }
     }
-
-    throw new UnauthorizedException(
-      'No active terminal context found. Please log in to a POS terminal.',
-    );
+    return undefined;
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get POS dashboard stats for the active location' })
   async getStats(@Req() req: any) {
-    const locationId = this.extractLocationId(req);
+    const locationId = req.user?.locationId || this.extractLocationFromCookie(req);
     const cashierUserId: string | undefined = req.user?.id;
+    console.log("===============================")
+    console.log(locationId)
+    console.log("===============================")
     return this.posDashboardService.getDashboardStats(locationId, cashierUserId);
   }
 }
