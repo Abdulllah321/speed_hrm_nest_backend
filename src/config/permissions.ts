@@ -1867,6 +1867,7 @@ export const PERMISSIONS = [
   // ── ERP Procurement — Debit Notes ──────────────────────────────────────────
   { name: 'erp.procurement.dn.read', description: 'View Debit Notes' },
   { name: 'erp.procurement.dn.create', description: 'Create Debit Note' },
+
   { name: 'erp.procurement.dn.update', description: 'Update Debit Note' },
   { name: 'erp.procurement.dn.delete', description: 'Delete Debit Note' },
 
@@ -1910,6 +1911,75 @@ export const PERMISSIONS = [
   { name: 'erp.sales.dc.delete', description: 'Delete Delivery Challan' },
   { name: 'erp.sales.dc.deliver', description: 'Mark Delivery Challan as Delivered' },
   { name: 'erp.sales.dc.cancel', description: 'Cancel Delivery Challan' },
+
+   // ── POS Inventory ──────────────────────────────────────────────────────────
+  { name: 'pos.inventory.view', description: 'View POS Inventory Stock' },
+  { name: 'pos.inventory.receiving.view', description: 'View POS Stock Receiving (Warehouse → Outlet)' },
+  { name: 'pos.inventory.receiving.accept', description: 'Accept Incoming Stock from Warehouse' },
+  { name: 'pos.inventory.returns.view', description: 'View POS Return Requests (Outlet → Warehouse)' },
+  { name: 'pos.inventory.returns.approve', description: 'Approve Return Requests to Warehouse' },
+  { name: 'pos.inventory.inbound.view', description: 'View POS Inbound Transfers (Outlet → Outlet)' },
+  { name: 'pos.inventory.inbound.accept', description: 'Accept Inbound Outlet-to-Outlet Transfers' },
+  { name: 'pos.inventory.outbound.view', description: 'View POS Outbound Transfer Requests' },
+  { name: 'pos.inventory.outbound.approve', description: 'Approve Outbound Outlet-to-Outlet Transfers' },
+  { name: 'pos.inventory.receipt.view', description: 'View POS Stock Receipts & Print Slips' },
+  { name: 'pos.inventory.transfer.create', description: 'Create Transfer Request from POS' },
+  { name: 'pos.stock.move', description: 'Execute Direct Stock Movement (Inbound/Outbound/Transfer)' },
+
+  // ── POS — New Sale ──────────────────────────────────────────────────────────
+  { name: 'pos.sale.create', description: 'Create a New POS Sale' },
+  { name: 'pos.sale.item-discount', description: 'Apply Per-Item Discount Override on Cart' },
+  { name: 'pos.sale.transit-override', description: 'Mark Items as Stock-in-Transit (sell without stock)' },
+
+  // ── POS — Checkout / Discounts ──────────────────────────────────────────────
+  { name: 'pos.checkout.promo', description: 'Apply Promo Campaign Discount at Checkout' },
+  { name: 'pos.checkout.coupon', description: 'Apply Coupon / Voucher Code at Checkout' },
+  { name: 'pos.checkout.alliance', description: 'Apply Alliance / Bank Card Discount at Checkout' },
+  { name: 'pos.checkout.manual-discount', description: 'Apply Manual Order-Level Discount at Checkout' },
+  { name: 'pos.checkout.add-customer', description: 'Add New Customer During Checkout' },
+
+  // ── POS — Holds ─────────────────────────────────────────────────────────────
+  { name: 'pos.hold.create', description: 'Place a Cart on Hold' },
+  { name: 'pos.hold.resume', description: 'Resume a Held Order' },
+  { name: 'pos.hold.view', description: 'View Hold Orders List' },
+
+  // ── POS — Sales History ─────────────────────────────────────────────────────
+  { name: 'pos.sales.history.view', description: 'View POS Sales History' },
+  { name: 'pos.sales.history.print', description: 'Print Receipt from Sales History' },
+  { name: 'pos.sales.history.update-tender', description: 'Update Payment Tender on Completed Order' },
+
+  // ── POS — Returns / Exchanges / Claims ─────────────────────────────────────
+  { name: 'pos.return.create', description: 'Process a Return / Refund' },
+  { name: 'pos.exchange.create', description: 'Process an Exchange' },
+  { name: 'pos.claim.create', description: 'Submit a Claim to ERP' },
+
+  // ── POS — Customers ─────────────────────────────────────────────────────────
+  { name: 'pos.customer.view', description: 'View POS Customer List' },
+  { name: 'pos.customer.create', description: 'Create a New POS Customer' },
+  { name: 'pos.customer.update', description: 'Edit an Existing POS Customer' },
+
+  // ── POS — Customer Ledger ───────────────────────────────────────────────────
+  { name: 'pos.ledger.view', description: 'View Customer Credit Ledger' },
+  { name: 'pos.ledger.payment', description: 'Record Customer Credit Payment' },
+  { name: 'pos.ledger.credit-limit', description: 'Set / Change Customer Credit Limit' },
+
+  // ── POS — Vouchers ──────────────────────────────────────────────────────────
+  { name: 'pos.voucher.view', description: 'View Issued Vouchers' },
+  { name: 'pos.voucher.create', description: 'Issue a New Voucher' },
+  { name: 'pos.voucher.void', description: 'Void / Deactivate a Voucher' },
+  { name: 'pos.voucher.delete', description: 'Delete an Unused Voucher' },
+
+  // ── POS — Shifts / Cash Drawer ──────────────────────────────────────────────
+  { name: 'pos.shift.view', description: 'View Shift History' },
+  { name: 'pos.shift.open', description: 'Open a New Shift' },
+  { name: 'pos.shift.close', description: 'Close the Current Shift' },
+
+  // ── POS — Terminal ──────────────────────────────────────────────────────────
+  { name: 'pos.terminal.settings', description: 'Access & Save Terminal Settings' },
+  { name: 'pos.terminal.logout', description: 'Deregister / Logout Terminal' },
+
+  // ── POS — Dashboard ─────────────────────────────────────────────────────────
+  { name: 'pos.dashboard.view', description: 'View POS Dashboard & Stats' },
 
 ];
 
