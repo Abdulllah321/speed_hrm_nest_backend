@@ -61,11 +61,11 @@ export class AuthService {
         role: { include: { permissions: { include: { permission: true } } } },
       },
     });
-    if (!user) return { status: false, message: 'Invalid credentials' };
+    if (!user) return { status: false, message: 'user not found' };
     if (user.status !== 'active')
       return { status: false, message: 'Account is not active' };
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return { status: false, message: 'Invalid credentials' };
+    if (!ok) return { status: false, message: "Password doesn't match" };
 
     // Update Login History
     await this.prismaMaster.loginHistory.create({

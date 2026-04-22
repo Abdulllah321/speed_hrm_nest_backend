@@ -2,11 +2,13 @@ import { Controller, Get, Put, Post, Body, Req, Query, UseGuards, UnauthorizedEx
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSessionService } from './pos-session.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 import * as jwt from 'jsonwebtoken';
 
 @ApiTags('POS Terminal Session')
 @Controller('api/pos-session')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSessionController {
     constructor(private readonly sessionService: PosSessionService) { }
@@ -38,6 +40,7 @@ export class PosSessionController {
     }
 
     @Put('current/open')
+    @Permissions('pos.shift.open')
     @ApiOperation({ summary: 'Open the drawer by adding a float amount' })
     async openDrawer(
         @Req() req: any,
@@ -48,6 +51,7 @@ export class PosSessionController {
     }
 
     @Post('current/close')
+    @Permissions('pos.shift.close')
     @ApiOperation({ summary: 'Close the drawer and record counted variance' })
     async closeDrawer(
         @Req() req: any,
