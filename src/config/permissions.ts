@@ -1175,6 +1175,20 @@ export const PERMISSIONS = [
     description: 'Approve Payment Voucher',
   },
 
+  // Finance Account Configuration
+  {
+    name: 'erp.finance.account-config.read',
+    module: 'erp.finance.account-config',
+    action: 'read',
+    description: 'Read Finance Account Configuration',
+  },
+  {
+    name: 'erp.finance.account-config.update',
+    module: 'erp.finance.account-config',
+    action: 'update',
+    description: 'Update Finance Account Configuration',
+  },
+
   // Receipt Voucher
   {
     name: 'erp.finance.receipt-voucher.create',

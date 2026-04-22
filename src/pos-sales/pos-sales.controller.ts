@@ -118,8 +118,13 @@ export class PosSalesController {
             try {
                 const decoded: any = jwt.decode(req.cookies.posTerminalToken);
                 effectivePosId = decoded?.posId || decoded?.terminalId;
-                effectiveLocationId = decoded?.locationId;
+                if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
             } catch (e) { }
+        }
+
+        // 3. Fallback: any user with a locationId on their token (e.g. manager/admin scoped to a location)
+        if (!effectiveLocationId && req.user?.locationId) {
+            effectiveLocationId = req.user.locationId;
         }
 
         return this.posSalesService.listOrders(
@@ -133,6 +138,14 @@ export class PosSalesController {
         );
     }
 
+    // ─── Get return details for printing return slip ──────────────────
+    // IMPORTANT: This must come BEFORE @Get('orders/:id') to avoid route conflict
+    @Get('orders/:id/return-details')
+    @ApiOperation({ summary: 'Get return details for printing return slip' })
+    async getReturnDetails(@Param('id') id: string) {
+        return this.posSalesService.getReturnDetails(id);
+    }
+
     // ─── Get single order ─────────────────────────────────────────────
     @Get('orders/:id')
     @ApiOperation({ summary: 'Get sales order by ID' })
@@ -140,15 +153,17 @@ export class PosSalesController {
         return this.posSalesService.getOrder(id);
     }
 
-    // ─── Partial return ───────────────────────────────────────────────
+
     @Post('orders/:id/return')
     @Permissions('pos.return.create')
     @ApiOperation({ summary: 'Process a partial or full return for a sales order' })
     async returnOrder(
         @Param('id') id: string,
         @Body() body: { items: { orderItemId: string; itemId: string; quantity: number }[]; reason?: string },
+        @Req() req: any,
     ) {
-        return this.posSalesService.returnItems(id, body.items, body.reason);
+        const returnLocationId = req.user?.locationId;
+        return this.posSalesService.returnItems(id, body.items, body.reason, returnLocationId);
     }
 
     // ─── Exchange items ───────────────────────────────────────────────

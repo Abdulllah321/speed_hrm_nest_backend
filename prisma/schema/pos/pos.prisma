@@ -24,12 +24,16 @@ model SalesOrder {
   cardAmount            Decimal?          @map("card_amount") @db.Decimal(15, 2)
   changeAmount          Decimal?          @map("change_amount") @db.Decimal(15, 2)
   holdExpiresAt         DateTime?         @map("hold_expires_at")
+  fbrInvoiceNumber      String?           @map("fbr_invoice_number")
+  fbrQrCode             String?           @map("fbr_qr_code") @db.Text
+  fbrStatus             String            @default("PENDING") @map("fbr_status")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   items                 SalesOrderItem[]
   alliance              AllianceDiscount? @relation(fields: [allianceId], references: [id])
   coupon                CouponCode?       @relation(fields: [couponId], references: [id])
   promo                 PromoCampaign?    @relation(fields: [promoId], references: [id])
+  isVoucherRestored     Boolean           @default(false) @map("is_voucher_restored")
   claims                PosClaim[]
 
   @@index([posId])
@@ -42,20 +46,20 @@ model SalesOrder {
 }
 
 model SalesOrderItem {
-  id              String     @id @default(uuid())
-  salesOrderId    String     @map("sales_order_id")
-  itemId          String     @map("item_id")
-  quantity        Int        @default(1)
-  unitPrice       Decimal    @db.Decimal(15, 2)
-  discountPercent Decimal    @default(0) @db.Decimal(5, 2)
-  discountAmount  Decimal    @default(0) @db.Decimal(15, 2)
-  taxPercent      Decimal    @default(0) @db.Decimal(5, 2)
-  taxAmount       Decimal    @default(0) @db.Decimal(15, 2)
-  lineTotal           Decimal    @db.Decimal(15, 2)
-  isStockInTransit    Boolean    @default(false) @map("is_stock_in_transit")
-  createdAt           DateTime   @default(now()) @map("created_at")
-  item            Item       @relation(fields: [itemId], references: [id])
-  salesOrder      SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  id               String     @id @default(uuid())
+  salesOrderId     String     @map("sales_order_id")
+  itemId           String     @map("item_id")
+  quantity         Int        @default(1)
+  unitPrice        Decimal    @db.Decimal(15, 2)
+  discountPercent  Decimal    @default(0) @db.Decimal(5, 2)
+  discountAmount   Decimal    @default(0) @db.Decimal(15, 2)
+  taxPercent       Decimal    @default(0) @db.Decimal(5, 2)
+  taxAmount        Decimal    @default(0) @db.Decimal(15, 2)
+  lineTotal        Decimal    @db.Decimal(15, 2)
+  isStockInTransit Boolean    @default(false) @map("is_stock_in_transit")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  item             Item       @relation(fields: [itemId], references: [id])
+  salesOrder       SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
 
   @@index([salesOrderId])
   @@index([itemId])
@@ -108,6 +112,7 @@ model CouponCode {
   updatedAt      DateTime             @updatedAt @map("updated_at")
   locations      CouponCodeLocation[]
   salesOrders    SalesOrder[]
+  auditLogs      VoucherAuditLog[]
 
   @@map("coupon_codes")
 }
@@ -147,4 +152,19 @@ model AllianceDiscountLocation {
 
   @@unique([allianceId, locationId])
   @@map("alliance_discount_locations")
+}
+
+model VoucherAuditLog {
+  id            String     @id @default(uuid())
+  couponId      String     @map("coupon_id")
+  orderId       String?    @map("order_id")
+  locationId    String?    @map("location_id")
+  action        String // RESTORED, VOIDED, EXCHANGED
+  previousValue Int?       @map("previous_value")
+  newValue      Int?       @map("new_value")
+  details       String?
+  createdAt     DateTime   @default(now()) @map("created_at")
+  coupon        CouponCode @relation(fields: [couponId], references: [id])
+
+  @@map("pos_voucher_audit_logs")
 }
