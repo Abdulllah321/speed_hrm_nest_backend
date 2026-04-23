@@ -100,37 +100,66 @@ export class EmployeeService {
   }
 
   // Lightweight method to fetch only required fields for attendance management
-  async listForAttendance(filters?: {
+  async listForAttendance(query?: {
     departmentId?: string;
     subDepartmentId?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
   }) {
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 100;
+    const search = query?.search || '';
+    const skip = (page - 1) * limit;
+
     const where: Prisma.EmployeeWhereInput = {};
 
-    if (filters?.departmentId) {
-      where.departmentId = filters.departmentId;
+    if (query?.departmentId) {
+      where.departmentId = query.departmentId;
     }
 
-    if (filters?.subDepartmentId) {
-      where.subDepartmentId = filters.subDepartmentId;
+    if (query?.subDepartmentId) {
+      where.subDepartmentId = query.subDepartmentId;
     }
 
-    const employees = await this.prisma.employee.findMany({
-      where,
-      select: {
-        id: true,
-        employeeId: true,
-        employeeName: true,
-        departmentId: true,
-        subDepartmentId: true,
-        workingHoursPolicyId: true,
-        department: true,
-        subDepartment: true,
-        workingHoursPolicy: true,
+    if (search) {
+      where.OR = [
+        { employeeName: { contains: search, mode: 'insensitive' } },
+        { employeeId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [employees, total] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          departmentId: true,
+          subDepartmentId: true,
+          workingHoursPolicyId: true,
+          department: true,
+          subDepartment: true,
+          workingHoursPolicy: true,
+        },
+        orderBy: { employeeName: 'asc' },
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+
+    return {
+      status: true,
+      data: employees,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
-      orderBy: { employeeName: 'asc' },
-    });
-
-    return { status: true, data: employees };
+    };
   }
 
   // Minimal fields for dropdowns/selects
