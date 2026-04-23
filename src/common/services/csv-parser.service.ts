@@ -34,21 +34,17 @@ export class CsvParserService {
     }
 
     /**
-     * Check if a row is empty (all key fields are null/empty)
-     * Performs case-insensitive lookup for keys
+     * Check if a row is empty (all object values are null/empty)
      */
     private isEmptyRow(row: any): boolean {
-        if (!row) return true;
+        if (!row || typeof row !== 'object') return true;
 
-        const findValue = (key: string) => {
-            const actualKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
-            return actualKey ? row[actualKey] : null;
-        };
+        const values = Object.values(row);
+        if (values.length === 0) return true;
 
-        const keyFields = ['sku', 'itemId', 'description', 'unitPrice'];
-        return keyFields.every(field => {
-            const value = this.normalizeValue(findValue(field));
-            return value === null || value === '';
+        return values.every(value => {
+            const normalized = this.normalizeValue(value);
+            return normalized === null || normalized === '';
         });
     }
 
@@ -133,10 +129,11 @@ export class CsvParserService {
     }
 
     /**
-     * Map Excel column names to schema field names
+     * Map Excel column names to schema field names and preserve original fields
      */
     private mapColumns(row: any): ParsedRecord['data'] {
         return {
+            ...row, // Keep all original row properties available for generic processors
             concept: this.normalizeValue(this.getValue(row, 'Concept')),
             description: this.normalizeValue(this.getValue(row, 'Description')),
             fob: this.parseNumber(this.getValue(row, 'FOB')) as number,

@@ -8,7 +8,11 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
+  Sse,
+  MessageEvent,
+  Logger
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -17,6 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { Observable } from 'rxjs';
 import {
   ApiTags,
   ApiOperation,
@@ -24,18 +29,27 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiQuery,
+  ApiConsumes
 } from '@nestjs/swagger';
 import {
   CreateAttendanceDto,
   UpdateAttendanceDto,
 } from './dto/create-attendance.dto';
+import { AttendanceBulkUploadService } from './attendance-bulk-upload.service';
+import { AttendanceUploadEventsService } from './attendance-upload-events.service';
 
 @ApiTags('Attendance')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class AttendanceController {
-  constructor(private service: AttendanceService) {}
+  private readonly logger = new Logger(AttendanceController.name);
+
+  constructor(
+    private service: AttendanceService,
+    private bulkUploadService: AttendanceBulkUploadService,
+    private eventsService: AttendanceUploadEventsService
+  ) {}
 
   @Get('attendances')
   @Permissions('hr.attendance.view')
@@ -137,59 +151,88 @@ export class AttendanceController {
     });
   }
 
-  @Post('attendances/bulk-upload')
+  @Post('attendances/import-csv')
   @Permissions('hr.attendance.create')
-  @ApiOperation({ summary: 'Bulk upload attendance from CSV' })
-  async bulkUpload(@Req() request: FastifyRequest) {
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Initiate bulk attendance validation' })
+  async importCsv(@Req() request: FastifyRequest) {
     const data = await request.file();
     if (!data) {
       return { status: false, message: 'No file provided' };
     }
 
-    // Save file temporarily
-    const uploadRoot = path.join(process.cwd(), 'public', 'csv');
-    if (!fs.existsSync(uploadRoot)) {
-      fs.mkdirSync(uploadRoot, { recursive: true });
-    }
-
-    const ts = Date.now();
-    const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const filename = `${ts}_${safeFilename}`;
-    const fullPath = path.join(uploadRoot, filename);
-
-    await new Promise<void>((resolve, reject) => {
-      const writeStream = fs.createWriteStream(fullPath);
-      data.file.pipe(writeStream);
-      writeStream.on('finish', () => resolve());
-      writeStream.on('error', reject);
-    });
-
-    try {
-      const result = await this.service.bulkUploadFromCSV(fullPath, {
-        userId: request.user?.userId,
-        ipAddress: request.ip,
-        userAgent: request.headers['user-agent'],
-      });
-
-      // Clean up file after processing
-      try {
-        fs.unlinkSync(fullPath);
-      } catch (e) {
-        console.warn('Failed to delete temp file:', e);
-      }
-
-      return result;
-    } catch (error: any) {
-      // Clean up file on error
-      try {
-        fs.unlinkSync(fullPath);
-      } catch (e) {
-        console.warn('Failed to delete temp file:', e);
-      }
+    const fileExtension = path.extname(data.filename).toLowerCase();
+    if (fileExtension !== '.csv' && fileExtension !== '.xlsx') {
       return {
         status: false,
-        message: error?.message || 'Failed to process file',
+        message: 'Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file',
       };
     }
+
+    const user = request.user as any;
+    const userId = user?.userId || user?.sub || user?.id || 'system';
+
+    const fileBuffer = await data.toBuffer();
+    return this.bulkUploadService.initiateValidation(fileBuffer, data.filename, userId);
+  }
+
+  @Get('attendances/bulk-upload/:uploadId/status')
+  @Permissions('hr.attendance.read')
+  @ApiOperation({ summary: 'Get bulk upload status' })
+  async getBulkUploadStatus(@Param('uploadId') uploadId: string) {
+    const status = await this.bulkUploadService.getUploadStatus(uploadId);
+    return {
+      status: true,
+      data: status,
+    };
+  }
+
+  @Post('attendances/bulk-upload/:uploadId/confirm')
+  @Permissions('hr.attendance.create')
+  @ApiOperation({ summary: 'Confirm and start attendance import' })
+  async confirmBulkUpload(@Param('uploadId') uploadId: string, @Req() req: FastifyRequest) {
+    const user = req.user as any;
+    const userId = user?.userId || user?.sub || user?.id || 'system';
+    return this.bulkUploadService.confirmUpload(uploadId, userId);
+  }
+
+  @Get('attendances/bulk-upload/:uploadId/errors/stream')
+  @Permissions('hr.attendance.read')
+  @ApiOperation({ summary: 'Stream bulk upload error report' })
+  async streamBulkUploadErrors(@Param('uploadId') uploadId: string, @Res() res: any) {
+    return this.bulkUploadService.streamErrorReport(uploadId, res);
+  }
+
+  @Get('attendances/import-template')
+  @Permissions('hr.attendance.read')
+  @ApiOperation({ summary: 'Download attendance import template' })
+  async downloadTemplate(@Res() res: any) {
+    try {
+      const buffer = await this.bulkUploadService.generateTemplate();
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', 'attachment; filename=attendance_import_template.xlsx');
+      res.send(buffer);
+    } catch (error) {
+      this.logger.error(`Failed to generate template: ${error.message}`);
+      res.status(500).send({ status: false, message: 'Failed to generate template' });
+    }
+  }
+
+  @Sse('attendances/bulk-upload/:uploadId/events')
+  @Permissions('hr.attendance.read')
+  @ApiOperation({ summary: 'Stream bulk upload real-time events (SSE)' })
+  streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
+    return this.eventsService.subscribe(uploadId);
   }
 }
