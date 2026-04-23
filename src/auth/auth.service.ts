@@ -1548,12 +1548,13 @@ export class AuthService {
   async getUserPermissions(userId: string): Promise<string[]> {
     const user = await this.prismaMaster.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        roleId: true,
         role: {
-          include: {
+          select: {
             permissions: {
-              include: {
-                permission: true,
+              select: {
+                permission: { select: { name: true } },
               },
             },
           },
@@ -1561,9 +1562,7 @@ export class AuthService {
       },
     });
 
-    if (!user || !user.role) {
-      return [];
-    }
+    if (!user?.roleId || !user.role) return [];
 
     return user.role.permissions.map((rp) => rp.permission.name);
   }
