@@ -303,6 +303,7 @@ export class PosConfigService {
         partnerName: string;
         code: string;
         discountPercent: number;
+        maxDiscount?: number;
         description?: string;
         isActive?: boolean;
         locationIds: string[];
@@ -313,6 +314,7 @@ export class PosConfigService {
                     partnerName: data.partnerName,
                     code: data.code.toUpperCase(),
                     discountPercent: data.discountPercent,
+                    maxDiscount: data.maxDiscount,
                     description: data.description,
                     isActive: data.isActive ?? true,
                     locations: {
@@ -331,6 +333,7 @@ export class PosConfigService {
         partnerName?: string;
         code?: string;
         discountPercent?: number;
+        maxDiscount?: number;
         description?: string;
         isActive?: boolean;
         locationIds?: string[];
@@ -345,6 +348,7 @@ export class PosConfigService {
                     ...(data.partnerName && { partnerName: data.partnerName }),
                     ...(data.code && { code: data.code.toUpperCase() }),
                     ...(data.discountPercent !== undefined && { discountPercent: data.discountPercent }),
+                    ...(data.maxDiscount !== undefined && { maxDiscount: data.maxDiscount }),
                     ...(data.description !== undefined && { description: data.description }),
                     ...(data.isActive !== undefined && { isActive: data.isActive }),
                     ...(data.locationIds && {

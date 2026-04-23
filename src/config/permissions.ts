@@ -1175,6 +1175,20 @@ export const PERMISSIONS = [
     description: 'Approve Payment Voucher',
   },
 
+  // Finance Account Configuration
+  {
+    name: 'erp.finance.account-config.read',
+    module: 'erp.finance.account-config',
+    action: 'read',
+    description: 'Read Finance Account Configuration',
+  },
+  {
+    name: 'erp.finance.account-config.update',
+    module: 'erp.finance.account-config',
+    action: 'update',
+    description: 'Update Finance Account Configuration',
+  },
+
   // Receipt Voucher
   {
     name: 'erp.finance.receipt-voucher.create',
@@ -1782,5 +1796,204 @@ export const PERMISSIONS = [
   // Inventory Tab
   { name: 'erp.dashboard.inventory.view', description: 'View ERP Dashboard Inventory Tab' },
   { name: 'erp.dashboard.inventory.refresh', description: 'Refresh ERP Inventory Data' },
+
+  // ── ERP Inventory ──────────────────────────────────────────────────────────
+  { name: 'erp.inventory.view', description: 'View Inventory Dashboard' },
+  { name: 'erp.inventory.explorer.view', description: 'View Inventory Explorer' },
+  { name: 'erp.inventory.explorer.export', description: 'Export Inventory Explorer PDF' },
+  { name: 'erp.inventory.transfer.create', description: 'Create Stock Transfer' },
+
+  // ── ERP Inventory — Transactions ───────────────────────────────────────────
+  { name: 'erp.inventory.stock-transfer.read', description: 'View Stock Transfer History' },
+  { name: 'erp.inventory.delivery-note.read', description: 'View Delivery Notes' },
+  { name: 'erp.inventory.delivery-note.create', description: 'Create Delivery Note' },
+  { name: 'erp.inventory.stock-received.read', description: 'View Stock Received' },
+  { name: 'erp.inventory.stock-received.update', description: 'Update Stock Received Status' },
+  { name: 'erp.inventory.return-transfer.read', description: 'View Return Transfers' },
+  { name: 'erp.inventory.return-transfer.create', description: 'Create Return Transfer' },
+
+  // ── ERP Inventory — Warehouse ───────────────────────────────────────────────
+  { name: 'erp.inventory.warehouse.view', description: 'View Warehouse List & Dashboard' },
+  { name: 'erp.inventory.warehouse.create', description: 'Create Warehouse' },
+  { name: 'erp.inventory.warehouse.update', description: 'Update Warehouse' },
+  { name: 'erp.inventory.warehouse.delete', description: 'Delete Warehouse' },
+  { name: 'erp.inventory.warehouse.inventory.view', description: 'View Warehouse Inventory Levels' },
+
+  // ── ERP Items ───────────────────────────────────────────────────────────────
+  { name: 'erp.item.read', description: 'View Items Catalog' },
+  { name: 'erp.item.create', description: 'Create Item' },
+  { name: 'erp.item.update', description: 'Update Item' },
+  { name: 'erp.item.delete', description: 'Delete Item' },
+  { name: 'erp.item.bulk-upload', description: 'Bulk Upload Items' },
+
+  // ── ERP Procurement — Purchase Requisition ──────────────────────────────────
+  { name: 'erp.procurement.pr.read', description: 'View Purchase Requisitions' },
+  { name: 'erp.procurement.pr.create', description: 'Create Purchase Requisition' },
+  { name: 'erp.procurement.pr.update', description: 'Update Purchase Requisition' },
+  { name: 'erp.procurement.pr.delete', description: 'Delete Purchase Requisition' },
+  { name: 'erp.procurement.pr.submit', description: 'Submit Purchase Requisition for Approval' },
+  { name: 'erp.procurement.pr.approve', description: 'Approve / Reject Purchase Requisition' },
+
+  // ── ERP Procurement — RFQ ───────────────────────────────────────────────────
+  { name: 'erp.procurement.rfq.read', description: 'View RFQs' },
+  { name: 'erp.procurement.rfq.create', description: 'Create RFQ' },
+  { name: 'erp.procurement.rfq.update', description: 'Update RFQ' },
+  { name: 'erp.procurement.rfq.delete', description: 'Delete RFQ' },
+  { name: 'erp.procurement.rfq.add-vendors', description: 'Add Vendors to RFQ' },
+  { name: 'erp.procurement.rfq.send', description: 'Mark RFQ as Sent' },
+
+  // ── ERP Procurement — Vendor Quotation ─────────────────────────────────────
+  { name: 'erp.procurement.vq.read', description: 'View Vendor Quotations' },
+  { name: 'erp.procurement.vq.create', description: 'Create Vendor Quotation' },
+  { name: 'erp.procurement.vq.update', description: 'Update Vendor Quotation' },
+  { name: 'erp.procurement.vq.delete', description: 'Delete Vendor Quotation' },
+  { name: 'erp.procurement.vq.submit', description: 'Submit Vendor Quotation' },
+  { name: 'erp.procurement.vq.select', description: 'Select Vendor Quotation' },
+  { name: 'erp.procurement.vq.compare', description: 'Compare Vendor Quotations' },
+
+  // ── ERP Procurement — Purchase Order ───────────────────────────────────────
+  { name: 'erp.procurement.po.read', description: 'View Purchase Orders' },
+  { name: 'erp.procurement.po.create', description: 'Create Purchase Order' },
+  { name: 'erp.procurement.po.update', description: 'Update Purchase Order Status' },
+
+  // ── ERP Procurement — GRN (stub for cross-reference) ───────────────────────
+  { name: 'erp.procurement.grn.create', description: 'Create Goods Receipt Note' },
+  { name: 'erp.procurement.grn.read', description: 'View Goods Receipt Notes' },
+  { name: 'erp.procurement.grn.update', description: 'Update GRN Status' },
+
+  // ── ERP Procurement — Landed Cost ───────────────────────────────────────────
+  { name: 'erp.procurement.landed-cost.read', description: 'View Landed Costs' },
+  { name: 'erp.procurement.landed-cost.create', description: 'Create / Post Landed Cost' },
+
+  // ── ERP Procurement — Purchase Invoice ──────────────────────────────────────
+  { name: 'erp.procurement.pi.read', description: 'View Purchase Invoices' },
+  { name: 'erp.procurement.pi.create', description: 'Create Purchase Invoice' },
+  { name: 'erp.procurement.pi.update', description: 'Update Purchase Invoice' },
+  { name: 'erp.procurement.pi.delete', description: 'Delete Purchase Invoice' },
+  { name: 'erp.procurement.pi.post', description: 'Post Purchase Invoice' },
+
+  // ── ERP Procurement — Purchase Returns ─────────────────────────────────────
+  { name: 'erp.procurement.pret.read', description: 'View Purchase Returns' },
+  { name: 'erp.procurement.pret.create', description: 'Create Purchase Return' },
+  { name: 'erp.procurement.pret.update', description: 'Update Purchase Return' },
+  { name: 'erp.procurement.pret.delete', description: 'Delete Purchase Return' },
+
+  // ── ERP Procurement — Debit Notes ──────────────────────────────────────────
+  { name: 'erp.procurement.dn.read', description: 'View Debit Notes' },
+  { name: 'erp.procurement.dn.create', description: 'Create Debit Note' },
+
+  { name: 'erp.procurement.dn.update', description: 'Update Debit Note' },
+  { name: 'erp.procurement.dn.delete', description: 'Delete Debit Note' },
+
+  // ── ERP Procurement — Vendors ──────────────────────────────────────────────
+  { name: 'erp.procurement.vendor.read', description: 'View Vendors' },
+  { name: 'erp.procurement.vendor.create', description: 'Create Vendor' },
+  { name: 'erp.procurement.vendor.update', description: 'Update Vendor' },
+  { name: 'erp.procurement.vendor.delete', description: 'Delete Vendor' },
+
+  // ── ERP Claims ─────────────────────────────────────────────────────────────
+  { name: 'erp.claims.read', description: 'View Claims' },
+  { name: 'erp.claims.create', description: 'Create Claim' },
+  { name: 'erp.claims.update', description: 'Update Claim' },
+  { name: 'erp.claims.delete', description: 'Delete Claim' },
+  { name: 'erp.claims.approve', description: 'Approve/Reject Claim' },
+
+  // ── ERP Sales — Customers ──────────────────────────────────────────────────
+  { name: 'erp.sales.customer.read', description: 'View Customers' },
+  { name: 'erp.sales.customer.create', description: 'Create Customer' },
+  { name: 'erp.sales.customer.update', description: 'Update Customer' },
+  { name: 'erp.sales.customer.delete', description: 'Delete Customer' },
+
+  // ── ERP Sales — Orders ─────────────────────────────────────────────────────
+  { name: 'erp.sales.order.read', description: 'View Sales Orders' },
+  { name: 'erp.sales.order.create', description: 'Create Sales Order' },
+  { name: 'erp.sales.order.update', description: 'Update Sales Order' },
+  { name: 'erp.sales.order.delete', description: 'Delete Sales Order' },
+  { name: 'erp.sales.order.approve', description: 'Approve Sales Order' },
+
+  // ── ERP Sales — Invoices ───────────────────────────────────────────────────
+  { name: 'erp.sales.invoice.read', description: 'View Sales Invoices' },
+  { name: 'erp.sales.invoice.create', description: 'Create Sales Invoice' },
+  { name: 'erp.sales.invoice.update', description: 'Update Sales Invoice' },
+  { name: 'erp.sales.invoice.delete', description: 'Delete Sales Invoice' },
+  { name: 'erp.sales.invoice.post', description: 'Post/Finalize Sales Invoice' },
+
+  // ── ERP Sales — Delivery Challans ──────────────────────────────────────────
+  { name: 'erp.sales.dc.read', description: 'View Delivery Challans' },
+  { name: 'erp.sales.dc.create', description: 'Create Delivery Challan' },
+  { name: 'erp.sales.dc.update', description: 'Update Delivery Challan' },
+  { name: 'erp.sales.dc.delete', description: 'Delete Delivery Challan' },
+  { name: 'erp.sales.dc.deliver', description: 'Mark Delivery Challan as Delivered' },
+  { name: 'erp.sales.dc.cancel', description: 'Cancel Delivery Challan' },
+
+   // ── POS Inventory ──────────────────────────────────────────────────────────
+  { name: 'pos.inventory.view', description: 'View POS Inventory Stock' },
+  { name: 'pos.inventory.receiving.view', description: 'View POS Stock Receiving (Warehouse → Outlet)' },
+  { name: 'pos.inventory.receiving.accept', description: 'Accept Incoming Stock from Warehouse' },
+  { name: 'pos.inventory.returns.view', description: 'View POS Return Requests (Outlet → Warehouse)' },
+  { name: 'pos.inventory.returns.approve', description: 'Approve Return Requests to Warehouse' },
+  { name: 'pos.inventory.inbound.view', description: 'View POS Inbound Transfers (Outlet → Outlet)' },
+  { name: 'pos.inventory.inbound.accept', description: 'Accept Inbound Outlet-to-Outlet Transfers' },
+  { name: 'pos.inventory.outbound.view', description: 'View POS Outbound Transfer Requests' },
+  { name: 'pos.inventory.outbound.approve', description: 'Approve Outbound Outlet-to-Outlet Transfers' },
+  { name: 'pos.inventory.receipt.view', description: 'View POS Stock Receipts & Print Slips' },
+  { name: 'pos.inventory.transfer.create', description: 'Create Transfer Request from POS' },
+  { name: 'pos.stock.move', description: 'Execute Direct Stock Movement (Inbound/Outbound/Transfer)' },
+
+  // ── POS — New Sale ──────────────────────────────────────────────────────────
+  { name: 'pos.sale.create', description: 'Create a New POS Sale' },
+  { name: 'pos.sale.item-discount', description: 'Apply Per-Item Discount Override on Cart' },
+  { name: 'pos.sale.transit-override', description: 'Mark Items as Stock-in-Transit (sell without stock)' },
+
+  // ── POS — Checkout / Discounts ──────────────────────────────────────────────
+  { name: 'pos.checkout.promo', description: 'Apply Promo Campaign Discount at Checkout' },
+  { name: 'pos.checkout.coupon', description: 'Apply Coupon / Voucher Code at Checkout' },
+  { name: 'pos.checkout.alliance', description: 'Apply Alliance / Bank Card Discount at Checkout' },
+  { name: 'pos.checkout.manual-discount', description: 'Apply Manual Order-Level Discount at Checkout' },
+  { name: 'pos.checkout.add-customer', description: 'Add New Customer During Checkout' },
+
+  // ── POS — Holds ─────────────────────────────────────────────────────────────
+  { name: 'pos.hold.create', description: 'Place a Cart on Hold' },
+  { name: 'pos.hold.resume', description: 'Resume a Held Order' },
+  { name: 'pos.hold.view', description: 'View Hold Orders List' },
+
+  // ── POS — Sales History ─────────────────────────────────────────────────────
+  { name: 'pos.sales.history.view', description: 'View POS Sales History' },
+  { name: 'pos.sales.history.print', description: 'Print Receipt from Sales History' },
+  { name: 'pos.sales.history.update-tender', description: 'Update Payment Tender on Completed Order' },
+
+  // ── POS — Returns / Exchanges / Claims ─────────────────────────────────────
+  { name: 'pos.return.create', description: 'Process a Return / Refund' },
+  { name: 'pos.exchange.create', description: 'Process an Exchange' },
+  { name: 'pos.claim.create', description: 'Submit a Claim to ERP' },
+
+  // ── POS — Customers ─────────────────────────────────────────────────────────
+  { name: 'pos.customer.view', description: 'View POS Customer List' },
+  { name: 'pos.customer.create', description: 'Create a New POS Customer' },
+  { name: 'pos.customer.update', description: 'Edit an Existing POS Customer' },
+
+  // ── POS — Customer Ledger ───────────────────────────────────────────────────
+  { name: 'pos.ledger.view', description: 'View Customer Credit Ledger' },
+  { name: 'pos.ledger.payment', description: 'Record Customer Credit Payment' },
+  { name: 'pos.ledger.credit-limit', description: 'Set / Change Customer Credit Limit' },
+
+  // ── POS — Vouchers ──────────────────────────────────────────────────────────
+  { name: 'pos.voucher.view', description: 'View Issued Vouchers' },
+  { name: 'pos.voucher.create', description: 'Issue a New Voucher' },
+  { name: 'pos.voucher.void', description: 'Void / Deactivate a Voucher' },
+  { name: 'pos.voucher.delete', description: 'Delete an Unused Voucher' },
+
+  // ── POS — Shifts / Cash Drawer ──────────────────────────────────────────────
+  { name: 'pos.shift.view', description: 'View Shift History' },
+  { name: 'pos.shift.open', description: 'Open a New Shift' },
+  { name: 'pos.shift.close', description: 'Close the Current Shift' },
+
+  // ── POS — Terminal ──────────────────────────────────────────────────────────
+  { name: 'pos.terminal.settings', description: 'Access & Save Terminal Settings' },
+  { name: 'pos.terminal.logout', description: 'Deregister / Logout Terminal' },
+
+  // ── POS — Dashboard ─────────────────────────────────────────────────────────
+  { name: 'pos.dashboard.view', description: 'View POS Dashboard & Stats' },
+
 ];
 

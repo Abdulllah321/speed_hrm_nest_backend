@@ -25,6 +25,21 @@ export class CustomerController {
     return this.service.findAll(search);
   }
 
+  // ─── Customer Ledger Endpoints (MUST come before :id routes) ──────
+  @Get('ledger/summary')
+  getCustomerLedger(
+    @Query('customerId') customerId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.getCustomerLedger(customerId, search);
+  }
+
+  @Get('ledger/:customerId/transactions')
+  getCustomerTransactions(@Param('customerId') customerId: string) {
+    return this.service.getCustomerTransactions(customerId);
+  }
+
+  // ─── Standard CRUD (after specific routes) ────────────────────────
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);

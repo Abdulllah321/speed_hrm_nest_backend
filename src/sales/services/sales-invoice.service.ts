@@ -1,9 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
+import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 
 @Injectable()
 export class SalesInvoiceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private financeConfig: FinanceAccountConfigService,
+  ) {}
 
   async findAll(search?: string, status?: string) {
     const where: any = {};
@@ -126,39 +131,34 @@ export class SalesInvoiceService {
 
       // Create journal entry for accounting
       const journalEntryNo = `JE-${Date.now()}`;
-      
-      // Get accounts receivable account (assuming it exists)
-      const receivableAccount = await tx.chartOfAccount.findFirst({
-        where: { name: { contains: 'Accounts Receivable', mode: 'insensitive' } },
-      });
 
-      const salesAccount = await tx.chartOfAccount.findFirst({
-        where: { name: { contains: 'Sales Revenue', mode: 'insensitive' } },
-      });
+      // Resolve accounts from finance configuration
+      const [receivableAccountId, salesAccountId] = await Promise.all([
+        this.financeConfig.resolveAccount(AccountRoleKey.ACCOUNTS_RECEIVABLE),
+        this.financeConfig.resolveAccount(AccountRoleKey.SALES_REVENUE_WHOLESALE),
+      ]);
 
-      if (receivableAccount && salesAccount) {
-        await tx.journalVoucher.create({
-          data: {
-            jvNo: journalEntryNo,
-            jvDate: new Date(),
-            description: `Sales Invoice: ${updatedInvoice.invoiceNo}`,
-            details: {
-              create: [
-                {
-                  accountId: receivableAccount.id,
-                  debit: updatedInvoice.grandTotal,
-                  credit: 0,
-                },
-                {
-                  accountId: salesAccount.id,
-                  debit: 0,
-                  credit: updatedInvoice.subtotal,
-                },
-              ],
-            },
+      await tx.journalVoucher.create({
+        data: {
+          jvNo: journalEntryNo,
+          jvDate: new Date(),
+          description: `Sales Invoice: ${updatedInvoice.invoiceNo}`,
+          details: {
+            create: [
+              {
+                accountId: receivableAccountId,
+                debit: updatedInvoice.grandTotal,
+                credit: 0,
+              },
+              {
+                accountId: salesAccountId,
+                debit: 0,
+                credit: updatedInvoice.subtotal,
+              },
+            ],
           },
-        });
-      }
+        },
+      });
 
       return { status: true, data: updatedInvoice };
     });

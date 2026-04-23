@@ -60,6 +60,7 @@ export class PosSalesController {
 
     // ─── Create a sales order (checkout) ──────────────────────────────
     @Post('orders')
+    @Permissions('pos.sale.create')
     @ApiOperation({ summary: 'Create a sales order / checkout' })
     async createOrder(@Body() dto: CreateSalesOrderDto, @Req() req: any) {
         const cashierUserId = req.user?.id;
@@ -117,8 +118,13 @@ export class PosSalesController {
             try {
                 const decoded: any = jwt.decode(req.cookies.posTerminalToken);
                 effectivePosId = decoded?.posId || decoded?.terminalId;
-                effectiveLocationId = decoded?.locationId;
+                if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
             } catch (e) { }
+        }
+
+        // 3. Fallback: any user with a locationId on their token (e.g. manager/admin scoped to a location)
+        if (!effectiveLocationId && req.user?.locationId) {
+            effectiveLocationId = req.user.locationId;
         }
 
         return this.posSalesService.listOrders(
@@ -132,6 +138,14 @@ export class PosSalesController {
         );
     }
 
+    // ─── Get return details for printing return slip ──────────────────
+    // IMPORTANT: This must come BEFORE @Get('orders/:id') to avoid route conflict
+    @Get('orders/:id/return-details')
+    @ApiOperation({ summary: 'Get return details for printing return slip' })
+    async getReturnDetails(@Param('id') id: string) {
+        return this.posSalesService.getReturnDetails(id);
+    }
+
     // ─── Get single order ─────────────────────────────────────────────
     @Get('orders/:id')
     @ApiOperation({ summary: 'Get sales order by ID' })
@@ -139,8 +153,9 @@ export class PosSalesController {
         return this.posSalesService.getOrder(id);
     }
 
-    // ─── Partial return ───────────────────────────────────────────────
+
     @Post('orders/:id/return')
+    @Permissions('pos.return.create')
     @ApiOperation({ summary: 'Process a partial or full return for a sales order' })
     async returnOrder(
         @Param('id') id: string,
@@ -153,6 +168,7 @@ export class PosSalesController {
 
     // ─── Exchange items ───────────────────────────────────────────────
     @Post('orders/:id/exchange')
+    @Permissions('pos.exchange.create')
     @ApiOperation({ summary: 'Exchange items — return old items, issue new items' })
     async exchangeOrder(
         @Param('id') id: string,
@@ -184,6 +200,7 @@ export class PosSalesController {
 
     // ─── Hold order ───────────────────────────────────────────────────
     @Post('orders/hold')
+    @Permissions('pos.hold.create')
     @ApiOperation({ summary: 'Place current cart on hold (max 1 hour / cleared at midnight)' })
     async holdOrder(@Body() dto: CreateSalesOrderDto, @Req() req: any) {
         const cashierUserId = req.user?.id;
@@ -207,13 +224,22 @@ export class PosSalesController {
 
     // ─── Resume hold order ────────────────────────────────────────────
     @Post('orders/:id/resume')
+    @Permissions('pos.hold.resume')
     @ApiOperation({ summary: 'Resume a held order — returns cart items' })
     async resumeHoldOrder(@Param('id') id: string) {
         return this.posSalesService.resumeHoldOrder(id);
     }
 
+    // ─── Cancel hold order ────────────────────────────────────────────
+    @Post('orders/:id/cancel-hold')
+    @ApiOperation({ summary: 'Cancel a held order — restores stock' })
+    async cancelHoldOrder(@Param('id') id: string) {
+        return this.posSalesService.cancelHoldOrder(id);
+    }
+
     // ─── List hold orders ─────────────────────────────────────────────
     @Get('orders/holds')
+    @Permissions('pos.hold.view')
     @ApiOperation({ summary: 'List active hold orders for this POS/location' })
     async listHoldOrders(@Req() req: any, @Query('posId') posId?: string, @Query('locationId') locationId?: string) {
         let effectivePosId = posId;

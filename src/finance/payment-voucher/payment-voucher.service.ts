@@ -3,12 +3,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentVoucherDto } from './dto/create-payment-voucher.dto';
 import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
 import { AccountingService } from '../accounting/accounting.service';
+import { FinanceAccountConfigService } from '../finance-account-config/finance-account-config.service';
+import { AccountRoleKey } from '../finance-account-config/dto/finance-account-config.dto';
 
 @Injectable()
 export class PaymentVoucherService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+    private readonly financeConfig: FinanceAccountConfigService,
   ) { }
 
   async create(createPaymentVoucherDto: CreatePaymentVoucherDto) {
@@ -73,14 +76,10 @@ export class PaymentVoucherService {
       }
     }
 
-    // ── Get ADVANCE TO SUPPLIERS account (code 31030004) ────────────────────
-    const advanceAccount = totalAdvanceApplied > 0
-      ? await this.prisma.chartOfAccount.findFirst({ where: { code: '31030004' }, select: { id: true } })
+    // ── Get ADVANCE TO SUPPLIERS account from finance configuration ─────────
+    const advanceAccountId = totalAdvanceApplied > 0
+      ? await this.financeConfig.resolveAccount(AccountRoleKey.ADVANCE_TO_SUPPLIERS)
       : null;
-
-    if (totalAdvanceApplied > 0 && !advanceAccount) {
-      throw new BadRequestException('Chart of account "ADVANCE TO SUPPLIERS" (31030004) not found');
-    }
 
     return this.prisma.$transaction(async (prisma) => {
       // Create the payment voucher (cash/bank portion)
@@ -144,7 +143,7 @@ export class PaymentVoucherService {
       }
 
       // ── Apply advances: record usage + post reversal journal ────────────
-      if (advanceApplications && advanceApplications.length > 0 && advanceAccount) {
+      if (advanceApplications && advanceApplications.length > 0 && advanceAccountId) {
         for (const app of advanceApplications) {
           // Track usage against the source advance PV
           await prisma.advanceApplication.create({
@@ -168,7 +167,7 @@ export class PaymentVoucherService {
 
           await this.accounting.postLines([
             { accountId: apPartiesAccountId, debit: Number(app.appliedAmount), credit: 0 },
-            { accountId: advanceAccount.id, debit: 0, credit: Number(app.appliedAmount) },
+            { accountId: advanceAccountId, debit: 0, credit: Number(app.appliedAmount) },
           ], {
             sourceType: 'ADVANCE_APPLICATION',
             sourceId: paymentVoucher.id,

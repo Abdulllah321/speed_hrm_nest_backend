@@ -61,11 +61,11 @@ export class AuthService {
         role: { include: { permissions: { include: { permission: true } } } },
       },
     });
-    if (!user) return { status: false, message: 'Invalid credentials' };
+    if (!user) return { status: false, message: 'user not found' };
     if (user.status !== 'active')
       return { status: false, message: 'Account is not active' };
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return { status: false, message: 'Invalid credentials' };
+    if (!ok) return { status: false, message: "Password doesn't match" };
 
     // Update Login History
     await this.prismaMaster.loginHistory.create({
@@ -1548,12 +1548,13 @@ export class AuthService {
   async getUserPermissions(userId: string): Promise<string[]> {
     const user = await this.prismaMaster.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        roleId: true,
         role: {
-          include: {
+          select: {
             permissions: {
-              include: {
-                permission: true,
+              select: {
+                permission: { select: { name: true } },
               },
             },
           },
@@ -1561,9 +1562,7 @@ export class AuthService {
       },
     });
 
-    if (!user || !user.role) {
-      return [];
-    }
+    if (!user?.roleId || !user.role) return [];
 
     return user.role.permissions.map((rp) => rp.permission.name);
   }

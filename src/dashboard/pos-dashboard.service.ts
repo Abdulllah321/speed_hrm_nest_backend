@@ -10,11 +10,20 @@ export class PosDashboardService {
    * locationId is extracted from the posTerminalToken cookie by the controller.
    */
   async getDashboardStats(locationId: string, cashierUserId?: string) {
+    this.prisma.ensureTenantContext();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-
+    
+    // Quick sanity check — count all completed orders for this location regardless of date
+    const totalCompleted = await this.prisma.salesOrder.count({
+      where: { locationId, status: 'completed' },
+    });
+    const todayCompleted = await this.prisma.salesOrder.count({
+      where: { locationId, status: 'completed', createdAt: { gte: today, lt: tomorrow } },
+    });
+  
     const cashierFilter = cashierUserId ? { cashierUserId } : {};
 
     const [
