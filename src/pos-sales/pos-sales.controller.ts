@@ -225,6 +225,13 @@ export class PosSalesController {
         return this.posSalesService.resumeHoldOrder(id);
     }
 
+    // ─── Cancel hold order ────────────────────────────────────────────
+    @Post('orders/:id/cancel-hold')
+    @ApiOperation({ summary: 'Cancel a held order — restores stock' })
+    async cancelHoldOrder(@Param('id') id: string) {
+        return this.posSalesService.cancelHoldOrder(id);
+    }
+
     // ─── List hold orders ─────────────────────────────────────────────
     @Get('orders/holds')
     @ApiOperation({ summary: 'List active hold orders for this POS/location' })

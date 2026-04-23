@@ -129,6 +129,10 @@ export class PosSalesService implements OnModuleInit {
                 });
                 if (!warehouse) throw new Error('No active warehouse found');
 
+                // ── Check if this is a credit sale ─────────────────────
+                const isCreditSale = (dto as any).isCreditSale || false;
+                const creditAmount = (dto as any).creditAmount || 0;
+
                 // ── Resolve tenders ─────────────────────────────────────
                 const tenders = dto.tenders && dto.tenders.length > 0
                     ? dto.tenders
@@ -177,41 +181,120 @@ export class PosSalesService implements OnModuleInit {
                 const subtotal = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
                 const lineItemDiscount = itemsData.reduce((acc, i) => acc + i.discountAmount, 0);
                 const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
-                const lineItemTotal = itemsData.reduce((acc, i) => acc + i.lineTotal, 0);
+                const subtotalAfterItemDiscount = subtotal - lineItemDiscount;
 
+                // ── Calculate global discount with priority logic ──
                 let globalDiscAmt = 0;
+                let finalLineItemDiscount = lineItemDiscount; // May be zeroed if alliance is better
+                let appliedDiscountType = 'none'; // Track which discount was applied
+                
+                // Calculate all possible discounts
+                let manualDiscount = 0;
+                let allianceDiscount = 0;
+                let couponDiscount = 0;
+                
+                // 1. Manual discount (from UI)
                 if (dto.globalDiscountPercent) {
-                    globalDiscAmt = Math.round(lineItemTotal * (dto.globalDiscountPercent / 100) * 100) / 100;
+                    manualDiscount = Math.round(subtotalAfterItemDiscount * (dto.globalDiscountPercent / 100) * 100) / 100;
                 } else if (dto.globalDiscountAmount) {
-                    globalDiscAmt = Math.min(dto.globalDiscountAmount, lineItemTotal);
+                    manualDiscount = Math.min(dto.globalDiscountAmount, subtotalAfterItemDiscount);
                 }
-
-                // ── Auto-calculate Coupon / Voucher Discount ───────────
-                if (dto.couponId && globalDiscAmt === 0) {
+                
+                // 2. Alliance discount (calculated on subtotal BEFORE item discounts)
+                if (dto.allianceId) {
+                    const alliance = await tx.allianceDiscount.findUnique({ where: { id: dto.allianceId } });
+                    if (alliance) {
+                        allianceDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
+                    }
+                }
+                
+                // 3. Coupon discount
+                if (dto.couponId) {
                     const coupon = await tx.couponCode.findUnique({ where: { id: dto.couponId } });
                     if (coupon) {
                         if (coupon.discountType === 'percent') {
-                            const disc = Math.round(lineItemTotal * (Number(coupon.discountValue) / 100) * 100) / 100;
-                            globalDiscAmt = coupon.maxDiscount ? Math.min(disc, Number(coupon.maxDiscount)) : disc;
+                            const disc = Math.round(subtotalAfterItemDiscount * (Number(coupon.discountValue) / 100) * 100) / 100;
+                            couponDiscount = coupon.maxDiscount ? Math.min(disc, Number(coupon.maxDiscount)) : disc;
                         } else {
-                            globalDiscAmt = Math.min(Number(coupon.discountValue), lineItemTotal);
+                            couponDiscount = Math.min(Number(coupon.discountValue), subtotalAfterItemDiscount);
                         }
                     }
                 }
+                
+                // Apply discount priority logic:
+                // - If item discount and alliance discount both exist, apply the greater one
+                // - If equal, apply alliance discount
+                // - The one not applied should be removed from calculation
+                
+                if (lineItemDiscount > 0 && allianceDiscount > 0) {
+                    // Both item and alliance discounts exist - choose the greater one
+                    if (allianceDiscount >= lineItemDiscount) {
+                        // Alliance discount is greater or equal - use alliance, remove item discount
+                        globalDiscAmt = allianceDiscount;
+                        finalLineItemDiscount = 0; // Remove item discount
+                        appliedDiscountType = 'alliance';
+                    } else {
+                        // Item discount is greater - keep item discount, no alliance
+                        globalDiscAmt = 0;
+                        finalLineItemDiscount = lineItemDiscount;
+                        appliedDiscountType = 'item';
+                    }
+                } else if (allianceDiscount > 0) {
+                    // Only alliance discount
+                    globalDiscAmt = allianceDiscount;
+                    appliedDiscountType = 'alliance';
+                } else if (couponDiscount > 0) {
+                    // Coupon discount
+                    globalDiscAmt = couponDiscount;
+                    appliedDiscountType = 'coupon';
+                } else if (manualDiscount > 0) {
+                    // Manual discount
+                    globalDiscAmt = manualDiscount;
+                    appliedDiscountType = 'manual';
+                }
 
-                const totalDiscount = lineItemDiscount + globalDiscAmt;
-                const grandTotal = Math.max(0, Math.round((lineItemTotal - globalDiscAmt) * 100) / 100);
+                // Recalculate total with the chosen discount
+                const totalDiscount = finalLineItemDiscount + globalDiscAmt;
+                const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
 
                 const notesParts: string[] = [];
                 if (dto.notes) notesParts.push(dto.notes);
-                if (dto.allianceMeta) {
+                if (isCreditSale) notesParts.push(`[Credit Sale] Balance: ${creditAmount}`);
+                if (appliedDiscountType === 'alliance' && dto.allianceMeta) {
                     const m = dto.allianceMeta;
                     const parts: string[] = [];
                     if (m.cardholderName) parts.push(`Cardholder: ${m.cardholderName}`);
                     if (m.cardLast4) parts.push(`Card: ****${m.cardLast4}`);
                     if (m.merchantSlip) parts.push(`Slip: ${m.merchantSlip}`);
                     if (parts.length) notesParts.push(`[Alliance] ${parts.join(' | ')}`);
+                }
+
+                // Determine payment status - round both values to 2 decimals for comparison
+                const totalPaidRounded = Math.round(totalPaid * 100) / 100;
+                const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+                
+                let paymentStatus: string;
+                
+                // Debug logging
+                console.log('Payment Status Calculation:', {
+                    totalPaid,
+                    totalPaidRounded,
+                    grandTotal,
+                    grandTotalRounded,
+                    difference: totalPaidRounded - grandTotalRounded,
+                    comparison: totalPaidRounded >= grandTotalRounded ? 'PAID' : totalPaidRounded > 0 ? 'PARTIAL' : 'UNPAID'
+                });
+                
+                if (totalPaidRounded >= grandTotalRounded) {
+                    // Full payment received
+                    paymentStatus = 'paid';
+                } else if (totalPaidRounded > 0) {
+                    // Partial payment received
+                    paymentStatus = 'partial';
+                } else {
+                    // No payment received (credit sale)
+                    paymentStatus = 'unpaid';
                 }
 
                 const order = await tx.salesOrder.create({
@@ -222,23 +305,24 @@ export class PosSalesService implements OnModuleInit {
                         locationId: dto.locationId,
                         customerId: dto.customerId,
                         cashierUserId,
-                        paymentMethod,
+                        paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                         notes: notesParts.join(' | ') || undefined,
                         subtotal,
                         discountAmount: totalDiscount,
                         taxAmount: totalTax,
                         grandTotal,
                         status: 'completed',
-                        paymentStatus: totalPaid >= grandTotal ? 'paid' : 'partial',
+                        paymentStatus,
                         globalDiscountPercent: dto.globalDiscountPercent,
                         globalDiscountAmount: globalDiscAmt || undefined,
                         promoId: dto.promoId,
                         couponId: dto.couponId,
                         allianceId: dto.allianceId,
-                        tenderType: paymentMethod,
+                        tenderType: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                         cashAmount: cashAmount || undefined,
                         cardAmount: cardAmount || undefined,
                         changeAmount: changeAmount || undefined,
+                        isGiftReceipt: (dto as any).isGiftReceipt || false,
                         items: {
                             create: itemsData,
                         },
@@ -250,6 +334,18 @@ export class PosSalesService implements OnModuleInit {
                         alliance: { select: { partnerName: true, code: true, discountPercent: true } },
                     },
                 });
+
+                // ── Update Customer Balance for Credit Sale ────────────
+                if (isCreditSale && dto.customerId && creditAmount > 0) {
+                    await tx.customer.update({
+                        where: { id: dto.customerId },
+                        data: {
+                            balance: {
+                                increment: creditAmount,
+                            },
+                        },
+                    });
+                }
 
                 // ── Update Stock (Deduct) ───────────────────────────────
                 // Skip if this is a resumed hold order — stock was already deducted at hold time
@@ -1356,6 +1452,60 @@ export class PosSalesService implements OnModuleInit {
             },
         });
         return { status: true, data: orders };
+    }
+
+    // ─── Cancel a hold order (restore stock) ─────────────────────────
+    async cancelHoldOrder(id: string) {
+        try {
+            return await this.prisma.$transaction(async (tx) => {
+                const order = await tx.salesOrder.findUnique({
+                    where: { id },
+                    include: { items: true },
+                });
+
+                if (!order) return { status: false, message: 'Hold order not found' };
+                if (order.status !== 'hold') return { status: false, message: 'Order is not on hold' };
+
+                // Restore stock for each item
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                if (warehouse) {
+                    for (const item of order.items) {
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: warehouse.id,
+                            locationId: order.locationId,
+                            qty: item.quantity,
+                            movementType: MovementType.INBOUND,
+                            referenceType: 'POS_HOLD_CANCELLED',
+                            referenceId: order.id,
+                        }, tx);
+
+                        const existing = await tx.inventoryItem.findFirst({
+                            where: { itemId: item.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                        });
+                        if (existing) {
+                            await tx.inventoryItem.update({
+                                where: { id: existing.id },
+                                data: { quantity: { increment: item.quantity } },
+                            });
+                        }
+                    }
+                }
+
+                // Mark order as cancelled
+                await tx.salesOrder.update({
+                    where: { id },
+                    data: { status: 'hold_cancelled' },
+                });
+
+                return {
+                    status: true,
+                    message: `Hold order ${order.orderNumber} cancelled successfully`,
+                };
+            });
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
     }
 
     // ─── Clear all expired / end-of-day holds (called by scheduler) ──
