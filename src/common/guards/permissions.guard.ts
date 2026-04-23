@@ -29,11 +29,21 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    if (!user || !user.roleId) {
+    if (!user) {
       return false;
     }
 
-    // Check if user has required permissions
+    // Fast path: JwtAuthGuard already resolved permissions onto req.user
+    if (Array.isArray(user.permissions)) {
+      if (user.permissions.includes('*')) return true;
+      return requiredPermissions.some((p) => user.permissions.includes(p));
+    }
+
+    // Fallback: resolve from DB via roleId (legacy path)
+    if (!user.roleId) {
+      return false;
+    }
+
     const userPermissions = await this.getUserPermissions(user.roleId);
 
     if (userPermissions.includes('*')) {
