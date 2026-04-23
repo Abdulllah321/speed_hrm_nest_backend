@@ -27,6 +27,7 @@ model SalesOrder {
   fbrInvoiceNumber      String?           @map("fbr_invoice_number")
   fbrQrCode             String?           @map("fbr_qr_code") @db.Text
   fbrStatus             String            @default("PENDING") @map("fbr_status")
+  isGiftReceipt         Boolean           @default(false) @map("is_gift_receipt")
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
   items                 SalesOrderItem[]

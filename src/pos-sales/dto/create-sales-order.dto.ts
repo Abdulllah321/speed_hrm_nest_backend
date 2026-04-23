@@ -211,6 +211,20 @@ export class CreateSalesOrderDto {
     @IsString()
     holdOrderId?: string;
 
+    @ApiPropertyOptional({ description: 'Flag to indicate this is a credit sale (customer will pay later)' })
+    @IsOptional()
+    isCreditSale?: boolean;
+
+    @ApiPropertyOptional({ description: 'Credit amount (unpaid balance) for credit sales' })
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    creditAmount?: number;
+
+    @ApiPropertyOptional({ description: 'Gift receipt - print without prices' })
+    @IsOptional()
+    isGiftReceipt?: boolean;
+
     @ApiProperty({ type: [SalesOrderItemDto] })
     @IsArray()
     @ValidateNested({ each: true })

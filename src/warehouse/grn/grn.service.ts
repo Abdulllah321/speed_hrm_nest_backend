@@ -352,7 +352,7 @@ export class GrnService {
           } else {
             this.logger.debug(`Skipping inventory update for item: ${grnItem.itemId} (shouldUpdateInventory: false)`);
           }
-          // For FRESH goods or Direct PO, inventory will be updated later via Landed Cost
+          // For FINISH GOODS or Direct PO, inventory will be updated later via Landed Cost
         }
 
         // 6. Update PO Status
@@ -382,7 +382,7 @@ export class GrnService {
             // CONSUMABLE goods or flows that update inventory immediately
             poStatus = 'CLOSED';
           } else {
-            // FRESH goods or Direct PO - wait for Landed Cost
+            // FINISH GOODS or Direct PO - wait for Landed Cost
             poStatus = 'RECEIVED';
           }
         }
