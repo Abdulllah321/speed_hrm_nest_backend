@@ -62,13 +62,22 @@ export class EmployeeController {
   }
 
   @Get('employees/for-attendance')
-  @Permissions('hr.employee.read')
-  @ApiOperation({ summary: 'List employees for attendance' })
+  @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
+  @ApiOperation({ summary: 'List employees for attendance management' })
   async listForAttendance(
     @Query('departmentId') departmentId?: string,
     @Query('subDepartmentId') subDepartmentId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
   ) {
-    return this.service.listForAttendance({ departmentId, subDepartmentId });
+    return this.service.listForAttendance({
+      departmentId,
+      subDepartmentId,
+      page,
+      limit,
+      search,
+    });
   }
 
   @Get('employees/dropdown')
