@@ -134,6 +134,7 @@ model AllianceDiscount {
   partnerName     String                     @map("partner_name")
   code            String                     @unique
   discountPercent Decimal                    @map("discount_percent") @db.Decimal(5, 2)
+  maxDiscount     Decimal?                   @map("max_discount") @db.Decimal(10, 2)
   description     String?
   isActive        Boolean                    @default(true) @map("is_active")
   createdAt       DateTime                   @default(now()) @map("created_at")
