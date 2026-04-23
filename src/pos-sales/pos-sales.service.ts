@@ -205,6 +205,9 @@ export class PosSalesService implements OnModuleInit {
                     const alliance = await tx.allianceDiscount.findUnique({ where: { id: dto.allianceId } });
                     if (alliance) {
                         allianceDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
+                        if (alliance.maxDiscount) {
+                            allianceDiscount = Math.min(allianceDiscount, Number(alliance.maxDiscount));
+                        }
                     }
                 }
                 
@@ -331,7 +334,7 @@ export class PosSalesService implements OnModuleInit {
                         items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
                         promo: { select: { name: true, code: true } },
                         coupon: { select: { code: true, description: true } },
-                        alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                        alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                     },
                 });
 
@@ -611,7 +614,7 @@ export class PosSalesService implements OnModuleInit {
                     items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
                     promo: { select: { name: true, code: true } },
                     coupon: { select: { code: true, description: true } },
-                    alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                    alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                 },
             }),
             this.prisma.salesOrder.count({ where }),
@@ -674,7 +677,7 @@ export class PosSalesService implements OnModuleInit {
                 items: { include: { item: true } },
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
-                alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
             },
         });
         if (!order) return { status: false, message: 'Order not found' };

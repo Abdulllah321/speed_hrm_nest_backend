@@ -599,7 +599,7 @@ export class AuthController {
     });
   }
 
-  @Get('permissions')
+  @Get('permissions/lightweight')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user permissions (lightweight)' })
