@@ -14,6 +14,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosConfigService } from './pos-config.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../common/guards/permission.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 
 @ApiTags('POS Configuration')
 @Controller('api/pos-config')
@@ -165,12 +167,16 @@ export class PosConfigController {
     // ══════════════════════════════════════════════════════════════
 
     @Get('vouchers')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.view')
     @ApiOperation({ summary: 'List all POS-issued vouchers' })
     async listVouchers() {
         return this.service.listVouchers();
     }
 
     @Post('vouchers')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.create')
     @ApiOperation({ summary: 'Issue a new voucher from POS' })
     async createVoucher(
         @Req() req: any,
@@ -190,12 +196,16 @@ export class PosConfigController {
     }
 
     @Put('vouchers/:id/deactivate')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.void')
     @ApiOperation({ summary: 'Deactivate a voucher' })
     async deactivateVoucher(@Param('id') id: string) {
         return this.service.deactivateVoucher(id);
     }
 
     @Delete('vouchers/:id')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.delete')
     @ApiOperation({ summary: 'Delete an unused voucher' })
     async deleteVoucher(@Param('id') id: string) {
         return this.service.deleteVoucher(id);
