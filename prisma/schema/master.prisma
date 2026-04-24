@@ -737,6 +737,8 @@ model Location {
   fromStockMovements        StockMovement[]            @relation("StockMovement_fromLocation")
   toStockMovements          StockMovement[]            @relation("StockMovement_toLocation")
   inventoryItems            InventoryItem[]
+
+  voucherLocations VoucherLocation[]
 }
 
 model Pos {
