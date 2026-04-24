@@ -239,39 +239,252 @@ export class MasterDataService {
     }
 
     /**
-     * Find HS Code master record (No creation)
+     * Get or create Sub-Department master record
      */
-    async findHsCode(code: string): Promise<string | null> {
-        if (!code) return null;
+    async getOrCreateSubDepartment(name: string, departmentId?: string | null): Promise<string | null> {
+        if (!departmentId) return null;
+        return this.resolveOrCreate(
+            'subdepartment', name, departmentId,
+            () => this.prisma.subDepartment.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' }, departmentId } }),
+            () => this.prisma.subDepartment.create({ data: { name: name.trim(), departmentId } })
+        );
+    }
 
-        const normalized = code.trim();
-        const cacheKey = this.getCacheKey('hscode');
-        this.initCache('hscode');
+    /**
+     * Get or create Designation master record
+     */
+    async getOrCreateDesignation(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'designation', name, null,
+            () => this.prisma.designation.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.designation.create({ data: { name: name.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Employee Grade master record
+     */
+    async getOrCreateEmployeeGrade(grade: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'employeegrade', grade, null,
+            () => this.prisma.employeeGrade.findFirst({ where: { grade: { equals: grade.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.employeeGrade.create({ data: { grade: grade.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Marital Status master record
+     */
+    async getOrCreateMaritalStatus(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'maritalstatus', name, null,
+            () => this.prisma.maritalStatus.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.maritalStatus.create({ data: { name: name.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Employment Status master record
+     */
+    async getOrCreateEmploymentStatus(status: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'employmentstatus', status, null,
+            () => this.prisma.employeeStatus.findFirst({ where: { status: { equals: status.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.employeeStatus.create({ data: { status: status.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Location master record
+     */
+    async getOrCreateLocation(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'location', name, null,
+            () => this.prisma.location.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.location.create({ data: { name: name.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Working Hours Policy master record
+     */
+    async getOrCreateWorkingHoursPolicy(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'workinghourspolicy', name, null,
+            () => this.prisma.workingHoursPolicy.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.workingHoursPolicy.create({
+                data: {
+                    name: name.trim(),
+                    startWorkingHours: '09:00',
+                    endWorkingHours: '18:00',
+                }
+            })
+        );
+    }
+
+    /**
+     * Get or create Leaves Policy master record
+     */
+    async getOrCreateLeavesPolicy(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'leavespolicy', name, null,
+            () => this.prisma.leavesPolicy.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.leavesPolicy.create({ data: { name: name.trim() } })
+        );
+    }
+
+    /**
+     * Get or create Allocation master record
+     */
+    async getOrCreateAllocation(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'allocation', name, null,
+            () => this.prisma.allocation.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.allocation.create({ data: { name: name.trim() } })
+        );
+    }
+
+    /**
+     * Find Country by name
+     */
+    async findCountryByName(name: string): Promise<string | null> {
+        if (!name) return null;
+        const normalized = name.trim();
+        const cacheKey = this.getCacheKey('country');
+        this.initCache('country');
 
         const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
         if (cachedId) return cachedId;
 
-        const record = await this.prisma.hsCode.findFirst({
-            where: { hsCode: { equals: normalized, mode: 'insensitive' } },
+        const record = await this.prisma.country.findFirst({
+            where: { name: { equals: normalized, mode: 'insensitive' } },
         });
 
         if (record) {
             this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
             return record.id;
         }
-
         return null;
     }
 
     /**
-     * Get or create HS Code master record
+     * Find State by name and countryId
      */
-    async getOrCreateHsCode(code: string): Promise<string | null> {
-        return this.resolveOrCreate(
-            'hscode', code, null,
-            () => this.prisma.hsCode.findFirst({ where: { hsCode: { equals: code.trim(), mode: 'insensitive' } } }),
-            () => this.prisma.hsCode.create({ data: { hsCode: code.trim() } })
-        );
+    async findStateByName(name: string, countryId: string): Promise<string | null> {
+        if (!name || !countryId) return null;
+        const normalized = name.trim();
+        const cacheKey = this.getCacheKey(`state_${countryId}`);
+        this.initCache(`state_${countryId}`);
+
+        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
+        if (cachedId) return cachedId;
+
+        const record = await this.prisma.state.findFirst({
+            where: {
+                name: { equals: normalized, mode: 'insensitive' },
+                countryId
+            },
+        });
+
+        if (record) {
+            this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
+            return record.id;
+        }
+        return null;
+    }
+
+    /**
+     * Find City by name and stateId
+     */
+    async findCityByName(name: string, stateId: string): Promise<string | null> {
+        if (!name || !stateId) return null;
+        const normalized = name.trim();
+        const cacheKey = this.getCacheKey(`city_${stateId}`);
+        this.initCache(`city_${stateId}`);
+
+        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
+        if (cachedId) return cachedId;
+
+        const record = await this.prisma.city.findFirst({
+            where: {
+                name: { equals: normalized, mode: 'insensitive' },
+                stateId
+            },
+        });
+
+        if (record) {
+            this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
+            return record.id;
+        }
+        return null;
+    }
+
+    /**
+     * Get or create State by name + countryId
+     */
+    async getOrCreateState(name: string, countryId: string): Promise<string | null> {
+        if (!name || !countryId) return null;
+        const normalized = name.trim();
+        const cacheKey = this.getCacheKey(`state_${countryId}`);
+        this.initCache(`state_${countryId}`);
+
+        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
+        if (cachedId) return cachedId;
+
+        let record = await this.prisma.state.findFirst({
+            where: { name: { equals: normalized, mode: 'insensitive' }, countryId },
+        });
+
+        if (!record) {
+            try {
+                record = await this.prisma.state.create({ data: { name: normalized, countryId } });
+            } catch {
+                // handle race condition
+                record = await this.prisma.state.findFirst({
+                    where: { name: { equals: normalized, mode: 'insensitive' }, countryId },
+                });
+            }
+        }
+
+        if (record) {
+            this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
+            return record.id;
+        }
+        return null;
+    }
+
+    /**
+     * Get or create City by name + stateId + countryId
+     */
+    async getOrCreateCity(name: string, stateId: string, countryId: string): Promise<string | null> {
+        if (!name || !stateId || !countryId) return null;
+        const normalized = name.trim();
+        const cacheKey = this.getCacheKey(`city_${stateId}`);
+        this.initCache(`city_${stateId}`);
+
+        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
+        if (cachedId) return cachedId;
+
+        let record = await this.prisma.city.findFirst({
+            where: { name: { equals: normalized, mode: 'insensitive' }, stateId },
+        });
+
+        if (!record) {
+            try {
+                record = await this.prisma.city.create({ data: { name: normalized, stateId, countryId } });
+            } catch {
+                // handle race condition
+                record = await this.prisma.city.findFirst({
+                    where: { name: { equals: normalized, mode: 'insensitive' }, stateId },
+                });
+            }
+        }
+
+        if (record) {
+            this.cache[cacheKey].set(normalized.toLowerCase(), record.id);
+            return record.id;
+        }
+        return null;
     }
 
     /**
@@ -288,7 +501,51 @@ export class MasterDataService {
     }
 
     /**
-     * Pre-warm the cache by bulk-loading all existing master data in ~15 queries.
+     * Find HS Code by value
+     */
+    async findHsCode(hsCode: string): Promise<string | null> {
+        if (!hsCode) return null;
+        const normalized = hsCode.trim().toLowerCase();
+        const cacheKey = this.getCacheKey('hscode');
+        this.initCache('hscode');
+
+        const cachedId = this.cache[cacheKey].get(normalized);
+        if (cachedId) return cachedId;
+
+        const record = await this.prisma.hsCode.findFirst({
+            where: { hsCode: { equals: normalized, mode: 'insensitive' } },
+        });
+
+        if (record) {
+            this.cache[cacheKey].set(normalized, record.id);
+            return record.id;
+        }
+        return null;
+    }
+
+    /**
+     * Get or create HS Code master record
+     */
+    async getOrCreateHsCode(hsCode: string): Promise<string | null> {
+        if (!hsCode) return null;
+        const normalized = hsCode.trim();
+        const cacheKey = this.getCacheKey('hscode');
+        this.initCache('hscode');
+
+        // Check cache first
+        const cachedId = this.cache[cacheKey].get(normalized.toLowerCase());
+        if (cachedId) return cachedId;
+
+        // Try to find or create
+        return this.resolveOrCreate(
+            'hscode', normalized, null,
+            () => this.prisma.hsCode.findFirst({ where: { hsCode: { equals: normalized, mode: 'insensitive' } } }),
+            () => this.prisma.hsCode.create({ data: { hsCode: normalized, status: 'active' } })
+        );
+    }
+
+    /**
+     * Pre-warm the cache by bulk-loading all existing master data in ~25 queries.
      * Call this once at the start of an import job — turns all subsequent
      * getOrCreate calls into sync cache hits with zero DB round trips.
      */
@@ -299,6 +556,9 @@ export class MasterDataService {
             sizes, colors, brands, genders, departments,
             categories, itemClasses, silhouettes, channelClasses,
             seasons, segments, hsCodes, divisions, itemSubclasses,
+            designations, grades, maritalStatus, employmentStatus,
+            locations, whPolicies, leavesPolicies, allocations,
+            subDepartments, countries
         ] = await Promise.all([
             this.prisma.size.findMany({ select: { id: true, name: true } }),
             this.prisma.color.findMany({ select: { id: true, name: true } }),
@@ -314,11 +574,25 @@ export class MasterDataService {
             this.prisma.hsCode.findMany({ select: { id: true, hsCode: true } }),
             this.prisma.division.findMany({ select: { id: true, name: true, brandId: true } }),
             this.prisma.itemSubclass.findMany({ select: { id: true, name: true, itemClassId: true } }),
+            // HR Masters
+            this.prisma.designation.findMany({ select: { id: true, name: true } }),
+            this.prisma.employeeGrade.findMany({ select: { id: true, grade: true } }),
+            this.prisma.maritalStatus.findMany({ select: { id: true, name: true } }),
+            this.prisma.employeeStatus.findMany({ select: { id: true, status: true } }),
+            this.prisma.location.findMany({ select: { id: true, name: true } }),
+            this.prisma.workingHoursPolicy.findMany({ select: { id: true, name: true } }),
+            this.prisma.leavesPolicy.findMany({ select: { id: true, name: true } }),
+            this.prisma.allocation.findMany({ select: { id: true, name: true } }),
+            this.prisma.subDepartment.findMany({ select: { id: true, name: true, departmentId: true } }),
+            this.prisma.country.findMany({ select: { id: true, name: true } }),
         ]);
 
-        const load = (type: string, records: { id: string; name: string }[]) => {
+        const load = (type: string, records: { id: string; name?: string; grade?: string; status?: string }[]) => {
             this.initCache(type);
-            for (const r of records) this.cache[this.getCacheKey(type)].set(r.name.toLowerCase(), r.id);
+            for (const r of records) {
+                const name = r.name || r.grade || r.status;
+                if (name) this.cache[this.getCacheKey(type)].set(name.toLowerCase(), r.id);
+            }
         };
 
         load('size', sizes);
@@ -332,12 +606,30 @@ export class MasterDataService {
         load('season', seasons);
         load('segment', segments);
 
+        // HR Masters
+        load('designation', designations);
+        load('employeegrade', grades);
+        load('maritalstatus', maritalStatus);
+        load('employmentstatus', employmentStatus);
+        load('location', locations);
+        load('workinghourspolicy', whPolicies);
+        load('leavespolicy', leavesPolicies);
+        load('allocation', allocations);
+        load('country', countries);
+
         // Categories — keyed by name under their parentId bucket
         this.initCache('category');
         for (const c of categories) {
             const key = c.parentId ? this.getCacheKey(`category_${c.parentId}`) : this.getCacheKey('category');
             if (!this.cache[key]) this.cache[key] = new Map();
             this.cache[key].set(c.name.toLowerCase(), c.id);
+        }
+
+        // Sub-Departments — keyed per departmentId
+        for (const s of subDepartments) {
+            const key = this.getCacheKey(`subdepartment_${s.departmentId}`);
+            if (!this.cache[key]) this.cache[key] = new Map();
+            this.cache[key].set(s.name.toLowerCase(), s.id);
         }
 
         // HS Codes — field is hsCode not name
@@ -358,7 +650,7 @@ export class MasterDataService {
             this.cache[key].set(s.name.toLowerCase(), s.id);
         }
 
-        this.logger.log(`Cache warmed: ${sizes.length} sizes, ${colors.length} colors, ${brands.length} brands, ${categories.length} categories, ${hsCodes.length} HS codes, ${divisions.length} divisions`);
+        this.logger.log(`Cache warmed: ${sizes.length} sizes, ${colors.length} colors, ${brands.length} brands, ${departments.length} departments, ${designations.length} designations`);
     }
 
     /**

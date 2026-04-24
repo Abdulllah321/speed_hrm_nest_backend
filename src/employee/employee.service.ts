@@ -21,31 +21,43 @@ export class EmployeeService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) { }
 
-  async list() {
-    const cacheKey = 'employees_list';
+  async list(query?: { page?: number; limit?: number; search?: string }) {
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 50;
+    const search = query?.search || '';
+    const skip = (page - 1) * limit;
 
-    // Attempt to get from cache
-    const cached = await this.cacheManager.get<any[]>(cacheKey);
-    if (cached) {
-      return { status: true, data: cached };
+    const where: Prisma.EmployeeWhereInput = {};
+    if (search) {
+      where.OR = [
+        { employeeName: { contains: search, mode: 'insensitive' } },
+        { employeeId: { contains: search, mode: 'insensitive' } },
+        { officialEmail: { contains: search, mode: 'insensitive' } },
+        { contactNumber: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
-    // Fetch from Tenant DB with all relations joined
-    const employees = await this.prisma.employee.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        department: true,
-        subDepartment: true,
-        designation: true,
-        employeeGrade: true,
-        city: true,
-        state: true,
-        country: true,
-        socialSecurityInstitution: true,
-        qualifications: { include: { qualification: true, institute: true } },
-        equipmentAssignments: { include: { equipment: true } },
-      },
-    });
+    const [employees, total] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          department: true,
+          subDepartment: true,
+          designation: true,
+          employeeGrade: true,
+          city: true,
+          state: true,
+          country: true,
+          socialSecurityInstitution: true,
+          qualifications: { include: { qualification: true, institute: true } },
+          equipmentAssignments: { include: { equipment: true } },
+        },
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
 
     // User lives in Master DB — must be queried separately
     const userIds = employees.map((e) => e.userId).filter(Boolean) as string[];
@@ -75,69 +87,120 @@ export class EmployeeService {
       };
     });
 
-    // Store in cache for 1 hour
-    await this.cacheManager.set(cacheKey, enrichedEmployees, 3600000);
-
-    return { status: true, data: enrichedEmployees };
+    return {
+      status: true,
+      data: enrichedEmployees,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   // Lightweight method to fetch only required fields for attendance management
-  async listForAttendance(filters?: {
+  async listForAttendance(query?: {
     departmentId?: string;
     subDepartmentId?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
   }) {
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 100;
+    const search = query?.search || '';
+    const skip = (page - 1) * limit;
+
     const where: Prisma.EmployeeWhereInput = {};
 
-    if (filters?.departmentId) {
-      where.departmentId = filters.departmentId;
+    if (query?.departmentId) {
+      where.departmentId = query.departmentId;
     }
 
-    if (filters?.subDepartmentId) {
-      where.subDepartmentId = filters.subDepartmentId;
+    if (query?.subDepartmentId) {
+      where.subDepartmentId = query.subDepartmentId;
     }
 
-    const employees = await this.prisma.employee.findMany({
-      where,
-      select: {
-        id: true,
-        employeeId: true,
-        employeeName: true,
-        departmentId: true,
-        subDepartmentId: true,
-        workingHoursPolicyId: true,
-        department: true,
-        subDepartment: true,
-        workingHoursPolicy: true,
+    if (search) {
+      where.OR = [
+        { employeeName: { contains: search, mode: 'insensitive' } },
+        { employeeId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [employees, total] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          departmentId: true,
+          subDepartmentId: true,
+          workingHoursPolicyId: true,
+          department: true,
+          subDepartment: true,
+          workingHoursPolicy: true,
+        },
+        orderBy: { employeeName: 'asc' },
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+
+    return {
+      status: true,
+      data: employees,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
-      orderBy: { employeeName: 'asc' },
-    });
-
-    return { status: true, data: employees };
+    };
   }
 
   // Minimal fields for dropdowns/selects
-  async listForDropdown() {
-    const cacheKey = 'employees_dropdown';
-    const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return { status: true, data: cached };
+  async listForDropdown(query?: { page?: number; limit?: number; search?: string }) {
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 100; // Dropdowns might want more by default
+    const search = query?.search || '';
+    const skip = (page - 1) * limit;
 
-    const employees = await this.prisma.employee.findMany({
-      select: {
-        id: true,
-        employeeId: true,
-        employeeName: true,
-        departmentId: true,
-        subDepartmentId: true,
-        designationId: true,
-        providentFund: true,
-        officialEmail: true,
-        personalEmail: true,
-        department: { select: { id: true, name: true } },
-        subDepartment: { select: { id: true, name: true } },
-        designation: { select: { id: true, name: true } },
-      },
-      orderBy: { employeeName: 'asc' },
-    });
+    const where: Prisma.EmployeeWhereInput = {};
+    if (search) {
+      where.OR = [
+        { employeeName: { contains: search, mode: 'insensitive' } },
+        { employeeId: { contains: search, mode: 'insensitive' } },
+        { officialEmail: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [employees, total] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          departmentId: true,
+          subDepartmentId: true,
+          designationId: true,
+          providentFund: true,
+          officialEmail: true,
+          personalEmail: true,
+          department: { select: { id: true, name: true } },
+          subDepartment: { select: { id: true, name: true } },
+          designation: { select: { id: true, name: true } },
+        },
+        orderBy: { employeeName: 'asc' },
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
 
     const result = employees.map((emp) => ({
       id: emp.id,
@@ -153,8 +216,16 @@ export class EmployeeService {
       personalEmail: emp.personalEmail,
     }));
 
-    await this.cacheManager.set(cacheKey, result, 3600000);
-    return { status: true, data: result };
+    return {
+      status: true,
+      data: result,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**
