@@ -2033,12 +2033,90 @@ INSERT INTO "SubDepartment" (id, name, "departmentId", "headId", "createdById", 
 -- Data for Name: TaxSlab; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('f0a59f89-10ce-4de3-9777-0a507c397066', 'Where taxable income does not exceed Rs. 600,000/-', 0.000000000000000000000000000000, 600000.000000000000000000000000000000, 0.000000000000000000000000000000, 0.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.554', '2026-01-07 07:32:19.554');
-INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('3fdf5362-0ce2-4448-9779-df79daa9b32d', 'Where taxable income exceeds Rs. 600,000/- but does not exceed Rs. 1,200,000/-', 600000.000000000000000000000000000000, 1200000.000000000000000000000000000000, 1.000000000000000000000000000000, 0.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.558', '2026-01-07 07:32:19.558');
-INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('59da49fe-6c60-4aa6-a414-d09e25651f1d', 'Where taxable income exceeds Rs. 1,200,000/- but does not exceed Rs. 2,200,000/-', 1200000.000000000000000000000000000000, 2200000.000000000000000000000000000000, 11.000000000000000000000000000000, 6000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.562', '2026-01-07 07:32:19.562');
-INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('9bdb3877-f95c-4a16-8634-9bd30ce74944', 'Where taxable income exceeds Rs. 2,200,000/- but does not exceed Rs. 3,200,000/-', 2200000.000000000000000000000000000000, 3200000.000000000000000000000000000000, 23.000000000000000000000000000000, 116000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.567', '2026-01-07 07:32:19.567');
-INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('b1c861e9-5fe8-4843-bcf2-efc3e37beff4', 'Where taxable income exceeds Rs. 3,200,000/- but does not exceed Rs. 4,100,000/-', 3200000.000000000000000000000000000000, 4100000.000000000000000000000000000000, 30.000000000000000000000000000000, 346000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.573', '2026-01-07 07:32:19.573');
-INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('c2955615-887d-4f03-b393-93ba033780d3', 'Where taxable income exceeds Rs. 4,100,000/-', 4100000.000000000000000000000000000000, 999999999.000000000000000000000000000000, 35.000000000000000000000000000000, 616000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.577', '2026-01-07 07:32:19.577');
+-- INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('f0a59f89-10ce-4de3-9777-0a507c397066', 'Where taxable income does not exceed Rs. 600,000/-', 0.000000000000000000000000000000, 600000.000000000000000000000000000000, 0.000000000000000000000000000000, 0.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.554', '2026-01-07 07:32:19.554');
+-- INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('3fdf5362-0ce2-4448-9779-df79daa9b32d', 'Where taxable income exceeds Rs. 600,001/- but does not exceed Rs. 1,200,000/-', 600000.000000000000000000000000000000, 1200000.000000000000000000000000000000, 1.000000000000000000000000000000, 0.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.558', '2026-01-07 07:32:19.558');
+-- INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('59da49fe-6c60-4aa6-a414-d09e25651f1d', 'Where taxable income exceeds Rs. 1,200,001/- but does not exceed Rs. 2,200,000/-', 1200000.000000000000000000000000000000, 2200000.000000000000000000000000000000, 11.000000000000000000000000000000, 6000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.562', '2026-01-07 07:32:19.562');
+-- INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('9bdb3877-f95c-4a16-8634-9bd30ce74944', 'Where taxable income exceeds Rs. 2,200,001/- but does not exceed Rs. 3,200,000/-', 2200000.000000000000000000000000000000, 3200000.000000000000000000000000000000, 23.000000000000000000000000000000, 116000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.567', '2026-01-07 07:32:19.567');
+-- INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('b1c861e9-5fe8-4843-bcf2-efc3e37beff4', 'Where taxable income exceeds Rs. 3,200,001/- but does not exceed Rs. 4,100,000/-', 3200000.000000000000000000000000000000, 4100000.000000000000000000000000000000, 30.000000000000000000000000000000, 346000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.573', '2026-01-07 07:32:19.573');
+-- INSERT INTO "TaxSlab" (id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt") VALUES ('c2955615-887d-4f03-b393-93ba033780d3', 'Where taxable income exceeds Rs. 4,100,000/-', 4100000.000000000000000000000000000000, 999999999.000000000000000000000000000000, 35.000000000000000000000000000000, 616000.000000000000000000000000000000, 'active', '46aac6b2-8f5b-47c0-9c6a-aa6559835a8e', '2026-01-07 07:32:19.577', '2026-01-07 07:32:19.577');
+
+INSERT INTO "TaxSlab"
+(id, name, "minAmount", "maxAmount", rate, "fixedAmount", status, "createdById", "createdAt", "updatedAt")
+VALUES
+
+-- 1️⃣ 0 – 600,000
+(gen_random_uuid(),
+'Where taxable income does not exceed Rs. 600,000/-',
+0,
+600000,
+0,
+0,
+'active',
+'46aac6b2-8f5b-47c0-9c6a-aa6559835a8e',
+NOW(),
+NOW()),
+
+-- 2️⃣ 600,001 – 1,200,000
+(gen_random_uuid(),
+'Where taxable income exceeds Rs. 600,000/- but does not exceed Rs. 1,200,000/-',
+600001,
+1200000,
+1,
+0,
+'active',
+'46aac6b2-8f5b-47c0-9c6a-aa6559835a8e',
+NOW(),
+NOW()),
+
+-- 3️⃣ 1,200,001 – 2,200,000
+(gen_random_uuid(),
+'Where taxable income exceeds Rs. 1,200,000/- but does not exceed Rs. 2,200,000/-',
+1200001,
+2200000,
+11,
+6000,
+'active',
+'46aac6b2-8f5b-47c0-9c6a-aa6559835a8e',
+NOW(),
+NOW()),
+
+-- 4️⃣ 2,200,001 – 3,200,000
+(gen_random_uuid(),
+'Where taxable income exceeds Rs. 2,200,000/- but does not exceed Rs. 3,200,000/-',
+2200001,
+3200000,
+23,
+116000,
+'active',
+'46aac6b2-8f5b-47c0-9c6a-aa6559835a8e',
+NOW(),
+NOW()),
+
+-- 5️⃣ 3,200,001 – 4,100,000
+(gen_random_uuid(),
+'Where taxable income exceeds Rs. 3,200,000/- but does not exceed Rs. 4,100,000/-',
+3200001,
+4100000,
+30,
+346000,
+'active',
+'46aac6b2-8f5b-47c0-9c6a-aa6559835a8e',
+NOW(),
+NOW()),
+
+-- 6️⃣ 4,100,001+
+(gen_random_uuid(),
+'Where taxable income exceeds Rs. 4,100,000/-',
+4100001,
+999999999,
+35,
+616000,
+'active',
+'46aac6b2-8f5b-47c0-9c6a-aa6559835a8e',
+NOW(),
+NOW());
+
+
 
 
 --
