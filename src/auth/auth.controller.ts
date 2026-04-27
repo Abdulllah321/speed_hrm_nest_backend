@@ -599,6 +599,17 @@ export class AuthController {
     });
   }
 
+  @Get('permissions/lightweight')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current user permissions (lightweight)' })
+  async getMyPermissions(@Req() req: any) {
+    const userId = req.user.id || req.user.userId;
+    const permissions = await this.service.getUserPermissions(userId);
+    const roleName = req.user.roleName || null;
+    return { status: true, data: { permissions, role: roleName } };
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

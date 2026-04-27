@@ -130,8 +130,8 @@ export class PosSalesService implements OnModuleInit {
                 if (!warehouse) throw new Error('No active warehouse found');
 
                 // ── Check if this is a credit sale ─────────────────────
-                const isCreditSale = (dto as any).isCreditSale || false;
-                const creditAmount = (dto as any).creditAmount || 0;
+                const isCreditSale = dto.isCreditSale || false;
+                const creditAmount = dto.creditAmount || 0;
 
                 // ── Resolve tenders ─────────────────────────────────────
                 const tenders = dto.tenders && dto.tenders.length > 0
@@ -205,6 +205,9 @@ export class PosSalesService implements OnModuleInit {
                     const alliance = await tx.allianceDiscount.findUnique({ where: { id: dto.allianceId } });
                     if (alliance) {
                         allianceDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
+                        if (alliance.maxDiscount) {
+                            allianceDiscount = Math.min(allianceDiscount, Number(alliance.maxDiscount));
+                        }
                     }
                 }
                 
@@ -322,7 +325,7 @@ export class PosSalesService implements OnModuleInit {
                         cashAmount: cashAmount || undefined,
                         cardAmount: cardAmount || undefined,
                         changeAmount: changeAmount || undefined,
-                        isGiftReceipt: (dto as any).isGiftReceipt || false,
+                        isGiftReceipt: dto.isGiftReceipt || false,
                         items: {
                             create: itemsData,
                         },
@@ -331,7 +334,7 @@ export class PosSalesService implements OnModuleInit {
                         items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
                         promo: { select: { name: true, code: true } },
                         coupon: { select: { code: true, description: true } },
-                        alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                        alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                     },
                 });
 
@@ -349,7 +352,7 @@ export class PosSalesService implements OnModuleInit {
 
                 // ── Update Stock (Deduct) ───────────────────────────────
                 // Skip if this is a resumed hold order — stock was already deducted at hold time
-                const isResumedHold = !!(dto as any).holdOrderId;
+                const isResumedHold = !!dto.holdOrderId;
 
                 if (!isResumedHold) {
                 for (const item of itemsData) {
@@ -399,7 +402,7 @@ export class PosSalesService implements OnModuleInit {
                 // If resumed from hold, mark the hold order as completed
                 if (isResumedHold) {
                     await tx.salesOrder.update({
-                        where: { id: (dto as any).holdOrderId },
+                        where: { id: dto.holdOrderId },
                         data: { status: 'completed' },
                     });
                 }
@@ -409,6 +412,29 @@ export class PosSalesService implements OnModuleInit {
                         where: { id: dto.couponId },
                         data: { usedCount: { increment: 1 } },
                     });
+                }
+
+                // ── Redeem vouchers ────────────────────────────────────────
+                const voucherRedemptions = dto.voucherRedemptions;
+                if (voucherRedemptions?.length) {
+                    for (const r of voucherRedemptions) {
+                        await tx.voucher.update({
+                            where: { id: r.voucherId },
+                            data: { isRedeemed: true, isActive: false },
+                        });
+                        await tx.voucherTransaction.create({
+                            data: {
+                                voucherId: r.voucherId,
+                                orderId: order.id,
+                                locationId: locationId,
+                                action: 'REDEEMED',
+                                amountUsed: r.amount,
+                            },
+                        });
+                        await tx.voucherRedemption.create({
+                            data: { voucherId: r.voucherId, orderId: order.id, amountUsed: r.amount },
+                        });
+                    }
                 }
 
                 return {
@@ -611,7 +637,7 @@ export class PosSalesService implements OnModuleInit {
                     items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
                     promo: { select: { name: true, code: true } },
                     coupon: { select: { code: true, description: true } },
-                    alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                    alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                 },
             }),
             this.prisma.salesOrder.count({ where }),
@@ -674,7 +700,7 @@ export class PosSalesService implements OnModuleInit {
                 items: { include: { item: true } },
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
-                alliance: { select: { partnerName: true, code: true, discountPercent: true } },
+                alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
             },
         });
         if (!order) return { status: false, message: 'Order not found' };

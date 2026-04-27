@@ -103,30 +103,30 @@ async function seedPosConfig(tenantDbUrl: string, tenantName: string) {
         console.log('🤝 Seeding Alliances...');
         const alliances = [
             // ── Demographic Alliances ──────────────────────
-            { partnerName: "Student Alliance", code: "STUDENT", discountPercent: 15, description: "Valid student ID (NADRA/University card) required" },
-            { partnerName: "Senior Citizen", code: "SENIOR", discountPercent: 20, description: "65+ age proof (CNIC) required" },
-            { partnerName: "Government Employee", code: "GOV-EMP", discountPercent: 10, description: "Valid government service card required" },
+            { partnerName: "Student Alliance", code: "STUDENT", discountPercent: 15, maxDiscount: 500, description: "Valid student ID (NADRA/University card) required" },
+            { partnerName: "Senior Citizen", code: "SENIOR", discountPercent: 20, maxDiscount: 800, description: "65+ age proof (CNIC) required" },
+            { partnerName: "Government Employee", code: "GOV-EMP", discountPercent: 10, maxDiscount: 300, description: "Valid government service card required" },
 
             // ── Meezan Bank ──────────────────────────────
-            { partnerName: "Meezan Bank – Classic Card", code: "MEEZAN-CLASSIC", discountPercent: 15, description: "Valid Meezan Classic credit/debit card required at POS" },
-            { partnerName: "Meezan Bank – Women Card", code: "MEEZAN-WOMEN", discountPercent: 25, description: "Valid Meezan Women credit card required at POS" },
-            { partnerName: "Meezan Bank – Premium Card", code: "MEEZAN-PREMIUM", discountPercent: 40, description: "Valid Meezan Premium credit card required at POS" },
+            { partnerName: "Meezan Bank – Classic Card", code: "MEEZAN-CLASSIC", discountPercent: 15, maxDiscount: 1000, description: "Valid Meezan Classic credit/debit card required at POS" },
+            { partnerName: "Meezan Bank – Women Card", code: "MEEZAN-WOMEN", discountPercent: 25, maxDiscount: 2000, description: "Valid Meezan Women credit card required at POS" },
+            { partnerName: "Meezan Bank – Premium Card", code: "MEEZAN-PREMIUM", discountPercent: 40, maxDiscount: 5000, description: "Valid Meezan Premium credit card required at POS" },
 
             // ── HBL ────────────────────────────────────
-            { partnerName: "HBL – Classic Card", code: "HBL-CLASSIC", discountPercent: 10, description: "Valid HBL Classic credit/debit card required at POS" },
-            { partnerName: "HBL – Platinum Card", code: "HBL-PLATINUM", discountPercent: 20, description: "Valid HBL Platinum card required at POS" },
-            { partnerName: "HBL – Credit Card (Any)", code: "HBL-CC", discountPercent: 15, description: "Any HBL credit card required at POS" },
+            { partnerName: "HBL – Classic Card", code: "HBL-CLASSIC", discountPercent: 10, maxDiscount: 800, description: "Valid HBL Classic credit/debit card required at POS" },
+            { partnerName: "HBL – Platinum Card", code: "HBL-PLATINUM", discountPercent: 20, maxDiscount: 2000, description: "Valid HBL Platinum card required at POS" },
+            { partnerName: "HBL – Credit Card (Any)", code: "HBL-CC", discountPercent: 15, maxDiscount: 1500, description: "Any HBL credit card required at POS" },
 
             // ── UBL ────────────────────────────────────
-            { partnerName: "UBL – Classic Card", code: "UBL-CLASSIC", discountPercent: 10, description: "Valid UBL Classic credit/debit card required at POS" },
-            { partnerName: "UBL – Signature Card", code: "UBL-SIGNATURE", discountPercent: 20, description: "Valid UBL Signature card required at POS" },
+            { partnerName: "UBL – Classic Card", code: "UBL-CLASSIC", discountPercent: 10, maxDiscount: 800, description: "Valid UBL Classic credit/debit card required at POS" },
+            { partnerName: "UBL – Signature Card", code: "UBL-SIGNATURE", discountPercent: 20, maxDiscount: 2000, description: "Valid UBL Signature card required at POS" },
 
             // ── Habib Metro ───────────────────────────────
-            { partnerName: "Habib Metro – Any Card", code: "HABIB-METRO", discountPercent: 12, description: "Valid Habib Metro Bank card required at POS" },
+            { partnerName: "Habib Metro – Any Card", code: "HABIB-METRO", discountPercent: 12, maxDiscount: 1000, description: "Valid Habib Metro Bank card required at POS" },
 
             // ── MCB ─────────────────────────────────────
-            { partnerName: "MCB – Credit Card", code: "MCB-CC", discountPercent: 10, description: "Valid MCB credit card required at POS" },
-            { partnerName: "MCB – Lite Card", code: "MCB-LITE", discountPercent: 5, description: "Valid MCB Lite debit card required at POS" },
+            { partnerName: "MCB – Credit Card", code: "MCB-CC", discountPercent: 10, maxDiscount: 800, description: "Valid MCB credit card required at POS" },
+            { partnerName: "MCB – Lite Card", code: "MCB-LITE", discountPercent: 5, maxDiscount: 300, description: "Valid MCB Lite debit card required at POS" },
         ];
 
         for (const alliance of alliances) {
