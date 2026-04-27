@@ -8,20 +8,24 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
+  Logger,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { EmployeeService } from './employee.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import type { FastifyRequest } from 'fastify';
-import * as fs from 'fs';
 import * as path from 'path';
+import * as fs from 'fs';
+import { Observable } from 'rxjs';
 
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
   ApiConsumes,
   ApiBody,
@@ -30,36 +34,61 @@ import {
   CreateEmployeeDto,
   UpdateEmployeeDto,
 } from './dto/create-employee.dto';
+import { EmployeeBulkUploadService } from './employee-bulk-upload.service';
+import { EmployeeUploadEventsService } from './employee-upload-events.service';
 
 @ApiTags('Employee')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class EmployeeController {
-  constructor(private service: EmployeeService) {}
+  private readonly logger = new Logger(EmployeeController.name);
+
+  constructor(
+    private service: EmployeeService,
+    private bulkUploadService: EmployeeBulkUploadService,
+    private eventsService: EmployeeUploadEventsService,
+  ) { }
 
   @Get('employees')
   @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
   @ApiOperation({ summary: 'List all employees' })
-  async list() {
-    return this.service.list();
+  async list(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.service.list({ page, limit, search });
   }
 
   @Get('employees/for-attendance')
-  @Permissions('hr.employee.read')
-  @ApiOperation({ summary: 'List employees for attendance' })
+  @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
+  @ApiOperation({ summary: 'List employees for attendance management' })
   async listForAttendance(
     @Query('departmentId') departmentId?: string,
     @Query('subDepartmentId') subDepartmentId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
   ) {
-    return this.service.listForAttendance({ departmentId, subDepartmentId });
+    return this.service.listForAttendance({
+      departmentId,
+      subDepartmentId,
+      page,
+      limit,
+      search,
+    });
   }
 
   @Get('employees/dropdown')
   @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
   @ApiOperation({ summary: 'List employees for dropdown' })
-  async listForDropdown() {
-    return this.service.listForDropdown();
+  async listForDropdown(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.service.listForDropdown({ page, limit, search });
   }
 
   @Get('employees/rejoin/search')
@@ -114,7 +143,6 @@ export class EmployeeController {
     @Param('id') id: string,
     @Query('includeHistory') includeHistory?: string,
   ) {
-    // GET /employees/:id?includeHistory=true to include rejoin summary
     return this.service.get(id, includeHistory === 'true');
   }
 
@@ -169,84 +197,74 @@ export class EmployeeController {
       },
     },
   })
-  @ApiOperation({ summary: 'Import employees from CSV/Excel' })
+  @ApiOperation({ summary: 'Initiate bulk employee validation' })
   async importCsv(@Req() request: FastifyRequest) {
     const data = await request.file();
     if (!data) {
       return { status: false, message: 'No file provided' };
     }
 
-    // Validate file extension
     const fileExtension = path.extname(data.filename).toLowerCase();
     if (fileExtension !== '.csv' && fileExtension !== '.xlsx') {
       return {
         status: false,
-        message:
-          'Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file',
+        message: 'Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file',
       };
     }
 
-    // Save file temporarily
-    const uploadRoot = path.join(process.cwd(), 'public', 'csv');
-    if (!fs.existsSync(uploadRoot)) {
-      fs.mkdirSync(uploadRoot, { recursive: true });
-    }
+    const user = request.user as any;
+    const userId = user?.userId || user?.sub || user?.id || 'system';
 
-    const ts = Date.now();
-    const safeFilename = data.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const filename = `${ts}_${safeFilename}`;
-    const fullPath = path.join(uploadRoot, filename);
+    const fileBuffer = await data.toBuffer();
+    return this.bulkUploadService.initiateValidation(fileBuffer, data.filename, userId);
+  }
 
-    await new Promise<void>((resolve, reject) => {
-      const writeStream = fs.createWriteStream(fullPath);
-      data.file.pipe(writeStream);
-      writeStream.on('finish', () => resolve());
-      writeStream.on('error', reject);
-    });
+  @Get('employees/bulk-upload/:uploadId/status')
+  @Permissions('hr.employee.read')
+  @ApiOperation({ summary: 'Get bulk upload status' })
+  async getBulkUploadStatus(@Param('uploadId') uploadId: string) {
+    const status = await this.bulkUploadService.getUploadStatus(uploadId);
+    return {
+      status: true,
+      data: status,
+    };
+  }
 
+  @Post('employees/bulk-upload/:uploadId/confirm')
+  @Permissions('hr.employee.create')
+  @ApiOperation({ summary: 'Confirm and start employee import' })
+  async confirmBulkUpload(@Param('uploadId') uploadId: string, @Req() req: FastifyRequest) {
+    const user = req.user as any;
+    const userId = user?.userId || user?.sub || user?.id || 'system';
+    return this.bulkUploadService.confirmUpload(uploadId, userId);
+  }
+
+  @Get('employees/bulk-upload/:uploadId/errors/stream')
+  @Permissions('hr.employee.read')
+  @ApiOperation({ summary: 'Stream bulk upload error report' })
+  async streamBulkUploadErrors(@Param('uploadId') uploadId: string, @Res() res: any) {
+    return this.bulkUploadService.streamErrorReport(uploadId, res);
+  }
+
+  @Get('employees/import-template')
+  @Permissions('hr.employee.read')
+  @ApiOperation({ summary: 'Download employee import template' })
+  async downloadTemplate(@Res() res: any) {
     try {
-      // Extract userId from JWT token (could be 'sub', 'id', or 'userId')
-      const user = request.user as any;
-      const userId = user?.userId || user?.sub || user?.id || null;
-
-      const result = await this.service.bulkUploadFromCSV(fullPath, {
-        userId: userId,
-        ipAddress: request.ip,
-        userAgent: request.headers['user-agent'],
-      });
-
-      // Clean up file after processing
-      try {
-        fs.unlinkSync(fullPath);
-      } catch {
-        // Failed to delete temp file
-      }
-
-      return result;
-    } catch (error: any) {
-      // Clean up file on error
-      try {
-        fs.unlinkSync(fullPath);
-      } catch {
-        // Failed to delete temp file
-      }
-      let errorMessage = 'Failed to process file';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (
-        typeof error === 'object' &&
-        error !== null &&
-        'message' in error
-      ) {
-        const message = (error as Record<string, unknown>).message;
-        if (typeof message === 'string') {
-          errorMessage = message;
-        }
-      }
-      return {
-        status: false,
-        message: errorMessage,
-      };
+      const buffer = await this.bulkUploadService.generateTemplate();
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', 'attachment; filename=employee_import_template.xlsx');
+      res.send(buffer);
+    } catch (error) {
+      this.logger.error(`Failed to generate template: ${error.message}`);
+      res.status(500).send({ status: false, message: 'Failed to generate template' });
     }
+  }
+
+  @Sse('employees/bulk-upload/:uploadId/events')
+  @Permissions('hr.employee.read')
+  @ApiOperation({ summary: 'Stream bulk upload real-time events (SSE)' })
+  streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
+    return this.eventsService.subscribe(uploadId);
   }
 }
