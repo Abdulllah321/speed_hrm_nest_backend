@@ -7,9 +7,8 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ─────────────────────────────────────────────────────────────────────────
-  // TRIAL BALANCE
-  // Returns all leaf accounts with their debit/credit totals for a period.
-  // If no date range is given, uses the running balance on ChartOfAccount.
+  // TRIAL BALANCE (6-Column Format)
+  // Returns opening balance, period transactions, and closing balance
   // ─────────────────────────────────────────────────────────────────────────
   async getTrialBalance(from?: string, to?: string) {
     const accounts = await this.prisma.chartOfAccount.findMany({
@@ -20,7 +19,7 @@ export class ReportsService {
     });
 
     if (!from && !to) {
-      // Use stored running balances
+      // Use stored running balances (no period specified)
       let totalDebit = 0, totalCredit = 0;
       const rows = accounts.map(a => {
         const bal = Number(a.balance);
@@ -29,15 +28,42 @@ export class ReportsService {
         const credit = !isDebitNormal && bal > 0 ? bal : (isDebitNormal && bal < 0 ? -bal : 0);
         totalDebit  += debit;
         totalCredit += credit;
-        return { ...a, balance: bal, debit, credit };
+        return { 
+          ...a, 
+          balance: bal, 
+          debit, 
+          credit,
+          openingDebit: 0,
+          openingCredit: 0,
+          transactionDebit: 0,
+          transactionCredit: 0,
+          closingDebit: debit,
+          closingCredit: credit,
+        };
       });
       return { rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 };
     }
 
-    // Period-based: aggregate transactions
+    // Period-based: calculate opening, transactions, and closing
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+
+    // Get opening balances (transactions before 'from' date)
+    const openingAgg = fromDate ? await this.prisma.accountTransaction.groupBy({
+      by: ['accountId'],
+      where: { transactionDate: { lt: fromDate } },
+      _sum: { debit: true, credit: true },
+    }) : [];
+
+    const openingMap = new Map(openingAgg.map(t => [t.accountId, {
+      debit:  Number(t._sum.debit  ?? 0),
+      credit: Number(t._sum.credit ?? 0),
+    }]));
+
+    // Get period transactions (between 'from' and 'to')
     const dateFilter: any = {};
-    if (from) dateFilter.gte = new Date(from);
-    if (to)   dateFilter.lte = new Date(to);
+    if (fromDate) dateFilter.gte = fromDate;
+    if (toDate)   dateFilter.lte = toDate;
 
     const txAgg = await this.prisma.accountTransaction.groupBy({
       by: ['accountId'],
@@ -50,15 +76,72 @@ export class ReportsService {
       credit: Number(t._sum.credit ?? 0),
     }]));
 
-    let totalDebit = 0, totalCredit = 0;
-    const rows = accounts.map(a => {
-      const tx = txMap.get(a.id) ?? { debit: 0, credit: 0 };
-      totalDebit  += tx.debit;
-      totalCredit += tx.credit;
-      return { ...a, balance: Number(a.balance), debit: tx.debit, credit: tx.credit };
-    }).filter(r => r.debit !== 0 || r.credit !== 0);
+    let totalOpeningDebit = 0, totalOpeningCredit = 0;
+    let totalTxDebit = 0, totalTxCredit = 0;
+    let totalClosingDebit = 0, totalClosingCredit = 0;
 
-    return { rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01, from, to };
+    const rows = accounts.map(a => {
+      const opening = openingMap.get(a.id) ?? { debit: 0, credit: 0 };
+      const tx = txMap.get(a.id) ?? { debit: 0, credit: 0 };
+      
+      // Calculate net opening balance
+      const isDebitNormal = a.type === AccountType.ASSET || a.type === AccountType.EXPENSE;
+      const openingBalance = isDebitNormal 
+        ? opening.debit - opening.credit 
+        : opening.credit - opening.debit;
+      
+      const openingDebit = openingBalance > 0 ? openingBalance : 0;
+      const openingCredit = openingBalance < 0 ? -openingBalance : 0;
+      
+      // Period transactions
+      const transactionDebit = tx.debit;
+      const transactionCredit = tx.credit;
+      
+      // Calculate closing balance
+      const closingBalance = openingBalance + (isDebitNormal 
+        ? tx.debit - tx.credit 
+        : tx.credit - tx.debit);
+      
+      const closingDebit = closingBalance > 0 ? closingBalance : 0;
+      const closingCredit = closingBalance < 0 ? -closingBalance : 0;
+
+      totalOpeningDebit += openingDebit;
+      totalOpeningCredit += openingCredit;
+      totalTxDebit += transactionDebit;
+      totalTxCredit += transactionCredit;
+      totalClosingDebit += closingDebit;
+      totalClosingCredit += closingCredit;
+
+      return { 
+        ...a, 
+        balance: Number(a.balance),
+        debit: closingDebit,
+        credit: closingCredit,
+        openingDebit,
+        openingCredit,
+        transactionDebit,
+        transactionCredit,
+        closingDebit,
+        closingCredit,
+      };
+    }).filter(r => r.openingDebit !== 0 || r.openingCredit !== 0 || 
+                   r.transactionDebit !== 0 || r.transactionCredit !== 0 ||
+                   r.closingDebit !== 0 || r.closingCredit !== 0);
+
+    return { 
+      rows, 
+      totalDebit: totalClosingDebit, 
+      totalCredit: totalClosingCredit,
+      totalOpeningDebit,
+      totalOpeningCredit,
+      totalTransactionDebit: totalTxDebit,
+      totalTransactionCredit: totalTxCredit,
+      totalClosingDebit,
+      totalClosingCredit,
+      balanced: Math.abs(totalClosingDebit - totalClosingCredit) < 0.01, 
+      from, 
+      to 
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
