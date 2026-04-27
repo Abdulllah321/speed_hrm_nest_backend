@@ -241,7 +241,13 @@ export class EmployeeUploadProcessor {
                 this.eventsService.emit({
                     uploadId,
                     type: 'completed',
-                    data: { status: 'validated', progress: 100 }
+                    data: { 
+                        status: 'validated', 
+                        progress: 100,
+                        successRecords: totalValidRows,
+                        failedRecords: totalInvalidRows,
+                        totalRecords: totalRecordsCount
+                    }
                 });
                 return;
             }
@@ -301,14 +307,14 @@ export class EmployeeUploadProcessor {
 
                 // Pre-flight: validate required resolved IDs before hitting Prisma
                 const missing: string[] = [];
-                if (!employeeData.departmentId) missing.push('Department (not found in master data)');
-                if (!employeeData.designationId) missing.push('Designation (not found in master data)');
-                if (!employeeData.employeeGradeId) missing.push('Employee Grade (not found in master data)');
-                if (!employeeData.workingHoursPolicyId) missing.push('Working Hours Policy (not found in master data)');
-                if (!employeeData.leavesPolicyId) missing.push('Leaves Policy (not found in master data)');
-                if (!employeeData.countryId) missing.push('Country (not found — check spelling)');
-                if (!employeeData.stateId) missing.push('State (not found — ensure Country is valid so State can be auto-created)');
-                if (!employeeData.cityId) missing.push('City (not found — ensure State is valid so City can be auto-created)');
+                if (!employeeData.department?.connect?.id) missing.push('Department (not found in master data)');
+                if (!employeeData.designation?.connect?.id) missing.push('Designation (not found in master data)');
+                if (!employeeData.employeeGrade?.connect?.id) missing.push('Employee Grade (not found in master data)');
+                if (!employeeData.workingHoursPolicy?.connect?.id) missing.push('Working Hours Policy (not found in master data)');
+                if (!employeeData.leavesPolicy?.connect?.id) missing.push('Leaves Policy (not found in master data)');
+                if (!employeeData.country?.connect?.id) missing.push('Country (not found — check spelling)');
+                if (!employeeData.state?.connect?.id) missing.push('State (not found — ensure Country is valid so State can be auto-created)');
+                if (!employeeData.city?.connect?.id) missing.push('City (not found — ensure State is valid so City can be auto-created)');
                 if (missing.length > 0) {
                     throw new Error(`Missing required fields: ${missing.join('; ')}`);
                 }
@@ -316,9 +322,31 @@ export class EmployeeUploadProcessor {
                 const existing = await prisma.employee.findUnique({ where: { employeeId } });
 
                 if (existing) {
-                    await prisma.employee.update({ where: { id: existing.id }, data: employeeData });
+                    // Update employee data
+                    // For qualifications, we delete existing and recreate to match manual update behavior
+                    await prisma.employeeQualification.deleteMany({ where: { employeeId: existing.id } });
+                    
+                    const { qualifications, ...basicData } = employeeData;
+                    await prisma.employee.update({ 
+                        where: { id: existing.id }, 
+                        data: {
+                            ...basicData,
+                            qualifications: qualifications && qualifications.length > 0 ? {
+                                create: qualifications
+                            } : undefined
+                        } 
+                    });
                 } else {
-                    await prisma.employee.create({ data: { ...employeeData, employeeId } });
+                    const { qualifications, ...basicData } = employeeData;
+                    await prisma.employee.create({ 
+                        data: { 
+                            ...basicData, 
+                            employeeId,
+                            qualifications: qualifications && qualifications.length > 0 ? {
+                                create: qualifications
+                            } : undefined
+                        } 
+                    });
                 }
                 progress.successRecords++;
             } catch (error) {
@@ -350,7 +378,8 @@ export class EmployeeUploadProcessor {
         const { data } = record;
 
         const [
-            deptId, designationId, gradeId, maritalId, empStatusId, locId, whPolicyId, leavesPolicyId, allocationId, countryId
+            deptId, designationId, gradeId, maritalId, empStatusId, locId, whPolicyId, leavesPolicyId, allocationId, countryId,
+            qualificationId, instituteId
         ] = await Promise.all([
             tenantMasterData.getOrCreateDepartment(data.department || data.Department),
             tenantMasterData.getOrCreateDesignation(data.designation || data.Designation),
@@ -362,6 +391,8 @@ export class EmployeeUploadProcessor {
             tenantMasterData.getOrCreateLeavesPolicy(data.leavesPolicy || data['Leaves Policy']),
             tenantMasterData.getOrCreateAllocation(data.allocation || data.Allocation),
             tenantMasterData.findCountryByName(data.country || data.Country),
+            tenantMasterData.getOrCreateQualification(data.qualification || data.Qualification),
+            tenantMasterData.getOrCreateInstitute(data.institute || data.Institute),
         ]);
 
         const [subDeptId, stateId] = await Promise.all([
@@ -378,7 +409,7 @@ export class EmployeeUploadProcessor {
         return {
             employeeName: String(data.employeeName || data['Employee Name']),
             fatherHusbandName: data.fatherHusbandName || data['Father / Husband Name'] || data['Father/Husband Name'] || '',
-            attendanceId: (data.attendanceId || data['Attendance ID']) ? String(data.attendanceId || data['Attendance ID']) : null,
+            attendanceId: (data.attendanceId || data['Attendance ID']) ? String(data.attendanceId || data['Attendance ID']) : String(data.employeeId || data.employeeID || data['Employee ID'] || ''),
             cnicNumber: String(data.cnicNumber || data['CNIC Number']),
             cnicExpiryDate: data.cnicExpiryDate ? new Date(data.cnicExpiryDate) : null,
             joiningDate: data.joiningDate ? new Date(data.joiningDate) : new Date(),
@@ -398,21 +429,31 @@ export class EmployeeUploadProcessor {
             accountNumber: data.accountNumber || data['Account Number'] || null,
             accountTitle: data.accountTitle || data['Account Title'] || null,
             status: 'active',
-            departmentId: deptId,
-            subDepartmentId: subDeptId,
-            designationId: designationId,
-            employeeGradeId: gradeId,
-            maritalStatusId: maritalId,
-            employmentStatusId: empStatusId,
-            locationId: locId,
-            workingHoursPolicyId: whPolicyId,
-            leavesPolicyId: leavesPolicyId,
-            allocationId: allocationId,
-            // ✅ FIXED: use scalar ID field names, not relation names
-            countryId: countryId,
-            stateId: stateId,
-            cityId: cityId,
+            department: deptId ? { connect: { id: deptId } } : undefined,
+            subDepartment: subDeptId ? { connect: { id: subDeptId } } : undefined,
+            designation: designationId ? { connect: { id: designationId } } : undefined,
+            employeeGrade: gradeId ? { connect: { id: gradeId } } : undefined,
+            maritalStatus: maritalId ? { connect: { id: maritalId } } : undefined,
+            employmentStatus: empStatusId ? { connect: { id: empStatusId } } : undefined,
+            location: locId ? { connect: { id: locId } } : undefined,
+            workingHoursPolicy: whPolicyId ? { connect: { id: whPolicyId } } : undefined,
+            leavesPolicy: leavesPolicyId ? { connect: { id: leavesPolicyId } } : undefined,
+            allocation: allocationId ? { connect: { id: allocationId } } : undefined,
+            // Use relations for these to avoid Prisma scalar mapping issues
+            country: countryId ? { connect: { id: countryId } } : undefined,
+            state: stateId ? { connect: { id: stateId } } : undefined,
+            city: cityId ? { connect: { id: cityId } } : undefined,
             nationality: data.nationality || data.Nationality || 'Pakistani',
+            qualifications: qualificationId ? [
+                {
+                    qualification: { connect: { id: qualificationId } },
+                    institute: instituteId ? { connect: { id: instituteId } } : undefined,
+                    year: data.passingYear || data['Passing Year'] ? parseInt(data.passingYear || data['Passing Year'], 10) : null,
+                    grade: (data.grade || data['Grade/CGPA']) ? String(data.grade || data['Grade/CGPA']) : null,
+                    city: cityId ? { connect: { id: cityId } } : undefined,
+                    state: stateId ? { connect: { id: stateId } } : undefined
+                }
+            ] : []
         };
     }
 

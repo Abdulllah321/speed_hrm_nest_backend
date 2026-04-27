@@ -345,6 +345,28 @@ export class MasterDataService {
     }
 
     /**
+     * Get or create Qualification master record
+     */
+    async getOrCreateQualification(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'qualification', name, null,
+            () => this.prisma.qualification.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.qualification.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
+     * Get or create Institute master record
+     */
+    async getOrCreateInstitute(name: string): Promise<string | null> {
+        return this.resolveOrCreate(
+            'institute', name, null,
+            () => this.prisma.institute.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
+            () => this.prisma.institute.create({ data: { name: name.trim(), status: 'active' } })
+        );
+    }
+
+    /**
      * Find Country by name
      */
     async findCountryByName(name: string): Promise<string | null> {
@@ -558,7 +580,7 @@ export class MasterDataService {
             seasons, segments, hsCodes, divisions, itemSubclasses,
             designations, grades, maritalStatus, employmentStatus,
             locations, whPolicies, leavesPolicies, allocations,
-            subDepartments, countries
+            subDepartments, countries, qualifications, institutes
         ] = await Promise.all([
             this.prisma.size.findMany({ select: { id: true, name: true } }),
             this.prisma.color.findMany({ select: { id: true, name: true } }),
@@ -585,6 +607,8 @@ export class MasterDataService {
             this.prisma.allocation.findMany({ select: { id: true, name: true } }),
             this.prisma.subDepartment.findMany({ select: { id: true, name: true, departmentId: true } }),
             this.prisma.country.findMany({ select: { id: true, name: true } }),
+            this.prisma.qualification.findMany({ select: { id: true, name: true } }),
+            this.prisma.institute.findMany({ select: { id: true, name: true } }),
         ]);
 
         const load = (type: string, records: { id: string; name?: string; grade?: string; status?: string }[]) => {
@@ -616,6 +640,8 @@ export class MasterDataService {
         load('leavespolicy', leavesPolicies);
         load('allocation', allocations);
         load('country', countries);
+        load('qualification', qualifications);
+        load('institute', institutes);
 
         // Categories — keyed by name under their parentId bucket
         this.initCache('category');
