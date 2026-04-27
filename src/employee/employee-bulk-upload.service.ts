@@ -221,7 +221,7 @@ export class EmployeeBulkUploadService {
         const [
             depts, subDepts, designations, empGrades, locations, empStatuses,
             maritalStatuses, whPolicies, leavesPolicies,
-            allocations, countries, states, cities
+            allocations, countries, states, cities, qualifications, institutes
         ] = await Promise.all([
             this.prisma.department.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
             this.prisma.subDepartment.findMany({ select: { name: true }, distinct: ['name'], orderBy: { name: 'asc' } }),
@@ -236,6 +236,8 @@ export class EmployeeBulkUploadService {
             this.prisma.country.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
             this.prisma.state.findMany({ select: { name: true }, distinct: ['name'], orderBy: { name: 'asc' } }),
             this.prisma.city.findMany({ select: { name: true }, distinct: ['name'], orderBy: { name: 'asc' } }),
+            this.prisma.qualification.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
+            this.prisma.institute.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
         ]);
 
         // Setup Master Data sheet (for dropdowns)
@@ -253,6 +255,8 @@ export class EmployeeBulkUploadService {
             { header: 'Countries', key: 'countries', values: countries.map(c => c.name) },
             { header: 'States', key: 'states', values: states.map(s => s.name) },
             { header: 'Cities', key: 'cities', values: cities.map(c => c.name) },
+            { header: 'Qualifications', key: 'qualifications', values: qualifications.map(q => q.name) },
+            { header: 'Institutes', key: 'institutes', values: institutes.map(i => i.name) },
             { header: 'Genders', key: 'genders', values: ['male', 'female', 'other'] }
         ];
 
@@ -305,7 +309,11 @@ export class EmployeeBulkUploadService {
             { header: 'Allocation', key: 'allocation', width: 20, dropdown: 'allocations' },
             { header: 'Country', key: 'country', width: 20, dropdown: 'countries' },
             { header: 'State', key: 'state', width: 20, dropdown: 'states' },
-            { header: 'City', key: 'city', width: 20, dropdown: 'cities' }
+            { header: 'City', key: 'city', width: 20, dropdown: 'cities' },
+            { header: 'Qualification', key: 'qualification', width: 20, dropdown: 'qualifications' },
+            { header: 'Institute', key: 'institute', width: 25, dropdown: 'institutes' },
+            { header: 'Passing Year', key: 'passingYear', width: 15 },
+            { header: 'Grade/CGPA', key: 'grade', width: 15 }
         ];
 
         sheet.columns = columns.map(c => ({ header: c.header, key: c.key, width: c.width }));

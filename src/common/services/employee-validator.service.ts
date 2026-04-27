@@ -42,6 +42,11 @@ export class EmployeeValidatorService {
             errors.push(err('EmployeeName', employeeName, 'Employee Name is required.'));
         }
 
+        const attendanceId = data.attendanceId || data['Attendance ID'] || data['Attendance-ID'] || employeeId;
+        if (!attendanceId || String(attendanceId).trim() === '') {
+            errors.push(err('AttendanceID', attendanceId, 'Attendance ID is required.'));
+        }
+
         const cnic = data.cnicNumber || data['CNIC Number'] || data['CNIC-Number'];
         if (!cnic || String(cnic).trim() === '') {
             errors.push(err('CNICNumber', cnic, 'CNIC Number is required.'));
@@ -110,6 +115,12 @@ export class EmployeeValidatorService {
             } else if (numSalary < 0) {
                 errors.push(err('EmployeeSalary', salary, 'Employee Salary cannot be negative.'));
             }
+        }
+        
+        // 7. Qualification Fields Validation
+        const passingYear = data.passingYear || data['Passing Year'];
+        if (passingYear && isNaN(Number(passingYear))) {
+            errors.push(err('PassingYear', passingYear, 'Passing Year must be a valid number.'));
         }
 
         return {
