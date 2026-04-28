@@ -160,13 +160,13 @@ async function bootstrap() {
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
     logger.error('Uncaught Exception:', error);
-    gracefulShutdown('uncaughtException');
+    // Do not exit — log and continue to prevent nginx 502s
   });
 
   // Handle unhandled promise rejections
   process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    gracefulShutdown('unhandledRejection');
+    // Do not exit — log and continue to prevent nginx 502s
   });
 
   const port = parseInt(process.env.PORT ?? '5000');
