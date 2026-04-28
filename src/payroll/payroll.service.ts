@@ -64,6 +64,7 @@ export class PayrollService {
           eobi: true,
           status: true,
           joiningDate: true,
+          lastExitDate: true,
           probationExpiryDate: true,
           employeeSalary: true,
           overtimeApplicable: true,
@@ -291,15 +292,41 @@ export class PayrollService {
     for (const employee of enrichedEmployees) {
       // Type cast to any to handle Prisma relations that may not be in generated types yet
       const emp = employee as any;
-      const monthStartDate = new Date(
-        `${normalizedYear}-${normalizedMonth}-01`,
-      );
-      const monthEndDate = new Date(
-        Number(normalizedYear),
-        Number(normalizedMonth),
-        0,
-      );
+      // ── Joining / Exit date window ─────────────────────────────────────
+      const joiningDate = emp.joiningDate ? new Date(emp.joiningDate) : null;
+      const lastExitDate = emp.lastExitDate ? new Date(emp.lastExitDate) : null;
+      if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+      if (lastExitDate) lastExitDate.setHours(23, 59, 59, 999);
+
+      // Effective employment window for this payroll month
+      const effectiveStart =
+        joiningDate && joiningDate > monthStartDate
+          ? joiningDate
+          : new Date(monthStartDate);
+      const effectiveEnd =
+        lastExitDate && lastExitDate < monthEndDate
+          ? lastExitDate
+          : new Date(monthEndDate);
+
+      // Guard: employee not active in this month at all
+      if (effectiveStart > monthEndDate || effectiveEnd < monthStartDate) {
+        continue; // Skip — no payroll entry for this month
+      }
+
+      // workedDays — Math.floor is DST-safe
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const workedDays =
+        Math.floor(
+          (effectiveEnd.getTime() - effectiveStart.getTime()) / msPerDay,
+        ) + 1;
+
+      // Extra safety guard
+      if (workedDays <= 0) continue;
+
       const totalDaysInMonth = monthEndDate.getDate();
+      const isMidMonthEntry = workedDays < totalDaysInMonth;
+      const salaryFraction = new Decimal(workedDays).div(totalDaysInMonth);
+      // ──────────────────────────────────────────────────────────────────
 
       // Calculate effective salary considering increments/decrements during the month
       const { effectivePackage, incrementBreakup } =
@@ -310,16 +337,22 @@ export class PayrollService {
           totalDaysInMonth,
         );
 
+      // Prorate packageAmount for salary base
+      const proratedPackage = isMidMonthEntry
+        ? effectivePackage.mul(salaryFraction)
+        : effectivePackage;
+
       // "effectivePackage" is the effective monthly package considering increments/decrements
-      const packageAmount = effectivePackage;
+      const packageAmount = proratedPackage;
 
       // Calculate breakup components using effective package
-      // Parse details to get component-level taxability information
+      // Parse details to get component-level taxability and deductibility information
       const salaryBreakup = salaryBreakups.map((breakup) => {
         let amount = new Decimal(0);
         let isTaxable = true;
+        let isDeductible = false;
 
-        // Parse details JSON to check if this component is explicitly marked as non-taxable
+        // Parse details JSON to check if this component is explicitly marked as non-taxable or deductible
         try {
           if (breakup.details) {
             const details =
@@ -331,20 +364,28 @@ export class PayrollService {
               const matchingEntry = details.find(
                 (entry: any) => entry.typeName === breakup.name,
               );
-              if (matchingEntry && matchingEntry.isTaxable === false) {
+              if (matchingEntry) {
+                if (matchingEntry.isTaxable === false) {
+                  isTaxable = false;
+                }
+                if (matchingEntry.isDeductible === true) {
+                  isDeductible = true;
+                }
+              }
+            } else if (typeof details === 'object') {
+              // If details is an object with isTaxable/isDeductible properties
+              if (details.isTaxable === false) {
                 isTaxable = false;
               }
-            } else if (
-              typeof details === 'object' &&
-              details.isTaxable === false
-            ) {
-              // If details is an object with isTaxable property
-              isTaxable = false;
+              if (details.isDeductible === true) {
+                isDeductible = true;
+              }
             }
           }
         } catch (e) {
-          // If parsing fails, default to taxable
+          // If parsing fails, default to taxable and not deductible
           isTaxable = true;
+          isDeductible = false;
         }
 
         // Override: Ensure 'Take Home Salary' is always taxable as per user request
@@ -363,6 +404,7 @@ export class PayrollService {
             : null,
           amount: Math.round(amount.toNumber()), // Round to whole number (no decimals)
           isTaxable: isTaxable,
+          isDeductible: isDeductible,
           isRecurring: true, // Salary components are always recurring
         };
       });
@@ -391,6 +433,8 @@ export class PayrollService {
         : packageAmount; // Fallback to package if no basic defined
 
       // Calculate total package amount (sum of all salary breakup components)
+      // All salary components are added to gross, regardless of isDeductible flag
+      // isDeductible flag is only used for EOBI/PF/Social Security base calculation
       const salaryBreakupTotal = salaryBreakup.reduce(
         (sum, component) => sum + (component.amount || 0),
         0,
@@ -402,6 +446,10 @@ export class PayrollService {
 
       // A. Calculate Allowances (Ad-hoc additional allowances)
       let totalAdHocAllowances = this.calculateAllowances(emp.allowances || []);
+      // Prorate fixed/recurring allowances for mid-month joining/exit
+      if (isMidMonthEntry) {
+        totalAdHocAllowances = totalAdHocAllowances.mul(salaryFraction);
+      }
 
       // Prepare allowance breakdown (only allowances with paymentMethod 'with_salary')
       const allowanceBreakup = (emp.allowances || [])
@@ -441,14 +489,10 @@ export class PayrollService {
       }
 
       if (socialSecurityRate && socialSecurityRate.gt(0)) {
-        // SSI base calculation: Basic Salary + House Rent + Utility
-        const ssiComponentNames = ['Basic Salary', 'House Rent', 'Utility'];
+        // SSI base calculation: Use only salary components marked as deductible
+        // Filter components where isDeductible = true
         const ssiBase = salaryBreakup
-          .filter((comp) =>
-            ssiComponentNames.some(
-              (name) => comp.name.trim().toLowerCase() === name.toLowerCase(),
-            ),
-          )
+          .filter((comp) => comp.isDeductible === true)
           .reduce(
             (sum, comp) => sum.add(new Decimal(comp.amount)),
             new Decimal(0),
@@ -498,6 +542,9 @@ export class PayrollService {
           emp.policyAssignments, // Pass assignments
           totalPackageAmount,
           allHolidays,
+          effectiveStart,
+          effectiveEnd,
+          workedDays,
         );
 
       // D. Calculate Bonuses
@@ -534,8 +581,8 @@ export class PayrollService {
       }));
 
       // E. Calculate Gross Salary (Pre-tax)
-      // Gross = Sum of Salary Breakup Components + AdHoc Allowances + Overtime + Bonus + Leave Encashment
-      // Use already calculated totalPackageAmount (which is salaryBreakupTotal as Decimal)
+      // Gross = Sum of All Salary Breakup Components + AdHoc Allowances + Overtime + Bonus + Leave Encashment
+      // All salary components are included in gross regardless of isDeductible flag
       const grossSalary = totalPackageAmount
         .add(totalAdHocAllowances)
         .add(overtimeAmount)
@@ -555,13 +602,14 @@ export class PayrollService {
         emp.rebates || [],
         packageAmount,
         allTaxSlabs,
+        salaryFraction,
       );
 
       // G. Calculate EOBI & PF
-      // PF should only be calculated from salary components (Basic Salary, House Rent, Utility, etc.)
-      // NOT from allowances, bonuses, or leave encashment
+      // PF and EOBI should only be calculated from salary components marked as deductible
+      // Pass salaryBreakup array to calculate base amount from deductible components only
       const { eobiDeduction, providentFundDeduction } =
-        await this.calculateEOBI_PF(employee, month, year, totalPackageAmount);
+        await this.calculateEOBI_PF(employee, month, year, salaryBreakup);
 
       // H. Calculate Loans & Advances
       const { loanDeduction, advanceSalaryDeduction } =
@@ -607,7 +655,7 @@ export class PayrollService {
         workingHoursPolicy: emp.workingHoursPolicy, // Default policy
         policyAssignments: emp.policyAssignments, // Expose for UI timeline
         basicSalary: calculatedBasicSalary.toNumber(),
-        salaryBreakup,
+        salaryBreakup, // All salary components shown in Salary/Allowances section
         allowanceBreakup,
         totalAllowances: totalAdHocAllowances.toNumber(),
         overtimeBreakup,
@@ -630,6 +678,12 @@ export class PayrollService {
         taxDeduction: taxDeduction.toNumber(),
         grossSalary: grossSalary.toNumber(),
         netSalary: netSalary.toNumber(),
+        joiningDate: emp.joiningDate || null,
+        lastExitDate: emp.lastExitDate || null,
+        workedDays,
+        totalDaysInMonth,
+        salaryFraction: salaryFraction.toNumber(),
+        isMidMonthEntry,
         paymentStatus: 'pending',
       });
     }
@@ -1450,10 +1504,32 @@ export class PayrollService {
     employee: any,
     month: string,
     year: string,
-    grossSalary: Decimal,
+    salaryBreakup: Array<{
+      id: string;
+      name: string;
+      percentage: number | null;
+      amount: number;
+      isTaxable: boolean;
+      isDeductible: boolean;
+      isRecurring: boolean;
+    }>,
   ) {
     let eobiDeduction = new Decimal(0);
     let providentFundDeduction = new Decimal(0);
+
+    // Calculate base amount from salary components marked as deductible
+    // Only components with isDeductible = true will be included in EOBI/PF calculation
+    const deductibleBaseAmount = salaryBreakup
+      .filter((component) => component.isDeductible === true)
+      .reduce((sum, component) => sum.add(new Decimal(component.amount)), new Decimal(0));
+
+    // If no deductible components, use 0 as base (no EOBI/PF deduction)
+    if (deductibleBaseAmount.lte(0)) {
+      this.logger.warn(
+        `No deductible salary components found for employee ${employee.id} (${employee.employeeId}). EOBI/PF will be 0.`,
+      );
+      return { eobiDeduction, providentFundDeduction };
+    }
 
     // Calculate EOBI deduction from master table
     if (employee.eobi) {
@@ -1506,6 +1582,7 @@ export class PayrollService {
     }
 
     // Provident Fund calculation from master table
+    // Calculate PF as percentage of deductible base amount only
     if (employee.providentFund) {
       try {
         // Fetch active ProvidentFund record from master table
@@ -1517,8 +1594,8 @@ export class PayrollService {
         });
 
         if (pfRecord) {
-          // Calculate PF deduction as percentage of Gross Salary
-          providentFundDeduction = grossSalary
+          // Calculate PF deduction as percentage of deductible base amount
+          providentFundDeduction = deductibleBaseAmount
             .mul(new Decimal(pfRecord.percentage))
             .div(100);
         } else {
@@ -1759,6 +1836,9 @@ export class PayrollService {
     policyAssignments: any[],
     totalSalary: Decimal,
     allHolidays: any[],
+    effectiveStart: Date,
+    effectiveEnd: Date,
+    workedDays: number,
   ): Promise<{ attendanceDeduction: Decimal; attendanceBreakup: any }> {
     const startDate = new Date(`${year}-${month}-01`);
     const endDate = new Date(Number(year), Number(month), 0);
@@ -1780,8 +1860,10 @@ export class PayrollService {
 
     let totalDeduction = new Decimal(0);
 
-    // Calculate per day salary based on actual days in month - using total salary
-    const perDaySalary = totalSalary.div(totalDaysInMonth);
+    // Calculate per day salary based on worked days if mid-month joining/exit
+    const perDaySalary = totalSalary.div(
+      workedDays > 0 ? workedDays : totalDaysInMonth,
+    );
 
     // Helper to check if date has approved leave
     const hasApprovedLeave = (date: Date): boolean => {
@@ -1863,8 +1945,16 @@ export class PayrollService {
     ];
 
     // Iterate through EVERY day of the month to ensure complete coverage
+    let sandwichAbsentCount = 0; // Track sandwich rule absences separately
+    
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const checkDate = new Date(Number(year), Number(month) - 1, day);
+
+      // Skip days outside employment window — NOT absent, NOT paid
+      if (checkDate < effectiveStart || checkDate > effectiveEnd) {
+        continue;
+      }
+
       const dateStr = checkDate.toDateString();
       const att = attendanceMap.get(dateStr);
       const hasLeave = hasApprovedLeave(checkDate);
@@ -1898,8 +1988,19 @@ export class PayrollService {
         continue; // Leaves don't count towards deductions
       }
 
+      // Check if it's a holiday or day off
       if (isHoliday || isDayOff) {
-        continue; // Holidays and weekends don't count towards deductions unless there's specific logic for them
+        // If there's an explicit attendance record marked as absent on a holiday/weekend, count it
+        if (att && att.status === 'absent') {
+          if (bucket) {
+            bucket.stats.absent++;
+            // Check if this is a sandwich rule absence (check notes)
+            if (att.notes && att.notes.includes('Sandwich rule applied')) {
+              sandwichAbsentCount++;
+            }
+          }
+        }
+        continue; // Skip other processing for holidays and weekends
       }
 
       if (bucket) {
@@ -2024,10 +2125,15 @@ export class PayrollService {
     }
 
     // Create attendance breakdown (Aggregate logic for simplicity in UI, though calculation was segmented)
+    const regularAbsentCount = totalAbsentCount - sandwichAbsentCount;
     const attendanceBreakup = {
       absent: {
-        count: totalAbsentCount,
-        amount: Math.round(perDaySalary.mul(totalAbsentCount).toNumber()),
+        count: regularAbsentCount,
+        amount: Math.round(perDaySalary.mul(regularAbsentCount).toNumber()),
+      },
+      sandwichAbsent: {
+        count: sandwichAbsentCount,
+        amount: Math.round(perDaySalary.mul(sandwichAbsentCount).toNumber()),
       },
       late: {
         count: totalLateCount,
@@ -2330,6 +2436,7 @@ export class PayrollService {
     rebates: any[],
     packageAmount: Decimal,
     allTaxSlabs: any[],
+    salaryFraction: Decimal,
   ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
     // Calculate taxable income from salary breakup components only (not gross salary)
     // Include ALL salary components (Basic Salary, House Rent, Utility, etc.) in taxable income
@@ -2354,11 +2461,15 @@ export class PayrollService {
         let annualAmount = new Decimal(0);
 
         if (isRecurring) {
-          // Recurring components are annualized (x12)
+          // Recurring components are annualized (x12).
+          // Rule: If already prorated upstream, amount * 12 gives correct annualized project.
           annualAmount = new Decimal(component.amount).mul(12);
         } else {
-          // Specific/One-time components are added as-is (x1)
-          annualAmount = new Decimal(component.amount);
+          // Specific/One-time components or non-prorated recurring.
+          // Applying salaryFraction to project the annual basis correctly for new joins.
+          annualAmount = new Decimal(component.amount).mul(
+            new Decimal(12).mul(salaryFraction),
+          );
         }
 
         annualTaxableIncome = annualTaxableIncome.add(annualAmount);
