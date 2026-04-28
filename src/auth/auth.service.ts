@@ -56,11 +56,10 @@ export class AuthService {
     browserId?: string
   ) {
     try {
+    // Fetch user without permissions — permissions are loaded lazily via /auth/me
     const user = await this.prismaMaster.user.findUnique({
       where: { email },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
+      include: { role: true },
     });
     if (!user) return { status: false, message: 'User not found' };
     if (user.status !== 'active')
@@ -115,6 +114,14 @@ export class AuthService {
       refreshOpts,
     );
 
+    // Fetch permissions separately to avoid loading 300+ records in the login query
+    const rolePermissions = user.roleId
+      ? await this.prismaMaster.rolePermission.findMany({
+          where: { roleId: user.roleId },
+          select: { permission: { select: { name: true } } },
+        })
+      : [];
+
     return {
       status: true,
       data: {
@@ -124,10 +131,7 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role?.name || null,
-          permissions:
-            user.role?.permissions
-              .filter((p) => p.permission)
-              .map((p) => p.permission.name) || [],
+          permissions: rolePermissions.map((rp) => rp.permission.name),
         },
         accessToken,
         refreshToken,
@@ -188,9 +192,7 @@ export class AuthService {
     // 3. Find target user in Master DB by employeeId
     let targetUser = await this.prismaMaster.user.findFirst({
       where: { employeeId },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
+      include: { role: true },
     });
 
     // 4. JIT: If no user account is found, create/assign the dashboard account
@@ -203,23 +205,15 @@ export class AuthService {
       // Check if user exists by email but isn't linked to this employeeId
       targetUser = await this.prismaMaster.user.findUnique({
         where: { email },
-        include: {
-          role: { include: { permissions: { include: { permission: true } } } },
-        },
+        include: { role: true },
       });
 
       if (targetUser) {
         // Link existing user to this employeeId and enable dashboard
         targetUser = await this.prismaMaster.user.update({
           where: { id: targetUser.id },
-          data: {
-            employeeId,
-            isDashboardEnabled: true,
-            status: 'active'
-          },
-          include: {
-            role: { include: { permissions: { include: { permission: true } } } },
-          },
+          data: { employeeId, isDashboardEnabled: true, status: 'active' },
+          include: { role: true },
         });
       } else {
         // Create brand new user account
@@ -239,9 +233,7 @@ export class AuthService {
             mustChangePassword: true,
             authProvider: 'local',
           },
-          include: {
-            role: { include: { permissions: { include: { permission: true } } } },
-          },
+          include: { role: true },
         });
       }
     }
@@ -256,9 +248,7 @@ export class AuthService {
       targetUser = await this.prismaMaster.user.update({
         where: { id: targetUser.id },
         data: { isDashboardEnabled: true },
-        include: {
-          role: { include: { permissions: { include: { permission: true } } } },
-        },
+        include: { role: true },
       });
     }
 
@@ -312,6 +302,14 @@ export class AuthService {
       refreshOpts,
     );
 
+    // Fetch permissions for impersonated user
+    const impersonatePerms = targetUser.roleId
+      ? await this.prismaMaster.rolePermission.findMany({
+          where: { roleId: targetUser.roleId },
+          select: { permission: { select: { name: true } } },
+        })
+      : [];
+
     return {
       status: true,
       data: {
@@ -321,8 +319,7 @@ export class AuthService {
           firstName: targetUser.firstName,
           lastName: targetUser.lastName,
           role: targetUser.role?.name || null,
-          permissions:
-            targetUser.role?.permissions.map((p) => p.permission.name) || [],
+          permissions: impersonatePerms.map((rp) => rp.permission.name),
           employee: {
             id: employeeDetails.id,
             employeeId: employeeDetails.employeeId,
@@ -342,9 +339,7 @@ export class AuthService {
   async stopImpersonating(impersonatorId: string) {
     const user = await this.prismaMaster.user.findUnique({
       where: { id: impersonatorId },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
+      include: { role: true },
     });
 
     if (!user) return { status: false, message: 'Original user not found' };
@@ -375,6 +370,14 @@ export class AuthService {
       refreshOpts,
     );
 
+    // Fetch permissions for restored user
+    const stopImpersonatePerms = user.roleId
+      ? await this.prismaMaster.rolePermission.findMany({
+          where: { roleId: user.roleId },
+          select: { permission: { select: { name: true } } },
+        })
+      : [];
+
     return {
       status: true,
       data: {
@@ -384,10 +387,7 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role?.name || null,
-          permissions:
-            user.role?.permissions
-              .filter((p) => p.permission)
-              .map((p) => p.permission.name) || [],
+          permissions: stopImpersonatePerms.map((rp) => rp.permission.name),
         },
         accessToken,
         refreshToken,
