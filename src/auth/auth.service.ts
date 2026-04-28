@@ -55,15 +55,18 @@ export class AuthService {
     userAgent?: string,
     browserId?: string
   ) {
+    try {
     const user = await this.prismaMaster.user.findUnique({
       where: { email },
       include: {
         role: { include: { permissions: { include: { permission: true } } } },
       },
     });
-    if (!user) return { status: false, message: 'user not found' };
+    if (!user) return { status: false, message: 'User not found' };
     if (user.status !== 'active')
       return { status: false, message: 'Account is not active' };
+    if (!user.password)
+      return { status: false, message: "Password doesn't match" };
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return { status: false, message: "Password doesn't match" };
 
@@ -131,6 +134,10 @@ export class AuthService {
         sessionId
       },
     };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { status: false, message: 'An error occurred during login. Please try again.' };
+    }
   }
 
   /**
@@ -1223,6 +1230,7 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) return { status: false, message: 'User not found' };
+    if (!user.password) return { status: false, message: 'Invalid current password' };
     const ok = await bcrypt.compare(oldPassword, user.password);
     if (!ok) return { status: false, message: 'Invalid current password' };
     if ((newPassword || '').length < authConfig.password.minLength)
