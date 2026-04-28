@@ -161,8 +161,9 @@ export class AuthController {
         maxAge: 30 * 24 * 60 * 60,
       });
 
-      // Set user data (for client-side access)
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      // Set user data (for client-side access) — exclude permissions to keep cookie small
+      const { permissions: _omit, ...userForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(userForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
@@ -308,7 +309,8 @@ export class AuthController {
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
       res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      const { permissions: _p1, ...posUserCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(posUserCookie), { ...cookieOptions, maxAge: 12 * 60 * 60 });
       res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
       return res.send(result);
     }
@@ -352,7 +354,8 @@ export class AuthController {
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
       res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      const { permissions: _p2, ...posSwitchCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(posSwitchCookie), { ...cookieOptions, maxAge: 12 * 60 * 60 });
       res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
 
       return res.send(result);
@@ -415,12 +418,11 @@ export class AuthController {
       });
 
       // Set user data (for client-side)
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _ssoOmit, ...ssoUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(ssoUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
-
-      // Return JSON response for frontend to handle
       return res.send({
         status: true,
         message: 'SSO login successful',
@@ -480,7 +482,8 @@ export class AuthController {
       });
 
       // Set user summary data
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _impOmit, ...impUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(impUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
@@ -534,7 +537,8 @@ export class AuthController {
       });
 
       // Set user summary data
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _stopOmit, ...stopUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(stopUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
@@ -940,7 +944,8 @@ export class AuthController {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _devOmit, ...devUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(devUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
