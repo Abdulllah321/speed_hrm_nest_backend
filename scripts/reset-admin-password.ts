@@ -10,7 +10,7 @@ async function main() {
     const adapter = new PrismaPg(pool);
     const prisma = new PrismaClient({ adapter });
 
-    const newPassword = 'Password@123';
+    const newPassword = 'Access123';
 
     console.log(`🔄 Resetting password for all users...`);
 
