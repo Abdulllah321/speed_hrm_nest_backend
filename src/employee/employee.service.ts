@@ -105,6 +105,8 @@ export class EmployeeService {
         departmentId: true,
         subDepartmentId: true,
         workingHoursPolicyId: true,
+        joiningDate: true,
+        lastExitDate: true,
         department: true,
         subDepartment: true,
         workingHoursPolicy: true,

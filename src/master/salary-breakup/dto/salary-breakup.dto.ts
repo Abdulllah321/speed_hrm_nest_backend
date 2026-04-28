@@ -31,6 +31,17 @@ export class CreateSalaryBreakupDto {
   @Type(() => Boolean)
   isTaxable?: boolean;
 
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true' || value === 'yes';
+    return false;
+  })
+  @Type(() => Boolean)
+  isDeductible?: boolean;
+
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()
   @IsString()
@@ -64,6 +75,17 @@ export class UpdateSalaryBreakupDto {
   })
   @Type(() => Boolean)
   isTaxable?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true' || value === 'yes';
+    return false;
+  })
+  @Type(() => Boolean)
+  isDeductible?: boolean;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()

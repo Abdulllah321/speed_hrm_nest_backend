@@ -30,6 +30,7 @@ export class SalaryBreakupService {
       name: string;
       percentage: number;
       isTaxable?: boolean;
+      isDeductible?: boolean;
       status?: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -40,8 +41,11 @@ export class SalaryBreakupService {
           name: body.name,
           percentage: body.percentage,
           details:
-            body.isTaxable !== undefined
-              ? JSON.stringify({ isTaxable: body.isTaxable })
+            body.isTaxable !== undefined || body.isDeductible !== undefined
+              ? JSON.stringify({ 
+                  isTaxable: body.isTaxable,
+                  isDeductible: body.isDeductible 
+                })
               : null,
           status: body.status ?? 'active',
           createdById: ctx.userId,
@@ -84,6 +88,7 @@ export class SalaryBreakupService {
       name: string;
       percentage: number;
       isTaxable?: boolean;
+      isDeductible?: boolean;
       status?: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -97,15 +102,31 @@ export class SalaryBreakupService {
         return { status: false, message: 'Salary breakup not found' };
       }
 
+      // Parse existing details
+      let existingDetails: any = {};
+      try {
+        if (existing.details) {
+          existingDetails = typeof existing.details === 'string' 
+            ? JSON.parse(existing.details) 
+            : existing.details;
+        }
+      } catch (e) {
+        existingDetails = {};
+      }
+
+      // Merge with new values
+      const updatedDetails = {
+        ...existingDetails,
+        ...(body.isTaxable !== undefined && { isTaxable: body.isTaxable }),
+        ...(body.isDeductible !== undefined && { isDeductible: body.isDeductible }),
+      };
+
       const updated = await this.prisma.salaryBreakup.update({
         where: { id },
         data: {
           name: body.name,
           percentage: body.percentage,
-          details:
-            body.isTaxable !== undefined
-              ? JSON.stringify({ isTaxable: body.isTaxable })
-              : existing.details,
+          details: JSON.stringify(updatedDetails),
           status: body.status ?? existing.status,
         },
       });
