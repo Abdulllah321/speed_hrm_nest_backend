@@ -55,91 +55,123 @@ export class AuthService {
     userAgent?: string,
     browserId?: string
   ) {
+    const startTime = Date.now();
+    this.logger.log(`[LOGIN] Attempt: ${email} | IP: ${ipAddress || 'unknown'}`);
+
     try {
-    // Fetch user without permissions — permissions are loaded lazily via /auth/me
-    const user = await this.prismaMaster.user.findUnique({
-      where: { email },
-      include: { role: true },
-    });
-    if (!user) return { status: false, message: 'User not found' };
-    if (user.status !== 'active')
-      return { status: false, message: 'Account is not active' };
-    if (!user.password)
-      return { status: false, message: "Password doesn't match" };
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return { status: false, message: "Password doesn't match" };
+      // Step 1: Find user
+      this.logger.debug(`[LOGIN] Step 1: Looking up user: ${email}`);
+      const user = await this.prismaMaster.user.findUnique({
+        where: { email },
+        include: { role: true },
+      });
 
-    // Update Login History
-    await this.prismaMaster.loginHistory.create({
-      data: {
-        userId: user.id,
-        ipAddress: ipAddress || 'Unknown',
-        userAgent: userAgent || null,
-        status: 'success',
-      },
-    });
+      if (!user) {
+        this.logger.warn(`[LOGIN] Failed — user not found: ${email}`);
+        return { status: false, message: 'User not found' };
+      }
+      this.logger.debug(`[LOGIN] Step 1 OK: id=${user.id} | role=${user.role?.name || 'none'} | status=${user.status}`);
 
-    // Handle Session Management
-    const sessionToken = uuidv4();
-    const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, {
-      ip: ipAddress,
-      userAgent,
-      browserId
-    });
+      // Step 2: Status check
+      if (user.status !== 'active') {
+        this.logger.warn(`[LOGIN] Failed — account inactive: ${email} | status=${user.status}`);
+        return { status: false, message: 'Account is not active' };
+      }
 
-    const accessOpts: jwt.SignOptions = {
-      expiresIn: authConfig.jwt.accessExpiresIn as any,
-      issuer: authConfig.jwt.issuer,
-    };
+      // Step 3: Password check
+      if (!user.password) {
+        this.logger.warn(`[LOGIN] Failed — no password set: ${email}`);
+        return { status: false, message: "Password doesn't match" };
+      }
 
-    // Include sessionId in payload
-    const payload = {
-      userId: user.id,
-      email: user.email,
-      roleId: user.roleId,
-      employeeId: user.employeeId,
-      roleName: user.role?.name || null,
-      sessionId: sessionId,
-    };
+      this.logger.debug(`[LOGIN] Step 3: bcrypt compare | hash prefix: ${user.password.substring(0, 7)}`);
+      const bcryptStart = Date.now();
+      const ok = await bcrypt.compare(password, user.password);
+      this.logger.debug(`[LOGIN] Step 3 OK: bcrypt took ${Date.now() - bcryptStart}ms | match=${ok}`);
 
-    const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+      if (!ok) {
+        this.logger.warn(`[LOGIN] Failed — wrong password: ${email}`);
+        return { status: false, message: "Password doesn't match" };
+      }
 
-    const refreshOpts: jwt.SignOptions = {
-      expiresIn: authConfig.jwt.refreshExpiresIn as any,
-      issuer: authConfig.jwt.issuer,
-    };
-    const refreshToken = jwt.sign(
-      { userId: user.id, sessionId: sessionId },
-      authConfig.jwt.refreshSecret,
-      refreshOpts,
-    );
-
-    // Fetch permissions separately to avoid loading 300+ records in the login query
-    const rolePermissions = user.roleId
-      ? await this.prismaMaster.rolePermission.findMany({
-          where: { roleId: user.roleId },
-          select: { permission: { select: { name: true } } },
-        })
-      : [];
-
-    return {
-      status: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role?.name || null,
-          permissions: rolePermissions.map((rp) => rp.permission.name),
+      // Step 4: Login history
+      this.logger.debug(`[LOGIN] Step 4: Writing login history`);
+      await this.prismaMaster.loginHistory.create({
+        data: {
+          userId: user.id,
+          ipAddress: ipAddress || 'Unknown',
+          userAgent: userAgent || null,
+          status: 'success',
         },
-        accessToken,
-        refreshToken,
-        sessionId
-      },
-    };
+      });
+      this.logger.debug(`[LOGIN] Step 4 OK`);
+
+      // Step 5: Session management
+      this.logger.debug(`[LOGIN] Step 5: Managing sessions for user ${user.id}`);
+      const sessionToken = uuidv4();
+      const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, {
+        ip: ipAddress,
+        userAgent,
+        browserId
+      });
+      this.logger.debug(`[LOGIN] Step 5 OK: sessionId=${sessionId}`);
+
+      // Step 6: Sign tokens
+      this.logger.debug(`[LOGIN] Step 6: Signing JWT tokens`);
+      const accessOpts: jwt.SignOptions = {
+        expiresIn: authConfig.jwt.accessExpiresIn as any,
+        issuer: authConfig.jwt.issuer,
+      };
+      const payload = {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        employeeId: user.employeeId,
+        roleName: user.role?.name || null,
+        sessionId: sessionId,
+      };
+      const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+      const refreshOpts: jwt.SignOptions = {
+        expiresIn: authConfig.jwt.refreshExpiresIn as any,
+        issuer: authConfig.jwt.issuer,
+      };
+      const refreshToken = jwt.sign(
+        { userId: user.id, sessionId: sessionId },
+        authConfig.jwt.refreshSecret,
+        refreshOpts,
+      );
+      this.logger.debug(`[LOGIN] Step 6 OK`);
+
+      // Step 7: Fetch permissions
+      this.logger.debug(`[LOGIN] Step 7: Fetching permissions | roleId=${user.roleId || 'none'}`);
+      const rolePermissions = user.roleId
+        ? await this.prismaMaster.rolePermission.findMany({
+            where: { roleId: user.roleId },
+            select: { permission: { select: { name: true } } },
+          })
+        : [];
+      this.logger.debug(`[LOGIN] Step 7 OK: ${rolePermissions.length} permissions`);
+
+      this.logger.log(`[LOGIN] Success: ${email} | userId=${user.id} | role=${user.role?.name} | total=${Date.now() - startTime}ms`);
+
+      return {
+        status: true,
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role?.name || null,
+            permissions: rolePermissions.map((rp) => rp.permission.name),
+          },
+          accessToken,
+          refreshToken,
+          sessionId
+        },
+      };
     } catch (error) {
-      console.error('Login error:', error);
+      this.logger.error(`[LOGIN] Exception for ${email} after ${Date.now() - startTime}ms | ${error?.message || error}`, error?.stack);
       return { status: false, message: 'An error occurred during login. Please try again.' };
     }
   }
