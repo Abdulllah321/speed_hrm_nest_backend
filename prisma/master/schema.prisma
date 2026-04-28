@@ -97,9 +97,8 @@ model User {
   loginHistory  LoginHistory[]
   preferences   UserPreference[]
   notifications Notification[]
-
-
-  sessions UserSession[]
+  sessions      UserSession[]
+  desktopDevices DesktopDevice[]
 
   @@index([externalId])
   @@index([tenantId])
@@ -113,15 +112,45 @@ model UserSession {
   ipAddress  String?
   userAgent  String?
   deviceInfo String?
-  deviceType String   @default("DESKTOP") // 'DESKTOP' | 'MOBILE'
+  deviceType String   @default("DESKTOP") // 'DESKTOP' | 'MOBILE' | 'ELECTRON'
   browserId  String? // Fingerprint or UUID from client
+  deviceId   String? // Links to DesktopDevice.id for Electron sessions
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  desktopDevice DesktopDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([deviceId])
+}
+
+/// Registered Electron desktop devices — validated against cloud on every startup.
+/// Mirrors how Postman/Docker Desktop/Teams handle device licensing.
+model DesktopDevice {
+  id          String   @id @default(uuid())
+  userId      String
+  machineId   String   // Stable hardware fingerprint (generated once, stored in electron-store)
+  deviceToken String   @unique // Long-lived opaque token stored encrypted in OS keychain
+  hostname    String?
+  platform    String?
+  appVersion  String?
+  status      String   @default("active") // 'active' | 'revoked' | 'suspended'
+  lastSeenAt  DateTime @default(now())
+  lastSeenIp  String?
+  revokedAt   DateTime?
+  revokedBy   String?  // userId of admin who revoked
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions UserSession[]
+
+  @@unique([userId, machineId])
+  @@index([userId])
+  @@index([machineId])
+  @@index([deviceToken])
 }
 
 model Role {

@@ -2002,4 +2002,240 @@ export class AuthService {
       return { status: false, message: 'Failed to link session' };
     }
   }
+
+  // ─── Desktop / Electron Device Auth ────────────────────────────────────────
+
+  /**
+   * Register or re-activate a desktop device after a successful credential login.
+   * Issues a long-lived deviceToken stored encrypted in the OS keychain.
+   */
+  async registerDesktopDevice(
+    userId: string,
+    info: {
+      machineId: string;
+      hostname?: string;
+      platform?: string;
+      appVersion?: string;
+      ipAddress?: string;
+    },
+  ) {
+    if (!info.machineId) {
+      return { status: false, message: 'machineId is required' };
+    }
+
+    const deviceToken = uuidv4() + '-' + uuidv4(); // 72-char opaque token
+
+    // Upsert: same user + same machine → update token & mark active
+    const device = await this.prismaMaster.desktopDevice.upsert({
+      where: { userId_machineId: { userId, machineId: info.machineId } },
+      update: {
+        deviceToken,
+        hostname: info.hostname,
+        platform: info.platform,
+        appVersion: info.appVersion,
+        status: 'active',
+        lastSeenAt: new Date(),
+        lastSeenIp: info.ipAddress,
+        revokedAt: null,
+        revokedBy: null,
+      },
+      create: {
+        userId,
+        machineId: info.machineId,
+        deviceToken,
+        hostname: info.hostname,
+        platform: info.platform,
+        appVersion: info.appVersion,
+        status: 'active',
+        lastSeenAt: new Date(),
+        lastSeenIp: info.ipAddress,
+      },
+    });
+
+    return {
+      status: true,
+      message: 'Device registered',
+      data: {
+        deviceId: device.id,
+        deviceToken: device.deviceToken,
+      },
+    };
+  }
+
+  /**
+   * Validate a deviceToken on Electron startup — no credentials needed.
+   * Returns fresh access + refresh tokens so the app resumes silently.
+   * This is the "silent re-auth" flow (Teams / Postman / Docker Desktop pattern).
+   */
+  async validateDesktopSession(
+    deviceToken: string,
+    machineId: string,
+    meta?: { ipAddress?: string; appVersion?: string },
+  ) {
+    if (!deviceToken || !machineId) {
+      return { status: false, message: 'deviceToken and machineId are required' };
+    }
+
+    const device = await this.prismaMaster.desktopDevice.findUnique({
+      where: { deviceToken },
+      include: {
+        user: {
+          include: {
+            role: { include: { permissions: { include: { permission: true } } } },
+          },
+        },
+      },
+    });
+
+    if (!device) {
+      return { status: false, message: 'Device not registered' };
+    }
+
+    // Verify the machineId matches — prevents stolen token replay from a different machine
+    if (device.machineId !== machineId) {
+      return { status: false, message: 'Machine ID mismatch' };
+    }
+
+    if (device.status !== 'active') {
+      return {
+        status: false,
+        message: device.status === 'revoked'
+          ? 'This device has been revoked. Please log in again.'
+          : 'Device is suspended. Contact your administrator.',
+      };
+    }
+
+    const user = device.user;
+    if (!user || user.status !== 'active') {
+      return { status: false, message: 'User account is inactive' };
+    }
+
+    // Update last-seen
+    await this.prismaMaster.desktopDevice.update({
+      where: { id: device.id },
+      data: {
+        lastSeenAt: new Date(),
+        lastSeenIp: meta?.ipAddress,
+        appVersion: meta?.appVersion || device.appVersion,
+      },
+    });
+
+    // Issue fresh tokens
+    const sessionToken = uuidv4();
+    const sessionId = await this.manageActiveSessions(
+      user.id,
+      user.role?.name || 'User',
+      sessionToken,
+      { ip: meta?.ipAddress, deviceInfo: `Electron:${device.hostname || 'desktop'}`, deviceType: 'ELECTRON' } as any,
+    );
+
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.accessExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        employeeId: user.employeeId,
+        roleName: user.role?.name || null,
+        sessionId,
+        deviceId: device.id,
+        isDesktopApp: true,
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    const refreshOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.refreshExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const refreshToken = jwt.sign(
+      { userId: user.id, sessionId, deviceId: device.id },
+      authConfig.jwt.refreshSecret,
+      refreshOpts,
+    );
+
+    return {
+      status: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role?.name || null,
+          permissions:
+            user.role?.permissions
+              .filter((p) => p.permission)
+              .map((p) => p.permission.name) || [],
+        },
+        accessToken,
+        refreshToken,
+        deviceId: device.id,
+      },
+    };
+  }
+
+  /**
+   * Revoke a desktop device. The device owner or an admin can call this.
+   */
+  async revokeDesktopDevice(requestingUserId: string, deviceId: string) {
+    const device = await this.prismaMaster.desktopDevice.findUnique({
+      where: { id: deviceId },
+    });
+
+    if (!device) {
+      return { status: false, message: 'Device not found' };
+    }
+
+    // Only the owner or an admin can revoke
+    const requester = await this.prismaMaster.user.findUnique({
+      where: { id: requestingUserId },
+      include: { role: true },
+    });
+
+    const isAdmin = requester?.role?.isSystem || ['super_admin', 'admin'].includes(requester?.role?.name?.toLowerCase() || '');
+    if (device.userId !== requestingUserId && !isAdmin) {
+      return { status: false, message: 'Not authorized to revoke this device' };
+    }
+
+    await this.prismaMaster.desktopDevice.update({
+      where: { id: deviceId },
+      data: {
+        status: 'revoked',
+        revokedAt: new Date(),
+        revokedBy: requestingUserId,
+      },
+    });
+
+    return { status: true, message: 'Device revoked successfully' };
+  }
+
+  /**
+   * List all registered desktop devices for a user.
+   */
+  async listDesktopDevices(userId: string) {
+    const devices = await this.prismaMaster.desktopDevice.findMany({
+      where: { userId },
+      orderBy: { lastSeenAt: 'desc' },
+      select: {
+        id: true,
+        machineId: true,
+        hostname: true,
+        platform: true,
+        appVersion: true,
+        status: true,
+        lastSeenAt: true,
+        lastSeenIp: true,
+        createdAt: true,
+        revokedAt: true,
+      },
+    });
+
+    return { status: true, data: devices };
+  }
 }
