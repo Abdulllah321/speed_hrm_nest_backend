@@ -661,6 +661,11 @@ export class AuthController {
                   id: terminalRaw.location.id,
                   code: terminalRaw.location.code,
                   name: terminalRaw.location.name,
+                  phone: terminalRaw.location.phone || '',
+                  address: terminalRaw.location.address || '',
+                  fbrNtn: terminalRaw.location.fbrNtn || '',
+                  fbrSellerName: terminalRaw.location.fbrSellerName || '',
+                  fbrEnabled: terminalRaw.location.fbrEnabled ?? false,
                 } : null
               };
             }

@@ -46,17 +46,19 @@ export class AuthService {
     @Optional() private prisma: PrismaService,
     private encryptionService: EncryptionService,
     private posSessionService: PosSessionService,
-  ) { }
+  ) {}
 
   async login(
     email: string,
     password: string,
     ipAddress?: string,
     userAgent?: string,
-    browserId?: string
+    browserId?: string,
   ) {
     const startTime = Date.now();
-    this.logger.log(`[LOGIN] Attempt: ${email} | IP: ${ipAddress || 'unknown'}`);
+    this.logger.log(
+      `[LOGIN] Attempt: ${email} | IP: ${ipAddress || 'unknown'}`,
+    );
 
     try {
       // Step 1: Find user
@@ -70,11 +72,15 @@ export class AuthService {
         this.logger.warn(`[LOGIN] Failed — user not found: ${email}`);
         return { status: false, message: 'User not found' };
       }
-      this.logger.debug(`[LOGIN] Step 1 OK: id=${user.id} | role=${user.role?.name || 'none'} | status=${user.status}`);
+      this.logger.debug(
+        `[LOGIN] Step 1 OK: id=${user.id} | role=${user.role?.name || 'none'} | status=${user.status}`,
+      );
 
       // Step 2: Status check
       if (user.status !== 'active') {
-        this.logger.warn(`[LOGIN] Failed — account inactive: ${email} | status=${user.status}`);
+        this.logger.warn(
+          `[LOGIN] Failed — account inactive: ${email} | status=${user.status}`,
+        );
         return { status: false, message: 'Account is not active' };
       }
 
@@ -84,10 +90,14 @@ export class AuthService {
         return { status: false, message: "Password doesn't match" };
       }
 
-      this.logger.debug(`[LOGIN] Step 3: bcrypt compare | hash prefix: ${user.password.substring(0, 7)}`);
+      this.logger.debug(
+        `[LOGIN] Step 3: bcrypt compare | hash prefix: ${user.password.substring(0, 7)}`,
+      );
       const bcryptStart = Date.now();
       const ok = await bcrypt.compare(password, user.password);
-      this.logger.debug(`[LOGIN] Step 3 OK: bcrypt took ${Date.now() - bcryptStart}ms | match=${ok}`);
+      this.logger.debug(
+        `[LOGIN] Step 3 OK: bcrypt took ${Date.now() - bcryptStart}ms | match=${ok}`,
+      );
 
       if (!ok) {
         this.logger.warn(`[LOGIN] Failed — wrong password: ${email}`);
@@ -107,13 +117,20 @@ export class AuthService {
       this.logger.debug(`[LOGIN] Step 4 OK`);
 
       // Step 5: Session management
-      this.logger.debug(`[LOGIN] Step 5: Managing sessions for user ${user.id}`);
+      this.logger.debug(
+        `[LOGIN] Step 5: Managing sessions for user ${user.id}`,
+      );
       const sessionToken = uuidv4();
-      const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, {
-        ip: ipAddress,
-        userAgent,
-        browserId
-      });
+      const sessionId = await this.manageActiveSessions(
+        user.id,
+        user.role?.name || 'User',
+        sessionToken,
+        {
+          ip: ipAddress,
+          userAgent,
+          browserId,
+        },
+      );
       this.logger.debug(`[LOGIN] Step 5 OK: sessionId=${sessionId}`);
 
       // Step 6: Sign tokens
@@ -130,7 +147,11 @@ export class AuthService {
         roleName: user.role?.name || null,
         sessionId: sessionId,
       };
-      const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+      const accessToken = jwt.sign(
+        payload,
+        authConfig.jwt.accessSecret,
+        accessOpts,
+      );
       const refreshOpts: jwt.SignOptions = {
         expiresIn: authConfig.jwt.refreshExpiresIn as any,
         issuer: authConfig.jwt.issuer,
@@ -143,16 +164,22 @@ export class AuthService {
       this.logger.debug(`[LOGIN] Step 6 OK`);
 
       // Step 7: Fetch permissions
-      this.logger.debug(`[LOGIN] Step 7: Fetching permissions | roleId=${user.roleId || 'none'}`);
+      this.logger.debug(
+        `[LOGIN] Step 7: Fetching permissions | roleId=${user.roleId || 'none'}`,
+      );
       const rolePermissions = user.roleId
         ? await this.prismaMaster.rolePermission.findMany({
             where: { roleId: user.roleId },
             select: { permission: { select: { name: true } } },
           })
         : [];
-      this.logger.debug(`[LOGIN] Step 7 OK: ${rolePermissions.length} permissions`);
+      this.logger.debug(
+        `[LOGIN] Step 7 OK: ${rolePermissions.length} permissions`,
+      );
 
-      this.logger.log(`[LOGIN] Success: ${email} | userId=${user.id} | role=${user.role?.name} | total=${Date.now() - startTime}ms`);
+      this.logger.log(
+        `[LOGIN] Success: ${email} | userId=${user.id} | role=${user.role?.name} | total=${Date.now() - startTime}ms`,
+      );
 
       return {
         status: true,
@@ -167,12 +194,18 @@ export class AuthService {
           },
           accessToken,
           refreshToken,
-          sessionId
+          sessionId,
         },
       };
     } catch (error) {
-      this.logger.error(`[LOGIN] Exception for ${email} after ${Date.now() - startTime}ms | ${error?.message || error}`, error?.stack);
-      return { status: false, message: 'An error occurred during login. Please try again.' };
+      this.logger.error(
+        `[LOGIN] Exception for ${email} after ${Date.now() - startTime}ms | ${error?.message || error}`,
+        error?.stack,
+      );
+      return {
+        status: false,
+        message: 'An error occurred during login. Please try again.',
+      };
     }
   }
 
@@ -229,9 +262,14 @@ export class AuthService {
 
     // 4. JIT: If no user account is found, create/assign the dashboard account
     if (!targetUser) {
-      const email = employeeDetails.officialEmail || employeeDetails.personalEmail;
+      const email =
+        employeeDetails.officialEmail || employeeDetails.personalEmail;
       if (!email) {
-        return { status: false, message: 'Employee has no email configured. Cannot create dashboard account.' };
+        return {
+          status: false,
+          message:
+            'Employee has no email configured. Cannot create dashboard account.',
+        };
       }
 
       // Check if user exists by email but isn't linked to this employeeId
@@ -375,7 +413,8 @@ export class AuthService {
     });
 
     if (!user) return { status: false, message: 'Original user not found' };
-    if (user.status !== 'active') return { status: false, message: 'Original account is not active' };
+    if (user.status !== 'active')
+      return { status: false, message: 'Original account is not active' };
 
     const accessOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.accessExpiresIn as any,
@@ -390,7 +429,11 @@ export class AuthService {
       roleName: user.role?.name || null,
     };
 
-    const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+    const accessToken = jwt.sign(
+      payload,
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
 
     const refreshOpts: jwt.SignOptions = {
       expiresIn: authConfig.jwt.refreshExpiresIn as any,
@@ -669,9 +712,9 @@ export class AuthService {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(this.toRad(lat1)) *
-      Math.cos(this.toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+        Math.cos(this.toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
@@ -683,7 +726,7 @@ export class AuthService {
     }
 
     const companies = await this.prismaMaster.company.findMany({
-      where: { status: 'active' }
+      where: { status: 'active' },
     });
 
     if (!companies.length) {
@@ -696,7 +739,9 @@ export class AuthService {
 
       if (company.dbPassword) {
         try {
-          const plainPassword = this.encryptionService.decrypt(company.dbPassword);
+          const plainPassword = this.encryptionService.decrypt(
+            company.dbPassword,
+          );
           const encodedPassword = encodeURIComponent(String(plainPassword));
           if (company.dbUser && company.dbHost && company.dbName) {
             const encodedUser = encodeURIComponent(company.dbUser);
@@ -705,10 +750,14 @@ export class AuthService {
             const port = company.dbPort || 5432;
             dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
 
-            this.logger.debug(`Reconstructed DB URL for global context company ${company.code} (password masked)`);
+            this.logger.debug(
+              `Reconstructed DB URL for global context company ${company.code} (password masked)`,
+            );
           }
         } catch (err) {
-          this.logger.error(`Failed to decrypt database password for company ${company.id}`);
+          this.logger.error(
+            `Failed to decrypt database password for company ${company.id}`,
+          );
           continue;
         }
       }
@@ -717,21 +766,34 @@ export class AuthService {
         const { Pool } = require('pg');
         const { PrismaPg } = require('@prisma/adapter-pg');
         const { PrismaClient } = require('@prisma/client');
-        const tempPool = new Pool({ connectionString: dbUrl, max: 2, connectionTimeoutMillis: 2000 });
+        const tempPool = new Pool({
+          connectionString: dbUrl,
+          max: 2,
+          connectionTimeoutMillis: 2000,
+        });
         const adapter = new PrismaPg(tempPool);
         const tempPrisma = new PrismaClient({ adapter });
 
         try {
           const location = await tempPrisma.location.findFirst({
-            where: { code: { equals: code, mode: 'insensitive' }, status: 'active' },
+            where: {
+              code: { equals: code, mode: 'insensitive' },
+              status: 'active',
+            },
             include: { pos: { where: { status: 'active' } } },
           });
 
           if (location) {
             if (location.ipWhitelistEnabled && location.ipWhitelist) {
-              const allowedIps = location.ipWhitelist.split(',').map((i: string) => i.trim());
+              const allowedIps = location.ipWhitelist
+                .split(',')
+                .map((i: string) => i.trim());
               if (!allowedIps.includes(ip)) {
-                return { status: false, message: 'Access denied from this IP address on the identified location' };
+                return {
+                  status: false,
+                  message:
+                    'Access denied from this IP address on the identified location',
+                };
               }
             }
 
@@ -740,7 +802,7 @@ export class AuthService {
               data: {
                 tenantContext: {
                   tenantId: company.tenantId,
-                  companyCode: company.code
+                  companyCode: company.code,
                 },
                 location: {
                   id: location.id,
@@ -763,12 +825,18 @@ export class AuthService {
           await tempPool.end();
         }
       } catch (err) {
-        this.logger.error(`Error querying tenant DB for company ${company.code}:`, err);
+        this.logger.error(
+          `Error querying tenant DB for company ${company.code}:`,
+          err,
+        );
         continue;
       }
     }
 
-    return { status: false, message: 'Location Code not found anywhere in the system' };
+    return {
+      status: false,
+      message: 'Location Code not found anywhere in the system',
+    };
   }
 
   async getPosLoginContext(
@@ -782,7 +850,10 @@ export class AuthService {
 
     if (code) {
       location = await this.prisma.location.findFirst({
-        where: { code: { equals: code, mode: 'insensitive' }, status: 'active' },
+        where: {
+          code: { equals: code, mode: 'insensitive' },
+          status: 'active',
+        },
         include: { pos: { where: { status: 'active' } } },
       });
       if (!location) return { status: false, message: 'Invalid Location Code' };
@@ -883,16 +954,25 @@ export class AuthService {
     };
   }
 
-  async posTerminalLogin(
-    terminalCode: string,
-    pin: string,
-  ) {
-    const validation = await this.posService.validateTerminal(terminalCode, pin);
+  async posTerminalLogin(terminalCode: string, pin: string) {
+    const validation = await this.posService.validateTerminal(
+      terminalCode,
+      pin,
+    );
     if (!validation.status || !validation.data) {
       return validation;
     }
 
-    const { terminalId, name, companyId, company, tenant, posId, locationId, terminalCode: dbTerminalCode } = validation.data;
+    const {
+      terminalId,
+      name,
+      companyId,
+      company,
+      tenant,
+      posId,
+      locationId,
+      terminalCode: dbTerminalCode,
+    } = validation.data;
 
     // Create a specialized POS terminal token
     const accessOpts: jwt.SignOptions = {
@@ -930,7 +1010,7 @@ export class AuthService {
         if (company.dbPassword) {
           try {
             dbPassword = this.encryptionService.decrypt(company.dbPassword);
-          } catch (e) { }
+          } catch (e) {}
         }
 
         try {
@@ -947,7 +1027,9 @@ export class AuthService {
           sessionPrisma = new PrismaClient({ adapter: adapter as any });
           isTemp = true;
         } catch (e) {
-          this.logger.error(`Failed to create temporary session prisma: ${e.message}`);
+          this.logger.error(
+            `Failed to create temporary session prisma: ${e.message}`,
+          );
         }
       }
     }
@@ -994,11 +1076,13 @@ export class AuthService {
           id: companyId,
           name: company?.name,
         },
-        tenant: tenant ? {
-          id: tenant.id,
-          code: tenant.code,
-          name: tenant.name,
-        } : null,
+        tenant: tenant
+          ? {
+              id: tenant.id,
+              code: tenant.code,
+              name: tenant.name,
+            }
+          : null,
         accessToken,
         sessionId: session.id,
       },
@@ -1048,7 +1132,7 @@ export class AuthService {
           userId: user.id,
           sessionId: decoded.sessionId,
           impersonatorId: decoded.impersonatorId,
-          isImpersonating: decoded.isImpersonating
+          isImpersonating: decoded.isImpersonating,
         },
         authConfig.jwt.refreshSecret,
         refreshOpts,
@@ -1114,11 +1198,18 @@ export class AuthService {
             id: terminal.id,
             code: terminal.terminalCode,
             name: terminal.name,
-            location: terminal.location ? {
-              id: terminal.location.id,
-              name: terminal.location.name,
-              code: terminal.location.code,
-            } : null,
+            location: terminal.location
+              ? {
+                  id: terminal.location.id,
+                  name: terminal.location.name,
+                  code: terminal.location.code,
+                  phone: terminal.location.phone || '',
+                  address: terminal.location.address || '',
+                  fbrNtn: terminal.location.fbrNtn || '',
+                  fbrSellerName: terminal.location.fbrSellerName || '',
+                  fbrEnabled: terminal.location.fbrEnabled ?? false,
+                }
+              : null,
           },
           role: {
             name: 'POS_TERMINAL',
@@ -1170,26 +1261,35 @@ export class AuthService {
   }
 
   async verifyPosSession(userId: string) {
-    if (!this.prisma) return { status: false, message: 'Tenant database not available' };
+    if (!this.prisma)
+      return { status: false, message: 'Tenant database not available' };
     try {
       const activeSession = await this.prisma.posSession.findFirst({
         where: { userId, status: 'open' },
         orderBy: { updatedAt: 'desc' },
-        include: { pos: { include: { location: true } } }
+        include: { pos: { include: { location: true } } },
       });
-      if (!activeSession) return { status: false, message: 'No active POS session found' };
+      if (!activeSession)
+        return { status: false, message: 'No active POS session found' };
 
       const terminal = activeSession.pos;
       if (!terminal || terminal.status !== 'active') {
         await this.prisma.posSession.update({
           where: { id: activeSession.id },
-          data: { status: 'closed' }
+          data: { status: 'closed' },
         });
-        return { status: false, message: 'POS terminal is deactivated or deleted. Session closed.' };
+        return {
+          status: false,
+          message: 'POS terminal is deactivated or deleted. Session closed.',
+        };
       }
 
       // Get full session metrics using PosSessionService
-      const sessionStatus = await this.posSessionService.getCurrentSession(terminal.id, terminal.posId, terminal.locationId);
+      const sessionStatus = await this.posSessionService.getCurrentSession(
+        terminal.id,
+        terminal.posId,
+        terminal.locationId,
+      );
 
       return {
         status: true,
@@ -1201,8 +1301,8 @@ export class AuthService {
           locationCode: terminal.location?.code,
           locationId: terminal.locationId,
           isDrawerOpen: sessionStatus?.isDrawerOpen ?? false,
-          metrics: sessionStatus?.metrics || null
-        }
+          metrics: sessionStatus?.metrics || null,
+        },
       };
     } catch (e) {
       return { status: false, message: 'Failed to verify POS session' };
@@ -1262,7 +1362,8 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) return { status: false, message: 'User not found' };
-    if (!user.password) return { status: false, message: 'Invalid current password' };
+    if (!user.password)
+      return { status: false, message: 'Invalid current password' };
     const ok = await bcrypt.compare(oldPassword, user.password);
     if (!ok) return { status: false, message: 'Invalid current password' };
     if ((newPassword || '').length < authConfig.password.minLength)
@@ -1432,7 +1533,9 @@ export class AuthService {
           }
         }
       } catch (err) {
-        this.logger.error(`Failed to map employees in getAllUsers: ${err.message}`);
+        this.logger.error(
+          `Failed to map employees in getAllUsers: ${err.message}`,
+        );
       }
     }
 
@@ -1527,7 +1630,9 @@ export class AuthService {
           data: { userId: user.id },
         });
       } catch (e) {
-        this.logger.error(`Failed to sync userId to employee on update: ${e.message}`);
+        this.logger.error(
+          `Failed to sync userId to employee on update: ${e.message}`,
+        );
       }
     }
 
@@ -1635,7 +1740,6 @@ export class AuthService {
     return bcrypt.compare(password, user.password);
   }
 
-
   // Helper to detect device type from user agent
   private getDeviceType(userAgent?: string): string {
     if (!userAgent) return 'DESKTOP';
@@ -1649,7 +1753,12 @@ export class AuthService {
     userId: string,
     roleName: string,
     sessionToken: string,
-    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string; browserId?: string }
+    deviceInfo?: {
+      ip?: string;
+      userAgent?: string;
+      deviceInfo?: string;
+      browserId?: string;
+    },
   ): Promise<string> {
     // Normalize role name check
     const rName = roleName?.toLowerCase().trim() || '';
@@ -1661,14 +1770,16 @@ export class AuthService {
       const maxSessions = 5;
       const existingSessions = await this.prismaMaster.userSession.findMany({
         where: { userId },
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
       });
 
       if (existingSessions.length >= maxSessions) {
         const toDeleteCount = existingSessions.length - maxSessions + 1;
-        const toDeleteIds = existingSessions.slice(0, toDeleteCount).map(s => s.id);
+        const toDeleteIds = existingSessions
+          .slice(0, toDeleteCount)
+          .map((s) => s.id);
         await this.prismaMaster.userSession.deleteMany({
-          where: { id: { in: toDeleteIds } }
+          where: { id: { in: toDeleteIds } },
         });
       }
     } else {
@@ -1677,8 +1788,8 @@ export class AuthService {
       await this.prismaMaster.userSession.deleteMany({
         where: {
           userId,
-          deviceType: deviceType
-        }
+          deviceType: deviceType,
+        },
       });
     }
 
@@ -1692,8 +1803,8 @@ export class AuthService {
         userAgent: deviceInfo?.userAgent,
         deviceInfo: deviceInfo?.deviceInfo,
         browserId: deviceInfo?.browserId,
-        deviceType: deviceType
-      }
+        deviceType: deviceType,
+      },
     });
 
     return newSession.id;
@@ -1706,7 +1817,7 @@ export class AuthService {
     const sessions = await this.prismaMaster.userSession.findMany({
       where: {
         browserId,
-        expiresAt: { gt: new Date() }
+        expiresAt: { gt: new Date() },
       },
       include: {
         user: {
@@ -1716,20 +1827,20 @@ export class AuthService {
             firstName: true,
             lastName: true,
             avatar: true,
-            status: true
-          }
-        }
-      }
+            status: true,
+          },
+        },
+      },
     });
 
     // Deduplicate users and filter active sessions
     const profiles = new Map();
-    sessions.forEach(s => {
+    sessions.forEach((s) => {
       if (!profiles.has(s.userId)) {
         profiles.set(s.userId, {
           ...s.user,
           lastActive: s.updatedAt,
-          isActive: true
+          isActive: true,
         });
       }
     });
@@ -1771,30 +1882,48 @@ export class AuthService {
   async posUserLoginStandard(
     email: string,
     pass: string,
-    context: { terminalId: string; posId: string; locationId: string; posSessionId?: string; tenantId: string },
-    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string }
+    context: {
+      terminalId: string;
+      posId: string;
+      locationId: string;
+      posSessionId?: string;
+      tenantId: string;
+    },
+    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string },
   ) {
     // ── 1. Verify user credentials & master-level checks ─────────────────────
     const user = await this.prismaMaster.user.findUnique({
       where: { email },
-      include: { role: { include: { permissions: { include: { permission: true } } } } }
+      include: {
+        role: { include: { permissions: { include: { permission: true } } } },
+      },
     });
 
     if (!user) return { status: false, message: 'Invalid credentials' };
-    if (user.status !== 'active') return { status: false, message: 'Account is not active' };
+    if (user.status !== 'active')
+      return { status: false, message: 'Account is not active' };
 
     // Verify the user belongs to the same company/tenant as this terminal
     if (context.tenantId && user.tenantId !== context.tenantId) {
-      return { status: false, message: 'You do not belong to this organization' };
+      return {
+        status: false,
+        message: 'You do not belong to this organization',
+      };
     }
 
     const isValid = await bcrypt.compare(pass, user.password);
     if (!isValid) return { status: false, message: 'Invalid credentials' };
 
     // Verify POS Access
-    const hasPosAccess = user.role?.isSystem || user.role?.permissions?.some(p => p.permission.module === 'POS');
+    const hasPosAccess =
+      user.role?.isSystem ||
+      user.role?.permissions?.some((p) => p.permission.module === 'POS');
     if (!hasPosAccess) {
-      return { status: false, errorType: 'NO_POS_ACCESS', message: 'User does not have POS access.' };
+      return {
+        status: false,
+        errorType: 'NO_POS_ACCESS',
+        message: 'User does not have POS access.',
+      };
     }
 
     // ── 2. Employee check in tenant DB (Bypassed for System Admins) ───────────
@@ -1806,7 +1935,12 @@ export class AuthService {
       if (user.id) {
         employee = await this.prisma.employee.findFirst({
           where: { userId: user.id },
-          select: { id: true, locationId: true, status: true, employeeName: true }
+          select: {
+            id: true,
+            locationId: true,
+            status: true,
+            employeeName: true,
+          },
         });
       }
 
@@ -1814,16 +1948,27 @@ export class AuthService {
       if (!employee && user.employeeId) {
         employee = await this.prisma.employee.findFirst({
           where: { employeeId: user.employeeId },
-          select: { id: true, locationId: true, status: true, employeeName: true }
+          select: {
+            id: true,
+            locationId: true,
+            status: true,
+            employeeName: true,
+          },
         });
       }
 
       if (!employee) {
-        return { status: false, message: 'No employee record found for this user in the system' };
+        return {
+          status: false,
+          message: 'No employee record found for this user in the system',
+        };
       }
 
       if (employee.status !== 'active') {
-        return { status: false, message: 'Your employee account is not active' };
+        return {
+          status: false,
+          message: 'Your employee account is not active',
+        };
       }
 
       // Check location assignment — must match this terminal's location
@@ -1837,7 +1982,10 @@ export class AuthService {
       // If locationId is null/unset on the employee, we allow it (unassigned = can log in anywhere)
       // You can tighten this by uncommenting the block below:
       if (!employee.locationId) {
-        return { status: false, message: 'You have no location assigned. Contact admin.' };
+        return {
+          status: false,
+          message: 'You have no location assigned. Contact admin.',
+        };
       }
     }
 
@@ -1851,7 +1999,12 @@ export class AuthService {
 
     // ── 4. Issue combined POS + User access token ─────────────────────────────
     const sessionToken = uuidv4();
-    const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, deviceInfo);
+    const sessionId = await this.manageActiveSessions(
+      user.id,
+      user.role?.name || 'User',
+      sessionToken,
+      deviceInfo,
+    );
 
     const accessOpts: jwt.SignOptions = {
       expiresIn: '12h',
@@ -1896,7 +2049,8 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role?.name || null,
-          permissions: user.role?.permissions.map(p => p.permission.name) || [],
+          permissions:
+            user.role?.permissions.map((p) => p.permission.name) || [],
           email: user.email,
           isPosUser: true,
         },
@@ -1909,11 +2063,14 @@ export class AuthService {
   async posUserLinkSession(
     userId: string,
     terminalToken: string,
-    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string }
+    deviceInfo?: { ip?: string; userAgent?: string; deviceInfo?: string },
   ) {
     try {
       // Decode terminal token to get terminal/tenant context
-      const terminalDecoded = jwt.verify(terminalToken, authConfig.jwt.accessSecret) as any;
+      const terminalDecoded = jwt.verify(
+        terminalToken,
+        authConfig.jwt.accessSecret,
+      ) as any;
 
       if (!terminalDecoded.isTerminal) {
         return { status: false, message: 'Invalid terminal token' };
@@ -1921,21 +2078,34 @@ export class AuthService {
 
       const user = await this.prismaMaster.user.findUnique({
         where: { id: userId },
-        include: { role: { include: { permissions: { include: { permission: true } } } } }
+        include: {
+          role: { include: { permissions: { include: { permission: true } } } },
+        },
       });
 
       if (!user) return { status: false, message: 'User not found' };
-      if (user.status !== 'active') return { status: false, message: 'Account is not active' };
+      if (user.status !== 'active')
+        return { status: false, message: 'Account is not active' };
 
       // Verify Tenant match
       if (user.tenantId !== terminalDecoded.tenantId) {
-        return { status: false, message: 'User does not belong to this organization' };
+        return {
+          status: false,
+          message: 'User does not belong to this organization',
+        };
       }
 
       // Verify POS Access
-      const hasPosAccess = user.role?.isSystem || user.role?.permissions?.some(p => p.permission.module === 'POS');
+      const hasPosAccess =
+        user.role?.isSystem ||
+        user.role?.permissions?.some((p) => p.permission.module === 'POS');
       if (!hasPosAccess) {
-        return { status: false, errorType: 'NO_POS_ACCESS', message: 'User does not have POS access. Please log in with a POS-authorized profile.' };
+        return {
+          status: false,
+          errorType: 'NO_POS_ACCESS',
+          message:
+            'User does not have POS access. Please log in with a POS-authorized profile.',
+        };
       }
 
       // ── Employee Location check in tenant DB (Bypassed for System Admins & Global ADMINs) ─
@@ -1947,23 +2117,43 @@ export class AuthService {
         if (user.id) {
           employee = await this.prisma.employee.findFirst({
             where: { userId: user.id },
-            select: { id: true, locationId: true, status: true, employeeName: true }
+            select: {
+              id: true,
+              locationId: true,
+              status: true,
+              employeeName: true,
+            },
           });
         }
 
         if (!employee && user.employeeId) {
           employee = await this.prisma.employee.findFirst({
             where: { employeeId: user.employeeId },
-            select: { id: true, locationId: true, status: true, employeeName: true }
+            select: {
+              id: true,
+              locationId: true,
+              status: true,
+              employeeName: true,
+            },
           });
         }
 
         if (employee) {
           if (employee.status !== 'active') {
-            return { status: false, message: 'Your employee account is not active' };
+            return {
+              status: false,
+              message: 'Your employee account is not active',
+            };
           }
-          if (employee.locationId && employee.locationId !== terminalDecoded.locationId) {
-            return { status: false, message: 'You are not assigned to this location. Please contact your administrator.' };
+          if (
+            employee.locationId &&
+            employee.locationId !== terminalDecoded.locationId
+          ) {
+            return {
+              status: false,
+              message:
+                'You are not assigned to this location. Please contact your administrator.',
+            };
           }
         }
       }
@@ -1971,7 +2161,7 @@ export class AuthService {
       // Find or create POS session
       let posSession = await this.prisma.posSession.findFirst({
         where: { posId: terminalDecoded.terminalId, status: 'open' },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       });
 
       if (!posSession) {
@@ -1981,8 +2171,8 @@ export class AuthService {
             posId: terminalDecoded.terminalId,
             status: 'open',
             token: terminalToken,
-            userId: user.id
-          }
+            userId: user.id,
+          },
         });
       } else {
         await this.prisma.posSession.update({
@@ -1993,7 +2183,12 @@ export class AuthService {
 
       // Generate User Session (Concurrent Limit)
       const sessionToken = uuidv4();
-      const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, deviceInfo);
+      const sessionId = await this.manageActiveSessions(
+        user.id,
+        user.role?.name || 'User',
+        sessionToken,
+        deviceInfo,
+      );
 
       // Create Combined Token
       const accessOpts: jwt.SignOptions = {
@@ -2029,12 +2224,13 @@ export class AuthService {
             firstName: user.firstName,
             lastName: user.lastName,
             role: user.role?.name || null,
-            permissions: user.role?.permissions.map(p => p.permission.name) || [],
+            permissions:
+              user.role?.permissions.map((p) => p.permission.name) || [],
             email: user.email,
-            isPosUser: true
+            isPosUser: true,
           },
           accessToken,
-          sessionId
+          sessionId,
         },
       };
     } catch (err) {
@@ -2113,7 +2309,10 @@ export class AuthService {
     meta?: { ipAddress?: string; appVersion?: string },
   ) {
     if (!deviceToken || !machineId) {
-      return { status: false, message: 'deviceToken and machineId are required' };
+      return {
+        status: false,
+        message: 'deviceToken and machineId are required',
+      };
     }
 
     const device = await this.prismaMaster.desktopDevice.findUnique({
@@ -2121,7 +2320,9 @@ export class AuthService {
       include: {
         user: {
           include: {
-            role: { include: { permissions: { include: { permission: true } } } },
+            role: {
+              include: { permissions: { include: { permission: true } } },
+            },
           },
         },
       },
@@ -2139,9 +2340,10 @@ export class AuthService {
     if (device.status !== 'active') {
       return {
         status: false,
-        message: device.status === 'revoked'
-          ? 'This device has been revoked. Please log in again.'
-          : 'Device is suspended. Contact your administrator.',
+        message:
+          device.status === 'revoked'
+            ? 'This device has been revoked. Please log in again.'
+            : 'Device is suspended. Contact your administrator.',
       };
     }
 
@@ -2166,7 +2368,11 @@ export class AuthService {
       user.id,
       user.role?.name || 'User',
       sessionToken,
-      { ip: meta?.ipAddress, deviceInfo: `Electron:${device.hostname || 'desktop'}`, deviceType: 'ELECTRON' } as any,
+      {
+        ip: meta?.ipAddress,
+        deviceInfo: `Electron:${device.hostname || 'desktop'}`,
+        deviceType: 'ELECTRON',
+      } as any,
     );
 
     const accessOpts: jwt.SignOptions = {
@@ -2238,7 +2444,11 @@ export class AuthService {
       include: { role: true },
     });
 
-    const isAdmin = requester?.role?.isSystem || ['super_admin', 'admin'].includes(requester?.role?.name?.toLowerCase() || '');
+    const isAdmin =
+      requester?.role?.isSystem ||
+      ['super_admin', 'admin'].includes(
+        requester?.role?.name?.toLowerCase() || '',
+      );
     if (device.userId !== requestingUserId && !isAdmin) {
       return { status: false, message: 'Not authorized to revoke this device' };
     }
