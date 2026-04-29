@@ -12,7 +12,7 @@ export default {
   },
   password: {
     minLength: 8,
-    saltRounds: 12,
+    saltRounds: 10,
   },
   security: {
     sessionTimeout: 7 * 24 * 60 * 60 * 1000, // 7 days to match access token - sliding session

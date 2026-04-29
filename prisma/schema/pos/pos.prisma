@@ -1,41 +1,43 @@
 model SalesOrder {
-  id                    String            @id @default(uuid())
-  orderNumber           String            @unique
-  posId                 String?           @map("pos_id")
-  terminalId            String?           @map("terminal_id")
-  locationId            String?           @map("location_id")
-  customerId            String?           @map("customer_id")
-  cashierUserId         String?           @map("cashier_user_id")
-  subtotal              Decimal           @default(0) @db.Decimal(15, 2)
-  discountAmount        Decimal           @default(0) @db.Decimal(15, 2)
-  taxAmount             Decimal           @default(0) @db.Decimal(15, 2)
-  grandTotal            Decimal           @default(0) @db.Decimal(15, 2)
-  paymentMethod         String?           @map("payment_method")
-  paymentStatus         String            @default("unpaid") @map("payment_status")
-  status                String            @default("draft")
+  id                    String               @id @default(uuid())
+  orderNumber           String               @unique
+  posId                 String?              @map("pos_id")
+  terminalId            String?              @map("terminal_id")
+  locationId            String?              @map("location_id")
+  customerId            String?              @map("customer_id")
+  cashierUserId         String?              @map("cashier_user_id")
+  subtotal              Decimal              @default(0) @db.Decimal(15, 2)
+  discountAmount        Decimal              @default(0) @db.Decimal(15, 2)
+  taxAmount             Decimal              @default(0) @db.Decimal(15, 2)
+  grandTotal            Decimal              @default(0) @db.Decimal(15, 2)
+  paymentMethod         String?              @map("payment_method")
+  paymentStatus         String               @default("unpaid") @map("payment_status")
+  status                String               @default("draft")
   notes                 String?
-  globalDiscountPercent Decimal?          @map("global_discount_percent") @db.Decimal(5, 2)
-  globalDiscountAmount  Decimal?          @map("global_discount_amount") @db.Decimal(15, 2)
-  promoId               String?           @map("promo_id")
-  couponId              String?           @map("coupon_id")
-  allianceId            String?           @map("alliance_id")
-  tenderType            String?           @map("tender_type")
-  cashAmount            Decimal?          @map("cash_amount") @db.Decimal(15, 2)
-  cardAmount            Decimal?          @map("card_amount") @db.Decimal(15, 2)
-  changeAmount          Decimal?          @map("change_amount") @db.Decimal(15, 2)
-  holdExpiresAt         DateTime?         @map("hold_expires_at")
-  fbrInvoiceNumber      String?           @map("fbr_invoice_number")
-  fbrQrCode             String?           @map("fbr_qr_code") @db.Text
-  fbrStatus             String            @default("PENDING") @map("fbr_status")
-  isGiftReceipt         Boolean           @default(false) @map("is_gift_receipt")
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
+  globalDiscountPercent Decimal?             @map("global_discount_percent") @db.Decimal(5, 2)
+  globalDiscountAmount  Decimal?             @map("global_discount_amount") @db.Decimal(15, 2)
+  promoId               String?              @map("promo_id")
+  couponId              String?              @map("coupon_id")
+  allianceId            String?              @map("alliance_id")
+  tenderType            String?              @map("tender_type")
+  cashAmount            Decimal?             @map("cash_amount") @db.Decimal(15, 2)
+  cardAmount            Decimal?             @map("card_amount") @db.Decimal(15, 2)
+  changeAmount          Decimal?             @map("change_amount") @db.Decimal(15, 2)
+  voucherAmount         Decimal?             @map("voucher_amount") @db.Decimal(15, 2)
+  holdExpiresAt         DateTime?            @map("hold_expires_at")
+  fbrInvoiceNumber      String?              @map("fbr_invoice_number")
+  fbrQrCode             String?              @map("fbr_qr_code") @db.Text
+  fbrStatus             String               @default("PENDING") @map("fbr_status")
+  isGiftReceipt         Boolean              @default(false) @map("is_gift_receipt")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
   items                 SalesOrderItem[]
-  alliance              AllianceDiscount? @relation(fields: [allianceId], references: [id])
-  coupon                CouponCode?       @relation(fields: [couponId], references: [id])
-  promo                 PromoCampaign?    @relation(fields: [promoId], references: [id])
-  isVoucherRestored     Boolean           @default(false) @map("is_voucher_restored")
+  alliance              AllianceDiscount?    @relation(fields: [allianceId], references: [id])
+  coupon                CouponCode?          @relation(fields: [couponId], references: [id])
+  promo                 PromoCampaign?       @relation(fields: [promoId], references: [id])
+  isVoucherRestored     Boolean              @default(false) @map("is_voucher_restored")
   claims                PosClaim[]
+  voucherRedemptions    VoucherRedemption[]
 
   @@index([posId])
   @@index([terminalId])
@@ -169,4 +171,97 @@ model VoucherAuditLog {
   coupon        CouponCode @relation(fields: [couponId], references: [id])
 
   @@map("pos_voucher_audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  VOUCHER SYSTEM  (separate from CouponCode / discount codes)
+//
+//  Types:
+//    GIFT          – monetary value, issued by admin or POS, usable at allowed locations
+//    EXCHANGE      – auto-issued on return, single-use, locked to issuing location
+//    CREDIT        – store credit tied to a customer, issued on refund
+//    CORPORATE     – bulk gift voucher tied to a company/account
+//    OUTLET_GIFT   – gift voucher restricted to specific outlet(s)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Voucher {
+  id                String              @id @default(uuid())
+  code              String              @unique
+  voucherType       String              @map("voucher_type") // GIFT | EXCHANGE | CREDIT | CORPORATE | OUTLET_GIFT
+  faceValue         Decimal             @map("face_value") @db.Decimal(15, 2)
+  description       String?
+
+  // Ownership / binding
+  customerId        String?             @map("customer_id")       // CREDIT vouchers
+  companyName       String?             @map("company_name")      // CORPORATE vouchers
+  requireCustomerMatch Boolean          @default(false) @map("require_customer_match")
+
+  // Issuance context
+  issuedByLocationId String?            @map("issued_by_location_id")
+  issuedByUserId    String?             @map("issued_by_user_id")
+  sourceOrderId     String?             @map("source_order_id")   // which return/order triggered this
+
+  // Lifecycle
+  isActive          Boolean             @default(true) @map("is_active")
+  isRedeemed        Boolean             @default(false) @map("is_redeemed")
+  expiresAt         DateTime?           @map("expires_at")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  locations         VoucherLocation[]
+  transactions      VoucherTransaction[]
+  redemptions       VoucherRedemption[]
+
+  @@index([code])
+  @@index([customerId])
+  @@index([issuedByLocationId])
+  @@index([voucherType])
+  @@map("pos_vouchers")
+}
+
+// Which locations can redeem this voucher
+// Empty = all locations (for GIFT / CORPORATE)
+// EXCHANGE always has exactly one entry = issuing location
+model VoucherLocation {
+  id         String  @id @default(uuid())
+  voucherId  String  @map("voucher_id")
+  locationId String  @map("location_id")
+  voucher    Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([voucherId, locationId])
+  @@map("pos_voucher_locations")
+}
+
+// Full audit trail of every redemption (supports partial use → new voucher issued)
+model VoucherTransaction {
+  id            String   @id @default(uuid())
+  voucherId     String   @map("voucher_id")
+  orderId       String?  @map("order_id")
+  locationId    String?  @map("location_id")
+  action        String   // ISSUED | REDEEMED | VOIDED | RESTORED
+  amountUsed    Decimal  @map("amount_used") @db.Decimal(15, 2)
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  voucher       Voucher  @relation(fields: [voucherId], references: [id])
+
+  @@index([voucherId])
+  @@index([orderId])
+  @@map("pos_voucher_transactions")
+}
+
+// Junction: which vouchers were used in a sales order (supports multiple vouchers per order)
+model VoucherRedemption {
+  id         String     @id @default(uuid())
+  voucherId  String     @map("voucher_id")
+  orderId    String     @map("order_id")
+  amountUsed Decimal    @map("amount_used") @db.Decimal(15, 2)
+  createdAt  DateTime   @default(now()) @map("created_at")
+  voucher    Voucher    @relation(fields: [voucherId], references: [id])
+  order      SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([voucherId, orderId])
+  @@index([orderId])
+  @@map("pos_voucher_redemptions")
 }

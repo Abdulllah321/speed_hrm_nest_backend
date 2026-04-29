@@ -23,14 +23,27 @@ async function bootstrap() {
   });
 
   // Register CORS on the adapter level for proper preflight handling with Fastify
-  const allowedOrigins = (process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const allowedOrigins = new Set(
+    (process.env.FRONTEND_URL || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
 
   const fastifyCors = await import('@fastify/cors');
   await adapter.register(fastifyCors.default as any, {
-    origin: allowedOrigins.length ? allowedOrigins : true,
+    origin: (origin: string, cb: (err: Error | null, allow: boolean) => void) => {
+      // Allow requests with no origin: Electron renderer (null), server-to-server, curl
+      if (!origin || origin === 'null') { cb(null, true); return; }
+      // Exact match against configured origins
+      if (allowedOrigins.has(origin)) { cb(null, true); return; }
+      // Allow any subdomain of localtest.me (dev) or configured base domain (prod)
+      if (/^https?:\/\/([a-z0-9-]+\.)*localtest\.me(:\d+)?$/.test(origin)) { cb(null, true); return; }
+      if (/^https?:\/\/([a-z0-9-]+\.)*localhost(:\d+)?$/.test(origin)) { cb(null, true); return; }
+      const baseDomain = process.env.BASE_DOMAIN;
+      if (baseDomain && origin.endsWith(`.${baseDomain}`)) { cb(null, true); return; }
+      cb(new Error(`CORS: origin ${origin} not allowed`), false);
+    },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
@@ -147,13 +160,13 @@ async function bootstrap() {
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
     logger.error('Uncaught Exception:', error);
-    gracefulShutdown('uncaughtException');
+    // Do not exit — log and continue to prevent nginx 502s
   });
 
   // Handle unhandled promise rejections
   process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    gracefulShutdown('unhandledRejection');
+    // Do not exit — log and continue to prevent nginx 502s
   });
 
   const port = parseInt(process.env.PORT ?? '5000');

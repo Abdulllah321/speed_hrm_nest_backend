@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosConfigService } from './pos-config.service';
+import { VoucherService } from './voucher.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../common/guards/permission.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -22,7 +23,10 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PosConfigController {
-    constructor(private readonly service: PosConfigService) { }
+    constructor(
+        private readonly service: PosConfigService,
+        private readonly voucherService: VoucherService,
+    ) { }
 
     // ══════════════════════════════════════════════════════════════
     //  PROMO CAMPAIGNS
@@ -163,51 +167,88 @@ export class PosConfigController {
     }
 
     // ══════════════════════════════════════════════════════════════
-    //  VOUCHERS
+    //  VOUCHERS (new Voucher model — separate from CouponCode)
     // ══════════════════════════════════════════════════════════════
 
     @Get('vouchers')
     @UseGuards(JwtAuthGuard, PermissionsGuard)
     @Permissions('pos.voucher.view')
-    @ApiOperation({ summary: 'List all POS-issued vouchers' })
-    async listVouchers() {
-        return this.service.listVouchers();
+    @ApiOperation({ summary: 'List vouchers' })
+    async listVouchers(
+        @Query('voucherType') voucherType?: string,
+        @Query('locationId') locationId?: string,
+        @Query('search') search?: string,
+    ) {
+        return this.voucherService.listVouchers({ voucherType, locationId, search });
+    }
+
+    @Get('vouchers/:id')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.view')
+    @ApiOperation({ summary: 'Get voucher detail' })
+    async getVoucher(@Param('id') id: string) {
+        return this.voucherService.getVoucher(id);
     }
 
     @Post('vouchers')
     @UseGuards(JwtAuthGuard, PermissionsGuard)
     @Permissions('pos.voucher.create')
-    @ApiOperation({ summary: 'Issue a new voucher from POS' })
-    async createVoucher(
-        @Req() req: any,
-        @Body() body: { amount: number; description?: string; expiresAt?: string },
-    ) {
-        // Attach issuer context from terminal token if available
-        let issuedBy: string | undefined;
+    @ApiOperation({ summary: 'Issue a new voucher' })
+    async issueVoucher(@Req() req: any, @Body() body: any) {
+        let issuedByLocationId: string | undefined;
+        let issuedByUserId: string | undefined = req.user?.id;
         const posTerminalToken = req.cookies?.['posTerminalToken'];
         if (posTerminalToken) {
             try {
                 const jwt = require('jsonwebtoken');
                 const decoded: any = jwt.decode(posTerminalToken);
-                issuedBy = decoded?.posId ?? decoded?.terminalId;
+                if (decoded?.locationId) issuedByLocationId = decoded.locationId;
             } catch { /* ignore */ }
         }
-        return this.service.createVoucher({ ...body, issuedBy });
+        return this.voucherService.issueVoucher({ ...body, issuedByLocationId, issuedByUserId });
     }
 
-    @Put('vouchers/:id/deactivate')
+    @Post('vouchers/bulk')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.create')
+    @ApiOperation({ summary: 'Bulk issue vouchers (max 500)' })
+    async bulkIssueVouchers(@Req() req: any, @Body() body: any) {
+        let issuedByLocationId: string | undefined;
+        let issuedByUserId: string | undefined = req.user?.id;
+        const posTerminalToken = req.cookies?.['posTerminalToken'];
+        if (posTerminalToken) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded: any = jwt.decode(posTerminalToken);
+                if (decoded?.locationId) issuedByLocationId = decoded.locationId;
+            } catch { /* ignore */ }
+        }
+        return this.voucherService.bulkIssueVouchers({ ...body, issuedByLocationId, issuedByUserId });
+    }
+
+    @Post('vouchers/validate')
+    @ApiOperation({ summary: 'Validate a voucher code at checkout' })
+    async validateVoucher(
+        @Req() req: any,
+        @Body() body: { code: string; locationId?: string; customerId?: string },
+    ) {
+        let locationId = body.locationId || '';
+        const posTerminalToken = req.cookies?.['posTerminalToken'];
+        if (posTerminalToken) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded: any = jwt.decode(posTerminalToken);
+                if (decoded?.locationId) locationId = decoded.locationId;
+            } catch { /* ignore */ }
+        }
+        return this.voucherService.validateVoucher(body.code, locationId, body.customerId);
+    }
+
+    @Put('vouchers/:id/void')
     @UseGuards(JwtAuthGuard, PermissionsGuard)
     @Permissions('pos.voucher.void')
-    @ApiOperation({ summary: 'Deactivate a voucher' })
-    async deactivateVoucher(@Param('id') id: string) {
-        return this.service.deactivateVoucher(id);
-    }
-
-    @Delete('vouchers/:id')
-    @UseGuards(JwtAuthGuard, PermissionsGuard)
-    @Permissions('pos.voucher.delete')
-    @ApiOperation({ summary: 'Delete an unused voucher' })
-    async deleteVoucher(@Param('id') id: string) {
-        return this.service.deleteVoucher(id);
+    @ApiOperation({ summary: 'Void a voucher' })
+    async voidVoucher(@Param('id') id: string, @Body() body: { reason?: string }) {
+        return this.voucherService.voidVoucher(id, body.reason);
     }
 }

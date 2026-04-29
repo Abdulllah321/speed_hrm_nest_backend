@@ -161,8 +161,9 @@ export class AuthController {
         maxAge: 30 * 24 * 60 * 60,
       });
 
-      // Set user data (for client-side access)
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      // Set user data (for client-side access) — exclude permissions to keep cookie small
+      const { permissions: _omit, ...userForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(userForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
@@ -308,7 +309,8 @@ export class AuthController {
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
       res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      const { permissions: _p1, ...posUserCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(posUserCookie), { ...cookieOptions, maxAge: 12 * 60 * 60 });
       res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
       return res.send(result);
     }
@@ -352,7 +354,8 @@ export class AuthController {
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
       res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('user', JSON.stringify(result.data.user), { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      const { permissions: _p2, ...posSwitchCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(posSwitchCookie), { ...cookieOptions, maxAge: 12 * 60 * 60 });
       res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
 
       return res.send(result);
@@ -415,12 +418,11 @@ export class AuthController {
       });
 
       // Set user data (for client-side)
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _ssoOmit, ...ssoUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(ssoUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
-
-      // Return JSON response for frontend to handle
       return res.send({
         status: true,
         message: 'SSO login successful',
@@ -480,7 +482,8 @@ export class AuthController {
       });
 
       // Set user summary data
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _impOmit, ...impUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(impUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
@@ -534,7 +537,8 @@ export class AuthController {
       });
 
       // Set user summary data
-      res.setCookie('user', JSON.stringify(result.data.user), {
+      const { permissions: _stopOmit, ...stopUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(stopUserForCookie), {
         ...cookieOptions,
         maxAge: 30 * 24 * 60 * 60,
       });
@@ -866,5 +870,126 @@ export class AuthController {
   async terminateSession(@Req() req: any, @Body('sessionId') sessionId: string, @Res() res: any) {
     const result = await this.service.terminateSession(req.user.userId, sessionId);
     return res.status(result.status ? 200 : 400).send(result);
+  }
+
+  // ─── Desktop / Electron Device Auth ────────────────────────────────────────
+
+  /**
+   * Called by the Electron app after a successful login.
+   * Registers (or re-activates) this machine as a trusted device and returns
+   * a long-lived deviceToken that is stored encrypted in the OS keychain.
+   *
+   * Mirrors how Postman / Docker Desktop / Teams register a device on first login.
+   */
+  @Post('desktop/register-device')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Register or re-activate an Electron desktop device' })
+  async registerDesktopDevice(
+    @Req() req: any,
+    @Body() body: {
+      machineId: string;
+      hostname?: string;
+      platform?: string;
+      appVersion?: string;
+    },
+  ) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+
+    return this.service.registerDesktopDevice(req.user.userId, {
+      machineId: body.machineId,
+      hostname: body.hostname,
+      platform: body.platform,
+      appVersion: body.appVersion,
+      ipAddress,
+    });
+  }
+
+  /**
+   * Called by the Electron app on every startup (before showing the UI).
+   * Validates the stored deviceToken against the cloud — no user credentials needed.
+   * Returns a fresh accessToken + refreshToken so the app can resume the session.
+   *
+   * This is the "silent re-auth" flow used by Teams, Postman, Docker Desktop, etc.
+   */
+  @Post('desktop/validate-session')
+  @ApiOperation({ summary: 'Validate a desktop device token and issue fresh tokens' })
+  async validateDesktopSession(
+    @Req() req: any,
+    @Res() res: any,
+    @Body() body: { deviceToken: string; machineId: string; appVersion?: string },
+  ) {
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+
+    const result = await this.service.validateDesktopSession(
+      body.deviceToken,
+      body.machineId,
+      { ipAddress, appVersion: body.appVersion },
+    );
+
+    if (result.status && result.data) {
+      const cookieOptions = this.getCookieOptions(req);
+
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60,
+      });
+      res.setCookie('refreshToken', result.data.refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+      const { permissions: _devOmit, ...devUserForCookie } = result.data.user;
+      res.setCookie('user', JSON.stringify(devUserForCookie), {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60,
+      });
+
+      return res.send({
+        status: true,
+        message: 'Device session validated',
+        data: {
+          user: result.data.user,
+          accessToken: result.data.accessToken,
+          refreshToken: result.data.refreshToken,
+        },
+      });
+    }
+
+    return res.status(401).send({
+      status: false,
+      message: result.message || 'Device session invalid or revoked',
+    });
+  }
+
+  /**
+   * Revoke a specific desktop device (admin or the device owner).
+   * After revocation the device must re-login with credentials.
+   */
+  @Post('desktop/revoke-device')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Revoke a registered desktop device' })
+  async revokeDesktopDevice(
+    @Req() req: any,
+    @Body() body: { deviceId: string },
+  ) {
+    return this.service.revokeDesktopDevice(req.user.userId, body.deviceId);
+  }
+
+  /**
+   * List all registered desktop devices for the current user.
+   */
+  @Get('desktop/devices')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List registered desktop devices for the current user' })
+  async listDesktopDevices(@Req() req: any) {
+    return this.service.listDesktopDevices(req.user.userId);
   }
 }

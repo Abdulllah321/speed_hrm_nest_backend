@@ -55,82 +55,125 @@ export class AuthService {
     userAgent?: string,
     browserId?: string
   ) {
-    const user = await this.prismaMaster.user.findUnique({
-      where: { email },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
-    });
-    if (!user) return { status: false, message: 'user not found' };
-    if (user.status !== 'active')
-      return { status: false, message: 'Account is not active' };
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return { status: false, message: "Password doesn't match" };
+    const startTime = Date.now();
+    this.logger.log(`[LOGIN] Attempt: ${email} | IP: ${ipAddress || 'unknown'}`);
 
-    // Update Login History
-    await this.prismaMaster.loginHistory.create({
-      data: {
-        userId: user.id,
-        ipAddress: ipAddress || 'Unknown',
-        userAgent: userAgent || null,
-        status: 'success',
-      },
-    });
+    try {
+      // Step 1: Find user
+      this.logger.debug(`[LOGIN] Step 1: Looking up user: ${email}`);
+      const user = await this.prismaMaster.user.findUnique({
+        where: { email },
+        include: { role: true },
+      });
 
-    // Handle Session Management
-    const sessionToken = uuidv4();
-    const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, {
-      ip: ipAddress,
-      userAgent,
-      browserId
-    });
+      if (!user) {
+        this.logger.warn(`[LOGIN] Failed — user not found: ${email}`);
+        return { status: false, message: 'User not found' };
+      }
+      this.logger.debug(`[LOGIN] Step 1 OK: id=${user.id} | role=${user.role?.name || 'none'} | status=${user.status}`);
 
-    const accessOpts: jwt.SignOptions = {
-      expiresIn: authConfig.jwt.accessExpiresIn as any,
-      issuer: authConfig.jwt.issuer,
-    };
+      // Step 2: Status check
+      if (user.status !== 'active') {
+        this.logger.warn(`[LOGIN] Failed — account inactive: ${email} | status=${user.status}`);
+        return { status: false, message: 'Account is not active' };
+      }
 
-    // Include sessionId in payload
-    const payload = {
-      userId: user.id,
-      email: user.email,
-      roleId: user.roleId,
-      employeeId: user.employeeId,
-      roleName: user.role?.name || null,
-      sessionId: sessionId,
-    };
+      // Step 3: Password check
+      if (!user.password) {
+        this.logger.warn(`[LOGIN] Failed — no password set: ${email}`);
+        return { status: false, message: "Password doesn't match" };
+      }
 
-    const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+      this.logger.debug(`[LOGIN] Step 3: bcrypt compare | hash prefix: ${user.password.substring(0, 7)}`);
+      const bcryptStart = Date.now();
+      const ok = await bcrypt.compare(password, user.password);
+      this.logger.debug(`[LOGIN] Step 3 OK: bcrypt took ${Date.now() - bcryptStart}ms | match=${ok}`);
 
-    const refreshOpts: jwt.SignOptions = {
-      expiresIn: authConfig.jwt.refreshExpiresIn as any,
-      issuer: authConfig.jwt.issuer,
-    };
-    const refreshToken = jwt.sign(
-      { userId: user.id, sessionId: sessionId },
-      authConfig.jwt.refreshSecret,
-      refreshOpts,
-    );
+      if (!ok) {
+        this.logger.warn(`[LOGIN] Failed — wrong password: ${email}`);
+        return { status: false, message: "Password doesn't match" };
+      }
 
-    return {
-      status: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: user.role?.name || null,
-          permissions:
-            user.role?.permissions
-              .filter((p) => p.permission)
-              .map((p) => p.permission.name) || [],
+      // Step 4: Login history
+      this.logger.debug(`[LOGIN] Step 4: Writing login history`);
+      await this.prismaMaster.loginHistory.create({
+        data: {
+          userId: user.id,
+          ipAddress: ipAddress || 'Unknown',
+          userAgent: userAgent || null,
+          status: 'success',
         },
-        accessToken,
-        refreshToken,
-        sessionId
-      },
-    };
+      });
+      this.logger.debug(`[LOGIN] Step 4 OK`);
+
+      // Step 5: Session management
+      this.logger.debug(`[LOGIN] Step 5: Managing sessions for user ${user.id}`);
+      const sessionToken = uuidv4();
+      const sessionId = await this.manageActiveSessions(user.id, user.role?.name || 'User', sessionToken, {
+        ip: ipAddress,
+        userAgent,
+        browserId
+      });
+      this.logger.debug(`[LOGIN] Step 5 OK: sessionId=${sessionId}`);
+
+      // Step 6: Sign tokens
+      this.logger.debug(`[LOGIN] Step 6: Signing JWT tokens`);
+      const accessOpts: jwt.SignOptions = {
+        expiresIn: authConfig.jwt.accessExpiresIn as any,
+        issuer: authConfig.jwt.issuer,
+      };
+      const payload = {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        employeeId: user.employeeId,
+        roleName: user.role?.name || null,
+        sessionId: sessionId,
+      };
+      const accessToken = jwt.sign(payload, authConfig.jwt.accessSecret, accessOpts);
+      const refreshOpts: jwt.SignOptions = {
+        expiresIn: authConfig.jwt.refreshExpiresIn as any,
+        issuer: authConfig.jwt.issuer,
+      };
+      const refreshToken = jwt.sign(
+        { userId: user.id, sessionId: sessionId },
+        authConfig.jwt.refreshSecret,
+        refreshOpts,
+      );
+      this.logger.debug(`[LOGIN] Step 6 OK`);
+
+      // Step 7: Fetch permissions
+      this.logger.debug(`[LOGIN] Step 7: Fetching permissions | roleId=${user.roleId || 'none'}`);
+      const rolePermissions = user.roleId
+        ? await this.prismaMaster.rolePermission.findMany({
+            where: { roleId: user.roleId },
+            select: { permission: { select: { name: true } } },
+          })
+        : [];
+      this.logger.debug(`[LOGIN] Step 7 OK: ${rolePermissions.length} permissions`);
+
+      this.logger.log(`[LOGIN] Success: ${email} | userId=${user.id} | role=${user.role?.name} | total=${Date.now() - startTime}ms`);
+
+      return {
+        status: true,
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role?.name || null,
+            permissions: rolePermissions.map((rp) => rp.permission.name),
+          },
+          accessToken,
+          refreshToken,
+          sessionId
+        },
+      };
+    } catch (error) {
+      this.logger.error(`[LOGIN] Exception for ${email} after ${Date.now() - startTime}ms | ${error?.message || error}`, error?.stack);
+      return { status: false, message: 'An error occurred during login. Please try again.' };
+    }
   }
 
   /**
@@ -181,9 +224,7 @@ export class AuthService {
     // 3. Find target user in Master DB by employeeId
     let targetUser = await this.prismaMaster.user.findFirst({
       where: { employeeId },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
+      include: { role: true },
     });
 
     // 4. JIT: If no user account is found, create/assign the dashboard account
@@ -196,23 +237,15 @@ export class AuthService {
       // Check if user exists by email but isn't linked to this employeeId
       targetUser = await this.prismaMaster.user.findUnique({
         where: { email },
-        include: {
-          role: { include: { permissions: { include: { permission: true } } } },
-        },
+        include: { role: true },
       });
 
       if (targetUser) {
         // Link existing user to this employeeId and enable dashboard
         targetUser = await this.prismaMaster.user.update({
           where: { id: targetUser.id },
-          data: {
-            employeeId,
-            isDashboardEnabled: true,
-            status: 'active'
-          },
-          include: {
-            role: { include: { permissions: { include: { permission: true } } } },
-          },
+          data: { employeeId, isDashboardEnabled: true, status: 'active' },
+          include: { role: true },
         });
       } else {
         // Create brand new user account
@@ -232,9 +265,7 @@ export class AuthService {
             mustChangePassword: true,
             authProvider: 'local',
           },
-          include: {
-            role: { include: { permissions: { include: { permission: true } } } },
-          },
+          include: { role: true },
         });
       }
     }
@@ -249,9 +280,7 @@ export class AuthService {
       targetUser = await this.prismaMaster.user.update({
         where: { id: targetUser.id },
         data: { isDashboardEnabled: true },
-        include: {
-          role: { include: { permissions: { include: { permission: true } } } },
-        },
+        include: { role: true },
       });
     }
 
@@ -305,6 +334,14 @@ export class AuthService {
       refreshOpts,
     );
 
+    // Fetch permissions for impersonated user
+    const impersonatePerms = targetUser.roleId
+      ? await this.prismaMaster.rolePermission.findMany({
+          where: { roleId: targetUser.roleId },
+          select: { permission: { select: { name: true } } },
+        })
+      : [];
+
     return {
       status: true,
       data: {
@@ -314,8 +351,7 @@ export class AuthService {
           firstName: targetUser.firstName,
           lastName: targetUser.lastName,
           role: targetUser.role?.name || null,
-          permissions:
-            targetUser.role?.permissions.map((p) => p.permission.name) || [],
+          permissions: impersonatePerms.map((rp) => rp.permission.name),
           employee: {
             id: employeeDetails.id,
             employeeId: employeeDetails.employeeId,
@@ -335,9 +371,7 @@ export class AuthService {
   async stopImpersonating(impersonatorId: string) {
     const user = await this.prismaMaster.user.findUnique({
       where: { id: impersonatorId },
-      include: {
-        role: { include: { permissions: { include: { permission: true } } } },
-      },
+      include: { role: true },
     });
 
     if (!user) return { status: false, message: 'Original user not found' };
@@ -368,6 +402,14 @@ export class AuthService {
       refreshOpts,
     );
 
+    // Fetch permissions for restored user
+    const stopImpersonatePerms = user.roleId
+      ? await this.prismaMaster.rolePermission.findMany({
+          where: { roleId: user.roleId },
+          select: { permission: { select: { name: true } } },
+        })
+      : [];
+
     return {
       status: true,
       data: {
@@ -377,10 +419,7 @@ export class AuthService {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role?.name || null,
-          permissions:
-            user.role?.permissions
-              .filter((p) => p.permission)
-              .map((p) => p.permission.name) || [],
+          permissions: stopImpersonatePerms.map((rp) => rp.permission.name),
         },
         accessToken,
         refreshToken,
@@ -1223,6 +1262,7 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) return { status: false, message: 'User not found' };
+    if (!user.password) return { status: false, message: 'Invalid current password' };
     const ok = await bcrypt.compare(oldPassword, user.password);
     if (!ok) return { status: false, message: 'Invalid current password' };
     if ((newPassword || '').length < authConfig.password.minLength)
@@ -2001,5 +2041,241 @@ export class AuthService {
       console.error('POS Link Error:', err);
       return { status: false, message: 'Failed to link session' };
     }
+  }
+
+  // ─── Desktop / Electron Device Auth ────────────────────────────────────────
+
+  /**
+   * Register or re-activate a desktop device after a successful credential login.
+   * Issues a long-lived deviceToken stored encrypted in the OS keychain.
+   */
+  async registerDesktopDevice(
+    userId: string,
+    info: {
+      machineId: string;
+      hostname?: string;
+      platform?: string;
+      appVersion?: string;
+      ipAddress?: string;
+    },
+  ) {
+    if (!info.machineId) {
+      return { status: false, message: 'machineId is required' };
+    }
+
+    const deviceToken = uuidv4() + '-' + uuidv4(); // 72-char opaque token
+
+    // Upsert: same user + same machine → update token & mark active
+    const device = await this.prismaMaster.desktopDevice.upsert({
+      where: { userId_machineId: { userId, machineId: info.machineId } },
+      update: {
+        deviceToken,
+        hostname: info.hostname,
+        platform: info.platform,
+        appVersion: info.appVersion,
+        status: 'active',
+        lastSeenAt: new Date(),
+        lastSeenIp: info.ipAddress,
+        revokedAt: null,
+        revokedBy: null,
+      },
+      create: {
+        userId,
+        machineId: info.machineId,
+        deviceToken,
+        hostname: info.hostname,
+        platform: info.platform,
+        appVersion: info.appVersion,
+        status: 'active',
+        lastSeenAt: new Date(),
+        lastSeenIp: info.ipAddress,
+      },
+    });
+
+    return {
+      status: true,
+      message: 'Device registered',
+      data: {
+        deviceId: device.id,
+        deviceToken: device.deviceToken,
+      },
+    };
+  }
+
+  /**
+   * Validate a deviceToken on Electron startup — no credentials needed.
+   * Returns fresh access + refresh tokens so the app resumes silently.
+   * This is the "silent re-auth" flow (Teams / Postman / Docker Desktop pattern).
+   */
+  async validateDesktopSession(
+    deviceToken: string,
+    machineId: string,
+    meta?: { ipAddress?: string; appVersion?: string },
+  ) {
+    if (!deviceToken || !machineId) {
+      return { status: false, message: 'deviceToken and machineId are required' };
+    }
+
+    const device = await this.prismaMaster.desktopDevice.findUnique({
+      where: { deviceToken },
+      include: {
+        user: {
+          include: {
+            role: { include: { permissions: { include: { permission: true } } } },
+          },
+        },
+      },
+    });
+
+    if (!device) {
+      return { status: false, message: 'Device not registered' };
+    }
+
+    // Verify the machineId matches — prevents stolen token replay from a different machine
+    if (device.machineId !== machineId) {
+      return { status: false, message: 'Machine ID mismatch' };
+    }
+
+    if (device.status !== 'active') {
+      return {
+        status: false,
+        message: device.status === 'revoked'
+          ? 'This device has been revoked. Please log in again.'
+          : 'Device is suspended. Contact your administrator.',
+      };
+    }
+
+    const user = device.user;
+    if (!user || user.status !== 'active') {
+      return { status: false, message: 'User account is inactive' };
+    }
+
+    // Update last-seen
+    await this.prismaMaster.desktopDevice.update({
+      where: { id: device.id },
+      data: {
+        lastSeenAt: new Date(),
+        lastSeenIp: meta?.ipAddress,
+        appVersion: meta?.appVersion || device.appVersion,
+      },
+    });
+
+    // Issue fresh tokens
+    const sessionToken = uuidv4();
+    const sessionId = await this.manageActiveSessions(
+      user.id,
+      user.role?.name || 'User',
+      sessionToken,
+      { ip: meta?.ipAddress, deviceInfo: `Electron:${device.hostname || 'desktop'}`, deviceType: 'ELECTRON' } as any,
+    );
+
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.accessExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        employeeId: user.employeeId,
+        roleName: user.role?.name || null,
+        sessionId,
+        deviceId: device.id,
+        isDesktopApp: true,
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    const refreshOpts: jwt.SignOptions = {
+      expiresIn: authConfig.jwt.refreshExpiresIn as any,
+      issuer: authConfig.jwt.issuer,
+    };
+    const refreshToken = jwt.sign(
+      { userId: user.id, sessionId, deviceId: device.id },
+      authConfig.jwt.refreshSecret,
+      refreshOpts,
+    );
+
+    return {
+      status: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role?.name || null,
+          permissions:
+            user.role?.permissions
+              .filter((p) => p.permission)
+              .map((p) => p.permission.name) || [],
+        },
+        accessToken,
+        refreshToken,
+        deviceId: device.id,
+      },
+    };
+  }
+
+  /**
+   * Revoke a desktop device. The device owner or an admin can call this.
+   */
+  async revokeDesktopDevice(requestingUserId: string, deviceId: string) {
+    const device = await this.prismaMaster.desktopDevice.findUnique({
+      where: { id: deviceId },
+    });
+
+    if (!device) {
+      return { status: false, message: 'Device not found' };
+    }
+
+    // Only the owner or an admin can revoke
+    const requester = await this.prismaMaster.user.findUnique({
+      where: { id: requestingUserId },
+      include: { role: true },
+    });
+
+    const isAdmin = requester?.role?.isSystem || ['super_admin', 'admin'].includes(requester?.role?.name?.toLowerCase() || '');
+    if (device.userId !== requestingUserId && !isAdmin) {
+      return { status: false, message: 'Not authorized to revoke this device' };
+    }
+
+    await this.prismaMaster.desktopDevice.update({
+      where: { id: deviceId },
+      data: {
+        status: 'revoked',
+        revokedAt: new Date(),
+        revokedBy: requestingUserId,
+      },
+    });
+
+    return { status: true, message: 'Device revoked successfully' };
+  }
+
+  /**
+   * List all registered desktop devices for a user.
+   */
+  async listDesktopDevices(userId: string) {
+    const devices = await this.prismaMaster.desktopDevice.findMany({
+      where: { userId },
+      orderBy: { lastSeenAt: 'desc' },
+      select: {
+        id: true,
+        machineId: true,
+        hostname: true,
+        platform: true,
+        appVersion: true,
+        status: true,
+        lastSeenAt: true,
+        lastSeenIp: true,
+        createdAt: true,
+        revokedAt: true,
+      },
+    });
+
+    return { status: true, data: devices };
   }
 }
