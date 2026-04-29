@@ -11,6 +11,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { Prisma } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/client';
 
@@ -756,7 +757,9 @@ export class PayrollService {
       });
 
       // Log Component
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
         module: 'payroll',
         action: 'generate',
         entity: 'Payroll',
@@ -779,7 +782,9 @@ export class PayrollService {
       );
 
       // Log failure to activity logs
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
         module: 'payroll',
         action: 'generate',
         entity: 'Payroll',

@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
 import { PrismaService } from '../../../database/prisma.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 
 import {
   CreateSegmentDto,
@@ -86,21 +87,25 @@ export class SegmentService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'segments',
-        entity: 'Segment',
-        description: `Created segments (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Segments created successfully',
       };
+      runInBackground(
+        'Create Segments',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'segments',
+          entity: 'Segment',
+          description: `Created segments (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('segments_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -122,25 +127,29 @@ export class SegmentService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'segments',
-        entity: 'Segment',
-        entityId: id,
-        description: `Updated segment ${segment.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
-      return {
+      const response = {
         status: true,
         data: segment,
         message: 'Segment updated successfully',
       };
+      runInBackground(
+        'Update Segment',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'segments',
+          entity: 'Segment',
+          entityId: id,
+          description: `Updated segment ${segment.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('segments_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -161,23 +170,27 @@ export class SegmentService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'segments',
-        entity: 'Segment',
-        description: `Bulk updated segments (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Segments updated successfully',
       };
+      runInBackground(
+        'Bulk Update Segments',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'segments',
+          entity: 'Segment',
+          description: `Bulk updated segments (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('segments_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -191,23 +204,27 @@ export class SegmentService {
       const result = await this.prisma.segment.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'segments',
-        entity: 'Segment',
-        description: `Bulk deleted segments (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Segments deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Segments',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'segments',
+          entity: 'Segment',
+          description: `Bulk deleted segments (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('segments_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -223,24 +240,28 @@ export class SegmentService {
       });
       const result = await this.prisma.segment.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'segments',
-        entity: 'Segment',
-        entityId: id,
-        description: `Deleted segment ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Segment deleted successfully',
       };
+      runInBackground(
+        'Delete Segment',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'segments',
+          entity: 'Segment',
+          entityId: id,
+          description: `Deleted segment ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('segments_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

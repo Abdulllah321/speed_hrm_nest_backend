@@ -3,6 +3,7 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class EobiService {
@@ -51,8 +52,11 @@ export class EobiService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'eobis',
         entity: 'EOBI',
@@ -62,11 +66,15 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to create EOBI',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'eobis',
         entity: 'EOBI',
@@ -76,7 +84,8 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return { status: false, message: 'Failed to create EOBI' };
     }
   }
@@ -110,8 +119,10 @@ export class EobiService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'eobis',
         entity: 'EOBI',
@@ -120,11 +131,15 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed bulk create EOBIs',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'eobis',
         entity: 'EOBI',
@@ -134,7 +149,8 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create EOBIs' };
     }
   }
@@ -182,8 +198,11 @@ export class EobiService {
           status: body.status ?? existing.status,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'eobis',
         entity: 'EOBI',
@@ -194,11 +213,15 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update EOBI',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'eobis',
         entity: 'EOBI',
@@ -209,7 +232,8 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update EOBI' };
     }
   }
@@ -224,8 +248,10 @@ export class EobiService {
       });
       if (!existing) return { status: false, message: 'EOBI not found' };
       await this.prisma.eOBI.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'eobis',
         entity: 'EOBI',
@@ -235,11 +261,15 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to delete EOBI',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'eobis',
         entity: 'EOBI',
@@ -249,7 +279,8 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete EOBI' };
     }
   }
@@ -261,8 +292,10 @@ export class EobiService {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
       await this.prisma.eOBI.deleteMany({ where: { id: { in: ids } } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'eobis',
         entity: 'EOBI',
@@ -271,11 +304,15 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed bulk delete EOBIs',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'eobis',
         entity: 'EOBI',
@@ -284,7 +321,8 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete EOBIs' };
     }
   }
@@ -320,8 +358,11 @@ export class EobiService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'eobis',
         entity: 'EOBI',
@@ -330,11 +371,14 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed bulk update EOBIs (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'eobis',
         entity: 'EOBI',
@@ -344,7 +388,8 @@ export class EobiService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update EOBIs' };
     }
   }

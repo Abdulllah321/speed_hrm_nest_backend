@@ -2,9 +2,13 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MovementType, Prisma } from '@prisma/client';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class StockLedgerService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
   async findAll(options?: {
     warehouseId?: string;

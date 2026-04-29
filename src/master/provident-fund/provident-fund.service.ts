@@ -2,6 +2,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class ProvidentFundService {
@@ -36,8 +37,11 @@ export class ProvidentFundService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -47,11 +51,15 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to create provident fund',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -61,7 +69,8 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return { status: false, message: 'Failed to create provident fund' };
     }
   }
@@ -81,8 +90,10 @@ export class ProvidentFundService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -91,11 +102,15 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed bulk create provident funds',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -105,7 +120,8 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create provident funds' };
     }
   }
@@ -129,8 +145,11 @@ export class ProvidentFundService {
           status: body.status ?? existing.status,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -141,11 +160,15 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update provident fund',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -156,7 +179,8 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update provident fund' };
     }
   }
@@ -172,8 +196,10 @@ export class ProvidentFundService {
       if (!existing)
         return { status: false, message: 'Provident fund not found' };
       await this.prisma.providentFund.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -183,11 +209,14 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to delete provident fund (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'provident-funds',
         entity: 'ProvidentFund',
@@ -197,7 +226,8 @@ export class ProvidentFundService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete provident fund' };
     }
   }

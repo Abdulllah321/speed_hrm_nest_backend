@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateLoanRequestDto,
   UpdateLoanRequestDto,
@@ -687,7 +688,9 @@ export class LoanRequestService {
 
       // Log activity
       if (Array.isArray(result) && result.length > 0 && ctx.userId) {
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'create',
           module: 'loan-request',
@@ -697,7 +700,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
       }
 
       return {
@@ -878,7 +882,9 @@ export class LoanRequestService {
 
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'update',
           module: 'loan-request',
@@ -888,7 +894,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
       }
 
       return {
@@ -1002,7 +1009,9 @@ export class LoanRequestService {
             },
           });
 
-          await this.activityLogs.log({
+          runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
             userId: ctx.userId,
             action: 'approve',
             module: 'loan-request',
@@ -1012,7 +1021,8 @@ export class LoanRequestService {
             ipAddress: ctx.ipAddress,
             userAgent: ctx.userAgent,
             status: 'success',
-          });
+        }),
+      );
 
           const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1054,7 +1064,9 @@ export class LoanRequestService {
           },
         });
 
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'approve',
           module: 'loan-request',
@@ -1064,7 +1076,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1121,7 +1134,9 @@ export class LoanRequestService {
           },
         });
 
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'approve',
           module: 'loan-request',
@@ -1131,7 +1146,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1225,7 +1241,9 @@ export class LoanRequestService {
             },
           });
 
-          await this.activityLogs.log({
+          runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
             userId: ctx.userId,
             action: 'reject',
             module: 'loan-request',
@@ -1235,7 +1253,8 @@ export class LoanRequestService {
             ipAddress: ctx.ipAddress,
             userAgent: ctx.userAgent,
             status: 'success',
-          });
+        }),
+      );
 
           const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1272,7 +1291,9 @@ export class LoanRequestService {
           },
         });
 
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'reject',
           module: 'loan-request',
@@ -1282,7 +1303,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1340,7 +1362,9 @@ export class LoanRequestService {
           },
         });
 
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'reject',
           module: 'loan-request',
@@ -1350,7 +1374,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1396,7 +1421,9 @@ export class LoanRequestService {
 
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
+        runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'loan-request',
@@ -1406,7 +1433,8 @@ export class LoanRequestService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        });
+        }),
+      );
       }
 
       return { status: true, message: 'Loan request deleted successfully' };

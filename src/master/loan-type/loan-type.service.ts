@@ -4,6 +4,7 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class LoanTypeService {
@@ -37,7 +38,14 @@ export class LoanTypeService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: created,
+        message: 'Loan type created successfully',
+      };
+      runInBackground(
+        'Created loan type ${created.name}',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'loan-types',
@@ -48,14 +56,18 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: created,
-        message: 'Loan type created successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Loan type updated successfully',
+      };
+      runInBackground(
+        'Failed to create loan type',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'loan-types',
@@ -87,7 +99,9 @@ export class LoanTypeService {
           status: body.status ?? existing?.status ?? 'active',
         },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated loan type ${updated.name} (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'loan-types',
@@ -99,14 +113,18 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: updated,
-        message: 'Loan type updated successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: removed,
+        message: 'Loan type deleted successfully',
+      };
+      runInBackground(
+        'Failed to update loan type',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'loan-types',
@@ -118,7 +136,8 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to update loan type',
@@ -138,7 +157,9 @@ export class LoanTypeService {
       const removed = await this.prisma.loanType.delete({
         where: { id },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted loan type ${existing?.name} (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'loan-types',
@@ -149,14 +170,18 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: removed,
-        message: 'Loan type deleted successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: result,
+        message: 'Loan types created successfully',
+      };
+      runInBackground(
+        'Failed to delete loan type',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'loan-types',
@@ -167,7 +192,8 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete loan type',
@@ -191,7 +217,9 @@ export class LoanTypeService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk created loan types (${result.count}) (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'loan-types',
@@ -201,14 +229,18 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: result,
-        message: 'Loan types created successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: updatedItems,
+        message: 'Loan types updated successfully',
+      };
+      runInBackground(
+        'Failed to bulk create loan types',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'loan-types',
@@ -219,7 +251,8 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to create loan types',
@@ -258,7 +291,9 @@ export class LoanTypeService {
         });
         updatedItems.push(updated);
       }
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated loan types (${updatedItems.length}) (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'loan-types',
@@ -268,14 +303,18 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: updatedItems,
-        message: 'Loan types updated successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: result,
+        message: 'Loan types deleted successfully',
+      };
+      runInBackground(
+        'Failed to bulk update loan types',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'loan-types',
@@ -286,7 +325,8 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to update loan types',
@@ -308,7 +348,9 @@ export class LoanTypeService {
       const result = await this.prisma.loanType.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted loan types (${result.count}) (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'loan-types',
@@ -318,14 +360,13 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: result,
-        message: 'Loan types deleted successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      runInBackground(
+        'Failed to bulk delete loan types (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'loan-types',
@@ -335,7 +376,8 @@ export class LoanTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete loan types',

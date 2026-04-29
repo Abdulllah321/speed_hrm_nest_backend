@@ -7,9 +7,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { UpdateRfqDto, AddVendorsDto } from './dto/update-rfq.dto';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class RfqService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async create(createDto: CreateRfqDto) {
     // Verify PR exists and is APPROVED

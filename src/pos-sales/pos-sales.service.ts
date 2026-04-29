@@ -7,6 +7,8 @@ import { MovementType, Prisma } from '@prisma/client';
 import { FbrService } from './fbr.service';
 
 
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class PosSalesService implements OnModuleInit {
     constructor(
@@ -14,7 +16,9 @@ export class PosSalesService implements OnModuleInit {
         private prismaMaster: PrismaMasterService,
         private stockLedgerService: StockLedgerService,
         private fbrService: FbrService,
-    ) { }
+    ,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
       // ─── Schedule midnight hold-clear ─────────────────────────────────
     onModuleInit() {

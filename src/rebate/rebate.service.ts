@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import { CreateRebateDto, UpdateRebateDto } from './dto/create-rebate.dto';
 
 @Injectable()
@@ -320,27 +321,32 @@ export class RebateService {
         },
       };
 
-      // Log activity
-      if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'rebate',
-          entity: 'Rebate',
-          entityId: rebate.id,
-          description: `Created rebate for ${employee.employeeName} - ${rebateNature.name}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: mappedRebate,
         message: 'Rebate created successfully',
       };
+
+      // Log activity
+      if (ctx.userId) {
+        runInBackground(
+          'Create Rebate',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'create',
+            module: 'rebate',
+            entity: 'Rebate',
+            entityId: rebate.id,
+            description: `Created rebate for ${employee.employeeName} - ${rebateNature.name}`,
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error creating rebate:', error);
       return {
@@ -480,27 +486,32 @@ export class RebateService {
           : null,
       };
 
-      // Log activity
-      if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'rebate',
-          entity: 'Rebate',
-          entityId: id,
-          description: 'Updated rebate',
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: mappedUpdated,
         message: 'Rebate updated successfully',
       };
+
+      // Log activity
+      if (ctx.userId) {
+        runInBackground(
+          'Update Rebate',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'rebate',
+            entity: 'Rebate',
+            entityId: id,
+            description: 'Updated rebate',
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error updating rebate:', error);
       return {
@@ -528,22 +539,27 @@ export class RebateService {
         where: { id },
       });
 
+      const response = { status: true, message: 'Rebate deleted successfully' };
+
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'rebate',
-          entity: 'Rebate',
-          entityId: id,
-          description: 'Deleted rebate',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+        runInBackground(
+          'Delete Rebate',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'delete',
+            module: 'rebate',
+            entity: 'Rebate',
+            entityId: id,
+            description: 'Deleted rebate',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
-      return { status: true, message: 'Rebate deleted successfully' };
+      return response;
     } catch (error) {
       console.error('Error deleting rebate:', error);
       return {

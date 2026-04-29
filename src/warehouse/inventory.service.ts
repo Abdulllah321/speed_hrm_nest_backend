@@ -2,9 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryItem } from '@prisma/client';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class InventoryService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
   async getStockLevel(itemId: string, warehouseId: string): Promise<any> {
     const inventory = await this.prisma.inventoryItem.groupBy({

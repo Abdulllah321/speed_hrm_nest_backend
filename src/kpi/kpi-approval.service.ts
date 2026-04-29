@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 type Ctx = { userId?: string; ipAddress?: string; userAgent?: string };
 
@@ -41,22 +42,27 @@ export class KpiApprovalService {
         include: { kpiTemplate: true },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'kpi',
-        entity: 'KpiReview',
-        entityId: reviewId,
-        description: `Submitted KPI review "${review.kpiTemplate?.name}" for ${review.employee.employeeName} — period ${review.period}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: updated, message: 'Review submitted for approval' };
+
+      runInBackground(
+        'Submit KPI Review',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'kpi',
+          entity: 'KpiReview',
+          entityId: reviewId,
+          description: `Submitted KPI review "${review.kpiTemplate?.name}" for ${review.employee.employeeName} — period ${review.period}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       // Notify reporting manager
       await this.notifyManager(review, 'submitted', ctx);
 
-      return { status: true, data: updated, message: 'Review submitted for approval' };
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to submit review' };
     }
@@ -93,22 +99,27 @@ export class KpiApprovalService {
         include: { kpiTemplate: true },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'kpi',
-        entity: 'KpiReview',
-        entityId: reviewId,
-        description: `Approved KPI review "${review.kpiTemplate?.name}" for ${review.employee.employeeName}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: updated, message: 'Review approved successfully' };
+
+      runInBackground(
+        'Approve KPI Review',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'kpi',
+          entity: 'KpiReview',
+          entityId: reviewId,
+          description: `Approved KPI review "${review.kpiTemplate?.name}" for ${review.employee.employeeName}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       // Notify employee
       await this.notifyEmployee(review, 'approved', ctx);
 
-      return { status: true, data: updated, message: 'Review approved successfully' };
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to approve review' };
     }
@@ -149,22 +160,27 @@ export class KpiApprovalService {
         include: { kpiTemplate: true },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'kpi',
-        entity: 'KpiReview',
-        entityId: reviewId,
-        description: `Rejected KPI review "${review.kpiTemplate?.name}" for ${review.employee.employeeName} — reason: ${rejectionReason}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: updated, message: 'Review rejected' };
+
+      runInBackground(
+        'Reject KPI Review',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'kpi',
+          entity: 'KpiReview',
+          entityId: reviewId,
+          description: `Rejected KPI review "${review.kpiTemplate?.name}" for ${review.employee.employeeName} — reason: ${rejectionReason}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       // Notify employee
       await this.notifyEmployee(review, 'rejected', ctx, rejectionReason);
 
-      return { status: true, data: updated, message: 'Review rejected' };
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to reject review' };
     }
@@ -200,18 +216,23 @@ export class KpiApprovalService {
         reviews.map((r) => this.notifyEmployee(r, 'approved', ctx)),
       );
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'kpi',
-        entity: 'KpiReview',
-        description: `Bulk approved ${reviews.length} KPI review(s) for period ${period}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: { approved: reviews.length }, message: `${reviews.length} review(s) approved` };
 
-      return { status: true, data: { approved: reviews.length }, message: `${reviews.length} review(s) approved` };
+      runInBackground(
+        'Bulk Approve KPI Reviews',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'kpi',
+          entity: 'KpiReview',
+          description: `Bulk approved ${reviews.length} KPI review(s) for period ${period}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to bulk approve reviews' };
     }

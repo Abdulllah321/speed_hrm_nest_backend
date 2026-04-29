@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -38,32 +39,39 @@ export class EquipmentService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'equipments',
-        entity: 'Equipment',
-        entityId: created.id,
-        description: `Created equipment ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        `Created equipment ${created.name}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'equipments',
+          entity: 'Equipment',
+          entityId: created.id,
+          description: `Created equipment ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: 'Failed to create equipment',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Failed to create equipment (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: 'Failed to create equipment',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create equipment' };
     }
   }
@@ -84,8 +92,11 @@ export class EquipmentService {
           status: body.status ?? existing?.status ?? 'active',
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'equipments',
         entity: 'Equipment',
@@ -96,11 +107,15 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: removed, message: 'Deleted successfully' };
+      runInBackground(
+        'Failed to update equipment',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'equipments',
         entity: 'Equipment',
@@ -111,7 +126,8 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update equipment' };
     }
   }
@@ -127,8 +143,11 @@ export class EquipmentService {
       const removed = await this.prisma.equipment.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'equipments',
         entity: 'Equipment',
@@ -138,11 +157,15 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: removed, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Equipments created', data: result };
+      runInBackground(
+        'Failed to delete equipment',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'equipments',
         entity: 'Equipment',
@@ -152,7 +175,8 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete equipment' };
     }
   }
@@ -172,8 +196,10 @@ export class EquipmentService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'equipments',
         entity: 'Equipment',
@@ -182,11 +208,15 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Equipments created', data: result };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to bulk create equipments',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'equipments',
         entity: 'Equipment',
@@ -196,7 +226,8 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create equipments' };
     }
   }
@@ -220,8 +251,11 @@ export class EquipmentService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'equipments',
         entity: 'Equipment',
@@ -230,11 +264,15 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Equipments updated' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Equipments deleted', data: result };
+      runInBackground(
+        'Failed to bulk update equipments',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'equipments',
         entity: 'Equipment',
@@ -244,7 +282,8 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update equipments' };
     }
   }
@@ -262,8 +301,10 @@ export class EquipmentService {
       const result = await this.prisma.equipment.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'equipments',
         entity: 'Equipment',
@@ -272,11 +313,14 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Equipments deleted', data: result };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to bulk delete equipments (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'equipments',
         entity: 'Equipment',
@@ -285,7 +329,8 @@ export class EquipmentService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete equipments' };
     }
   }

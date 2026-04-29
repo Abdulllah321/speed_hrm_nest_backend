@@ -6,6 +6,7 @@ import {
 } from './dto/marital-status.dto';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -55,36 +56,42 @@ export class MaritalStatusService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'create',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        description: `Created marital statuses (${result.count})`,
-        newValues: JSON.stringify(names),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-
-      return {
+      const response = {
         status: true,
         message: 'Marital statuses created successfully',
         data: result,
       };
+      runInBackground(
+        'Bulk Create Marital Statuses',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          description: `Created marital statuses (${result.count})`,
+          newValues: JSON.stringify(names),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'create',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        description: 'Failed to create marital statuses',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(names),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Marital Statuses (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          description: 'Failed to create marital statuses',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(names),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to create marital statuses',
@@ -113,39 +120,45 @@ export class MaritalStatusService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        entityId: id,
-        description: `Updated marital status ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(updateDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Marital status updated successfully',
       };
+      runInBackground(
+        'Update Marital Status',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          entityId: id,
+          description: `Updated marital status ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        entityId: id,
-        description: 'Failed to update marital status',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(updateDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Marital Status (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          entityId: id,
+          description: 'Failed to update marital status',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to update marital status',
@@ -169,37 +182,43 @@ export class MaritalStatusService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        entityId: id,
-        description: `Deleted marital status ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-
-      return {
+      const response = {
         status: true,
         data: removed,
         message: 'Marital status deleted successfully',
       };
+      runInBackground(
+        'Delete Marital Status',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          entityId: id,
+          description: `Deleted marital status ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        entityId: id,
-        description: 'Failed to delete marital status',
-        errorMessage: error?.message,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Marital Status (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          entityId: id,
+          description: 'Failed to delete marital status',
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to delete marital status',
@@ -238,36 +257,42 @@ export class MaritalStatusService {
         updatedItems.push(updated);
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        description: `Bulk updated marital statuses (${updatedItems.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-
-      return {
+      const response = {
         status: true,
         data: updatedItems,
         message: 'Marital statuses updated successfully',
       };
+      runInBackground(
+        'Bulk Update Marital Statuses',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          description: `Bulk updated marital statuses (${updatedItems.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        description: 'Failed bulk update marital statuses',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Marital Statuses (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          description: 'Failed bulk update marital statuses',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to update marital statuses',
@@ -288,36 +313,42 @@ export class MaritalStatusService {
         where: { id: { in: ids } },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        description: `Bulk deleted marital statuses (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Marital statuses deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Marital Statuses',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          description: `Bulk deleted marital statuses (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'marital-statuses',
-        entity: 'MaritalStatus',
-        description: 'Failed bulk delete marital statuses',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Marital Statuses (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'marital-statuses',
+          entity: 'MaritalStatus',
+          description: 'Failed bulk delete marital statuses',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to delete marital statuses',

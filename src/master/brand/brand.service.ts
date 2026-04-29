@@ -10,6 +10,7 @@ import {
   BulkUpdateBrandItemDto,
 } from './dto/brand.dto';
 import { CreateDivisionDto, UpdateDivisionDto } from './dto/division.dto';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class BrandService {
@@ -90,7 +91,9 @@ export class BrandService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created brands (${brands.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'brands',
@@ -98,8 +101,9 @@ export class BrandService {
         description: `Created brands (${brands.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('brands_all');
+      }),
+        this.cacheManager.del('brands_all'),
+      );
       return {
         status: true,
         data: brands,
@@ -124,7 +128,9 @@ export class BrandService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated brand ${brand.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'brands',
@@ -136,8 +142,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('brands_all');
+      }),
+        this.cacheManager.del('brands_all'),
+      );
       return {
         status: true,
         data: brand,
@@ -164,7 +171,9 @@ export class BrandService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated brands (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'brands',
@@ -174,8 +183,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('brands_all');
+      }),
+        this.cacheManager.del('brands_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -194,7 +204,9 @@ export class BrandService {
       const result = await this.prisma.brand.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted brands (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'brands',
@@ -204,8 +216,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('brands_all');
+      }),
+        this.cacheManager.del('brands_all'),
+      );
       return {
         status: true,
         data: result,
@@ -226,7 +239,9 @@ export class BrandService {
       });
       const result = await this.prisma.brand.delete({ where: { id } });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted brand ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'brands',
@@ -237,8 +252,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('brands_all');
+      }),
+        this.cacheManager.del('brands_all'),
+      );
       return {
         status: true,
         data: result,
@@ -311,7 +327,9 @@ export class BrandService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created divisions (${divisions.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'divisions',
@@ -350,7 +368,9 @@ export class BrandService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated divisions (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'divisions',
@@ -360,8 +380,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('divisions_all');
+      }),
+        this.cacheManager.del('divisions_all'),
+      );
       await this.cacheManager.del('brands_all');
       return {
         status: true,
@@ -381,13 +402,16 @@ export class BrandService {
     try {
       const existing = await this.prisma.division.findUnique({
         where: { id },
-      });
+      }),
+      );
       const division = await this.prisma.division.update({
         where: { id },
         data: { name: dto.name, brandId: dto.brandId },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated division ${division.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'divisions',
@@ -399,8 +423,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('divisions_all');
+      }),
+        this.cacheManager.del('divisions_all'),
+      );
       await this.cacheManager.del('brands_all');
       return {
         status: true,
@@ -420,7 +445,9 @@ export class BrandService {
       const result = await this.prisma.division.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted divisions (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'divisions',
@@ -430,8 +457,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('divisions_all');
+      }),
+        this.cacheManager.del('divisions_all'),
+      );
       await this.cacheManager.del('brands_all');
       return {
         status: true,
@@ -453,7 +481,9 @@ export class BrandService {
       });
       const result = await this.prisma.division.delete({ where: { id } });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted division ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'divisions',
@@ -464,8 +494,9 @@ export class BrandService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('divisions_all');
+      }),
+        this.cacheManager.del('divisions_all'),
+      );
       await this.cacheManager.del('brands_all');
       return {
         status: true,

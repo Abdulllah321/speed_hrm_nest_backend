@@ -2,9 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Warehouse } from '@prisma/client';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class WarehouseService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
   async createWarehouse(data: any): Promise<Warehouse> {
     return this.prisma.warehouse.create({ data });

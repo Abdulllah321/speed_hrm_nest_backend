@@ -2,9 +2,13 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSalesOrderDto, UpdateSalesOrderDto } from '../dto/sales-order.dto';
 
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class SalesOrderService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async findAll(search?: string, status?: string) {
     const where: any = {};

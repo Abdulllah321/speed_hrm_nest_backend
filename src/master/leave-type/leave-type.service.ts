@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -38,32 +39,40 @@ export class LeaveTypeService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        entityId: created.id,
-        description: `Created leave type ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: created };
+      
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Leave Type',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          entityId: created.id,
+          description: `Created leave type ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: 'Failed to create leave type',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Leave Type (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: 'Failed to create leave type',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create leave type' };
     }
   }
@@ -84,34 +93,42 @@ export class LeaveTypeService {
           status: body.status ?? existing?.status ?? 'active',
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        entityId: id,
-        description: `Updated leave type ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: updated };
+      
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Leave Type',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          entityId: id,
+          description: `Updated leave type ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        entityId: id,
-        description: 'Failed to update leave type',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Leave Type (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          entityId: id,
+          description: 'Failed to update leave type',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update leave type' };
     }
   }
@@ -127,32 +144,40 @@ export class LeaveTypeService {
       const removed = await this.prisma.leaveType.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        entityId: id,
-        description: `Deleted leave type ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: removed };
+      
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Leave Type',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          entityId: id,
+          description: `Deleted leave type ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        entityId: id,
-        description: 'Failed to delete leave type',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Leave Type (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          entityId: id,
+          description: 'Failed to delete leave type',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete leave type' };
     }
   }
@@ -172,31 +197,38 @@ export class LeaveTypeService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: `Bulk created leave types (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Leave types created', data: result };
+      const response = { status: true, message: 'Leave types created', data: result };
+      runInBackground(
+        'Bulk Create Leave Types',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: `Bulk created leave types (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: 'Failed to bulk create leave types',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Leave Types (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: 'Failed to bulk create leave types',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create leave types' };
     }
   }
@@ -220,31 +252,39 @@ export class LeaveTypeService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: `Bulk updated leave types (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Leave types updated' };
+      
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Leave Types',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: `Bulk updated leave types (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: 'Failed to bulk update leave types',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Leave Types (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: 'Failed to bulk update leave types',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update leave types' };
     }
   }
@@ -262,30 +302,37 @@ export class LeaveTypeService {
       const result = await this.prisma.leaveType.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: `Bulk deleted leave types (${result.count})`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Leave types deleted', data: result };
+      const response = { status: true, message: 'Leave types deleted', data: result };
+      runInBackground(
+        'Bulk Delete Leave Types',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: `Bulk deleted leave types (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'leave-types',
-        entity: 'LeaveType',
-        description: 'Failed to bulk delete leave types',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Leave Types (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'leave-types',
+          entity: 'LeaveType',
+          description: 'Failed to bulk delete leave types',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete leave types' };
     }
   }
