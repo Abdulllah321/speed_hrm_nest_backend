@@ -2,6 +2,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class QualificationService {
@@ -35,8 +36,12 @@ export class QualificationService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'qualifications',
         entity: 'Qualification',
@@ -46,11 +51,15 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Qualifications created', data: result };
+      runInBackground(
+        'Failed to create qualification',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'qualifications',
         entity: 'Qualification',
@@ -60,7 +69,8 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
 
       if (error?.code === 'P2002') {
         return {
@@ -87,8 +97,10 @@ export class QualificationService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'qualifications',
         entity: 'Qualification',
@@ -97,11 +109,15 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Qualifications created', data: result };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed bulk create qualifications',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'qualifications',
         entity: 'Qualification',
@@ -111,7 +127,8 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create qualifications' };
     }
   }
@@ -136,8 +153,11 @@ export class QualificationService {
           status: body.status ?? existing.status,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'qualifications',
         entity: 'Qualification',
@@ -148,11 +168,15 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update qualification',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'qualifications',
         entity: 'Qualification',
@@ -163,7 +187,8 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
 
       if (error?.code === 'P2002') {
         return {
@@ -189,8 +214,11 @@ export class QualificationService {
       }
 
       const removed = await this.prisma.qualification.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'qualifications',
         entity: 'Qualification',
@@ -200,11 +228,15 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: removed };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Qualifications deleted', data: result };
+      runInBackground(
+        'Failed to delete qualification',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'qualifications',
         entity: 'Qualification',
@@ -214,7 +246,8 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete qualification' };
     }
   }
@@ -232,8 +265,10 @@ export class QualificationService {
       const result = await this.prisma.qualification.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'qualifications',
         entity: 'Qualification',
@@ -242,11 +277,14 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Qualifications deleted', data: result };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to bulk delete qualifications (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'qualifications',
         entity: 'Qualification',
@@ -256,7 +294,8 @@ export class QualificationService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete qualifications' };
     }
   }

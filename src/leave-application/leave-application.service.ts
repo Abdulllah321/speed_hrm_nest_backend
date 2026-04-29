@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @Injectable()
 export class LeaveApplicationService {
@@ -430,18 +431,21 @@ export class LeaveApplicationService {
         leaveType: masterLeaveType,
       };
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leave-applications',
-        entity: 'LeaveApplication',
-        entityId: created.id,
-        description: `Created leave application for ${employee.employeeName}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Create Leave Application',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: created.id,
+          description: `Created leave application for ${employee.employeeName}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       const requesterUserId =
         ctx.userId ||
@@ -489,18 +493,21 @@ export class LeaveApplicationService {
 
       return { status: true, data: mappedCreated };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leave-applications',
-        entity: 'LeaveApplication',
-        description: 'Failed to create leave application',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Leave Application (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          description: 'Failed to create leave application',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to create leave application',
@@ -756,25 +763,28 @@ export class LeaveApplicationService {
           select: { name: true },
         });
 
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'leave-applications',
-          entity: 'LeaveApplication',
-          entityId: id,
-          description: `Approved leave application (Level 1) for ${employee.employeeName}`,
-          oldValues: JSON.stringify({
-            status: existing.status,
-            approval1Status: existing.approval1Status,
+        runInBackground(
+          'Approve Leave Application (Level 1)',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'leave-applications',
+            entity: 'LeaveApplication',
+            entityId: id,
+            description: `Approved leave application (Level 1) for ${employee.employeeName}`,
+            oldValues: JSON.stringify({
+              status: existing.status,
+              approval1Status: existing.approval1Status,
+            }),
+            newValues: JSON.stringify({
+              status: nextStatus,
+              approval1Status: 'approved',
+            }),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
           }),
-          newValues: JSON.stringify({
-            status: nextStatus,
-            approval1Status: 'approved',
-          }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+        );
 
         await this.notifications.markRelatedAsRead(ctx.userId, {
           entityType: 'LeaveApplication',
@@ -869,25 +879,28 @@ export class LeaveApplicationService {
           select: { name: true },
         });
 
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'leave-applications',
-          entity: 'LeaveApplication',
-          entityId: id,
-          description: `Approved leave application (Level 2) for ${employee.employeeName}`,
-          oldValues: JSON.stringify({
-            status: existing.status,
-            approval2Status: existing.approval2Status,
+        runInBackground(
+          'Approve Leave Application (Level 2)',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'leave-applications',
+            entity: 'LeaveApplication',
+            entityId: id,
+            description: `Approved leave application (Level 2) for ${employee.employeeName}`,
+            oldValues: JSON.stringify({
+              status: existing.status,
+              approval2Status: existing.approval2Status,
+            }),
+            newValues: JSON.stringify({
+              status: 'approved',
+              approval2Status: 'approved',
+            }),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
           }),
-          newValues: JSON.stringify({
-            status: 'approved',
-            approval2Status: 'approved',
-          }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+        );
 
         await this.notifications.markRelatedAsRead(ctx.userId, {
           entityType: 'LeaveApplication',
@@ -927,18 +940,21 @@ export class LeaveApplicationService {
 
       return { status: false, message: 'Invalid approval level' };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-applications',
-        entity: 'LeaveApplication',
-        entityId: id,
-        description: 'Failed to approve leave application',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Approve Leave Application (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: id,
+          description: 'Failed to approve leave application',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to approve leave application',
@@ -1040,27 +1056,30 @@ export class LeaveApplicationService {
           select: { name: true },
         });
 
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'leave-applications',
-          entity: 'LeaveApplication',
-          entityId: id,
-          description: `Rejected leave application (Level 1) for ${employee.employeeName}`,
-          oldValues: JSON.stringify({
-            status: existing.status,
-            approval1Status: existing.approval1Status,
-            remarks: existing.remarks,
+        runInBackground(
+          'Reject Leave Application (Level 1)',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'leave-applications',
+            entity: 'LeaveApplication',
+            entityId: id,
+            description: `Rejected leave application (Level 1) for ${employee.employeeName}`,
+            oldValues: JSON.stringify({
+              status: existing.status,
+              approval1Status: existing.approval1Status,
+              remarks: existing.remarks,
+            }),
+            newValues: JSON.stringify({
+              status: 'rejected',
+              approval1Status: 'rejected',
+              remarks,
+            }),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
           }),
-          newValues: JSON.stringify({
-            status: 'rejected',
-            approval1Status: 'rejected',
-            remarks,
-          }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+        );
 
         await this.notifications.markRelatedAsRead(ctx.userId, {
           entityType: 'LeaveApplication',
@@ -1132,27 +1151,30 @@ export class LeaveApplicationService {
           select: { name: true },
         });
 
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'leave-applications',
-          entity: 'LeaveApplication',
-          entityId: id,
-          description: `Rejected leave application (Level 2) for ${employee.employeeName}`,
-          oldValues: JSON.stringify({
-            status: existing.status,
-            approval2Status: existing.approval2Status,
-            remarks: existing.remarks,
+        runInBackground(
+          'Reject Leave Application (Level 2)',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'leave-applications',
+            entity: 'LeaveApplication',
+            entityId: id,
+            description: `Rejected leave application (Level 2) for ${employee.employeeName}`,
+            oldValues: JSON.stringify({
+              status: existing.status,
+              approval2Status: existing.approval2Status,
+              remarks: existing.remarks,
+            }),
+            newValues: JSON.stringify({
+              status: 'rejected',
+              approval2Status: 'rejected',
+              remarks,
+            }),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
           }),
-          newValues: JSON.stringify({
-            status: 'rejected',
-            approval2Status: 'rejected',
-            remarks,
-          }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+        );
 
         await this.notifications.markRelatedAsRead(ctx.userId, {
           entityType: 'LeaveApplication',
@@ -1192,18 +1214,21 @@ export class LeaveApplicationService {
 
       return { status: false, message: 'Invalid approval level' };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'leave-applications',
-        entity: 'LeaveApplication',
-        entityId: id,
-        description: 'Failed to reject leave application',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Reject Leave Application (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'leave-applications',
+          entity: 'LeaveApplication',
+          entityId: id,
+          description: 'Failed to reject leave application',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to reject leave application',

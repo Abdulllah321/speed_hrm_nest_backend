@@ -3,6 +3,7 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class BonusTypeService {
@@ -47,8 +48,12 @@ export class BonusTypeService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -58,11 +63,15 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to create bonus type',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -72,7 +81,8 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return { status: false, message: 'Failed to create bonus type' };
     }
   }
@@ -100,8 +110,10 @@ export class BonusTypeService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -110,11 +122,15 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed bulk create bonus types',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -124,7 +140,8 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create bonus types' };
     }
   }
@@ -165,8 +182,11 @@ export class BonusTypeService {
           status: body.status ?? existing.status,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -177,11 +197,15 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update bonus type',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -192,7 +216,8 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update bonus type' };
     }
   }
@@ -207,8 +232,10 @@ export class BonusTypeService {
       });
       if (!existing) return { status: false, message: 'Bonus type not found' };
       await this.prisma.bonusType.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -218,11 +245,15 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to delete bonus type',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -232,7 +263,8 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete bonus type' };
     }
   }
@@ -262,8 +294,11 @@ export class BonusTypeService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -272,11 +307,15 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed bulk update bonus types',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -286,7 +325,8 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update bonus types' };
     }
   }
@@ -300,8 +340,10 @@ export class BonusTypeService {
       await this.prisma.bonusType.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -310,11 +352,14 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed bulk delete bonus types (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'bonus-types',
         entity: 'BonusType',
@@ -323,7 +368,8 @@ export class BonusTypeService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete bonus types' };
     }
   }

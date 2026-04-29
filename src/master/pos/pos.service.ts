@@ -11,6 +11,7 @@ import { UpdatePosDto } from './dto/update-pos.dto';
 import { generateNextPosId } from '../../common/utils/pos-id-generator';
 import * as bcrypt from 'bcrypt';
 import { EncryptionService } from '../../common/utils/encryption.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class PosService {
@@ -101,33 +102,39 @@ export class PosService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'pos',
-        entity: 'Pos',
-        entityId: created.id,
-        description: `Created POS ${created.name} (${created.posId}) for location ${created.locationId}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: created };
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create POS',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'pos',
+          entity: 'Pos',
+          entityId: created.id,
+          description: `Created POS ${created.name} (${created.posId}) for location ${created.locationId}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'pos',
-        entity: 'Pos',
-        description: 'Failed to create POS',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create POS (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'pos',
+          entity: 'Pos',
+          description: 'Failed to create POS',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to create POS',
@@ -161,35 +168,41 @@ export class PosService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'pos',
-        entity: 'Pos',
-        entityId: id,
-        description: `Updated POS ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: updated };
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update POS',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'pos',
+          entity: 'Pos',
+          entityId: id,
+          description: `Updated POS ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'pos',
-        entity: 'Pos',
-        entityId: id,
-        description: 'Failed to update POS',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update POS (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'pos',
+          entity: 'Pos',
+          entityId: id,
+          description: 'Failed to update POS',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to update POS',
@@ -211,33 +224,39 @@ export class PosService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'pos',
-        entity: 'Pos',
-        entityId: id,
-        description: `Deleted POS ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: removed };
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete POS',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'pos',
+          entity: 'Pos',
+          entityId: id,
+          description: `Deleted POS ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'pos',
-        entity: 'Pos',
-        entityId: id,
-        description: 'Failed to delete POS',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete POS (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'pos',
+          entity: 'Pos',
+          entityId: id,
+          description: 'Failed to delete POS',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete POS' };
     }
   }

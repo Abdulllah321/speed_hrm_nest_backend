@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { TenantDatabaseService } from '../../database/tenant-database.service';
 
+import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 export interface CompanyResponse {
   id: string;
   tenantId: string | null;
@@ -33,6 +35,8 @@ export class CompanyService {
   constructor(
     private readonly prismaMaster: PrismaMasterService,
     private readonly tenantDb: TenantDatabaseService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   /**

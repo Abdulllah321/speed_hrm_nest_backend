@@ -3,6 +3,7 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { Holiday } from '@prisma/client';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -94,8 +95,15 @@ export class HolidayService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = {
+        status: true,
+        data: created,
+        message: 'Holiday created successfully',
+      };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'holidays',
         entity: 'Holiday',
@@ -105,16 +113,19 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-
-      return {
-        status: true,
-        data: created,
-        message: 'Holiday created successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = {
+        status: true,
+        data: removed,
+        message: 'Holiday deleted successfully',
+      };
+      runInBackground(
+        'Failed to create holiday',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'holidays',
         entity: 'Holiday',
@@ -124,7 +135,8 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
 
       if (error?.code === 'P2002') {
         return {
@@ -204,8 +216,11 @@ export class HolidayService {
         data: updateData,
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'holidays',
         entity: 'Holiday',
@@ -216,7 +231,8 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       // Convert dates to current year for display
       const currentYear = new Date().getFullYear();
@@ -232,8 +248,10 @@ export class HolidayService {
         message: 'Holiday updated successfully',
       };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to update holiday (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'holidays',
         entity: 'Holiday',
@@ -244,7 +262,8 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
 
       if (error?.code === 'P2002') {
         return {
@@ -271,8 +290,11 @@ export class HolidayService {
 
       const removed = await this.prisma.holiday.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'holidays',
         entity: 'Holiday',
@@ -282,116 +304,11 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-
-      return {
-        status: true,
-        data: removed,
-        message: 'Holiday deleted successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'holidays',
-        entity: 'Holiday',
-        entityId: id,
-        description: 'Failed to delete holiday',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
-
-      return { status: false, message: 'Failed to delete holiday' };
-    }
-  }
-
-  async createBulk(
-    items: {
-      name: string;
-      dateFrom: string;
-      dateTo: string;
-      status?: string;
-    }[],
-    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
-  ) {
-    if (!items?.length)
-      return { status: false, message: 'No holidays to create' };
-
-    try {
-      const createdHolidays: Holiday[] = [];
-
-      for (const item of items) {
-        if (!item.dateFrom || !item.dateTo) {
-          continue;
-        }
-
-        const dateFrom = new Date(item.dateFrom);
-        const dateTo = new Date(item.dateTo);
-
-        // Normalize dates to base year (2000) for storage
-        const normalizedDateFrom = this.normalizeToBaseYear(dateFrom);
-        const normalizedDateTo = this.normalizeToBaseYear(dateTo);
-
-        const wrapsAround = normalizedDateFrom > normalizedDateTo;
-        if (!wrapsAround && normalizedDateFrom > normalizedDateTo) {
-          continue;
-        }
-
-        const holiday = await this.prisma.holiday.create({
-          data: {
-            name: item.name,
-            dateFrom: normalizedDateFrom,
-            dateTo: normalizedDateTo,
-            status: item.status ?? 'active',
-            createdById: ctx.userId,
-          },
-        });
-
-        createdHolidays.push(holiday);
-      }
-
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: `Bulk created holidays (${createdHolidays.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      // Convert dates to current year for display
-      const currentYear = new Date().getFullYear();
-      const normalizedHolidays = createdHolidays.map((holiday) => ({
-        ...holiday,
-        dateFrom: this.normalizeToCurrentYear(holiday.dateFrom, currentYear),
-        dateTo: this.normalizeToCurrentYear(holiday.dateTo, currentYear),
-      }));
-
-      return {
-        status: true,
-        message: 'Holidays created',
-        data: normalizedHolidays,
-      };
-    } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: 'Failed to bulk create holidays',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
-
-      return { status: false, message: 'Failed to create holidays' };
+      const response = { status: false, message: 'Failed to create holidays' };
     }
   }
 
@@ -442,8 +359,11 @@ export class HolidayService {
         });
       }
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'holidays',
         entity: 'Holiday',
@@ -452,12 +372,127 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, message: 'Holidays updated' };
+      runInBackground(
+        'Failed to delete holiday',
+        this.activityLogs.log({
+          userId: ctx.userId,
+        action: 'delete',
+        module: 'holidays',
+        entity: 'Holiday',
+        entityId: id,
+        description: 'Failed to delete holiday',
+        errorMessage: error?.message,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      }),
+      );
+
+      return { status: false, message: 'Failed to delete holiday' };
+    }
+  }
+
+  async createBulk(
+    items: {
+      name: string;
+      dateFrom: string;
+      dateTo: string;
+      status?: string;
+    }[],
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    if (!items?.length)
+      return { status: false, message: 'No holidays to create' };
+
+    try {
+      const createdHolidays: Holiday[] = [];
+
+      for (const item of items) {
+        if (!item.dateFrom || !item.dateTo) {
+          continue;
+        }
+
+        const dateFrom = new Date(item.dateFrom);
+        const dateTo = new Date(item.dateTo);
+
+        // Normalize dates to base year (2000) for storage
+        const normalizedDateFrom = this.normalizeToBaseYear(dateFrom);
+        const normalizedDateTo = this.normalizeToBaseYear(dateTo);
+
+        const wrapsAround = normalizedDateFrom > normalizedDateTo;
+        if (!wrapsAround && normalizedDateFrom > normalizedDateTo) {
+          continue;
+        }
+
+        const holiday = await this.prisma.holiday.create({
+          data: {
+            name: item.name,
+            dateFrom: normalizedDateFrom,
+            dateTo: normalizedDateTo,
+            status: item.status ?? 'active',
+            createdById: ctx.userId,
+          },
+        });
+
+        createdHolidays.push(holiday);
+      }
+
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
+        action: 'create',
+        module: 'holidays',
+        entity: 'Holiday',
+        description: `Bulk created holidays (${createdHolidays.length})`,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+        }),
+      );
+
+      // Convert dates to current year for display
+      const currentYear = new Date().getFullYear();
+      const normalizedHolidays = createdHolidays.map((holiday) => ({
+        ...holiday,
+        dateFrom: this.normalizeToCurrentYear(holiday.dateFrom, currentYear),
+        dateTo: this.normalizeToCurrentYear(holiday.dateTo, currentYear),
+      }));
+
+      return {
+        status: true,
+        message: 'Holidays created',
+        data: normalizedHolidays,
+      };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to bulk create holidays (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+        action: 'create',
+        module: 'holidays',
+        entity: 'Holiday',
+        description: 'Failed to bulk create holidays',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(items),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      }),
+      );
+      return response;
+    } catch (error: any) {
+      const response = { status: true, message: 'Holidays deleted', data: result };
+      runInBackground(
+        'Failed to bulk update holidays',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'holidays',
         entity: 'Holiday',
@@ -467,7 +502,8 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
 
       return { status: false, message: 'Failed to update holidays' };
     }
@@ -488,8 +524,10 @@ export class HolidayService {
         where: { id: { in: ids } },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'holidays',
         entity: 'Holiday',
@@ -498,12 +536,14 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-
-      return { status: true, message: 'Holidays deleted', data: result };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to bulk delete holidays (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'holidays',
         entity: 'Holiday',
@@ -512,7 +552,8 @@ export class HolidayService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
 
       return { status: false, message: 'Failed to delete holidays' };
     }

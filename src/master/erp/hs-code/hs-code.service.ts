@@ -2,9 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateHsCodeDto, UpdateHsCodeDto } from './hs-code.dto';
 
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class HsCodeService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(private readonly prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
     async create(dto: CreateHsCodeDto) {
         const data = await this.prisma.hsCode.create({

@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 import {
   CreateSegmentDto,
@@ -86,7 +87,9 @@ export class SegmentService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created segments (${result.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'segments',
@@ -94,8 +97,9 @@ export class SegmentService {
         description: `Created segments (${result.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
+      }),
+        this.cacheManager.del('segments_all'),
+      );
       return {
         status: true,
         data: result,
@@ -122,7 +126,9 @@ export class SegmentService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated segment ${segment.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'segments',
@@ -134,8 +140,9 @@ export class SegmentService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
+      }),
+        this.cacheManager.del('segments_all'),
+      );
       return {
         status: true,
         data: segment,
@@ -161,7 +168,9 @@ export class SegmentService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated segments (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'segments',
@@ -171,8 +180,9 @@ export class SegmentService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
+      }),
+        this.cacheManager.del('segments_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -191,7 +201,9 @@ export class SegmentService {
       const result = await this.prisma.segment.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted segments (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'segments',
@@ -201,8 +213,9 @@ export class SegmentService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
+      }),
+        this.cacheManager.del('segments_all'),
+      );
       return {
         status: true,
         data: result,
@@ -223,7 +236,9 @@ export class SegmentService {
       });
       const result = await this.prisma.segment.delete({ where: { id } });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted segment ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'segments',
@@ -234,8 +249,9 @@ export class SegmentService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('segments_all');
+      }),
+        this.cacheManager.del('segments_all'),
+      );
       return {
         status: true,
         data: result,

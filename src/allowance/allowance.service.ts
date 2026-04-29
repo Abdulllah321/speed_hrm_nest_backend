@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateAllowanceDto,
   BulkCreateAllowanceDto,
@@ -319,27 +320,32 @@ export class AllowanceService {
         return createdAllowances;
       });
 
-      // Log activity
-      if (result.length > 0 && ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'allowance',
-          entity: 'Allowance',
-          entityId: result[0].id,
-          description: `Created ${result.length} allowance(s) for ${body.month}/${body.year}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: result,
         message: `Successfully created ${result.length} allowance(s)`,
       };
+
+      // Log activity
+      if (result.length > 0 && ctx.userId) {
+        runInBackground(
+          'Create Allowances',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'create',
+            module: 'allowance',
+            entity: 'Allowance',
+            entityId: result[0].id,
+            description: `Created ${result.length} allowance(s) for ${body.month}/${body.year}`,
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error creating allowance:', error);
       return {
@@ -393,27 +399,32 @@ export class AllowanceService {
         },
       });
 
-      // Log activity
-      if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'allowance',
-          entity: 'Allowance',
-          entityId: id,
-          description: 'Updated allowance',
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Allowance updated successfully',
       };
+
+      // Log activity
+      if (ctx.userId) {
+        runInBackground(
+          'Update Allowance',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'update',
+            module: 'allowance',
+            entity: 'Allowance',
+            entityId: id,
+            description: 'Updated allowance',
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error updating allowance:', error);
       return {
@@ -441,22 +452,27 @@ export class AllowanceService {
         where: { id },
       });
 
+      
+
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
+        runInBackground(
+          'Delete Allowance',
+          this.activityLogs.log({
           userId: ctx.userId,
-          action: 'delete',
-          module: 'allowance',
-          entity: 'Allowance',
-          entityId: id,
-          description: 'Deleted allowance',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+            action: 'delete',
+            module: 'allowance',
+            entity: 'Allowance',
+            entityId: id,
+            description: 'Deleted allowance',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
-      return { status: true, message: 'Allowance deleted successfully' };
+      return response;
     } catch (error) {
       console.error('Error deleting allowance:', error);
       return {
@@ -483,25 +499,30 @@ export class AllowanceService {
         where: { id: { in: ids } },
       });
 
-      // Log activity
-      if (ctx.userId && result.count > 0) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'allowance',
-          entity: 'Allowance',
-          entityId: ids[0],
-          description: `Deleted ${result.count} allowance(s)`,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         message: `Successfully deleted ${result.count} allowance(s)`,
       };
+
+      // Log activity
+      if (ctx.userId && result.count > 0) {
+        runInBackground(
+          'Bulk Delete Allowances',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'delete',
+            module: 'allowance',
+            entity: 'Allowance',
+            entityId: ids[0],
+            description: `Deleted ${result.count} allowance(s)`,
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error bulk deleting allowances:', error);
       return {

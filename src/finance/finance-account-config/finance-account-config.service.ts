@@ -1,5 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   AccountRoleKey,
   UpsertFinanceAccountConfigDto,
@@ -7,7 +9,9 @@ import {
 
 @Injectable()
 export class FinanceAccountConfigService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   /** Return all configured account roles with their linked account details. */
   async findAll() {

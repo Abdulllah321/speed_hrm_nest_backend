@@ -3,11 +3,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
 import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 
+import { ActivityLogsService } from '../../../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../../../common/utils/run-in-background.util';
 @Injectable()
 export class SalesInvoiceService {
   constructor(
     private prisma: PrismaService,
     private financeConfig: FinanceAccountConfigService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async findAll(search?: string, status?: string) {

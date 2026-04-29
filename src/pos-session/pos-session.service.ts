@@ -2,12 +2,16 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PosSessionService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly prismaMaster: PrismaMasterService,
-    ) { }
+    ,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
     /**
      * Get the active session for the provided terminal (UUID),

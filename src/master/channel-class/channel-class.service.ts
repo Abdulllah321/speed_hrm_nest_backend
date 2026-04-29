@@ -9,6 +9,7 @@ import {
   UpdateChannelClassDto,
   BulkUpdateChannelClassItemDto,
 } from './dto/channel-class.dto';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class ChannelClassService {
@@ -84,7 +85,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created channel classes (${result.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'channel-classes',
@@ -92,8 +95,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         description: `Created channel classes (${result.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('channel_classes_all');
+      }),
+        this.cacheManager.del('channel_classes_all'),
+      );
       return {
         status: true,
         data: result,
@@ -118,7 +122,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated channel class ${result.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'channel-classes',
@@ -130,8 +136,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('channel_classes_all');
+      }),
+        this.cacheManager.del('channel_classes_all'),
+      );
       return {
         status: true,
         data: result,
@@ -157,7 +164,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated channel classes (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'channel-classes',
@@ -167,8 +176,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('channel_classes_all');
+      }),
+        this.cacheManager.del('channel_classes_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -187,7 +197,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
       const result = await this.prisma.channelClass.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted channel classes (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'channel-classes',
@@ -197,8 +209,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('channel_classes_all');
+      }),
+        this.cacheManager.del('channel_classes_all'),
+      );
       return {
         status: true,
         data: result,
@@ -221,7 +234,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         where: { id },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted channel class ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'channel-classes',
@@ -232,8 +247,9 @@ private prismaMaster: PrismaMasterService,    private activityLogs: ActivityLogs
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('channel_classes_all');
+      }),
+        this.cacheManager.del('channel_classes_all'),
+      );
       return {
         status: true,
         data: result,

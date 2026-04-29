@@ -7,6 +7,8 @@ import { FinanceAccountConfigService } from '../../finance/finance-account-confi
 import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 import { MovementType, Prisma } from '@prisma/client';
 
+import { ActivityLogsService } from '../../../../../../../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../../../../../../../common/utils/run-in-background.util';
 @Injectable()
 export class PurchaseInvoiceService {
   constructor(
@@ -14,6 +16,8 @@ export class PurchaseInvoiceService {
     private accounting: AccountingService,
     private stockLedger: StockLedgerService,
     private financeConfig: FinanceAccountConfigService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async create(createDto: CreatePurchaseInvoiceDto) {

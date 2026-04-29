@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
 import { PrismaService } from '../../../database/prisma.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 
 import {
   CreateItemSubclassDto,
@@ -100,22 +101,26 @@ export class ItemSubclassService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'item-subclasses',
-        entity: 'ItemSubclass',
-        description: `Created item subclasses (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('item_subclasses_all');
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Item subclasses created successfully',
       };
+      runInBackground(
+        'Create Item Subclasses',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'item-subclasses',
+          entity: 'ItemSubclass',
+          description: `Created item subclasses (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('item_subclasses_all'),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -142,26 +147,30 @@ export class ItemSubclassService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'item-subclasses',
-        entity: 'ItemSubclass',
-        entityId: id,
-        description: `Updated item subclass ${subclass.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_subclasses_all');
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: subclass,
         message: 'Item subclass updated successfully',
       };
+      runInBackground(
+        'Update Item Subclass',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'item-subclasses',
+          entity: 'ItemSubclass',
+          entityId: id,
+          description: `Updated item subclass ${subclass.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_subclasses_all'),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -186,24 +195,28 @@ export class ItemSubclassService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'item-subclasses',
-        entity: 'ItemSubclass',
-        description: `Bulk updated item subclasses (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_subclasses_all');
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Item subclasses updated successfully',
       };
+      runInBackground(
+        'Bulk Update Item Subclasses',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'item-subclasses',
+          entity: 'ItemSubclass',
+          description: `Bulk updated item subclasses (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_subclasses_all'),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -217,24 +230,28 @@ export class ItemSubclassService {
       const result = await this.prisma.itemSubclass.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'item-subclasses',
-        entity: 'ItemSubclass',
-        description: `Bulk deleted item subclasses (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_subclasses_all');
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Item subclasses deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Item Subclasses',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'item-subclasses',
+          entity: 'ItemSubclass',
+          description: `Bulk deleted item subclasses (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_subclasses_all'),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -252,25 +269,29 @@ export class ItemSubclassService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'item-subclasses',
-        entity: 'ItemSubclass',
-        entityId: id,
-        description: `Deleted item subclass ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_subclasses_all');
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Item subclass deleted successfully',
       };
+      runInBackground(
+        'Delete Item Subclass',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'item-subclasses',
+          entity: 'ItemSubclass',
+          entityId: id,
+          description: `Deleted item subclass ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_subclasses_all'),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

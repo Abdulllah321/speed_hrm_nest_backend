@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import { CreateTaskListDto, UpdateTaskListDto, ReorderTaskListDto } from './dto/task-list.dto';
 
 type Ctx = { userId?: string; ipAddress?: string; userAgent?: string };
@@ -50,19 +51,22 @@ export class TaskListService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'task',
-        entity: 'TaskList',
-        entityId: list.id,
-        description: `Created task list: ${list.name} in project ${projectId}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: list, message: 'Task list created successfully' };
+      const response = { status: true, data: list, message: 'Task list created successfully' };
+      runInBackground(
+        'Create Task List',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'task',
+          entity: 'TaskList',
+          entityId: list.id,
+          description: `Created task list: ${list.name} in project ${projectId}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to create task list' };
     }
@@ -75,19 +79,22 @@ export class TaskListService {
 
       const updated = await this.prisma.taskList.update({ where: { id }, data: body });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'task',
-        entity: 'TaskList',
-        entityId: id,
-        description: `Updated task list: ${updated.name}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: updated, message: 'Task list updated successfully' };
+      const response = { status: true, data: updated, message: 'Task list updated successfully' };
+      runInBackground(
+        'Update Task List',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'task',
+          entity: 'TaskList',
+          entityId: id,
+          description: `Updated task list: ${updated.name}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to update task list' };
     }
@@ -100,19 +107,22 @@ export class TaskListService {
 
       await this.prisma.taskList.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'task',
-        entity: 'TaskList',
-        entityId: id,
-        description: `Deleted task list: ${existing.name}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, message: 'Task list deleted successfully' };
+      const response = { status: true, message: 'Task list deleted successfully' };
+      runInBackground(
+        'Delete Task List',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'task',
+          entity: 'TaskList',
+          entityId: id,
+          description: `Deleted task list: ${existing.name}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to delete task list' };
     }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class DeductionHeadService {
@@ -34,8 +35,12 @@ export class DeductionHeadService {
       const created = await this.prisma.deductionHead.create({
         data: { name, status: status || 'active', createdById: ctx.userId },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -45,11 +50,15 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to create deduction head',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -59,7 +68,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return { status: false, message: 'Failed to create deduction head' };
     }
   }
@@ -78,8 +88,10 @@ export class DeductionHeadService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -88,11 +100,15 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deduction heads created' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed bulk create deduction heads',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -102,7 +118,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create deduction heads' };
     }
   }
@@ -123,8 +140,11 @@ export class DeductionHeadService {
         where: { id },
         data: updateData,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -135,11 +155,15 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update deduction head',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -150,7 +174,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update deduction head' };
     }
   }
@@ -171,8 +196,11 @@ export class DeductionHeadService {
           data: updateData,
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -181,11 +209,15 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deduction heads updated' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed bulk update deduction heads',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -195,7 +227,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update deduction heads' };
     }
   }
@@ -211,8 +244,11 @@ export class DeductionHeadService {
       const removed = await this.prisma.deductionHead.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -222,11 +258,15 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: removed };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to delete deduction head',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -236,7 +276,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete deduction head' };
     }
   }
@@ -250,8 +291,11 @@ export class DeductionHeadService {
       const removed = await this.prisma.deductionHead.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -260,11 +304,14 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deduction heads deleted' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed bulk delete deduction heads (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'deduction-heads',
         entity: 'DeductionHead',
@@ -274,7 +321,8 @@ export class DeductionHeadService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete deduction heads' };
     }
   }

@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 import {
   CreateSeasonDto,
@@ -85,7 +86,9 @@ export class SeasonService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created seasons (${result.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'seasons',
@@ -93,8 +96,9 @@ export class SeasonService {
         description: `Created seasons (${result.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('seasons_all');
+      }),
+        this.cacheManager.del('seasons_all'),
+      );
       return {
         status: true,
         data: result,
@@ -121,7 +125,9 @@ export class SeasonService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated season ${season.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'seasons',
@@ -133,8 +139,9 @@ export class SeasonService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('seasons_all');
+      }),
+        this.cacheManager.del('seasons_all'),
+      );
       return {
         status: true,
         data: season,
@@ -160,7 +167,9 @@ export class SeasonService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated seasons (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'seasons',
@@ -170,8 +179,9 @@ export class SeasonService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('seasons_all');
+      }),
+        this.cacheManager.del('seasons_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -190,7 +200,9 @@ export class SeasonService {
       const result = await this.prisma.season.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted seasons (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'seasons',
@@ -200,8 +212,9 @@ export class SeasonService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('seasons_all');
+      }),
+        this.cacheManager.del('seasons_all'),
+      );
       return {
         status: true,
         data: result,
@@ -222,7 +235,9 @@ export class SeasonService {
       });
       const result = await this.prisma.season.delete({ where: { id } });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted season ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'seasons',
@@ -233,8 +248,9 @@ export class SeasonService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('seasons_all');
+      }),
+        this.cacheManager.del('seasons_all'),
+      );
       return {
         status: true,
         data: result,

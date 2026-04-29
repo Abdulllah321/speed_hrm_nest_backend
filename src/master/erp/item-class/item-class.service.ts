@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
 import { PrismaService } from '../../../database/prisma.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 
 import {
   CreateItemClassDto,
@@ -90,21 +91,25 @@ export class ItemClassService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'item-classes',
-        entity: 'ItemClass',
-        description: `Created item classes (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Item classes created successfully',
       };
+      runInBackground(
+        'Create Item Classes',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'item-classes',
+          entity: 'ItemClass',
+          description: `Created item classes (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -126,25 +131,29 @@ export class ItemClassService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'item-classes',
-        entity: 'ItemClass',
-        entityId: id,
-        description: `Updated item class ${itemClass.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: itemClass,
         message: 'Item class updated successfully',
       };
+      runInBackground(
+        'Update Item Class',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'item-classes',
+          entity: 'ItemClass',
+          entityId: id,
+          description: `Updated item class ${itemClass.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -165,23 +174,27 @@ export class ItemClassService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'item-classes',
-        entity: 'ItemClass',
-        description: `Bulk updated item classes (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Item classes updated successfully',
       };
+      runInBackground(
+        'Bulk Update Item Classes',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'item-classes',
+          entity: 'ItemClass',
+          description: `Bulk updated item classes (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -195,23 +208,27 @@ export class ItemClassService {
       const result = await this.prisma.itemClass.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'item-classes',
-        entity: 'ItemClass',
-        description: `Bulk deleted item classes (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Item classes deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Item Classes',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'item-classes',
+          entity: 'ItemClass',
+          description: `Bulk deleted item classes (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -229,24 +246,28 @@ export class ItemClassService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'item-classes',
-        entity: 'ItemClass',
-        entityId: id,
-        description: `Deleted item class ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('item_classes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Item class deleted successfully',
       };
+      runInBackground(
+        'Delete Item Class',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'item-classes',
+          entity: 'ItemClass',
+          entityId: id,
+          description: `Deleted item class ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('item_classes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
