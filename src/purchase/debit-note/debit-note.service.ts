@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class DebitNoteService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async findAll() {
     return this.prisma.debitNote.findMany({

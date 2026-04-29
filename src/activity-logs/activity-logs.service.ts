@@ -1,14 +1,25 @@
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsGateway } from './activity-logs.gateway';
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { BackgroundJobEmitter } from '../common/utils/run-in-background.util';
 
 @Injectable()
-export class ActivityLogsService {
+export class ActivityLogsService implements OnModuleInit {
+  private readonly logger = new Logger(ActivityLogsService.name);
+
   constructor(
     private prismaMaster: PrismaMasterService,
     @Inject(forwardRef(() => ActivityLogsGateway))
     private gateway: ActivityLogsGateway,
   ) {}
+
+  onModuleInit() {
+    BackgroundJobEmitter.on('jobFailed', (data) => {
+      this.log(data).catch(err => {
+        this.logger.error('Failed to write background job failure to activity logs', err);
+      });
+    });
+  }
 
   async getFilters() {
     const [modules, actions] = await Promise.all([

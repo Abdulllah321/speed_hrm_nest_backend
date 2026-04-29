@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @Injectable()
 export class WorkingHoursPolicyService {
@@ -67,7 +68,9 @@ export class WorkingHoursPolicyService {
         },
       });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'create',
         module: 'working_hours_policies',
@@ -78,11 +81,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, data: created };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'create',
         module: 'working_hours_policies',
@@ -93,7 +99,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message: 'Failed to create working hours policy',
@@ -203,7 +210,9 @@ export class WorkingHoursPolicyService {
         },
       });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'update',
         module: 'working_hours_policies',
@@ -215,11 +224,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, data: updated };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'update',
         module: 'working_hours_policies',
@@ -231,7 +243,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message: 'Failed to update working hours policy',
@@ -251,7 +264,9 @@ export class WorkingHoursPolicyService {
         where: { id },
       });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'working_hours_policies',
@@ -262,11 +277,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, data: removed };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'working_hours_policies',
@@ -277,7 +295,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message: 'Failed to delete working hours policy',
@@ -309,7 +328,9 @@ export class WorkingHoursPolicyService {
         data: { isDefault: true },
       });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'update',
         module: 'working_hours_policies',
@@ -321,11 +342,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, data: updated };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'update',
         module: 'working_hours_policies',
@@ -336,7 +360,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message:
@@ -508,7 +533,9 @@ export class WorkingHoursPolicyService {
         select: { name: true },
       });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'create',
         module: 'working_hours_policy_assignments',
@@ -519,11 +546,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, data: created };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'create',
         module: 'working_hours_policy_assignments',
@@ -534,7 +564,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to create policy assignment',
@@ -622,7 +653,9 @@ export class WorkingHoursPolicyService {
         },
       });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'update',
         module: 'working_hours_policy_assignments',
@@ -634,11 +667,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, data: updated };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'update',
         module: 'working_hours_policy_assignments',
@@ -650,7 +686,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to update policy assignment',
@@ -683,7 +720,9 @@ export class WorkingHoursPolicyService {
 
       await this.prisma.workingHoursPolicyAssignment.delete({ where: { id } });
 
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'working_hours_policy_assignments',
@@ -694,11 +733,14 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       return { status: true, message: 'Assignment removed successfully' };
     } catch (error: any) {
-      await this.activityLogsService.log({
+      runInBackground(
+        'Activity Log',
+        this.activityLogsService.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'working_hours_policy_assignments',
@@ -709,7 +751,8 @@ export class WorkingHoursPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to remove policy assignment',

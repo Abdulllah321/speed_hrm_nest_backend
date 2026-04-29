@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @Injectable()
 export class ExitClearanceService {
@@ -134,33 +135,40 @@ export class ExitClearanceService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'exit-clearance',
-        entity: 'ExitClearance',
-        entityId: created.id,
-        description: `Created exit clearance for ${created.employeeName}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Exit Clearance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'exit-clearance',
+          entity: 'ExitClearance',
+          entityId: created.id,
+          description: `Created exit clearance for ${created.employeeName}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
-      return { status: true, data: created };
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'exit-clearance',
-        entity: 'ExitClearance',
-        description: 'Failed to create exit clearance',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Exit Clearance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'exit-clearance',
+          entity: 'ExitClearance',
+          description: 'Failed to create exit clearance',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -330,35 +338,42 @@ export class ExitClearanceService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'exit-clearance',
-        entity: 'ExitClearance',
-        entityId: updated.id,
-        description: `Updated exit clearance for ${updated.employeeName}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Exit Clearance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'exit-clearance',
+          entity: 'ExitClearance',
+          entityId: updated.id,
+          description: `Updated exit clearance for ${updated.employeeName}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
-      return { status: true, data: updated };
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'exit-clearance',
-        entity: 'ExitClearance',
-        entityId: id,
-        description: 'Failed to update exit clearance',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Exit Clearance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'exit-clearance',
+          entity: 'ExitClearance',
+          entityId: id,
+          description: 'Failed to update exit clearance',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -381,33 +396,40 @@ export class ExitClearanceService {
 
       await this.prisma.exitClearance.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'exit-clearance',
-        entity: 'ExitClearance',
-        entityId: id,
-        description: `Deleted exit clearance for ${existing.employeeName}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, message: 'Exit clearance deleted successfully' };
+      runInBackground(
+        'Delete Exit Clearance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'exit-clearance',
+          entity: 'ExitClearance',
+          entityId: id,
+          description: `Deleted exit clearance for ${existing.employeeName}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
-      return { status: true, message: 'Exit clearance deleted successfully' };
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'exit-clearance',
-        entity: 'ExitClearance',
-        entityId: id,
-        description: 'Failed to delete exit clearance',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Exit Clearance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'exit-clearance',
+          entity: 'ExitClearance',
+          entityId: id,
+          description: 'Failed to delete exit clearance',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,

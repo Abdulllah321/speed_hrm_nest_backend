@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 import {
   CreateSizeDto,
   UpdateSizeDto,
@@ -82,21 +83,25 @@ export class SizeService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'sizes',
-        entity: 'Size',
-        description: `Created sizes (${sizes.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('sizes_all');
-      return {
+      const response = {
         status: true,
         data: sizes,
         message: 'Sizes created successfully',
       };
+      runInBackground(
+        'Create Sizes',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'sizes',
+          entity: 'Size',
+          description: `Created sizes (${sizes.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('sizes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -116,21 +121,25 @@ export class SizeService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sizes',
-        entity: 'Size',
-        entityId: id,
-        description: `Updated size ${size.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('sizes_all');
-      return { status: true, data: size, message: 'Size updated successfully' };
+      const response = { status: true, data: size, message: 'Size updated successfully' };
+      runInBackground(
+        'Update Size',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sizes',
+          entity: 'Size',
+          entityId: id,
+          description: `Updated size ${size.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('sizes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -152,23 +161,27 @@ export class SizeService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sizes',
-        entity: 'Size',
-        description: `Bulk updated sizes (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('sizes_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Sizes updated successfully',
       };
+      runInBackground(
+        'Bulk Update Sizes',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sizes',
+          entity: 'Size',
+          description: `Bulk updated sizes (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('sizes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -182,23 +195,27 @@ export class SizeService {
       const result = await this.prisma.size.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sizes',
-        entity: 'Size',
-        description: `Bulk deleted sizes (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('sizes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Sizes deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Sizes',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'sizes',
+          entity: 'Size',
+          description: `Bulk deleted sizes (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('sizes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -214,24 +231,28 @@ export class SizeService {
       });
       const result = await this.prisma.size.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sizes',
-        entity: 'Size',
-        entityId: id,
-        description: `Deleted size ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('sizes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Size deleted successfully',
       };
+      runInBackground(
+        'Delete Size',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'sizes',
+          entity: 'Size',
+          entityId: id,
+          description: `Deleted size ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('sizes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   BulkCreateIncrementDto,
   UpdateIncrementDto,
@@ -395,27 +396,32 @@ export class IncrementService {
         result.map((i) => this.enrichSingleIncrement(i)),
       );
 
-      // Log activity
-      if (result.length > 0 && ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'increment',
-          entity: 'Increment',
-          entityId: result[0].id,
-          description: `Created ${result.length} increment(s)`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: enrichedResult,
         message: `Successfully created ${result.length} increment(s)`,
       };
+
+      // Log activity
+      if (result.length > 0 && ctx.userId) {
+        runInBackground(
+          'Create Increments',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'create',
+            module: 'increment',
+            entity: 'Increment',
+            entityId: result[0].id,
+            description: `Created ${result.length} increment(s)`,
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error creating increments:', error);
       return {
@@ -513,29 +519,34 @@ export class IncrementService {
         },
       });
 
-      // Log activity
-      if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'increment',
-          entity: 'Increment',
-          entityId: id,
-          description: 'Updated increment',
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
       const enriched = await this.enrichSingleIncrement(updated);
 
-      return {
+      const response = {
         status: true,
         data: enriched,
         message: 'Increment updated successfully',
       };
+
+      // Log activity
+      if (ctx.userId) {
+        runInBackground(
+          'Update Increment',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'update',
+            module: 'increment',
+            entity: 'Increment',
+            entityId: id,
+            description: 'Updated increment',
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error updating increment:', error);
       return {
@@ -563,22 +574,27 @@ export class IncrementService {
         where: { id },
       });
 
+      
+
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
+        runInBackground(
+          'Delete Increment',
+          this.activityLogs.log({
           userId: ctx.userId,
-          action: 'delete',
-          module: 'increment',
-          entity: 'Increment',
-          entityId: id,
-          description: 'Deleted increment',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+            action: 'delete',
+            module: 'increment',
+            entity: 'Increment',
+            entityId: id,
+            description: 'Deleted increment',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
-      return { status: true, message: 'Increment deleted successfully' };
+      return response;
     } catch (error) {
       console.error('Error deleting increment:', error);
       return {

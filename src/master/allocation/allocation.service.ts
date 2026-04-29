@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class AllocationService {
@@ -22,36 +23,43 @@ export class AllocationService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allocations',
-        entity: 'Allocation',
-        entityId: created.id,
-        description: `Created allocation ${name}`,
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: created,
         message: 'Allocation created successfully',
       };
+      runInBackground(
+        'Create Allocation',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allocations',
+          entity: 'Allocation',
+          entityId: created.id,
+          description: `Created allocation ${name}`,
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: 'Failed to create allocation',
-        errorMessage: error?.message,
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Allocation (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: 'Failed to create allocation',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to create allocation',
@@ -73,35 +81,42 @@ export class AllocationService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: `Bulk created allocations (${result.count})`,
-        newValues: JSON.stringify(names),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Allocations created successfully',
       };
+      runInBackground(
+        'Bulk Create Allocations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: `Bulk created allocations (${result.count})`,
+          newValues: JSON.stringify(names),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: 'Failed bulk create allocations',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(names),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Allocations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: 'Failed bulk create allocations',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(names),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to create allocations',
@@ -190,38 +205,45 @@ export class AllocationService {
         where: { id },
         data: { name },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allocations',
-        entity: 'Allocation',
-        entityId: id,
-        description: `Updated allocation ${name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Allocation updated successfully',
       };
+      runInBackground(
+        'Update Allocation',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allocations',
+          entity: 'Allocation',
+          entityId: id,
+          description: `Updated allocation ${name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allocations',
-        entity: 'Allocation',
-        entityId: id,
-        description: 'Failed to update allocation',
-        errorMessage: error?.message,
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Allocation (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allocations',
+          entity: 'Allocation',
+          entityId: id,
+          description: 'Failed to update allocation',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to update allocation',
@@ -243,36 +265,43 @@ export class AllocationService {
       const removed = await this.prisma.allocation.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allocations',
-        entity: 'Allocation',
-        entityId: id,
-        description: `Deleted allocation ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: removed,
         message: 'Allocation deleted successfully',
       };
+      runInBackground(
+        'Delete Allocation',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allocations',
+          entity: 'Allocation',
+          entityId: id,
+          description: `Deleted allocation ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allocations',
-        entity: 'Allocation',
-        entityId: id,
-        description: 'Failed to delete allocation',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Allocation (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allocations',
+          entity: 'Allocation',
+          entityId: id,
+          description: 'Failed to delete allocation',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to delete allocation',
@@ -292,35 +321,42 @@ export class AllocationService {
           id: { in: ids },
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: `Bulk deleted allocations (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: ids,
         message: 'Allocations deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Allocations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: `Bulk deleted allocations (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: 'Failed bulk delete allocations',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Allocations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: 'Failed bulk delete allocations',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to delete allocations',
@@ -341,35 +377,42 @@ export class AllocationService {
           data: { name: item.name },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: `Bulk updated allocations (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: items,
         message: 'Allocations updated successfully',
       };
+      runInBackground(
+        'Bulk Update Allocations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: `Bulk updated allocations (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allocations',
-        entity: 'Allocation',
-        description: 'Failed bulk update allocations',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Allocations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allocations',
+          entity: 'Allocation',
+          description: 'Failed bulk update allocations',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to update allocations',

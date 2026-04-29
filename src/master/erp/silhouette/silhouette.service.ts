@@ -1,9 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
+import { Cache } from 'cache-manager';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 import {
   CreateSilhouetteDto,
   UpdateSilhouetteDto,
@@ -84,21 +85,25 @@ export class SilhouetteService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        description: `Created silhouettes (${silhouettes.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
-      return {
+      const response = {
         status: true,
         data: silhouettes,
         message: 'Silhouettes created successfully',
       };
+      runInBackground(
+        'Create Silhouettes',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          description: `Created silhouettes (${silhouettes.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('silhouettes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -118,25 +123,29 @@ export class SilhouetteService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        entityId: id,
-        description: `Updated silhouette ${silhouette.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
-      return {
+      const response = {
         status: true,
         data: silhouette,
         message: 'Silhouette updated successfully',
       };
+      runInBackground(
+        'Update Silhouette',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          entityId: id,
+          description: `Updated silhouette ${silhouette.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('silhouettes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -158,23 +167,27 @@ export class SilhouetteService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        description: `Bulk updated silhouettes (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Silhouettes updated successfully',
       };
+      runInBackground(
+        'Bulk Update Silhouettes',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          description: `Bulk updated silhouettes (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('silhouettes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -188,23 +201,27 @@ export class SilhouetteService {
       const result = await this.prisma.silhouette.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        description: `Bulk deleted silhouettes (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Silhouettes deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Silhouettes',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          description: `Bulk deleted silhouettes (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('silhouettes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -222,24 +239,28 @@ export class SilhouetteService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        entityId: id,
-        description: `Deleted silhouette ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Silhouette deleted successfully',
       };
+      runInBackground(
+        'Delete Silhouette',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          entityId: id,
+          description: `Deleted silhouette ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('silhouettes_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 import {
   CreateSilhouetteDto,
   UpdateSilhouetteDto,
@@ -84,7 +85,9 @@ export class SilhouetteService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created silhouettes (${silhouettes.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'silhouettes',
@@ -92,8 +95,9 @@ export class SilhouetteService {
         description: `Created silhouettes (${silhouettes.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
+      }),
+        this.cacheManager.del('silhouettes_all'),
+      );
       return {
         status: true,
         data: silhouettes,
@@ -118,7 +122,9 @@ export class SilhouetteService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated silhouette ${silhouette.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'silhouettes',
@@ -130,8 +136,9 @@ export class SilhouetteService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
+      }),
+        this.cacheManager.del('silhouettes_all'),
+      );
       return {
         status: true,
         data: silhouette,
@@ -158,7 +165,9 @@ export class SilhouetteService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated silhouettes (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'silhouettes',
@@ -168,8 +177,9 @@ export class SilhouetteService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
+      }),
+        this.cacheManager.del('silhouettes_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -188,7 +198,9 @@ export class SilhouetteService {
       const result = await this.prisma.silhouette.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted silhouettes (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'silhouettes',
@@ -198,8 +210,9 @@ export class SilhouetteService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
+      }),
+        this.cacheManager.del('silhouettes_all'),
+      );
       return {
         status: true,
         data: result,
@@ -222,7 +235,9 @@ export class SilhouetteService {
         where: { id },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted silhouette ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'silhouettes',
@@ -233,8 +248,9 @@ export class SilhouetteService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('silhouettes_all');
+      }),
+        this.cacheManager.del('silhouettes_all'),
+      );
       return {
         status: true,
         data: result,

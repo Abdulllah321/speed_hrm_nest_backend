@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -123,50 +124,7 @@ export class LeavesPolicyService {
           },
         });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leaves-policies',
-        entity: 'LeavesPolicy',
-        entityId: created.id,
-        description: `Created leaves policy ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      // Transform the data to include leaveTypeName
-      const transformedItem = createdWithLeaveTypes
-        ? {
-            ...createdWithLeaveTypes,
-            leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
-              leaveTypeId: lt.leaveTypeId,
-              leaveTypeName: lt.leaveType.name,
-              numberOfLeaves: lt.numberOfLeaves,
-            })),
-          }
-        : created;
-
-      return {
-        status: true,
-        data: transformedItem,
-        message: 'Leaves policy created successfully',
-      };
-    } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'leaves-policies',
-        entity: 'LeavesPolicy',
-        description: 'Failed to create leaves policy',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
-      return {
+      const response = {
         status: false,
         message: 'Failed to create leaves policy',
         data: null,
@@ -189,8 +147,10 @@ export class LeavesPolicyService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Create Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -199,15 +159,108 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
       return {
         status: true,
         data: res,
         message: 'Leaves policies created successfully',
       };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
+        action: 'create',
+        module: 'leaves-policies',
+        entity: 'LeavesPolicy',
+        entityId: created.id,
+        description: `Created leaves policy ${created.name}`,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+        }),
+      );
+
+      // Transform the data to include leaveTypeName
+      const transformedItem = createdWithLeaveTypes
+        ? {
+            ...createdWithLeaveTypes,
+            leaveTypes: createdWithLeaveTypes.leaveTypes.map((lt) => ({
+              leaveTypeId: lt.leaveTypeId,
+              leaveTypeName: lt.leaveType.name,
+              numberOfLeaves: lt.numberOfLeaves,
+            })),
+          }
+        : created;
+
+      return {
+        status: true,
+        data: transformedItem,
+        message: 'Leaves policy created successfully',
+      };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to create leaves policy (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+        action: 'create',
+        module: 'leaves-policies',
+        entity: 'LeavesPolicy',
+        description: 'Failed to create leaves policy',
+        errorMessage: error?.message,
+        newValues: JSON.stringify(body),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'failure',
+      }),
+      );
+      return response;
+    } catch (error: any) {
+      const response = {
+        status: false,
+        message: 'Failed to update leaves policy',
+        data: null,
+      };
+    }
+  }
+
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prisma.leavesPolicy.findUnique({
+        where: { id },
+      }),
+      );
+      if (!existing)
+        return { status: false, message: 'Leaves policy not found' };
+      await this.prisma.leavesPolicy.delete({ where: { id } });
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
+        action: 'delete',
+        module: 'leaves-policies',
+        entity: 'LeavesPolicy',
+        entityId: id,
+        description: `Deleted leaves policy ${existing.name}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+        }),
+      );
+      return {
+        status: true,
+        data: existing,
+        message: 'Leaves policy deleted successfully',
+      };
+      runInBackground(
+        'Failed bulk create leaves policies',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -217,7 +270,8 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to create leaves policies',
@@ -308,8 +362,10 @@ export class LeavesPolicyService {
           },
         });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -320,7 +376,8 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
+        }),
+      );
 
       // Transform the data to include leaveTypeName
       const transformedItem = updatedWithLeaveTypes
@@ -340,8 +397,10 @@ export class LeavesPolicyService {
         message: 'Leaves policy updated successfully',
       };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to update leaves policy (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -352,46 +411,19 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to update leaves policy',
-        data: null,
-      };
-    }
-  }
-
-  async remove(
-    id: string,
-    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
-  ) {
-    try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
-        where: { id },
-      });
-      if (!existing)
-        return { status: false, message: 'Leaves policy not found' };
-      await this.prisma.leavesPolicy.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'leaves-policies',
-        entity: 'LeavesPolicy',
-        entityId: id,
-        description: `Deleted leaves policy ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
-        status: true,
-        data: existing,
-        message: 'Leaves policy deleted successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = {
+        status: true,
+        data: ids,
+        message: 'Leaves policies deleted successfully',
+      };
+      runInBackground(
+        'Failed to delete leaves policy',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -401,7 +433,8 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete leaves policy',
@@ -419,8 +452,10 @@ export class LeavesPolicyService {
       await this.prisma.leavesPolicy.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Bulk Delete Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -429,15 +464,19 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: ids,
-        message: 'Leaves policies deleted successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = {
+        status: true,
+        data: items,
+        message: 'Leaves policies updated successfully',
+      };
+      runInBackground(
+        'Failed bulk delete leaves policies',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -446,7 +485,8 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete leaves policies',
@@ -471,8 +511,11 @@ export class LeavesPolicyService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, message: 'Operation completed successfully' };
+      runInBackground(
+        'Bulk Update Records',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -481,15 +524,19 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: items,
-        message: 'Leaves policies updated successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Leaves policy set as default successfully',
+      };
+      runInBackground(
+        'Failed bulk update leaves policies',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -499,7 +546,8 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to update leaves policies',
@@ -532,8 +580,11 @@ export class LeavesPolicyService {
         data: { isDefault: true },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Set leaves policy ${updated.name} as default (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -544,16 +595,14 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-
-      return {
-        status: true,
-        data: updated,
-        message: 'Leaves policy set as default successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to set leaves policy as default (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'leaves-policies',
         entity: 'LeavesPolicy',
@@ -563,7 +612,8 @@ export class LeavesPolicyService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to set leaves policy as default',

@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
 export class EmployeeGradeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async list() {
     const items = await this.prisma.employeeGrade.findMany({
@@ -22,7 +27,10 @@ export class EmployeeGradeService {
     return { status: true, data: item };
   }
 
-  async create(data: { grade: string; status?: string }) {
+  async create(
+    data: { grade: string; status?: string },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!data.grade) {
         return { status: false, message: 'Grade name is required' };
@@ -33,12 +41,43 @@ export class EmployeeGradeService {
           status: data.status || 'Active',
         },
       });
-      return {
+      const response = {
         status: true,
         data: item,
         message: 'Employee grade created successfully',
       };
+      runInBackground(
+        'Create Employee Grade',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          entityId: item.id,
+          description: `Created employee grade ${item.grade}`,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
+      runInBackground(
+        'Create Employee Grade (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          description: 'Failed to create employee grade',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message:
@@ -47,18 +86,58 @@ export class EmployeeGradeService {
     }
   }
 
-  async update(id: string, data: { grade?: string; status?: string }) {
+  async update(
+    id: string,
+    data: { grade?: string; status?: string },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
+      const existing = await this.prisma.employeeGrade.findUnique({
+        where: { id },
+      });
       const item = await this.prisma.employeeGrade.update({
         where: { id },
         data,
       });
-      return {
+      const response = {
         status: true,
         data: item,
         message: 'Employee grade updated successfully',
       };
+      runInBackground(
+        'Update Employee Grade',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          entityId: id,
+          description: `Updated employee grade ${item.grade}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
+      runInBackground(
+        'Update Employee Grade (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          entityId: id,
+          description: 'Failed to update employee grade',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message:
@@ -67,11 +146,48 @@ export class EmployeeGradeService {
     }
   }
 
-  async delete(id: string) {
+  async delete(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
+      const existing = await this.prisma.employeeGrade.findUnique({
+        where: { id },
+      });
       await this.prisma.employeeGrade.delete({ where: { id } });
-      return { status: true, message: 'Employee grade deleted successfully' };
+      const response = { status: true, message: 'Employee grade deleted successfully' };
+      runInBackground(
+        'Delete Employee Grade',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          entityId: id,
+          description: `Deleted employee grade ${existing?.grade}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
+      runInBackground(
+        'Delete Employee Grade (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          entityId: id,
+          description: 'Failed to delete employee grade',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message:
@@ -80,7 +196,10 @@ export class EmployeeGradeService {
     }
   }
 
-  async bulkCreate(items: { grade: string; status?: string }[]) {
+  async bulkCreate(
+    items: { grade: string; status?: string }[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const validData = items
         .filter((item) => item.grade && item.grade.trim().length > 0)
@@ -93,17 +212,47 @@ export class EmployeeGradeService {
         return { status: false, message: 'No valid data provided' };
       }
 
-      await this.prisma.employeeGrade.createMany({
+      const result = await this.prisma.employeeGrade.createMany({
         data: validData,
         skipDuplicates: true,
       });
 
-      return { status: true, message: 'Employee grades created successfully' };
+      const response = { status: true, message: 'Employee grades created successfully' };
+      runInBackground(
+        'Bulk Create Employee Grades',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          description: `Bulk created employee grades (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       let errorMessage = 'Failed to create employee grades';
       if (error instanceof Error) {
         errorMessage = error.message;
       }
+      runInBackground(
+        'Bulk Create Employee Grades (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'employee-grades',
+          entity: 'EmployeeGrade',
+          description: 'Failed bulk create employee grades',
+          errorMessage: errorMessage,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: errorMessage };
     }
   }

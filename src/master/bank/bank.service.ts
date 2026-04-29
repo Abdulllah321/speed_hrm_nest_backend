@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -43,32 +44,39 @@ export class BankService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'banks',
-        entity: 'Bank',
-        entityId: created.id,
-        description: `Created bank ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Create Bank',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'banks',
+          entity: 'Bank',
+          entityId: created.id,
+          description: `Created bank ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'banks',
-        entity: 'Bank',
-        description: 'Failed to create bank',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Bank (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'banks',
+          entity: 'Bank',
+          description: 'Failed to create bank',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create bank' };
     }
   }
@@ -94,31 +102,38 @@ export class BankService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'banks',
-        entity: 'Bank',
-        description: `Bulk created ${res.count} banks`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Created successfully' };
+      const response = { status: true, message: 'Created successfully' };
+      runInBackground(
+        'Bulk Create Banks',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'banks',
+          entity: 'Bank',
+          description: `Bulk created ${res.count} banks`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'banks',
-        entity: 'Bank',
-        description: 'Failed bulk create banks',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Banks (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'banks',
+          entity: 'Bank',
+          description: 'Failed bulk create banks',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create banks' };
     }
   }
@@ -151,34 +166,41 @@ export class BankService {
           updatedById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'banks',
-        entity: 'Bank',
-        entityId: id,
-        description: `Updated bank ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Update Bank',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'banks',
+          entity: 'Bank',
+          entityId: id,
+          description: `Updated bank ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'banks',
-        entity: 'Bank',
-        entityId: id,
-        description: 'Failed to update bank',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Bank (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'banks',
+          entity: 'Bank',
+          entityId: id,
+          description: 'Failed to update bank',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update bank' };
     }
   }
@@ -193,32 +215,39 @@ export class BankService {
       });
       if (!existing) return { status: false, message: 'Bank not found' };
       await this.prisma.bank.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'banks',
-        entity: 'Bank',
-        entityId: id,
-        description: `Deleted bank ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      const response = { status: true, message: 'Deleted successfully' };
+      runInBackground(
+        'Delete Bank',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'banks',
+          entity: 'Bank',
+          entityId: id,
+          description: `Deleted bank ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'banks',
-        entity: 'Bank',
-        entityId: id,
-        description: 'Failed to delete bank',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Bank (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'banks',
+          entity: 'Bank',
+          entityId: id,
+          description: 'Failed to delete bank',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete bank' };
     }
   }
@@ -247,31 +276,38 @@ export class BankService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'banks',
-        entity: 'Bank',
-        description: `Bulk updated ${items.length} banks`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Updated successfully' };
+      const response = { status: true, message: 'Updated successfully' };
+      runInBackground(
+        'Bulk Update Banks',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'banks',
+          entity: 'Bank',
+          description: `Bulk updated ${items.length} banks`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'banks',
-        entity: 'Bank',
-        description: 'Failed bulk update banks',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Banks (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'banks',
+          entity: 'Bank',
+          description: 'Failed bulk update banks',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update banks' };
     }
   }
@@ -283,30 +319,37 @@ export class BankService {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
       await this.prisma.bank.deleteMany({ where: { id: { in: ids } } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'banks',
-        entity: 'Bank',
-        description: `Bulk deleted ${ids.length} banks`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      const response = { status: true, message: 'Deleted successfully' };
+      runInBackground(
+        'Bulk Delete Banks',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'banks',
+          entity: 'Bank',
+          description: `Bulk deleted ${ids.length} banks`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'banks',
-        entity: 'Bank',
-        description: 'Failed bulk delete banks',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Banks (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'banks',
+          entity: 'Bank',
+          description: 'Failed bulk delete banks',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete banks' };
     }
   }

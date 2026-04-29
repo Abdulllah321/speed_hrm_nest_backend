@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 import {
   CreateGenderDto,
   UpdateGenderDto,
@@ -84,7 +85,9 @@ export class GenderService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created genders (${genders.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'genders',
@@ -92,8 +95,9 @@ export class GenderService {
         description: `Created genders (${genders.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
+      }),
+        this.cacheManager.del('genders_all'),
+      );
       return {
         status: true,
         data: genders,
@@ -118,7 +122,9 @@ export class GenderService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated gender ${gender.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'genders',
@@ -130,8 +136,9 @@ export class GenderService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
+      }),
+        this.cacheManager.del('genders_all'),
+      );
       return {
         status: true,
         data: gender,
@@ -158,7 +165,9 @@ export class GenderService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated genders (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'genders',
@@ -168,8 +177,9 @@ export class GenderService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
+      }),
+        this.cacheManager.del('genders_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -188,7 +198,9 @@ export class GenderService {
       const result = await this.prisma.gender.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted genders (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'genders',
@@ -198,8 +210,9 @@ export class GenderService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
+      }),
+        this.cacheManager.del('genders_all'),
+      );
       return {
         status: true,
         data: result,
@@ -220,7 +233,9 @@ export class GenderService {
       });
       const result = await this.prisma.gender.delete({ where: { id } });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted gender ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'genders',
@@ -231,8 +246,9 @@ export class GenderService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
+      }),
+        this.cacheManager.del('genders_all'),
+      );
       return {
         status: true,
         data: result,

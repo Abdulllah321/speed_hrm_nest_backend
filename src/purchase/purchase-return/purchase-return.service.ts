@@ -3,9 +3,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseReturnDto, ReturnSourceType } from './dto/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from './dto/update-purchase-return.dto';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PurchaseReturnService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async create(createDto: CreatePurchaseReturnDto) {
     // Validate source document exists and is eligible

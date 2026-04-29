@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class LocationService {
@@ -77,32 +78,39 @@ export class LocationService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'locations',
-        entity: 'Location',
-        entityId: created.id,
-        description: `Created location ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: created };
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Location',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'locations',
+          entity: 'Location',
+          entityId: created.id,
+          description: `Created location ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'locations',
-        entity: 'Location',
-        description: 'Failed to create location',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Location (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'locations',
+          entity: 'Location',
+          description: 'Failed to create location',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create location' };
     }
   }
@@ -130,34 +138,41 @@ export class LocationService {
           status: body.status ?? existing?.status ?? 'active',
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'locations',
-        entity: 'Location',
-        entityId: id,
-        description: `Updated location ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: updated };
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Location',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: `Updated location ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'locations',
-        entity: 'Location',
-        entityId: id,
-        description: 'Failed to update location',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Location (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: 'Failed to update location',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message:
@@ -177,32 +192,39 @@ export class LocationService {
       const removed = await this.prisma.location.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'locations',
-        entity: 'Location',
-        entityId: id,
-        description: `Deleted location ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: removed };
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Location',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: `Deleted location ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'locations',
-        entity: 'Location',
-        entityId: id,
-        description: 'Failed to delete location',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Location (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: 'Failed to delete location',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete location' };
     }
   }
@@ -229,31 +251,38 @@ export class LocationService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'locations',
-        entity: 'Location',
-        description: `Bulk created locations (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Locations created', data: result };
+      const response = { status: true, message: 'Locations created', data: result };
+      runInBackground(
+        'Bulk Create Locations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'locations',
+          entity: 'Location',
+          description: `Bulk created locations (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'locations',
-        entity: 'Location',
-        description: 'Failed to bulk create locations',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Locations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'locations',
+          entity: 'Location',
+          description: 'Failed to bulk create locations',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create locations' };
     }
   }
@@ -288,31 +317,38 @@ export class LocationService {
           },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'locations',
-        entity: 'Location',
-        description: `Bulk updated locations (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Locations updated' };
+      const response = { status: true, message: 'Locations updated' };
+      runInBackground(
+        'Bulk Update Locations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          description: `Bulk updated locations (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'locations',
-        entity: 'Location',
-        description: 'Failed to bulk update locations',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Locations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          description: 'Failed to bulk update locations',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update locations' };
     }
   }
@@ -330,30 +366,37 @@ export class LocationService {
       const result = await this.prisma.location.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'locations',
-        entity: 'Location',
-        description: `Bulk deleted locations (${result.count})`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Locations deleted', data: result };
+      const response = { status: true, message: 'Locations deleted', data: result };
+      runInBackground(
+        'Bulk Delete Locations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'locations',
+          entity: 'Location',
+          description: `Bulk deleted locations (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'locations',
-        entity: 'Location',
-        description: 'Failed to bulk delete locations',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Locations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'locations',
+          entity: 'Location',
+          description: 'Failed to bulk delete locations',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete locations' };
     }
   }

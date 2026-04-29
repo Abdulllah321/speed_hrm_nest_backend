@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class DesignationService {
@@ -33,36 +34,43 @@ export class DesignationService {
       const created = await this.prisma.designation.create({
         data: { name, status: 'active', createdById: ctx.userId },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'designations',
-        entity: 'Designation',
-        entityId: created.id,
-        description: `Created designation ${name}`,
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: created,
         message: 'Designation created successfully',
       };
+      runInBackground(
+        'Create Designation',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'designations',
+          entity: 'Designation',
+          entityId: created.id,
+          description: `Created designation ${name}`,
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'designations',
-        entity: 'Designation',
-        description: 'Failed to create designation',
-        errorMessage: error?.message,
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Designation (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'designations',
+          entity: 'Designation',
+          description: 'Failed to create designation',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to create designation',
@@ -85,35 +93,42 @@ export class DesignationService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'designations',
-        entity: 'Designation',
-        description: `Bulk created designations (${result.count})`,
-        newValues: JSON.stringify(names),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Designations created successfully',
       };
+      runInBackground(
+        'Bulk Create Designations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'designations',
+          entity: 'Designation',
+          description: `Bulk created designations (${result.count})`,
+          newValues: JSON.stringify(names),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'designations',
-        entity: 'Designation',
-        description: 'Failed bulk create designations',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(names),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Designations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'designations',
+          entity: 'Designation',
+          description: 'Failed bulk create designations',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(names),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to create designations',
@@ -135,38 +150,45 @@ export class DesignationService {
         where: { id },
         data: { name },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'designations',
-        entity: 'Designation',
-        entityId: id,
-        description: `Updated designation ${name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Designation updated successfully',
       };
+      runInBackground(
+        'Update Designation',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'designations',
+          entity: 'Designation',
+          entityId: id,
+          description: `Updated designation ${name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'designations',
-        entity: 'Designation',
-        entityId: id,
-        description: 'Failed to update designation',
-        errorMessage: error?.message,
-        newValues: JSON.stringify({ name }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Designation (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'designations',
+          entity: 'Designation',
+          entityId: id,
+          description: 'Failed to update designation',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ name }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to update designation',
@@ -187,35 +209,42 @@ export class DesignationService {
           data: { name: item.name },
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'designations',
-        entity: 'Designation',
-        description: `Bulk updated designations (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: items,
         message: 'Designations updated successfully',
       };
+      runInBackground(
+        'Bulk Update Designations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'designations',
+          entity: 'Designation',
+          description: `Bulk updated designations (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'designations',
-        entity: 'Designation',
-        description: 'Failed bulk update designations',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Designations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'designations',
+          entity: 'Designation',
+          description: 'Failed bulk update designations',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to update designations',
@@ -235,36 +264,43 @@ export class DesignationService {
       const removed = await this.prisma.designation.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'designations',
-        entity: 'Designation',
-        entityId: id,
-        description: `Deleted designation ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: removed,
         message: 'Designation deleted successfully',
       };
+      runInBackground(
+        'Delete Designation',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'designations',
+          entity: 'Designation',
+          entityId: id,
+          description: `Deleted designation ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'designations',
-        entity: 'Designation',
-        entityId: id,
-        description: 'Failed to delete designation',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Designation (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'designations',
+          entity: 'Designation',
+          entityId: id,
+          description: 'Failed to delete designation',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to delete designation',
@@ -282,35 +318,42 @@ export class DesignationService {
       const removed = await this.prisma.designation.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'designations',
-        entity: 'Designation',
-        description: `Bulk deleted designations (${removed.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return {
+      const response = {
         status: true,
         data: ids,
         message: 'Designations deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Designations',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'designations',
+          entity: 'Designation',
+          description: `Bulk deleted designations (${removed.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'designations',
-        entity: 'Designation',
-        description: 'Failed bulk delete designations',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Designations (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'designations',
+          entity: 'Designation',
+          description: 'Failed bulk delete designations',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: 'Failed to delete designations',

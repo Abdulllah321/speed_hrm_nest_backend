@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateDeductionDto,
   BulkCreateDeductionDto,
@@ -354,27 +355,32 @@ export class DeductionService {
         return createdDeductions;
       });
 
-      // Log activity
-      if (result.length > 0 && ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'deduction',
-          entity: 'Deduction',
-          entityId: result[0].id,
-          description: `Created ${result.length} deduction(s) for ${body.month}/${body.year}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: result,
         message: `Successfully created ${result.length} deduction(s)`,
       };
+
+      // Log activity
+      if (result.length > 0 && ctx.userId) {
+        runInBackground(
+          'Create Deductions',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'create',
+            module: 'deduction',
+            entity: 'Deduction',
+            entityId: result[0].id,
+            description: `Created ${result.length} deduction(s) for ${body.month}/${body.year}`,
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error creating deduction:', error);
       return {
@@ -463,27 +469,32 @@ export class DeductionService {
         deductionHead: deductionHead,
       };
 
-      // Log activity
-      if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'deduction',
-          entity: 'Deduction',
-          entityId: id,
-          description: 'Updated deduction',
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: mappedUpdated,
         message: 'Deduction updated successfully',
       };
+
+      // Log activity
+      if (ctx.userId) {
+        runInBackground(
+          'Update Deduction',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'update',
+            module: 'deduction',
+            entity: 'Deduction',
+            entityId: id,
+            description: 'Updated deduction',
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error updating deduction:', error);
       return {
@@ -511,22 +522,27 @@ export class DeductionService {
         where: { id },
       });
 
+      
+
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
+        runInBackground(
+          'Delete Deduction',
+          this.activityLogs.log({
           userId: ctx.userId,
-          action: 'delete',
-          module: 'deduction',
-          entity: 'Deduction',
-          entityId: id,
-          description: 'Deleted deduction',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+            action: 'delete',
+            module: 'deduction',
+            entity: 'Deduction',
+            entityId: id,
+            description: 'Deleted deduction',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
-      return { status: true, message: 'Deduction deleted successfully' };
+      return response;
     } catch (error) {
       console.error('Error deleting deduction:', error);
       return {
@@ -553,25 +569,30 @@ export class DeductionService {
         where: { id: { in: ids } },
       });
 
-      // Log activity
-      if (ctx.userId && result.count > 0) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'deduction',
-          entity: 'Deduction',
-          entityId: ids[0],
-          description: `Deleted ${result.count} deduction(s)`,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         message: `Successfully deleted ${result.count} deduction(s)`,
       };
+
+      // Log activity
+      if (ctx.userId && result.count > 0) {
+        runInBackground(
+          'Bulk Delete Deductions',
+          this.activityLogs.log({
+          userId: ctx.userId,
+            action: 'delete',
+            module: 'deduction',
+            entity: 'Deduction',
+            entityId: ids[0],
+            description: `Deleted ${result.count} deduction(s)`,
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error bulk deleting deductions:', error);
       return {

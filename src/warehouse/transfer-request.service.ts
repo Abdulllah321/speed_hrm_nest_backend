@@ -4,13 +4,17 @@ import { TransferRequest, Prisma } from '@prisma/client';
 import { StockMovementService } from './stock-movement.service';
 import { StockLedgerService } from './stock-ledger/stock-ledger.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class TransferRequestService {
     constructor(
         private prisma: PrismaService,
         private stockMovementService: StockMovementService,
         private stockLedgerService: StockLedgerService
-    ) { }
+    ,
+    private activityLogs: ActivityLogsService,
+  ) { }
 
     private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
         const item = await tx.item.findUnique({

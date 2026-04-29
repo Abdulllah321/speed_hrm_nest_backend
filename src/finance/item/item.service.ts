@@ -3,6 +3,8 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateItemDto, UpdateItemDto } from './dto/item.dto';
 
+import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 const includeMasterData = {
   brand: true,
   division: true,
@@ -22,6 +24,8 @@ const includeMasterData = {
 export class ItemService {
   constructor(
     private prisma: PrismaService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   async create(createItemDto: CreateItemDto) {

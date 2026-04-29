@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateTaskProjectDto,
   UpdateTaskProjectDto,
@@ -88,20 +89,23 @@ export class TaskProjectService {
         include: { members: true },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'task',
-        entity: 'TaskProject',
-        entityId: project.id,
-        description: `Created task project: ${project.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: project, message: 'Project created successfully' };
+      const response = { status: true, data: project, message: 'Project created successfully' };
+      runInBackground(
+        'Create Task Project',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'task',
+          entity: 'TaskProject',
+          entityId: project.id,
+          description: `Created task project: ${project.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to create project' };
     }
@@ -122,21 +126,24 @@ export class TaskProjectService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'task',
-        entity: 'TaskProject',
-        entityId: id,
-        description: `Updated task project: ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, data: updated, message: 'Project updated successfully' };
+      const response = { status: true, data: updated, message: 'Project updated successfully' };
+      runInBackground(
+        'Update Task Project',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'task',
+          entity: 'TaskProject',
+          entityId: id,
+          description: `Updated task project: ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to update project' };
     }
@@ -149,19 +156,22 @@ export class TaskProjectService {
 
       await this.prisma.taskProject.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'task',
-        entity: 'TaskProject',
-        entityId: id,
-        description: `Deleted task project: ${existing.name}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-
-      return { status: true, message: 'Project deleted successfully' };
+      const response = { status: true, message: 'Project deleted successfully' };
+      runInBackground(
+        'Delete Task Project',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'task',
+          entity: 'TaskProject',
+          entityId: id,
+          description: `Deleted task project: ${existing.name}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error) {
       return { status: false, message: error instanceof Error ? error.message : 'Failed to delete project' };
     }

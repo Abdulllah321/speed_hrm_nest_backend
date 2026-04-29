@@ -9,11 +9,15 @@ import { CreateLandedCostDto } from './dto/landed-cost.dto';
 import { Prisma, MovementType } from '@prisma/client';
 import { CreateChargeTypeDto } from './dto/charge-type.dto';
 
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class LandedCostService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   private resolveInboundUnitRate(data: {

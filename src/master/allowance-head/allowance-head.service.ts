@@ -3,6 +3,7 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class AllowanceHeadService {
@@ -47,32 +48,39 @@ export class AllowanceHeadService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        entityId: created.id,
-        description: `Created allowance head ${body.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: created };
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Allowance Head',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          entityId: created.id,
+          description: `Created allowance head ${body.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: 'Failed to create allowance head',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Allowance Head (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: 'Failed to create allowance head',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create allowance head' };
     }
   }
@@ -100,31 +108,38 @@ export class AllowanceHeadService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: `Bulk created allowance heads (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Allowance heads created' };
+      const response = { status: true, data: result };
+      runInBackground(
+        'Bulk Create Allowance Heads',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: `Bulk created allowance heads (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: 'Failed bulk create allowance heads',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Allowance Heads (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: 'Failed bulk create allowance heads',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create allowance heads' };
     }
   }
@@ -164,34 +179,41 @@ export class AllowanceHeadService {
         where: { id },
         data: updateData,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        entityId: id,
-        description: `Updated allowance head ${body.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(updateData),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: updated };
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Allowance Head',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          entityId: id,
+          description: `Updated allowance head ${body.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(updateData),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        entityId: id,
-        description: 'Failed to update allowance head',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Allowance Head (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          entityId: id,
+          description: 'Failed to update allowance head',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update allowance head' };
     }
   }
@@ -231,31 +253,38 @@ export class AllowanceHeadService {
           data: updateData,
         });
       }
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: `Bulk updated allowance heads (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Allowance heads updated' };
+      const response = { status: true, message: 'Allowance heads updated successfully' };
+      runInBackground(
+        'Bulk Update Allowance Heads',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: `Bulk updated allowance heads (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: 'Failed bulk update allowance heads',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Update Allowance Heads (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: 'Failed bulk update allowance heads',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to update allowance heads' };
     }
   }
@@ -271,32 +300,39 @@ export class AllowanceHeadService {
       const removed = await this.prisma.allowanceHead.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        entityId: id,
-        description: `Deleted allowance head ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, data: removed };
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Delete Allowance Head',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          entityId: id,
+          description: `Deleted allowance head ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        entityId: id,
-        description: 'Failed to delete allowance head',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Allowance Head (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          entityId: id,
+          description: 'Failed to delete allowance head',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete allowance head' };
     }
   }
@@ -310,31 +346,38 @@ export class AllowanceHeadService {
       const removed = await this.prisma.allowanceHead.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: `Bulk deleted allowance heads (${removed.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      return { status: true, message: 'Allowance heads deleted' };
+      const response = { status: true, data: removed };
+      runInBackground(
+        'Bulk Delete Allowance Heads',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: `Bulk deleted allowance heads (${removed.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'allowance-heads',
-        entity: 'AllowanceHead',
-        description: 'Failed bulk delete allowance heads',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Allowance Heads (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'allowance-heads',
+          entity: 'AllowanceHead',
+          description: 'Failed bulk delete allowance heads',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete allowance heads' };
     }
   }

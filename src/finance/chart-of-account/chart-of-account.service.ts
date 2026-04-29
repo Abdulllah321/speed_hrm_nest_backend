@@ -4,6 +4,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateChartOfAccountDto,
   UpdateChartOfAccountDto,
@@ -11,7 +13,9 @@ import {
 
 @Injectable()
 export class ChartOfAccountService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async create(
     createDto: CreateChartOfAccountDto,

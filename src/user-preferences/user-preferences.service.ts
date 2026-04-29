@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../database/prisma-master.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class UserPreferencesService {
-  constructor(private prismaMaster: PrismaMasterService) {}
+  constructor(private prismaMaster: PrismaMasterService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async get(userId: string, key: string) {
     try {

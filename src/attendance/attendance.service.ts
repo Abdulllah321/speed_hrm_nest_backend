@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { Decimal } from '@prisma/client/runtime/client';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @Injectable()
 export class AttendanceService {
@@ -326,33 +327,40 @@ export class AttendanceService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendances',
-        entity: 'Attendance',
-        entityId: created.id,
-        description: `Created attendance record for ${created.employee.employeeName} on ${date.toISOString().split('T')[0]}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Attendance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendances',
+          entity: 'Attendance',
+          entityId: created.id,
+          description: `Created attendance record for ${created.employee.employeeName} on ${date.toISOString().split('T')[0]}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
-      return { status: true, data: created };
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendances',
-        entity: 'Attendance',
-        description: 'Failed to create attendance record',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Attendance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendances',
+          entity: 'Attendance',
+          description: 'Failed to create attendance record',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to create attendance record',
@@ -463,16 +471,19 @@ export class AttendanceService {
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendances',
-        entity: 'Attendance',
-        description: `Created attendance records for date range ${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: errors.length === 0 ? 'success' : 'failure',
-      });
+      runInBackground(
+        'Create Attendance Date Range',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendances',
+          entity: 'Attendance',
+          description: `Created attendance records for date range ${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: errors.length === 0 ? 'success' : 'failure',
+        }),
+      );
 
       return {
         status: errors.length === 0,
@@ -563,33 +574,40 @@ export class AttendanceService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendances',
-        entity: 'Attendance',
-        entityId: updated.id,
-        description: `Updated attendance record for ${updated.employee.employeeName}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(updateData),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Attendance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendances',
+          entity: 'Attendance',
+          entityId: updated.id,
+          description: `Updated attendance record for ${updated.employee.employeeName}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(updateData),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
-      return { status: true, data: updated };
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendances',
-        entity: 'Attendance',
-        description: 'Failed to update attendance record',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Attendance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendances',
+          entity: 'Attendance',
+          description: 'Failed to update attendance record',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to update attendance record',
@@ -620,32 +638,39 @@ export class AttendanceService {
 
       await this.prisma.attendance.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendances',
-        entity: 'Attendance',
-        entityId: id,
-        description: `Deleted attendance record for ${existing.employee.employeeName} on ${existing.date.toISOString().split('T')[0]}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      const response = { status: true, message: 'Attendance deleted successfully' };
+      runInBackground(
+        'Delete Attendance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendances',
+          entity: 'Attendance',
+          entityId: id,
+          description: `Deleted attendance record for ${existing.employee.employeeName} on ${existing.date.toISOString().split('T')[0]}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
-      return { status: true, message: 'Attendance deleted successfully' };
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendances',
-        entity: 'Attendance',
-        description: 'Failed to delete attendance record',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Attendance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendances',
+          entity: 'Attendance',
+          description: 'Failed to delete attendance record',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to delete attendance record',
@@ -1190,16 +1215,19 @@ export class AttendanceService {
         }
       }
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'bulk_upload',
-        module: 'attendances',
-        entity: 'Attendance',
-        description: `Bulk uploaded ${results.length} attendance records from CSV`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: errors.length === 0 ? 'success' : 'failure',
-      });
+      runInBackground(
+        'Bulk Upload Attendance',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'bulk_upload',
+          module: 'attendances',
+          entity: 'Attendance',
+          description: `Bulk uploaded ${results.length} attendance records from CSV`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: errors.length === 0 ? 'success' : 'failure',
+        }),
+      );
 
       return {
         status: errors.length === 0,
@@ -1211,17 +1239,20 @@ export class AttendanceService {
             : `${results.length} records imported successfully`,
       };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'bulk_upload',
-        module: 'attendances',
-        entity: 'Attendance',
-        description: 'Failed to bulk upload attendance records',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Upload Attendance (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'bulk_upload',
+          module: 'attendances',
+          entity: 'Attendance',
+          description: 'Failed to bulk upload attendance records',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return {
         status: false,
         message: error?.message || 'Failed to process CSV file',
