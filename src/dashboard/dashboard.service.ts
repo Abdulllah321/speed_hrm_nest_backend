@@ -275,7 +275,6 @@ export class DashboardService {
   }
   async getEmployeeDashboardStats(userId: string) {
     this.prisma.ensureTenantContext();
-    console.log(`[Dashboard] Fetching stats for userId: ${userId}`);
 
     let employee = await this.prisma.employee.findUnique({
       where: { userId },
@@ -283,9 +282,7 @@ export class DashboardService {
 
     // Auto-link logic: If not linked, try to match by email
     if (!employee) {
-      console.log(
-        `[Dashboard] Employee not found via userId. Attempting email match...`,
-      );
+   
 
       try {
         const user = await this.prismaMaster.user.findUnique({
@@ -293,9 +290,7 @@ export class DashboardService {
         });
 
         if (user && user.email) {
-          console.log(
-            `[Dashboard] Checking for employee with email: ${user.email}`,
-          );
+          
           const matchedEmployee = await this.prisma.employee.findFirst({
             where: {
               OR: [
@@ -306,9 +301,7 @@ export class DashboardService {
           });
 
           if (matchedEmployee) {
-            console.log(
-              `[Dashboard] Found matching employee by email: ${matchedEmployee.employeeName}. Linking now...`,
-            );
+          
 
             // Verify if this employee is already linked to another user (edge case)
             if (matchedEmployee.userId && matchedEmployee.userId !== userId) {
@@ -321,20 +314,11 @@ export class DashboardService {
                 where: { id: matchedEmployee.id },
                 data: { userId: user.id },
               });
-              console.log(
-                `[Dashboard] Successfully auto-linked User ${user.email} to Employee ${employee.employeeName}`,
-              );
+          
             }
           } else {
-            console.log(
-              `[Dashboard] No employee matched with email: ${user.email}`,
-            );
-
             // Fallback: Try matching by Phone Number
             if (user.phone) {
-              console.log(
-                `[Dashboard] Email match failed. Checking by Phone: ${user.phone}`,
-              );
               const matchedByPhone = await this.prisma.employee.findFirst({
                 where: {
                   contactNumber: user.phone,
@@ -346,25 +330,12 @@ export class DashboardService {
                   !matchedByPhone.userId ||
                   matchedByPhone.userId === userId
                 ) {
-                  console.log(
-                    `[Dashboard] Found matching employee by Phone: ${matchedByPhone.employeeName}. Linking now...`,
-                  );
                   employee = await this.prisma.employee.update({
                     where: { id: matchedByPhone.id },
                     data: { userId: user.id },
                   });
-                } else {
-                  console.warn(
-                    `[Dashboard] Employee matched by phone (${matchedByPhone.employeeName}) is already linked to another user.`,
-                  );
                 }
-              } else {
-                console.log(
-                  `[Dashboard] No employee matched with phone: ${user.phone}`,
-                );
-              }
-            } else {
-              console.log(`[Dashboard] User has no phone number to match.`);
+              } 
             }
           }
         }
@@ -374,17 +345,7 @@ export class DashboardService {
     }
 
     if (!employee) {
-      console.log(`[Dashboard] Employee not found for userId: ${userId}`);
-      // Try to find if there is ANY employee just to debug
-      const anyEmployee = await this.prisma.employee.findFirst();
-      console.log(
-        `[Dashboard] Sample existing employee: ${JSON.stringify(
-          anyEmployee?.id,
-        )} (UserId: ${anyEmployee?.userId})`,
-      );
 
-      // Use a valid default date (today) if no employee found, avoiding invalid date errors
-      const today = new Date();
       return {
         overview: {
           presentMonth: 0,
@@ -398,10 +359,6 @@ export class DashboardService {
       };
     }
 
-    console.log(
-      `[Dashboard] Found employee: ${employee.id} (${employee.employeeName})`,
-    );
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -409,10 +366,6 @@ export class DashboardService {
 
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-    console.log(
-      `[Dashboard] Date Range: ${startOfMonth.toISOString()} to ${endOfMonth.toISOString()}`,
-    );
 
     // 1. My Attendance Stats (Current Month)
     const attendanceStats = await this.prisma.attendance.groupBy({

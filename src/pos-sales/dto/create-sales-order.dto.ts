@@ -93,6 +93,22 @@ export class AllianceMetaDto {
     merchantSlip?: string;
 }
 
+// ── Voucher redemption item ───────────────────────────────────────────────
+export class VoucherRedemptionDto {
+    @ApiProperty({ description: 'Voucher UUID' })
+    @IsString()
+    voucherId: string;
+
+    @ApiProperty({ description: 'Voucher code' })
+    @IsString()
+    code: string;
+
+    @ApiProperty({ description: 'Amount redeemed from this voucher' })
+    @IsNumber()
+    @Min(0)
+    amount: number;
+}
+
 // ── Promo scope (order-wide or per specific items) ─────────────────────────
 export class PromoScopeDto {
     @ApiProperty({ description: 'Scope type: order | items' })
@@ -224,6 +240,13 @@ export class CreateSalesOrderDto {
     @ApiPropertyOptional({ description: 'Gift receipt - print without prices' })
     @IsOptional()
     isGiftReceipt?: boolean;
+
+    @ApiPropertyOptional({ description: 'Vouchers to redeem against this order', type: [VoucherRedemptionDto] })
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => VoucherRedemptionDto)
+    voucherRedemptions?: VoucherRedemptionDto[];
 
     @ApiProperty({ type: [SalesOrderItemDto] })
     @IsArray()
