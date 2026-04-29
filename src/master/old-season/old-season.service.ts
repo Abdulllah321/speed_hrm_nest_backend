@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 import {
   CreateOldSeasonDto,
@@ -85,21 +86,25 @@ export class OldSeasonService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'old-seasons',
-        entity: 'OldSeason',
-        description: `Created old seasons (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('old_seasons_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Old seasons created successfully',
       };
+      runInBackground(
+        'Create Old Seasons',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'old-seasons',
+          entity: 'OldSeason',
+          description: `Created old seasons (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('old_seasons_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -121,25 +126,29 @@ export class OldSeasonService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'old-seasons',
-        entity: 'OldSeason',
-        entityId: id,
-        description: `Updated old season ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('old_seasons_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Old season updated successfully',
       };
+      runInBackground(
+        'Update Old Season',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'old-seasons',
+          entity: 'OldSeason',
+          entityId: id,
+          description: `Updated old season ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('old_seasons_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -160,23 +169,27 @@ export class OldSeasonService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'old-seasons',
-        entity: 'OldSeason',
-        description: `Bulk updated old seasons (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('old_seasons_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Old seasons updated successfully',
       };
+      runInBackground(
+        'Bulk Update Old Seasons',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'old-seasons',
+          entity: 'OldSeason',
+          description: `Bulk updated old seasons (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('old_seasons_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -190,23 +203,27 @@ export class OldSeasonService {
       const result = await this.prisma.oldSeason.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'old-seasons',
-        entity: 'OldSeason',
-        description: `Bulk deleted old seasons (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('old_seasons_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Old seasons deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Old Seasons',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'old-seasons',
+          entity: 'OldSeason',
+          description: `Bulk deleted old seasons (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('old_seasons_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -224,24 +241,28 @@ export class OldSeasonService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'old-seasons',
-        entity: 'OldSeason',
-        entityId: id,
-        description: `Deleted old season ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('old_seasons_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Old season deleted successfully',
       };
+      runInBackground(
+        'Delete Old Season',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'old-seasons',
+          entity: 'OldSeason',
+          entityId: id,
+          description: `Deleted old season ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('old_seasons_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

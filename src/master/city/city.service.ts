@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class CityService {
@@ -91,34 +92,41 @@ export class CityService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'cities',
-        entity: 'City',
-        entityId: created.id,
-        description: `Created city ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('cities_all');
-      await this.cacheManager.del(`cities_state_${body.stateId}`);
-      return { status: true, data: created };
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create City',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'cities',
+          entity: 'City',
+          entityId: created.id,
+          description: `Created city ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('cities_all'),
+        this.cacheManager.del(`cities_state_${body.stateId}`),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'cities',
-        entity: 'City',
-        description: 'Failed to create city',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create City (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'cities',
+          entity: 'City',
+          description: 'Failed to create city',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       if (error?.code === 'P2002') {
         return {
@@ -158,39 +166,50 @@ export class CityService {
           status: body.status ?? existing.status,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'cities',
-        entity: 'City',
-        entityId: id,
-        description: `Updated city ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('cities_all');
+      const response = { status: true, data: updated };
+      const cacheOps = [
+        this.cacheManager.del('cities_all'),
+      ];
       if (existing.stateId)
-        await this.cacheManager.del(`cities_state_${existing.stateId}`);
+        cacheOps.push(this.cacheManager.del(`cities_state_${existing.stateId}`));
       if (body.stateId && body.stateId !== existing.stateId)
-        await this.cacheManager.del(`cities_state_${body.stateId}`);
-      return { status: true, data: updated };
+        cacheOps.push(this.cacheManager.del(`cities_state_${body.stateId}`));
+      
+      runInBackground(
+        'Update City',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'cities',
+          entity: 'City',
+          entityId: id,
+          description: `Updated city ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+        ...cacheOps,
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'cities',
-        entity: 'City',
-        entityId: id,
-        description: 'Failed to update city',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update City (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'cities',
+          entity: 'City',
+          entityId: id,
+          description: 'Failed to update city',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       if (error?.code === 'P2002') {
         return {
@@ -216,35 +235,44 @@ export class CityService {
       }
 
       const removed = await this.prisma.city.delete({ where: { id } });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'cities',
-        entity: 'City',
-        entityId: id,
-        description: `Deleted city ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('cities_all');
+      const response = { status: true, data: removed };
+      const cacheOps = [this.cacheManager.del('cities_all')];
       if (existing.stateId)
-        await this.cacheManager.del(`cities_state_${existing.stateId}`);
-      return { status: true, data: removed };
+        cacheOps.push(this.cacheManager.del(`cities_state_${existing.stateId}`));
+      
+      runInBackground(
+        'Delete City',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'cities',
+          entity: 'City',
+          entityId: id,
+          description: `Deleted city ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+        ...cacheOps,
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'cities',
-        entity: 'City',
-        entityId: id,
-        description: 'Failed to delete city',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete City (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'cities',
+          entity: 'City',
+          entityId: id,
+          description: 'Failed to delete city',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete city' };
     }
   }
@@ -261,37 +289,46 @@ export class CityService {
       const result = await this.prisma.city.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'cities',
-        entity: 'City',
-        description: `Bulk deleted cities (${result.count})`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('cities_all');
+      const response = { status: true, message: 'Cities deleted', data: result };
+      const cacheOps = [this.cacheManager.del('cities_all')];
       // Invalidate related states from the existing records
       const stateIds = new Set(existing.map((c) => c.stateId));
       for (const sid of stateIds) {
-        if (sid) await this.cacheManager.del(`cities_state_${sid}`);
+        if (sid) cacheOps.push(this.cacheManager.del(`cities_state_${sid}`));
       }
-      return { status: true, message: 'Cities deleted', data: result };
+      
+      runInBackground(
+        'Bulk Delete Cities',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'cities',
+          entity: 'City',
+          description: `Bulk deleted cities (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+        ...cacheOps,
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'cities',
-        entity: 'City',
-        description: 'Failed to bulk delete cities',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Cities (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'cities',
+          entity: 'City',
+          description: 'Failed to bulk delete cities',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to delete cities' };
     }
   }
@@ -317,36 +354,45 @@ export class CityService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'cities',
-        entity: 'City',
-        description: `Bulk created cities (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('cities_all');
+      const response = { status: true, message: 'Cities created', data: result };
+      const cacheOps = [this.cacheManager.del('cities_all')];
       const stateIds = new Set(items.map((i) => i.stateId));
       for (const sid of stateIds) {
-        if (sid) await this.cacheManager.del(`cities_state_${sid}`);
+        if (sid) cacheOps.push(this.cacheManager.del(`cities_state_${sid}`));
       }
-      return { status: true, message: 'Cities created', data: result };
+      
+      runInBackground(
+        'Bulk Create Cities',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'cities',
+          entity: 'City',
+          description: `Bulk created cities (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+        ...cacheOps,
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'cities',
-        entity: 'City',
-        description: 'Failed bulk create cities',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Create Cities (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'cities',
+          entity: 'City',
+          description: 'Failed bulk create cities',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: 'Failed to create cities' };
     }
   }

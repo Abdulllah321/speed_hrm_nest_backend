@@ -8,9 +8,13 @@ import { CreateVendorQuotationDto } from './dto/create-vendor-quotation.dto';
 import { UpdateVendorQuotationDto } from './dto/update-vendor-quotation.dto';
 import { Decimal } from '@prisma/client/runtime/client';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class VendorQuotationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   async create(createDto: CreateVendorQuotationDto) {
     // Verify RFQ exists and vendor is part of it

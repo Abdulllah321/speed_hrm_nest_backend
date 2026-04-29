@@ -4,11 +4,15 @@ import { AccountingService } from '../accounting/accounting.service';
 import { CreateReceiptVoucherDto } from './dto/create-receipt-voucher.dto';
 import { UpdateReceiptVoucherDto } from './dto/update-receipt-voucher.dto';
 
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class ReceiptVoucherService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async create(dto: CreateReceiptVoucherDto) {

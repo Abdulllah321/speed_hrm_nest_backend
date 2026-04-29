@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StockMovement, InventoryItem, MovementType } from '@prisma/client';
 import { StockLedgerService } from './stock-ledger/stock-ledger.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 interface CreateStockMovementDto {
   itemId: string;
   fromWarehouseId?: string;  // Source warehouse (optional for outlet-to-warehouse)
@@ -22,6 +24,8 @@ export class StockMovementService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService
+  ,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   private async getCurrentItemRate(tx: any, itemId: string): Promise<number> {

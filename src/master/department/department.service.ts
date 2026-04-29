@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import {
   CreateSubDepartmentDto,
@@ -164,37 +165,19 @@ export class DepartmentService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'departments',
-        entity: 'Department',
-        description: `Created departments (${departments.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: departments,
-        message: 'Departments created successfully',
-      };
+      const response = { status: true, data: departments, message: 'Departments created successfully' };
+      runInBackground(
+        'Create Departments',
+        this.activityLogs.log({ userId: createdById, action: 'create', module: 'departments', entity: 'Department', description: `Created departments (${departments.count})`, newValues: JSON.stringify(items), status: 'success' }),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'departments',
-        entity: 'Department',
-        description: 'Failed to create departments',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to create departments',
-        data: null,
-      };
+      runInBackground(
+        'Create Departments (Failure Log)',
+        this.activityLogs.log({ userId: createdById, action: 'create', module: 'departments', entity: 'Department', description: 'Failed to create departments', errorMessage: error?.message, newValues: JSON.stringify(items), status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to create departments', data: null };
     }
   }
 
@@ -215,44 +198,19 @@ export class DepartmentService {
           allocationId: updateDepartmentDto.allocationId || null,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'departments',
-        entity: 'Department',
-        entityId: id,
-        description: `Updated department ${department.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(updateDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: department,
-        message: 'Department updated successfully',
-      };
+      const response = { status: true, data: department, message: 'Department updated successfully' };
+      runInBackground(
+        'Update Department',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'departments', entity: 'Department', entityId: id, description: `Updated department ${department.name}`, oldValues: JSON.stringify(existing), newValues: JSON.stringify(updateDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'departments',
-        entity: 'Department',
-        entityId: id,
-        description: 'Failed to update department',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(updateDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to update department',
-        data: null,
-      };
+      runInBackground(
+        'Update Department (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'departments', entity: 'Department', entityId: id, description: 'Failed to update department', errorMessage: error?.message, newValues: JSON.stringify(updateDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to update department', data: null };
     }
   }
 
@@ -284,41 +242,19 @@ export class DepartmentService {
         });
         updatedDepartments.push(department);
       }
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'departments',
-        entity: 'Department',
-        description: `Bulk updated departments (${updatedDepartments.length})`,
-        newValues: JSON.stringify(updateDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: updatedDepartments,
-        message: 'Departments updated successfully',
-      };
+      const response = { status: true, data: updatedDepartments, message: 'Departments updated successfully' };
+      runInBackground(
+        'Bulk Update Departments',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'departments', entity: 'Department', description: `Bulk updated departments (${updatedDepartments.length})`, newValues: JSON.stringify(updateDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'departments',
-        entity: 'Department',
-        description: 'Failed bulk update departments',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(updateDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to update departments',
-        data: null,
-      };
+      runInBackground(
+        'Bulk Update Departments (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'departments', entity: 'Department', description: 'Failed bulk update departments', errorMessage: error?.message, newValues: JSON.stringify(updateDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to update departments', data: null };
     }
   }
 
@@ -330,41 +266,19 @@ export class DepartmentService {
       const departments = await this.prisma.department.deleteMany({
         where: { id: { in: departmentIds } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'departments',
-        entity: 'Department',
-        description: `Bulk deleted departments (${departments.count})`,
-        oldValues: JSON.stringify(departmentIds),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: departments,
-        message: 'Departments deleted successfully',
-      };
+      const response = { status: true, data: departments, message: 'Departments deleted successfully' };
+      runInBackground(
+        'Delete Departments',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'departments', entity: 'Department', description: `Bulk deleted departments (${departments.count})`, oldValues: JSON.stringify(departmentIds), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'departments',
-        entity: 'Department',
-        description: 'Failed bulk delete departments',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(departmentIds),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to delete departments',
-        data: null,
-      };
+      runInBackground(
+        'Delete Departments (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'departments', entity: 'Department', description: 'Failed bulk delete departments', errorMessage: error?.message, oldValues: JSON.stringify(departmentIds), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to delete departments', data: null };
     }
   }
 
@@ -379,42 +293,19 @@ export class DepartmentService {
       const department = await this.prisma.department.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'departments',
-        entity: 'Department',
-        entityId: id,
-        description: `Deleted department ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: department,
-        message: 'Department deleted successfully',
-      };
+      const response = { status: true, data: department, message: 'Department deleted successfully' };
+      runInBackground(
+        'Delete Department',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'departments', entity: 'Department', entityId: id, description: `Deleted department ${existing?.name}`, oldValues: JSON.stringify(existing), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'departments',
-        entity: 'Department',
-        entityId: id,
-        description: 'Failed to delete department',
-        errorMessage: error?.message,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to delete department',
-        data: null,
-      };
+      runInBackground(
+        'Delete Department (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'departments', entity: 'Department', entityId: id, description: 'Failed to delete department', errorMessage: error?.message, ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to delete department', data: null };
     }
   }
 
@@ -543,43 +434,20 @@ export class DepartmentService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'create',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        description: `Created sub-departments (${subDepartments.count})`,
-        newValues: JSON.stringify(createSubDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('subdepartments_all');
-      // Also invalidate departments as they contain subDepartments relation
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: subDepartments,
-        message: 'Sub-departments created successfully',
-      };
+      const response = { status: true, data: subDepartments, message: 'Sub-departments created successfully' };
+      runInBackground(
+        'Create Sub-departments',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'create', module: 'sub-departments', entity: 'SubDepartment', description: `Created sub-departments (${subDepartments.count})`, newValues: JSON.stringify(createSubDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('subdepartments_all'),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'create',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        description: 'Failed to create sub-departments',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(createSubDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to create sub-departments',
-        data: null,
-      };
+      runInBackground(
+        'Create Sub-departments (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'create', module: 'sub-departments', entity: 'SubDepartment', description: 'Failed to create sub-departments', errorMessage: error?.message, newValues: JSON.stringify(createSubDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to create sub-departments', data: null };
     }
   }
 
@@ -613,42 +481,20 @@ export class DepartmentService {
         });
         updatedSubDepartments.push(subDepartment);
       }
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        description: `Bulk updated sub-departments (${updatedSubDepartments.length})`,
-        newValues: JSON.stringify(updateSubDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('subdepartments_all');
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: updatedSubDepartments,
-        message: 'Sub-departments updated successfully',
-      };
+      const response = { status: true, data: updatedSubDepartments, message: 'Sub-departments updated successfully' };
+      runInBackground(
+        'Update Sub-departments',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'sub-departments', entity: 'SubDepartment', description: `Bulk updated sub-departments (${updatedSubDepartments.length})`, newValues: JSON.stringify(updateSubDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('subdepartments_all'),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        description: 'Failed bulk update sub-departments',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(updateSubDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to update sub-departments',
-        data: null,
-      };
+      runInBackground(
+        'Update Sub-departments (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'sub-departments', entity: 'SubDepartment', description: 'Failed bulk update sub-departments', errorMessage: error?.message, newValues: JSON.stringify(updateSubDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to update sub-departments', data: null };
     }
   }
 
@@ -668,45 +514,20 @@ export class DepartmentService {
           headId: updateSubDepartmentDto.headId || null,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        entityId: id,
-        description: `Updated sub-department ${subDepartment.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(updateSubDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('subdepartments_all');
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: subDepartment,
-        message: 'Sub-department updated successfully',
-      };
+      const response = { status: true, data: subDepartment, message: 'Sub-department updated successfully' };
+      runInBackground(
+        'Update Sub-department',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'sub-departments', entity: 'SubDepartment', entityId: id, description: `Updated sub-department ${subDepartment.name}`, oldValues: JSON.stringify(existing), newValues: JSON.stringify(updateSubDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('subdepartments_all'),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        entityId: id,
-        description: 'Failed to update sub-department',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(updateSubDepartmentDto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to update sub-department',
-        data: null,
-      };
+      runInBackground(
+        'Update Sub-department (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'update', module: 'sub-departments', entity: 'SubDepartment', entityId: id, description: 'Failed to update sub-department', errorMessage: error?.message, newValues: JSON.stringify(updateSubDepartmentDto), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to update sub-department', data: null };
     }
   }
 
@@ -718,42 +539,20 @@ export class DepartmentService {
       const subDepartments = await this.prisma.subDepartment.deleteMany({
         where: { id: { in: subDepartmentIds } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        description: `Bulk deleted sub-departments (${subDepartments.count})`,
-        oldValues: JSON.stringify(subDepartmentIds),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('subdepartments_all');
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: subDepartments,
-        message: 'Sub-departments deleted successfully',
-      };
+      const response = { status: true, data: subDepartments, message: 'Sub-departments deleted successfully' };
+      runInBackground(
+        'Delete Sub-departments',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'sub-departments', entity: 'SubDepartment', description: `Bulk deleted sub-departments (${subDepartments.count})`, oldValues: JSON.stringify(subDepartmentIds), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('subdepartments_all'),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        description: 'Failed bulk delete sub-departments',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(subDepartmentIds),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to delete sub-departments',
-        data: null,
-      };
+      runInBackground(
+        'Delete Sub-departments (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'sub-departments', entity: 'SubDepartment', description: 'Failed bulk delete sub-departments', errorMessage: error?.message, oldValues: JSON.stringify(subDepartmentIds), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to delete sub-departments', data: null };
     }
   }
 
@@ -768,43 +567,20 @@ export class DepartmentService {
       const subDepartment = await this.prisma.subDepartment.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        entityId: id,
-        description: `Deleted sub-department ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('subdepartments_all');
-      await this.cacheManager.del('departments_all');
-      return {
-        status: true,
-        data: subDepartment,
-        message: 'Sub-department deleted successfully',
-      };
+      const response = { status: true, data: subDepartment, message: 'Sub-department deleted successfully' };
+      runInBackground(
+        'Delete Sub-department',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'sub-departments', entity: 'SubDepartment', entityId: id, description: `Deleted sub-department ${existing?.name}`, oldValues: JSON.stringify(existing), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'success' }),
+        this.cacheManager.del('subdepartments_all'),
+        this.cacheManager.del('departments_all'),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sub-departments',
-        entity: 'SubDepartment',
-        entityId: id,
-        description: 'Failed to delete sub-department',
-        errorMessage: error?.message,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to delete sub-department',
-        data: null,
-      };
+      runInBackground(
+        'Delete Sub-department (Failure Log)',
+        this.activityLogs.log({ userId: ctx?.userId, action: 'delete', module: 'sub-departments', entity: 'SubDepartment', entityId: id, description: 'Failed to delete sub-department', errorMessage: error?.message, ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, status: 'failure' }),
+      );
+      return { status: false, message: 'Failed to delete sub-department', data: null };
     }
   }
 }

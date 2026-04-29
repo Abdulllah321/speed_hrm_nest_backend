@@ -2,11 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/client';
 import { PrismaService } from '../database/prisma.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class ValuationService {
   private readonly logger = new Logger(ValuationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   /**
    * Records an inventory transaction and updates the item's Weighted Average Cost (WAC).

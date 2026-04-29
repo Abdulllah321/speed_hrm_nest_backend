@@ -7,11 +7,15 @@ import { PrismaService } from '../../database/prisma.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 
+import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 @Injectable()
 export class TransferService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   async create(createTransferDto: CreateTransferDto, userId: string) {

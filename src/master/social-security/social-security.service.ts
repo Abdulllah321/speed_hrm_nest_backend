@@ -12,6 +12,7 @@ import {
   UpdateSocialSecurityContributionDto,
 } from './dto/social-security.dto';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class SocialSecurityService {
@@ -69,8 +70,11 @@ export class SocialSecurityService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityInstitution',
@@ -80,11 +84,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed to create institution',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityInstitution',
@@ -94,7 +102,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return { status: false, message: 'Failed to create institution' };
     }
   }
@@ -126,8 +135,11 @@ export class SocialSecurityService {
           updatedById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityInstitution',
@@ -138,11 +150,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update institution',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityInstitution',
@@ -153,7 +169,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update institution' };
     }
   }
@@ -171,8 +188,10 @@ export class SocialSecurityService {
       await this.prisma.socialSecurityInstitution.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityInstitution',
@@ -182,11 +201,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Failed to delete institution',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityInstitution',
@@ -196,7 +219,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete institution' };
     }
   }
@@ -272,8 +296,10 @@ export class SocialSecurityService {
             createdById: ctx.userId,
           },
         });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityEmployerRegistration',
@@ -283,11 +309,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed to create employer registration',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityEmployerRegistration',
@@ -297,7 +327,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to create employer registration',
@@ -350,8 +381,10 @@ export class SocialSecurityService {
             updatedById: ctx.userId,
           },
         });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityEmployerRegistration',
@@ -362,11 +395,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update employer registration',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityEmployerRegistration',
@@ -377,7 +414,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to update employer registration',
@@ -399,8 +437,10 @@ export class SocialSecurityService {
       await this.prisma.socialSecurityEmployerRegistration.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityEmployerRegistration',
@@ -410,11 +450,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Failed to delete employer registration',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityEmployerRegistration',
@@ -424,7 +468,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete employer registration',
@@ -588,8 +633,10 @@ export class SocialSecurityService {
         }
       }
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityEmployeeRegistration',
@@ -599,11 +646,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed to create employee registration',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityEmployeeRegistration',
@@ -613,7 +664,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to create employee registration',
@@ -678,8 +730,10 @@ export class SocialSecurityService {
             updatedById: ctx.userId,
           },
         });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityEmployeeRegistration',
@@ -690,11 +744,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update employee registration',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityEmployeeRegistration',
@@ -705,7 +763,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to update employee registration',
@@ -727,8 +786,10 @@ export class SocialSecurityService {
       await this.prisma.socialSecurityEmployeeRegistration.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityEmployeeRegistration',
@@ -738,11 +799,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Failed to delete employee registration',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityEmployeeRegistration',
@@ -752,7 +817,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete employee registration',
@@ -874,8 +940,11 @@ export class SocialSecurityService {
           },
         },
       );
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityContribution',
@@ -885,11 +954,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed to create contribution',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'social-security',
         entity: 'SocialSecurityContribution',
@@ -899,7 +972,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create contribution' };
     }
   }
@@ -950,8 +1024,11 @@ export class SocialSecurityService {
           },
         },
       );
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityContribution',
@@ -962,11 +1039,15 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update contribution',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'social-security',
         entity: 'SocialSecurityContribution',
@@ -977,7 +1058,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update contribution' };
     }
   }
@@ -996,8 +1078,10 @@ export class SocialSecurityService {
       await this.prisma.socialSecurityContribution.delete({
         where: { id },
       });
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityContribution',
@@ -1007,11 +1091,14 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to delete contribution (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'social-security',
         entity: 'SocialSecurityContribution',
@@ -1021,7 +1108,8 @@ export class SocialSecurityService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete contribution' };
     }
   }

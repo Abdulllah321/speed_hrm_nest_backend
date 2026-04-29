@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { KpiComputeService } from '../kpi/kpi-compute.service';
 import { KpiService } from '../kpi/kpi.service';
+import { runInBackground } from '../../../../../common/utils/run-in-background.util';
 import {
   CreateTaskDto,
   UpdateTaskDto,

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -38,7 +39,14 @@ export class InstituteService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: created,
+        message: 'Institute created successfully',
+      };
+      runInBackground(
+        'Created institute ${created.name}',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'institutes',
@@ -49,14 +57,18 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: created,
-        message: 'Institute created successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Institute updated successfully',
+      };
+      runInBackground(
+        'Failed to create institute',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'institutes',
@@ -92,7 +104,9 @@ export class InstituteService {
           status: body.status ?? existing?.status ?? 'active',
         },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated institute ${updated.name} (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'institutes',
@@ -104,14 +118,18 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: updated,
-        message: 'Institute updated successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: removed,
+        message: 'Institute deleted successfully',
+      };
+      runInBackground(
+        'Failed to update institute',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'institutes',
@@ -123,7 +141,8 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to update institute',
@@ -143,7 +162,9 @@ export class InstituteService {
       const removed = await this.prisma.institute.delete({
         where: { id },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted institute ${existing?.name} (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'institutes',
@@ -154,14 +175,18 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: removed,
-        message: 'Institute deleted successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+        status: true,
+        data: result,
+        message: 'Institutes created successfully',
+      };
+      runInBackground(
+        'Failed to delete institute',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'institutes',
@@ -172,7 +197,8 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to delete institute',
@@ -197,7 +223,9 @@ export class InstituteService {
         data,
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Created institutes (${result.count}) (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'institutes',
@@ -207,14 +235,18 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return {
-        status: true,
-        data: result,
-        message: 'Institutes created successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = {
+      status: true,
+      data: { total: seedItems.length, created, skipped },
+      message: 'Institutes seeded successfully',
+    };
+      runInBackground(
+        'Failed to create institutes',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'institutes',
@@ -225,7 +257,8 @@ export class InstituteService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return {
         status: false,
         message: 'Failed to create institutes',
@@ -256,7 +289,9 @@ export class InstituteService {
         skipped++;
       }
     }
-    await this.activityLogs.log({
+    runInBackground(
+        'Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}',
+        this.activityLogs.log({
       userId: ctx.userId,
       action: 'seed',
       module: 'institutes',
@@ -266,11 +301,8 @@ export class InstituteService {
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       status: 'success',
-    });
-    return {
-      status: true,
-      data: { total: seedItems.length, created, skipped },
-      message: 'Institutes seeded successfully',
-    };
+    }),
+      );
+      return response;
   }
 }

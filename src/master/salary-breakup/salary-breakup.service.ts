@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class SalaryBreakupService {
@@ -48,8 +49,12 @@ export class SalaryBreakupService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      const response = { status: true, data: created };
+      runInBackground(
+        'Create Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'salary-breakups',
         entity: 'SalaryBreakup',
@@ -59,11 +64,19 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Salary breakup updated successfully',
+      };
+      runInBackground(
+        'Failed to create salary breakup',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'create',
         module: 'salary-breakups',
         entity: 'SalaryBreakup',
@@ -73,7 +86,8 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+        }),
+      );
       return { status: false, message: 'Failed to create salary breakup' };
     }
   }
@@ -110,8 +124,11 @@ export class SalaryBreakupService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'salary-breakups',
         entity: 'SalaryBreakup',
@@ -122,16 +139,15 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-
-      return {
-        status: true,
-        data: updated,
-        message: 'Salary breakup updated successfully',
-      };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      
+      runInBackground(
+        'Failed to update salary breakup',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'update',
         module: 'salary-breakups',
         entity: 'SalaryBreakup',
@@ -142,7 +158,8 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
 
       return {
         status: false,
@@ -166,8 +183,10 @@ export class SalaryBreakupService {
 
       await this.prisma.salaryBreakup.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Delete Record',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'salary-breakups',
         entity: 'SalaryBreakup',
@@ -177,12 +196,14 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-
-      return { status: true, message: 'Salary breakup deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
+      runInBackground(
+        'Failed to delete salary breakup (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
         action: 'delete',
         module: 'salary-breakups',
         entity: 'SalaryBreakup',
@@ -192,7 +213,8 @@ export class SalaryBreakupService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
 
       return {
         status: false,

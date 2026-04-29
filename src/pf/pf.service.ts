@@ -3,6 +3,8 @@ import { PrismaService } from '../database/prisma.service';
 import { Decimal } from '@prisma/client/runtime/client';
 import { PrismaMasterService } from '../database/prisma-master.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PFService {
   private readonly logger = new Logger(PFService.name);
@@ -10,6 +12,8 @@ export class PFService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async getPFEmployees() {

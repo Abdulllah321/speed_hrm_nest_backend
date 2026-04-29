@@ -9,11 +9,15 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class UserService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private prisma: PrismaService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async create(createUserDto: CreateUserDto) {

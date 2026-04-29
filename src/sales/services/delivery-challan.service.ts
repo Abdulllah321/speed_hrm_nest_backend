@@ -3,11 +3,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StockLedgerService } from '../../warehouse/stock-ledger/stock-ledger.service';
 import { CreateDeliveryChallanDto } from '../dto/delivery-challan.dto';
 
+import { ActivityLogsService } from '../../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../../common/utils/run-in-background.util';
 @Injectable()
 export class DeliveryChallanService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async create(createData: CreateDeliveryChallanDto) {

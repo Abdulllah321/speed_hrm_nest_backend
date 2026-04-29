@@ -4,6 +4,7 @@ import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 import {
   CreateGenderDto,
   UpdateGenderDto,
@@ -84,21 +85,25 @@ export class GenderService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'genders',
-        entity: 'Gender',
-        description: `Created genders (${genders.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
-      return {
+      const response = {
         status: true,
         data: genders,
         message: 'Genders created successfully',
       };
+      runInBackground(
+        'Create Genders',
+        this.activityLogs.log({
+          userId: createdById,
+          action: 'create',
+          module: 'genders',
+          entity: 'Gender',
+          description: `Created genders (${genders.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+        this.cacheManager.del('genders_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -118,25 +123,29 @@ export class GenderService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'genders',
-        entity: 'Gender',
-        entityId: id,
-        description: `Updated gender ${gender.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
-      return {
+      const response = {
         status: true,
         data: gender,
         message: 'Gender updated successfully',
       };
+      runInBackground(
+        'Update Gender',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'genders',
+          entity: 'Gender',
+          entityId: id,
+          description: `Updated gender ${gender.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('genders_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -158,23 +167,27 @@ export class GenderService {
         );
       }
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'genders',
-        entity: 'Gender',
-        description: `Bulk updated genders (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
-      return {
+      const response = {
         status: true,
         data: updated,
         message: 'Genders updated successfully',
       };
+      runInBackground(
+        'Bulk Update Genders',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'genders',
+          entity: 'Gender',
+          description: `Bulk updated genders (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('genders_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -188,23 +201,27 @@ export class GenderService {
       const result = await this.prisma.gender.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'genders',
-        entity: 'Gender',
-        description: `Bulk deleted genders (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Genders deleted successfully',
       };
+      runInBackground(
+        'Bulk Delete Genders',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'genders',
+          entity: 'Gender',
+          description: `Bulk deleted genders (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('genders_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -220,24 +237,28 @@ export class GenderService {
       });
       const result = await this.prisma.gender.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'genders',
-        entity: 'Gender',
-        entityId: id,
-        description: `Deleted gender ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      });
-      await this.cacheManager.del('genders_all');
-      return {
+      const response = {
         status: true,
         data: result,
         message: 'Gender deleted successfully',
       };
+      runInBackground(
+        'Delete Gender',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'genders',
+          entity: 'Gender',
+          entityId: id,
+          description: `Deleted gender ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+        this.cacheManager.del('genders_all'),
+      );
+      return response;
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }

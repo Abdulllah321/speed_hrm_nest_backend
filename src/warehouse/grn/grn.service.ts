@@ -9,6 +9,8 @@ import { CreateGrnDto } from './dto/grn.dto';
 import { MovementType, Prisma } from '@prisma/client';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class GrnService {
   private readonly logger = new Logger(GrnService.name);
@@ -16,6 +18,8 @@ export class GrnService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
+  ,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   private async calculateAndApplyWeightedAverage(

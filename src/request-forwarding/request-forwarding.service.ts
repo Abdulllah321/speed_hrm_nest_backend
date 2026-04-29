@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import { CreateRequestForwardingDto } from './dto/create-request-forwarding.dto';
 import { UpdateRequestForwardingDto } from './dto/update-request-forwarding.dto';
 import { PrismaMasterService } from '../database/prisma-master.service';
@@ -359,18 +360,21 @@ export class RequestForwardingService {
 
     // Log activity
     if (mappedResult) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'request-forwarding',
-        entity: 'RequestForwardingConfiguration',
-        entityId: mappedResult.id,
-        description: `Created request forwarding configuration for ${body.requestType}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Create Request Forwarding Configuration',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'request-forwarding',
+          entity: 'RequestForwardingConfiguration',
+          entityId: mappedResult.id,
+          description: `Created request forwarding configuration for ${body.requestType}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
     }
 
     return { status: true, data: mappedResult };
@@ -582,19 +586,22 @@ export class RequestForwardingService {
     // Log activity
     if (mappedResult) {
       const action = existing ? 'update' : 'create';
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: action,
-        module: 'request-forwarding',
-        entity: 'RequestForwardingConfiguration',
-        entityId: mappedResult.id,
-        description: `${existing ? 'Updated' : 'Created'} request forwarding configuration for ${requestType}`,
-        oldValues: existing ? JSON.stringify(existing) : undefined,
-        newValues: JSON.stringify({ requestType, ...body }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        `${existing ? 'Update' : 'Create'} Request Forwarding Configuration`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: action,
+          module: 'request-forwarding',
+          entity: 'RequestForwardingConfiguration',
+          entityId: mappedResult.id,
+          description: `${existing ? 'Updated' : 'Created'} request forwarding configuration for ${requestType}`,
+          oldValues: existing ? JSON.stringify(existing) : undefined,
+          newValues: JSON.stringify({ requestType, ...body }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
     }
 
     return { status: true, data: mappedResult };
@@ -621,18 +628,21 @@ export class RequestForwardingService {
     });
 
     // Log activity
-    await this.activityLogs.log({
-      userId: ctx.userId,
-      action: 'delete',
-      module: 'request-forwarding',
-      entity: 'RequestForwardingConfiguration',
-      entityId: existing.id,
-      description: `Deleted request forwarding configuration for ${requestType}`,
-      oldValues: JSON.stringify(existing),
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      status: 'success',
-    });
+    runInBackground(
+      'Delete Request Forwarding Configuration',
+      this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'delete',
+        module: 'request-forwarding',
+        entity: 'RequestForwardingConfiguration',
+        entityId: existing.id,
+        description: `Deleted request forwarding configuration for ${requestType}`,
+        oldValues: JSON.stringify(existing),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      }),
+    );
 
     return { status: true, message: 'Configuration deleted successfully' };
   }

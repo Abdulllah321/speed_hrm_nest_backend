@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateBonusDto,
   BulkCreateBonusDto,
@@ -430,27 +431,32 @@ export class BonusService {
         result.map((b) => this.enrichSingleBonus(b)),
       );
 
-      // Log activity
-      if (result.length > 0 && ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'bonus',
-          entity: 'Bonus',
-          entityId: result[0].id,
-          description: `Created ${result.length} bonus(es) for ${body.bonusMonthYear}`,
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
-      return {
+      const response = {
         status: true,
         data: enrichedResults,
         message: `Successfully created ${result.length} bonus(es)`,
       };
+
+      // Log activity
+      if (result.length > 0 && ctx.userId) {
+        runInBackground(
+          'Create Bonuses',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'create',
+            module: 'bonus',
+            entity: 'Bonus',
+            entityId: result[0].id,
+            description: `Created ${result.length} bonus(es) for ${body.bonusMonthYear}`,
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error creating bonus:', error);
       return {
@@ -535,29 +541,34 @@ export class BonusService {
         },
       });
 
-      // Log activity
-      if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'bonus',
-          entity: 'Bonus',
-          entityId: id,
-          description: 'Updated bonus',
-          newValues: JSON.stringify(body),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
-      }
-
       const enriched = await this.enrichSingleBonus(updated);
 
-      return {
+      const response = {
         status: true,
         data: enriched,
         message: 'Bonus updated successfully',
       };
+
+      // Log activity
+      if (ctx.userId) {
+        runInBackground(
+          'Update Bonus',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'bonus',
+            entity: 'Bonus',
+            entityId: id,
+            description: 'Updated bonus',
+            newValues: JSON.stringify(body),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
+      }
+
+      return response;
     } catch (error) {
       console.error('Error updating bonus:', error);
       return {
@@ -585,22 +596,27 @@ export class BonusService {
         where: { id },
       });
 
+      const response = { status: true, message: 'Bonus deleted successfully' };
+
       // Log activity
       if (ctx.userId) {
-        await this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'bonus',
-          entity: 'Bonus',
-          entityId: id,
-          description: 'Deleted bonus',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        });
+        runInBackground(
+          'Delete Bonus',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'delete',
+            module: 'bonus',
+            entity: 'Bonus',
+            entityId: id,
+            description: 'Deleted bonus',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
-      return { status: true, message: 'Bonus deleted successfully' };
+      return response;
     } catch (error) {
       console.error('Error deleting bonus:', error);
       return {

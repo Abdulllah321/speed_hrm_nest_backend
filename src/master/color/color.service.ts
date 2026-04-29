@@ -9,6 +9,7 @@ import {
   UpdateColorDto,
   BulkUpdateColorItemDto,
 } from './dto/color.dto';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 @Injectable()
 export class ColorService {
@@ -82,7 +83,9 @@ export class ColorService {
         skipDuplicates: true,
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Created colors (${result.count})',
+        this.activityLogs.log({
         userId: createdById,
         action: 'create',
         module: 'colors',
@@ -90,8 +93,9 @@ export class ColorService {
         description: `Created colors (${result.count})`,
         newValues: JSON.stringify(items),
         status: 'success',
-      });
-      await this.cacheManager.del('colors_all');
+      }),
+        this.cacheManager.del('colors_all'),
+      );
       return {
         status: true,
         data: result,
@@ -116,7 +120,9 @@ export class ColorService {
         data: { name: dto.name, status: dto.status },
       });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated color ${result.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'colors',
@@ -128,8 +134,9 @@ export class ColorService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('colors_all');
+      }),
+        this.cacheManager.del('colors_all'),
+      );
       return {
         status: true,
         data: result,
@@ -155,7 +162,9 @@ export class ColorService {
         );
       }
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated colors (${updated.length})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'update',
         module: 'colors',
@@ -165,8 +174,9 @@ export class ColorService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('colors_all');
+      }),
+        this.cacheManager.del('colors_all'),
+      );
       return {
         status: true,
         data: updated,
@@ -185,7 +195,9 @@ export class ColorService {
       const result = await this.prisma.color.deleteMany({
         where: { id: { in: ids } },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk deleted colors (${result.count})',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'colors',
@@ -195,8 +207,9 @@ export class ColorService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('colors_all');
+      }),
+        this.cacheManager.del('colors_all'),
+      );
       return {
         status: true,
         data: result,
@@ -217,7 +230,9 @@ export class ColorService {
       });
       const result = await this.prisma.color.delete({ where: { id } });
 
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted color ${existing?.name}',
+        this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
         module: 'colors',
@@ -228,8 +243,9 @@ export class ColorService {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
-      });
-      await this.cacheManager.del('colors_all');
+      }),
+        this.cacheManager.del('colors_all'),
+      );
       return {
         status: true,
         data: result,

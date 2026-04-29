@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
 
 @Injectable()
@@ -45,7 +46,10 @@ export class TaxSlabService {
           createdById: ctx.userId,
         },
       });
-      await this.activityLogs.log({
+      const response = { status: true, data: created, message: 'Created successfully' };
+      runInBackground(
+        'Created tax slab ${created.name}',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'tax-slabs',
@@ -56,10 +60,14 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: created, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = { status: true, message: 'Created successfully' };
+      runInBackground(
+        'Failed to create tax slab',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'tax-slabs',
@@ -98,7 +106,9 @@ export class TaxSlabService {
         })),
         skipDuplicates: true,
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk created ${res.count} tax slabs (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'tax-slabs',
@@ -108,10 +118,14 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Created successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = { status: true, data: updated, message: 'Updated successfully' };
+      runInBackground(
+        'Failed bulk create tax slabs',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'create',
         module: 'tax-slabs',
@@ -122,7 +136,8 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to create tax slabs' };
     }
   }
@@ -153,7 +168,9 @@ export class TaxSlabService {
           status: body.status ?? existing.status,
         },
       });
-      await this.activityLogs.log({
+      runInBackground(
+        'Updated tax slab ${updated.name} (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'tax-slabs',
@@ -165,10 +182,14 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, data: updated, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = { status: true, message: 'Deleted successfully' };
+      runInBackground(
+        'Failed to update tax slab',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'tax-slabs',
@@ -180,7 +201,8 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update tax slab' };
     }
   }
@@ -195,7 +217,9 @@ export class TaxSlabService {
       });
       if (!existing) return { status: false, message: 'Tax slab not found' };
       await this.prisma.taxSlab.delete({ where: { id } });
-      await this.activityLogs.log({
+      runInBackground(
+        'Deleted tax slab ${existing.name} (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'tax-slabs',
@@ -206,10 +230,14 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Deleted successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      const response = { status: true, message: 'Updated successfully' };
+      runInBackground(
+        'Failed to delete tax slab',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'delete',
         module: 'tax-slabs',
@@ -220,7 +248,8 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to delete tax slab' };
     }
   }
@@ -243,7 +272,9 @@ export class TaxSlabService {
         if (!existing) {
           result.failed.push({ id, reason: 'Tax slab not found' });
 
-          await this.activityLogs.log({
+          runInBackground(
+        'Tax slab not found (Failure Log)',
+        this.activityLogs.log({
             userId: ctx.userId,
             action: 'delete',
             module: 'tax-slabs',
@@ -253,14 +284,17 @@ export class TaxSlabService {
             ipAddress: ctx.ipAddress,
             userAgent: ctx.userAgent,
             status: 'failure',
-          });
+          }),
+      );
 
           continue;
         }
 
         await this.prisma.taxSlab.delete({ where: { id } });
 
-        await this.activityLogs.log({
+        runInBackground(
+        'Deleted tax slab ${existing.name} (Failure Log)',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'tax-slabs',
@@ -277,7 +311,9 @@ export class TaxSlabService {
       } catch (error: any) {
         result.failed.push({ id, reason: error?.message ?? 'Unknown error' });
 
-        await this.activityLogs.log({
+        runInBackground(
+        'Failed to delete tax slab (Failure Log)',
+        this.activityLogs.log({
           userId: ctx.userId,
           action: 'delete',
           module: 'tax-slabs',
@@ -288,7 +324,8 @@ export class TaxSlabService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'failure',
-        });
+        }),
+      );
       }
     }
 
@@ -327,7 +364,9 @@ export class TaxSlabService {
           },
         });
       }
-      await this.activityLogs.log({
+      runInBackground(
+        'Bulk updated ${items.length} tax slabs (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'tax-slabs',
@@ -337,10 +376,13 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'success',
-      });
-      return { status: true, message: 'Updated successfully' };
+      }),
+      );
+      return response;
     } catch (error: any) {
-      await this.activityLogs.log({
+      runInBackground(
+        'Failed bulk update tax slabs (Failure Log)',
+        this.activityLogs.log({
         userId: ctx.userId,
         action: 'update',
         module: 'tax-slabs',
@@ -351,7 +393,8 @@ export class TaxSlabService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         status: 'failure',
-      });
+      }),
+      );
       return { status: false, message: 'Failed to update tax slabs' };
     }
   }
