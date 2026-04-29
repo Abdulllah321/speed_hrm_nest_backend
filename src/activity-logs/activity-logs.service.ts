@@ -10,6 +10,27 @@ export class ActivityLogsService {
     private gateway: ActivityLogsGateway,
   ) {}
 
+  async getFilters() {
+    const [modules, actions] = await Promise.all([
+      this.prismaMaster.activityLog.findMany({
+        where: { module: { not: null } },
+        select: { module: true },
+        distinct: ['module'],
+        orderBy: { module: 'asc' },
+      }),
+      this.prismaMaster.activityLog.findMany({
+        select: { action: true },
+        distinct: ['action'],
+        orderBy: { action: 'asc' },
+      }),
+    ]);
+
+    return {
+      modules: modules.map((r) => r.module).filter(Boolean) as string[],
+      actions: actions.map((r) => r.action).filter(Boolean) as string[],
+    };
+  }
+
   async findAll(query: {
     page?: number;
     limit?: number;

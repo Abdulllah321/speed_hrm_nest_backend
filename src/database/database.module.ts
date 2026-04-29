@@ -43,6 +43,9 @@ export class DatabaseModule implements NestModule {
         { path: '/api/admin/companies/(.*)', method: RequestMethod.ALL },
         { path: '/api/users', method: RequestMethod.ALL },
         { path: '/api/users/(.*)', method: RequestMethod.ALL },
+        // activity-logs uses master DB, no tenant context needed
+        { path: '/api/activity-logs', method: RequestMethod.ALL },
+        { path: '/api/activity-logs/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

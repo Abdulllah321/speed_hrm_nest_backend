@@ -581,9 +581,6 @@ export class PosSalesService implements OnModuleInit {
         const skip = (page - 1) * limit;
         const where: any = {};
 
-        console.log("=================")
-        console.log(locationId)
-        console.log("=================")
         if (posId) {
             // If posId is a UUID, search by terminalId, otherwise by posId (code)
             if (posId.length > 20) {
@@ -634,7 +631,7 @@ export class PosSalesService implements OnModuleInit {
                 take: limit,
                 orderBy: { createdAt: 'desc' },
                 include: {
-                    items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                    items: { include: { item: { select: { description: true, sku: true, barCode: true ,size: true } } } },
                     promo: { select: { name: true, code: true } },
                     coupon: { select: { code: true, description: true } },
                     alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
