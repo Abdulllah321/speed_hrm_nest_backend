@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Inventory')
 @Controller('api/inventory')
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) { }
+  constructor(private readonly inventoryService: InventoryService,) { }
 
   @Get('stock-level')
   @ApiOperation({

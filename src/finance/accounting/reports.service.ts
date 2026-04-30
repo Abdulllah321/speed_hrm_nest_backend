@@ -4,7 +4,7 @@ import { AccountType } from '@prisma/client';
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,) {}
 
   // ─────────────────────────────────────────────────────────────────────────
   // TRIAL BALANCE (6-Column Format)

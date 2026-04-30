@@ -92,18 +92,18 @@ export class BrandService {
       });
 
       runInBackground(
-        'Created brands (${brands.count})',
+        `Created brands (${brands.count})`,
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'brands',
-        entity: 'Brand',
-        description: `Created brands (${brands.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
-        this.cacheManager.del('brands_all'),
+          userId: createdById,
+          action: 'create',
+          module: 'brands',
+          entity: 'Brand',
+          description: `Created brands (${brands.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('brands_all');
       return {
         status: true,
         data: brands,
@@ -123,28 +123,30 @@ export class BrandService {
       const existing = await this.prisma.brand.findUnique({
         where: { id },
       });
+      if (!existing) return { status: false, message: 'Brand not found' };
+
       const brand = await this.prisma.brand.update({
         where: { id },
         data: { name: dto.name, status: dto.status },
       });
 
       runInBackground(
-        'Updated brand ${brand.name}',
+        `Updated brand ${brand.name}`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'brands',
-        entity: 'Brand',
-        entityId: id,
-        description: `Updated brand ${brand.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('brands_all'),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'brands',
+          entity: 'Brand',
+          entityId: id,
+          description: `Updated brand ${brand.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('brands_all');
       return {
         status: true,
         data: brand,
@@ -172,20 +174,20 @@ export class BrandService {
       }
 
       runInBackground(
-        'Bulk updated brands (${updated.length})',
+        `Bulk updated brands (${updated.length})`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'brands',
-        entity: 'Brand',
-        description: `Bulk updated brands (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('brands_all'),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'brands',
+          entity: 'Brand',
+          description: `Bulk updated brands (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('brands_all');
       return {
         status: true,
         data: updated,
@@ -205,20 +207,20 @@ export class BrandService {
         where: { id: { in: ids } },
       });
       runInBackground(
-        'Bulk deleted brands (${result.count})',
+        `Bulk deleted brands (${result.count})`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'brands',
-        entity: 'Brand',
-        description: `Bulk deleted brands (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('brands_all'),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'brands',
+          entity: 'Brand',
+          description: `Bulk deleted brands (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('brands_all');
       return {
         status: true,
         data: result,
@@ -237,24 +239,26 @@ export class BrandService {
       const existing = await this.prisma.brand.findUnique({
         where: { id },
       });
+      if (!existing) return { status: false, message: 'Brand not found' };
+
       const result = await this.prisma.brand.delete({ where: { id } });
 
       runInBackground(
-        'Deleted brand ${existing?.name}',
+        `Deleted brand ${existing.name}`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'brands',
-        entity: 'Brand',
-        entityId: id,
-        description: `Deleted brand ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('brands_all'),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'brands',
+          entity: 'Brand',
+          entityId: id,
+          description: `Deleted brand ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('brands_all');
       return {
         status: true,
         data: result,
@@ -312,7 +316,6 @@ export class BrandService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Simplify response for lists
     return { status: true, data: divisions };
   }
 
@@ -328,17 +331,18 @@ export class BrandService {
       });
 
       runInBackground(
-        'Created divisions (${divisions.count})',
+        `Created divisions (${divisions.count})`,
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'divisions',
-        entity: 'Division',
-        description: `Created divisions (${divisions.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      });
-      // Invalidate both caches
+          userId: createdById,
+          action: 'create',
+          module: 'divisions',
+          entity: 'Division',
+          description: `Created divisions (${divisions.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
+      );
+      
       await this.cacheManager.del('divisions_all');
       await this.cacheManager.del('brands_all');
 
@@ -369,20 +373,20 @@ export class BrandService {
       }
 
       runInBackground(
-        'Bulk updated divisions (${updated.length})',
+        `Bulk updated divisions (${updated.length})`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'divisions',
-        entity: 'Division',
-        description: `Bulk updated divisions (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('divisions_all'),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'divisions',
+          entity: 'Division',
+          description: `Bulk updated divisions (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('divisions_all');
       await this.cacheManager.del('brands_all');
       return {
         status: true,
@@ -402,30 +406,31 @@ export class BrandService {
     try {
       const existing = await this.prisma.division.findUnique({
         where: { id },
-      }),
-      );
+      });
+      if (!existing) return { status: false, message: 'Division not found' };
+
       const division = await this.prisma.division.update({
         where: { id },
         data: { name: dto.name, brandId: dto.brandId },
       });
 
       runInBackground(
-        'Updated division ${division.name}',
+        `Updated division ${division.name}`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'divisions',
-        entity: 'Division',
-        entityId: id,
-        description: `Updated division ${division.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('divisions_all'),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'divisions',
+          entity: 'Division',
+          entityId: id,
+          description: `Updated division ${division.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('divisions_all');
       await this.cacheManager.del('brands_all');
       return {
         status: true,
@@ -446,20 +451,20 @@ export class BrandService {
         where: { id: { in: ids } },
       });
       runInBackground(
-        'Bulk deleted divisions (${result.count})',
+        `Bulk deleted divisions (${result.count})`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'divisions',
-        entity: 'Division',
-        description: `Bulk deleted divisions (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('divisions_all'),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'divisions',
+          entity: 'Division',
+          description: `Bulk deleted divisions (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('divisions_all');
       await this.cacheManager.del('brands_all');
       return {
         status: true,
@@ -479,24 +484,26 @@ export class BrandService {
       const existing = await this.prisma.division.findUnique({
         where: { id },
       });
+      if (!existing) return { status: false, message: 'Division not found' };
+
       const result = await this.prisma.division.delete({ where: { id } });
 
       runInBackground(
-        'Deleted division ${existing?.name}',
+        `Deleted division ${existing.name}`,
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'divisions',
-        entity: 'Division',
-        entityId: id,
-        description: `Deleted division ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-        this.cacheManager.del('divisions_all'),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'divisions',
+          entity: 'Division',
+          entityId: id,
+          description: `Deleted division ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
+      await this.cacheManager.del('divisions_all');
       await this.cacheManager.del('brands_all');
       return {
         status: true,

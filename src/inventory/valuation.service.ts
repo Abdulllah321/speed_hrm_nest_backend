@@ -8,7 +8,8 @@ import { runInBackground } from '../common/utils/run-in-background.util';
 export class ValuationService {
   private readonly logger = new Logger(ValuationService.name);
 
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 

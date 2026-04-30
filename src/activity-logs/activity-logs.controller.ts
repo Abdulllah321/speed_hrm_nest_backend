@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @Controller('activity-logs')
 @UseGuards(JwtAuthGuard)
 export class ActivityLogsController {
-  constructor(private readonly activityLogsService: ActivityLogsService) {}
+  constructor(private readonly activityLogsService: ActivityLogsService,) {}
 
   @Get()
   findAll(@Query() query: any) {

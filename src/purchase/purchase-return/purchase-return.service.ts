@@ -3,60 +3,98 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseReturnDto, ReturnSourceType } from './dto/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from './dto/update-purchase-return.dto';
 
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { runInBackground } from '../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class PurchaseReturnService {
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreatePurchaseReturnDto) {
-    // Validate source document exists and is eligible
-    await this.validateSourceDocument(createDto);
+  async create(createDto: CreatePurchaseReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      // Validate source document exists and is eligible
+      await this.validateSourceDocument(createDto);
 
-    // Generate return number
-    const returnNumber = `PR-${Date.now()}`;
+      // Generate return number
+      const returnNumber = `PR-${Date.now()}`;
 
-    // Calculate totals
-    const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+      // Calculate totals
+      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
 
-    return this.prisma.purchaseReturn.create({
-      data: {
-        returnNumber,
-        sourceType: createDto.sourceType,
-        grnId: createDto.grnId,
-        landedCostId: createDto.landedCostId,
-        supplierId: createDto.supplierId,
-        warehouseId: createDto.warehouseId,
-        returnType: createDto.returnType,
-        reason: createDto.reason,
-        notes: createDto.notes,
-        subtotal,
-        taxAmount,
-        totalAmount,
-        items: {
-          create: createDto.items.map(item => ({
-            sourceItemType: item.sourceItemType,
-            grnItemId: item.grnItemId,
-            landedCostItemId: item.landedCostItemId,
-            itemId: item.itemId,
-            description: item.description,
-            returnQty: item.returnQty,
-            unitPrice: item.unitPrice,
-            lineTotal: item.lineTotal,
-            reason: item.reason,
-          })),
+      const created = await this.prisma.purchaseReturn.create({
+        data: {
+          returnNumber,
+          sourceType: createDto.sourceType,
+          grnId: createDto.grnId,
+          landedCostId: createDto.landedCostId,
+          supplierId: createDto.supplierId,
+          warehouseId: createDto.warehouseId,
+          returnType: createDto.returnType,
+          reason: createDto.reason,
+          notes: createDto.notes,
+          subtotal,
+          taxAmount,
+          totalAmount,
+          items: {
+            create: createDto.items.map(item => ({
+              sourceItemType: item.sourceItemType,
+              grnItemId: item.grnItemId,
+              landedCostItemId: item.landedCostItemId,
+              itemId: item.itemId,
+              description: item.description,
+              returnQty: item.returnQty,
+              unitPrice: item.unitPrice,
+              lineTotal: item.lineTotal,
+              reason: item.reason,
+            })),
+          },
         },
-      },
-      include: {
-        items: true,
-        grn: true,
-        landedCost: true,
-        supplier: true,
-        warehouse: true,
-      },
-    });
+        include: {
+          items: true,
+          grn: true,
+          landedCost: true,
+          supplier: true,
+          warehouse: true,
+        },
+      });
+
+      runInBackground(
+        'Create Purchase Return',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: created.id,
+          description: `Created purchase return ${created.returnNumber}`,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return created;
+    } catch (error: any) {
+      runInBackground(
+        'Create Purchase Return (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          description: 'Failed to create purchase return',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
   async findAll(status?: string) {
@@ -105,65 +143,141 @@ export class PurchaseReturnService {
     });
 
     if (!purchaseReturn) {
-      throw new NotFoundException('Purchase return not found');
+      throw new NotFoundException('purchase return not found');
     }
 
     return purchaseReturn;
   }
 
-  async update(id: string, updateDto: UpdatePurchaseReturnDto) {
-    const existingReturn = await this.findOne(id);
+  async update(id: string, updateDto: UpdatePurchaseReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const existingReturn = await this.findOne(id);
 
-    if (existingReturn.status !== 'DRAFT') {
-      throw new BadRequestException('Only DRAFT returns can be updated');
+      if (existingReturn.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT returns can be updated');
+      }
+
+      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto);
+
+      // Only update the fields that are provided
+      const updateData: any = {
+        subtotal,
+        taxAmount,
+        totalAmount,
+      };
+
+      // Add optional fields only if they exist in updateDto
+      if (updateDto.returnType) updateData.returnType = updateDto.returnType;
+      if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
+      if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
+
+      const updated = await this.prisma.purchaseReturn.update({
+        where: { id },
+        data: updateData,
+        include: {
+          items: true,
+          grn: true,
+          landedCost: true,
+          supplier: true,
+          warehouse: true,
+        },
+      });
+
+      runInBackground(
+        'Update Purchase Return',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: id,
+          description: `Updated purchase return ${updated.returnNumber}`,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Purchase Return (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: id,
+          description: 'Failed to update purchase return',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
-
-    const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto);
-
-    // Only update the fields that are provided
-    const updateData: any = {
-      subtotal,
-      taxAmount,
-      totalAmount,
-    };
-
-    // Add optional fields only if they exist in updateDto
-    if (updateDto.returnType) updateData.returnType = updateDto.returnType;
-    if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
-    if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
-
-    return this.prisma.purchaseReturn.update({
-      where: { id },
-      data: updateData,
-      include: {
-        items: true,
-        grn: true,
-        landedCost: true,
-        supplier: true,
-        warehouse: true,
-      },
-    });
   }
 
-  async updateStatus(id: string, status: string, approvedBy?: string) {
-    const purchaseReturn = await this.findOne(id);
+  async updateStatus(id: string, status: string, approvedBy?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const purchaseReturn = await this.findOne(id);
 
-    if (status === 'APPROVED' && purchaseReturn.status === 'SUBMITTED') {
-      // Process inventory adjustment (Stock Ledger & Inventory Table)
-      await this.processInventoryAdjustment(purchaseReturn);
+      if (status === 'APPROVED' && purchaseReturn.status === 'SUBMITTED') {
+        // Process inventory adjustment (Stock Ledger & Inventory Table)
+        await this.processInventoryAdjustment(purchaseReturn);
 
-      // Process financial impact if Case 2 (Post-Invoice Return)
-      await this.processFinancialAdjustment(purchaseReturn);
+        // Process financial impact if Case 2 (Post-Invoice Return)
+        await this.processFinancialAdjustment(purchaseReturn);
+      }
+
+      const updated = await this.prisma.purchaseReturn.update({
+        where: { id },
+        data: {
+          status,
+          approvedBy: status === 'APPROVED' ? approvedBy : purchaseReturn.approvedBy,
+          approvedAt: status === 'APPROVED' ? new Date() : purchaseReturn.approvedAt,
+        },
+      });
+
+      runInBackground(
+        'Update Purchase Return Status',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: id,
+          description: `Updated purchase return status to ${status} for ${updated.returnNumber}`,
+          newValues: JSON.stringify({ status }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Purchase Return Status (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: id,
+          description: `Failed to update purchase return status to ${status}`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ status }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
-
-    return this.prisma.purchaseReturn.update({
-      where: { id },
-      data: {
-        status,
-        approvedBy: status === 'APPROVED' ? approvedBy : purchaseReturn.approvedBy,
-        approvedAt: status === 'APPROVED' ? new Date() : purchaseReturn.approvedAt,
-      },
-    });
   }
 
   private async processFinancialAdjustment(purchaseReturn: any) {
@@ -232,14 +346,51 @@ export class PurchaseReturnService {
     });
   }
 
-  async remove(id: string) {
-    const purchaseReturn = await this.findOne(id);
+  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const purchaseReturn = await this.findOne(id);
 
-    if (purchaseReturn.status !== 'DRAFT') {
-      throw new BadRequestException('Only DRAFT returns can be deleted');
+      if (purchaseReturn.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT returns can be deleted');
+      }
+
+      const deleted = await this.prisma.purchaseReturn.delete({ where: { id } });
+
+      runInBackground(
+        'Delete Purchase Return',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: id,
+          description: `Deleted purchase return ${deleted.returnNumber}`,
+          oldValues: JSON.stringify(purchaseReturn),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return deleted;
+    } catch (error: any) {
+      runInBackground(
+        'Delete Purchase Return (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'purchase-return',
+          entity: 'PurchaseReturn',
+          entityId: id,
+          description: 'Failed to delete purchase return',
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
-
-    return this.prisma.purchaseReturn.delete({ where: { id } });
   }
 
   async getEligibleGrns() {

@@ -543,8 +543,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
       }
 
       return {
@@ -658,8 +657,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
       }
 
       const enriched = await this.enrichSingleLeaveEncashment(updated);
@@ -784,8 +782,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
 
         const enriched = await this.enrichSingleLeaveEncashment(updated);
 
@@ -852,8 +849,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
 
         const enriched = await this.enrichSingleLeaveEncashment(updated);
 
@@ -977,8 +973,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
 
         const enriched = await this.enrichSingleLeaveEncashment(updated);
 
@@ -1046,8 +1041,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
 
         const enriched = await this.enrichSingleLeaveEncashment(updated);
 
@@ -1100,8 +1094,7 @@ export class LeaveEncashmentService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        }),
-      );
+        });
       }
 
       return { status: true, message: 'Leave encashment deleted successfully' };

@@ -459,9 +459,9 @@ export class AttendanceService {
           );
 
           if (result.status) {
-            results.push(result.data);
+            results.push((result as any).data);
           } else {
-            errors.push({ date: dateStr, error: result.message });
+            errors.push({ date: dateStr, error: (result as any).message });
           }
         } catch (error: any) {
           errors.push({ date: dateStr, error: error.message });

@@ -2,11 +2,12 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MovementType, Prisma } from '@prisma/client';
 
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { runInBackground } from '../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class StockLedgerService {
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -100,50 +101,19 @@ export class StockLedgerService {
       },
     });
 
-    // Enrich with Item, Warehouse, and Location details
-    const enriched = await Promise.all(
-      groupBy.map(async (entry) => {
-        const item = await this.prisma.item.findUnique({
-          where: { id: entry.itemId },
-          select: { itemId: true, sku: true, description: true },
-        });
-
-        const warehouse = await this.prisma.warehouse.findUnique({
-          where: { id: entry.warehouseId },
-          select: { name: true, code: true },
-        });
-
-        let location: { name: string; code: string; type: string } | null = null;
-        if (entry.locationId) {
-          const masterLoc = await this.prisma.location.findUnique({
-            where: { id: entry.locationId },
-            select: { name: true, code: true },
-          });
-          if (masterLoc) {
-            location = { ...masterLoc, type: 'SHOP' };
-          }
-        }
-
-        return {
-          itemId: entry.itemId,
-          warehouseId: entry.warehouseId,
-          locationId: entry.locationId,
-          totalQty: entry._sum.qty || new Prisma.Decimal(0),
-          item,
-          warehouse,
-          location,
-        };
-      }),
-    );
-
-    return enriched;
+    return groupBy.map((item) => ({
+      itemId: item.itemId,
+      warehouseId: item.warehouseId,
+      locationId: item.locationId,
+      totalQuantity: Number(item._sum.qty || 0),
+    }));
   }
 
   async createEntry(
     data: {
       itemId: string;
       warehouseId: string;
-      qty: number | Prisma.Decimal;
+      qty: number;
       movementType: MovementType;
       referenceType: string;
       referenceId: string;
@@ -151,82 +121,120 @@ export class StockLedgerService {
       rate?: number | Prisma.Decimal;
     },
     tx?: Prisma.TransactionClient,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
-    const {
-      itemId,
-      warehouseId,
-      qty,
-      movementType,
-      referenceType,
-      referenceId,
-      locationId,
-      rate,
-    } = data;
-    const quantity = new Prisma.Decimal(qty);
+    try {
+      const {
+        itemId,
+        warehouseId,
+        qty,
+        movementType,
+        referenceType,
+        referenceId,
+        locationId,
+        rate,
+      } = data;
+      const quantity = new Prisma.Decimal(qty);
 
-    // Validate Quantity Direction
-    if (
-      (movementType === MovementType.INBOUND ||
-        movementType === MovementType.OPENING_BALANCE) &&
-      quantity.isNegative()
-    ) {
-      throw new BadRequestException(
-        `Quantity must be positive for ${movementType}`,
-      );
-    }
-    if (movementType === MovementType.OUTBOUND && quantity.isPositive()) {
-      throw new BadRequestException(
-        `Quantity must be negative for ${movementType}`,
-      );
-    }
+      // Validate Quantity Direction
+      if (
+        (movementType === MovementType.INBOUND ||
+          movementType === MovementType.OPENING_BALANCE) &&
+        quantity.isNegative()
+      ) {
+        throw new BadRequestException(
+          `Quantity must be positive for ${movementType}`,
+        );
+      }
+      if (movementType === MovementType.OUTBOUND && quantity.isPositive()) {
+        throw new BadRequestException(
+          `Quantity must be negative for ${movementType}`,
+        );
+      }
 
-    const prisma = tx || this.prisma;
+      const prisma = tx || this.prisma;
 
-    const operation = async (transaction: Prisma.TransactionClient) => {
-      // Concurrency Safe Negative Stock Check for OUTBOUND
-      if (quantity.isNegative()) {
-        const currentStock = await transaction.stockLedger.aggregate({
-          where: {
+      const operation = async (transaction: Prisma.TransactionClient) => {
+        // Concurrency Safe Negative Stock Check for OUTBOUND
+        if (quantity.isNegative()) {
+          const currentStock = await transaction.stockLedger.aggregate({
+            where: {
+              itemId,
+              warehouseId,
+              // If locationId is provided, check location-specific stock (outlet)
+              // Otherwise check warehouse-wide stock
+              ...(locationId ? { locationId } : { locationId: null }),
+            },
+            _sum: {
+              qty: true,
+            },
+          });
+
+          const totalStock = currentStock._sum.qty || new Prisma.Decimal(0);
+
+          if (totalStock.plus(quantity).isNegative()) {
+            throw new BadRequestException(
+              `Insufficient stock for item ${itemId} in warehouse ${warehouseId}. Current: ${totalStock}, Requested: ${quantity.abs()}`,
+            );
+          }
+        }
+
+        // Create Immutable Ledger Entry
+        const entry = await transaction.stockLedger.create({
+          data: {
             itemId,
             warehouseId,
-            // If locationId is provided, check location-specific stock (outlet)
-            // Otherwise check warehouse-wide stock
-            ...(locationId ? { locationId } : { locationId: null }),
-          },
-          _sum: {
-            qty: true,
+            qty: quantity,
+            movementType,
+            referenceType,
+            referenceId,
+            locationId,
+            rate: rate ? new Prisma.Decimal(rate) : null,
+            unitCost: rate ? new Prisma.Decimal(rate) : null,
           },
         });
 
-        const totalStock = currentStock._sum.qty || new Prisma.Decimal(0);
+        runInBackground(
+          'Create Stock Ledger Entry',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'create',
+            module: 'stock-ledger',
+            entity: 'StockLedger',
+            entityId: entry.id,
+            description: `Created stock ledger entry for item ${itemId}`,
+            newValues: JSON.stringify(data),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
+        );
 
-        if (totalStock.plus(quantity).isNegative()) {
-          throw new BadRequestException(
-            `Insufficient stock for item ${itemId} in warehouse ${warehouseId}. Current: ${totalStock}, Requested: ${quantity.abs()}`,
-          );
-        }
+        return entry;
+      };
+
+      if (tx) {
+        return operation(tx);
+      } else {
+        return this.prisma.$transaction(operation);
       }
-
-      // Create Immutable Ledger Entry
-      return transaction.stockLedger.create({
-        data: {
-          itemId,
-          warehouseId,
-          qty: quantity,
-          movementType,
-          referenceType,
-          referenceId,
-          locationId,
-          rate: rate ? new Prisma.Decimal(rate) : null,
-          unitCost: rate ? new Prisma.Decimal(rate) : null,
-        },
-      });
-    };
-
-    if (tx) {
-      return operation(tx);
-    } else {
-      return this.prisma.$transaction(operation);
+    } catch (error: any) {
+      runInBackground(
+        'Create Stock Ledger Entry (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'stock-ledger',
+          entity: 'StockLedger',
+          description: `Failed to create stock ledger entry for item ${data.itemId}`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
   }
 }

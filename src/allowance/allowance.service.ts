@@ -472,7 +472,7 @@ export class AllowanceService {
         );
       }
 
-      return response;
+      return { status: true, message: 'Allowance deleted successfully' };
     } catch (error) {
       console.error('Error deleting allowance:', error);
       return {

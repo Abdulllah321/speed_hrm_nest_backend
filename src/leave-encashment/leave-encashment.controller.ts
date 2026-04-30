@@ -33,7 +33,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class LeaveEncashmentController {
-  constructor(private service: LeaveEncashmentService) {}
+  constructor(private service: LeaveEncashmentService,) {}
 
   @Get('leave-encashments')
   @Permissions('hr.leave-encashment.read')

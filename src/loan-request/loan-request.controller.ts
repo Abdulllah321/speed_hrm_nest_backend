@@ -33,7 +33,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class LoanRequestController {
-  constructor(private service: LoanRequestService) {}
+  constructor(private service: LoanRequestService,) {}
 
   @Get('loan-requests')
   @Permissions('hr.loan-request.read')

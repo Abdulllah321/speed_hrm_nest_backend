@@ -23,7 +23,7 @@ import {
 @ApiBearerAuth()
 @Controller('api')
 export class ChannelClassController {
-  constructor(private readonly channelClassService: ChannelClassService) {}
+  constructor(private readonly channelClassService: ChannelClassService,) {}
 
   @Get('channel-classes')
   @ApiOperation({ summary: 'Get all channel classes' })

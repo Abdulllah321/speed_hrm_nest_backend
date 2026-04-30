@@ -19,7 +19,7 @@ import { PermissionsGuard } from '../../../common/guards/permissions.guard';
 @Controller('api/master/erp/category')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CategoryController {
-  constructor(private readonly categoryService: CategoryService) {}
+  constructor(private readonly categoryService: CategoryService,) {}
 
   @Post()
   @Permissions('master.category.create', 'master.sub-category.create')

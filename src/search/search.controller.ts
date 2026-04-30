@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @Controller('api/search')
 @UseGuards(JwtAuthGuard)
 export class SearchController {
-  constructor(private readonly searchService: SearchService) {}
+  constructor(private readonly searchService: SearchService,) {}
 
   @Get()
   @ApiOperation({ summary: 'Global search across multiple entities' })

@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
 export class PosDashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,) {}
 
   /**
    * Returns all POS dashboard stats scoped to the active location.

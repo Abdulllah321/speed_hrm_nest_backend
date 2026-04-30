@@ -22,7 +22,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class ItemController {
-  constructor(private readonly itemService: ItemService) { }
+  constructor(private readonly itemService: ItemService,) { }
 
   @Post()
   @Permissions('erp.item.create')

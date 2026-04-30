@@ -12,7 +12,7 @@ export interface UploadEvent {
 export class UploadEventsService {
     private readonly logger = new Logger(UploadEventsService.name);
 
-    constructor(private eventEmitter: EventEmitter2) { }
+    constructor(private eventEmitter: EventEmitter2,) { }
 
     emit(event: UploadEvent) {
         this.eventEmitter.emit(`upload.${event.uploadId}`, event);

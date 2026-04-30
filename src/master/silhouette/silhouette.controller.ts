@@ -23,7 +23,7 @@ import {
 @ApiBearerAuth()
 @Controller('api')
 export class SilhouetteController {
-  constructor(private readonly silhouetteService: SilhouetteService) {}
+  constructor(private readonly silhouetteService: SilhouetteService,) {}
 
   @Get('silhouettes')
   @ApiOperation({ summary: 'Get all silhouettes' })

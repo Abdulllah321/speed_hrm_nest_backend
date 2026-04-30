@@ -1,26 +1,59 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer-dto';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class CustomerService {
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) { }
 
-  async create(createDto: CreateCustomerDto) {
+  async create(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const customer = await this.prisma.customer.create({
         data: createDto,
       });
+
+      runInBackground(
+        `Created customer ${customer.name}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'sales-customers',
+          entity: 'Customer',
+          entityId: customer.id,
+          description: `Created customer ${customer.name}`,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+
       return {
         status: true,
         data: customer,
         message: 'Customer created successfully',
       };
     } catch (error: any) {
+      runInBackground(
+        'Failed to create customer',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'sales-customers',
+          entity: 'Customer',
+          description: 'Failed to create customer',
+          errorMessage: error.message,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: error.message, data: null };
     }
   }
@@ -58,27 +91,95 @@ export class CustomerService {
     }
   }
 
-  async update(id: string, updateDto: UpdateCustomerDto) {
+  async update(id: string, updateDto: UpdateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      const existing = await this.prisma.customer.findUnique({ where: { id } });
       const customer = await this.prisma.customer.update({
         where: { id },
         data: updateDto,
       });
+
+      runInBackground(
+        `Updated customer ${customer.name}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'sales-customers',
+          entity: 'Customer',
+          entityId: id,
+          description: `Updated customer ${customer.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+
       return {
         status: true,
         data: customer,
         message: 'Customer updated successfully',
       };
     } catch (error: any) {
+      runInBackground(
+        'Failed to update customer',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'sales-customers',
+          entity: 'Customer',
+          entityId: id,
+          description: 'Failed to update customer',
+          errorMessage: error.message,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: error.message, data: null };
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      const existing = await this.prisma.customer.findUnique({ where: { id } });
       await this.prisma.customer.delete({ where: { id } });
+
+      runInBackground(
+        `Deleted customer ${existing?.name}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'sales-customers',
+          entity: 'Customer',
+          entityId: id,
+          description: `Deleted customer ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+
       return { status: true, message: 'Customer deleted successfully' };
     } catch (error: any) {
+      runInBackground(
+        'Failed to delete customer',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'sales-customers',
+          entity: 'Customer',
+          entityId: id,
+          description: 'Failed to delete customer',
+          errorMessage: error.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
       return { status: false, message: error.message, data: null };
     }
   }

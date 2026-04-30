@@ -7,9 +7,8 @@ import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PosSessionService {
     constructor(
-        private readonly prisma: PrismaService,
+    private readonly prisma: PrismaService,
         private readonly prismaMaster: PrismaMasterService,
-    ,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -67,7 +66,8 @@ export class PosSessionService {
     /**
    * Set the opening float for the current session
    */
-    async openDrawer(terminalId: string, amount: number, note?: string) {
+    async openDrawer(terminalId: string, amount: number, note?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
         const activeSession = await this.prisma.posSession.findFirst({
             where: { posId: terminalId, status: 'open' },
             orderBy: { openedAt: 'desc' },
@@ -89,13 +89,48 @@ export class PosSessionService {
             },
         });
 
+        runInBackground(
+            'Open Drawer',
+            this.activityLogs.log({
+                userId: ctx?.userId,
+                action: 'update',
+                module: 'pos-session',
+                entity: 'PosSession',
+                entityId: updatedSession.id,
+                description: `Opened drawer for terminal ${terminalId} with float ${amount}`,
+                newValues: JSON.stringify({ amount, note }),
+                ipAddress: ctx?.ipAddress,
+                userAgent: ctx?.userAgent,
+                status: 'success',
+            }),
+        );
+
         return updatedSession;
+    } catch (error: any) {
+        runInBackground(
+            'Open Drawer (Failure)',
+            this.activityLogs.log({
+                userId: ctx?.userId,
+                action: 'update',
+                module: 'pos-session',
+                entity: 'PosSession',
+                description: `Failed to open drawer for terminal ${terminalId}`,
+                errorMessage: error?.message,
+                newValues: JSON.stringify({ amount, note }),
+                ipAddress: ctx?.ipAddress,
+                userAgent: ctx?.userAgent,
+                status: 'failure',
+            }),
+        );
+        throw error;
     }
+}
 
     /**
    * Close the drawer for the current session
    */
-    async closeDrawer(terminalId: string, posId: string, locationId: string, actualCash: number, note?: string) {
+    async closeDrawer(terminalId: string, posId: string, locationId: string, actualCash: number, note?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
         // We first get the current session and calculations to figure out the variance
         const currentStatus = await this.getCurrentSession(terminalId, posId, locationId);
 
@@ -118,11 +153,45 @@ export class PosSessionService {
             },
         });
 
+        runInBackground(
+            'Close Drawer',
+            this.activityLogs.log({
+                userId: ctx?.userId,
+                action: 'update',
+                module: 'pos-session',
+                entity: 'PosSession',
+                entityId: closedSession.id,
+                description: `Closed drawer for terminal ${terminalId}. Variance: ${difference}`,
+                newValues: JSON.stringify({ actualCash, note, variance: difference }),
+                ipAddress: ctx?.ipAddress,
+                userAgent: ctx?.userAgent,
+                status: 'success',
+            }),
+        );
+
         return {
             session: closedSession,
             variance: difference,
         };
+    } catch (error: any) {
+        runInBackground(
+            'Close Drawer (Failure)',
+            this.activityLogs.log({
+                userId: ctx?.userId,
+                action: 'update',
+                module: 'pos-session',
+                entity: 'PosSession',
+                description: `Failed to close drawer for terminal ${terminalId}`,
+                errorMessage: error?.message,
+                newValues: JSON.stringify({ actualCash, note }),
+                ipAddress: ctx?.ipAddress,
+                userAgent: ctx?.userAgent,
+                status: 'failure',
+            }),
+        );
+        throw error;
     }
+}
 
     /**
      * Get paginated shift history for the terminal with per-session sales aggregates

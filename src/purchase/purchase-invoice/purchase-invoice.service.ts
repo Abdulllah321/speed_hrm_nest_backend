@@ -7,8 +7,9 @@ import { FinanceAccountConfigService } from '../../finance/finance-account-confi
 import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 import { MovementType, Prisma } from '@prisma/client';
 
-import { ActivityLogsService } from '../../../../../../../../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../../../../../../../../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
+
 @Injectable()
 export class PurchaseInvoiceService {
   constructor(
@@ -16,88 +17,124 @@ export class PurchaseInvoiceService {
     private accounting: AccountingService,
     private stockLedger: StockLedgerService,
     private financeConfig: FinanceAccountConfigService,
-  ,
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreatePurchaseInvoiceDto) {
-    // Validate business rules
-    await this.validateBusinessRules(createDto);
+  async create(createDto: CreatePurchaseInvoiceDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      // Validate business rules
+      await this.validateBusinessRules(createDto);
 
-    // Calculate totals
-    const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+      // Calculate totals
+      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
 
-    // Derive invoiceType if not explicitly provided
-    const invoiceType = createDto.invoiceType
-      ?? (createDto.grnId ? 'GRN_BASED' : createDto.landedCostId ? 'LANDED_COST_BASED' : 'DIRECT');
+      // Derive invoiceType if not explicitly provided
+      const invoiceType = createDto.invoiceType
+        ?? (createDto.grnId ? 'GRN_BASED' : createDto.landedCostId ? 'LANDED_COST_BASED' : 'DIRECT');
 
-    // Resolve true UUIDs for all items to fix legacy string IDs
-    const resolvedItems = await Promise.all(createDto.items.map(async (item) => {
-      const itemRecord = await this.prisma.item.findFirst({
-        where: {
-          OR: [
-            { id: item.itemId },
-            { itemId: item.itemId }
-          ]
-        },
-        select: { id: true },
-      });
-      return {
-        ...item,
-        trueItemId: itemRecord ? itemRecord.id : item.itemId
-      } as any;
-    }));
+      // Resolve true UUIDs for all items to fix legacy string IDs
+      const resolvedItems = await Promise.all(createDto.items.map(async (item) => {
+        const itemRecord = await this.prisma.item.findFirst({
+          where: {
+            OR: [
+              { id: item.itemId },
+              { itemId: item.itemId }
+            ]
+          },
+          select: { id: true },
+        });
+        return {
+          ...item,
+          trueItemId: itemRecord ? itemRecord.id : item.itemId
+        } as any;
+      }));
 
-    return this.prisma.purchaseInvoice.create({
-      data: {
-        invoiceNumber: createDto.invoiceNumber,
-        invoiceDate: new Date(createDto.invoiceDate),
-        dueDate: createDto.dueDate ? new Date(createDto.dueDate) : null,
-        supplierId: createDto.supplierId,
-        grnId: createDto.grnId,
-        landedCostId: createDto.landedCostId,
-        warehouseId: createDto.warehouseId,
-        invoiceType,
-        subtotal,
-        taxAmount,
-        discountAmount: createDto.discountAmount || 0,
-        totalAmount,
-        remainingAmount: totalAmount,
-        notes: createDto.notes,
-        status: createDto.status || 'DRAFT',
-        items: {
-          create: resolvedItems.map((item: any) => {
-            const lineTotal = item.quantity * item.unitPrice;
-            const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
-            const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
-            
-            return {
-              itemId: item.trueItemId,
-              grnItemId: item.grnItemId,
-              landedCostItemId: item.landedCostItemId,
-              description: item.description,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              lineTotal: lineTotal - itemDiscountAmount + itemTaxAmount,
-              taxRate: item.taxRate || 0,
-              taxAmount: itemTaxAmount,
-              discountRate: item.discountRate || 0,
-              discountAmount: itemDiscountAmount,
-            };
-          }),
-        },
-      },
-      include: {
-        supplier: true,
-        grn: true,
-        landedCost: true,
-        items: {
-          include: {
-            item: true,
+      const created = await this.prisma.purchaseInvoice.create({
+        data: {
+          invoiceNumber: createDto.invoiceNumber,
+          invoiceDate: new Date(createDto.invoiceDate),
+          dueDate: createDto.dueDate ? new Date(createDto.dueDate) : null,
+          supplierId: createDto.supplierId,
+          grnId: createDto.grnId,
+          landedCostId: createDto.landedCostId,
+          warehouseId: createDto.warehouseId,
+          invoiceType,
+          subtotal,
+          taxAmount,
+          discountAmount: createDto.discountAmount || 0,
+          totalAmount,
+          remainingAmount: totalAmount,
+          notes: createDto.notes,
+          status: createDto.status || 'DRAFT',
+          items: {
+            create: resolvedItems.map((item: any) => {
+              const lineTotal = item.quantity * item.unitPrice;
+              const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
+              const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
+              
+              return {
+                itemId: item.trueItemId,
+                grnItemId: item.grnItemId,
+                landedCostItemId: item.landedCostItemId,
+                description: item.description,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                lineTotal: lineTotal - itemDiscountAmount + itemTaxAmount,
+                taxRate: item.taxRate || 0,
+                taxAmount: itemTaxAmount,
+                discountRate: item.discountRate || 0,
+                discountAmount: itemDiscountAmount,
+              };
+            }),
           },
         },
-      },
-    });
+        include: {
+          supplier: true,
+          grn: true,
+          landedCost: true,
+          items: {
+            include: {
+              item: true,
+            },
+          },
+        },
+      });
+
+      runInBackground(
+        'Create Purchase Invoice',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: created.id,
+          description: `Created purchase invoice ${created.invoiceNumber}`,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return created;
+    } catch (error: any) {
+      runInBackground(
+        'Create Purchase Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          description: 'Failed to create purchase invoice',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
   async findAll(page = 1, limit = 10, filters?: any) {
@@ -191,108 +228,183 @@ export class PurchaseInvoiceService {
     return invoice;
   }
 
-  async update(id: string, updateDto: UpdatePurchaseInvoiceDto) {
-    const existingInvoice = await this.findOne(id);
+  async update(id: string, updateDto: UpdatePurchaseInvoiceDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const existingInvoice = await this.findOne(id);
 
-    if (existingInvoice.status === 'APPROVED' && updateDto.status !== 'CANCELLED') {
-      throw new BadRequestException('Cannot modify approved invoice');
-    }
+      if (existingInvoice.status === 'APPROVED' && updateDto.status !== 'CANCELLED') {
+        throw new BadRequestException('Cannot modify approved invoice');
+      }
 
-    // If updating items, recalculate totals
-    let updateData: any = { ...updateDto };
-    
-    if (updateDto.items) {
-      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto as CreatePurchaseInvoiceDto);
-      updateData = {
-        ...updateData,
-        subtotal,
-        taxAmount,
-        totalAmount,
-        remainingAmount: totalAmount - Number(existingInvoice.paidAmount),
-      };
+      // If updating items, recalculate totals
+      let updateData: any = { ...updateDto };
+      
+      if (updateDto.items) {
+        const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto as CreatePurchaseInvoiceDto);
+        updateData = {
+          ...updateData,
+          subtotal,
+          taxAmount,
+          totalAmount,
+          remainingAmount: totalAmount - Number(existingInvoice.paidAmount),
+        };
 
-      // Delete existing items and create new ones
-      await this.prisma.purchaseInvoiceItem.deleteMany({
-        where: { purchaseInvoiceId: id },
-      });
-    }
-
-    let finalUpdateData = { ...updateData };
-
-    if (updateDto.items) {
-      // Resolve true UUIDs for update items
-      const resolvedItemsForUpdate = await Promise.all(updateDto.items.map(async (item) => {
-        const itemRecord = await this.prisma.item.findFirst({
-          where: {
-            OR: [
-              { id: item.itemId },
-              { itemId: item.itemId }
-            ]
-          },
-          select: { id: true },
+        // Delete existing items and create new ones
+        await this.prisma.purchaseInvoiceItem.deleteMany({
+          where: { purchaseInvoiceId: id },
         });
-        return {
-          ...item,
-          trueItemId: itemRecord ? itemRecord.id : item.itemId
-        } as any;
-      }));
+      }
 
-      finalUpdateData = {
-        ...finalUpdateData,
-        items: {
-          create: resolvedItemsForUpdate.map((item: any) => {
-            const lineTotal = item.quantity * item.unitPrice;
-            const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
-            const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
-            
-            return {
-              itemId: item.trueItemId,
-              grnItemId: item.grnItemId,
-              landedCostItemId: item.landedCostItemId,
-              description: item.description,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              lineTotal: lineTotal - itemDiscountAmount + itemTaxAmount,
-              taxRate: item.taxRate || 0,
-              taxAmount: itemTaxAmount,
-              discountRate: item.discountRate || 0,
-              discountAmount: itemDiscountAmount,
-            };
-          }),
-        }
-      };
-    }
+      let finalUpdateData = { ...updateData };
 
-    return this.prisma.purchaseInvoice.update({
-      where: { id },
-      data: finalUpdateData,
-      include: {
-        supplier: true,
-        grn: true,
-        landedCost: true,
-        items: {
-          include: {
-            item: true,
+      if (updateDto.items) {
+        // Resolve true UUIDs for update items
+        const resolvedItemsForUpdate = await Promise.all(updateDto.items.map(async (item) => {
+          const itemRecord = await this.prisma.item.findFirst({
+            where: {
+              OR: [
+                { id: item.itemId },
+                { itemId: item.itemId }
+              ]
+            },
+            select: { id: true },
+          });
+          return {
+            ...item,
+            trueItemId: itemRecord ? itemRecord.id : item.itemId
+          } as any;
+        }));
+
+        finalUpdateData = {
+          ...finalUpdateData,
+          items: {
+            create: resolvedItemsForUpdate.map((item: any) => {
+              const lineTotal = item.quantity * item.unitPrice;
+              const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
+              const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
+              
+              return {
+                itemId: item.trueItemId,
+                grnItemId: item.grnItemId,
+                landedCostItemId: item.landedCostItemId,
+                description: item.description,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                lineTotal: lineTotal - itemDiscountAmount + itemTaxAmount,
+                taxRate: item.taxRate || 0,
+                taxAmount: itemTaxAmount,
+                discountRate: item.discountRate || 0,
+                discountAmount: itemDiscountAmount,
+              };
+            }),
+          }
+        };
+      }
+
+      const updated = await this.prisma.purchaseInvoice.update({
+        where: { id },
+        data: finalUpdateData,
+        include: {
+          supplier: true,
+          grn: true,
+          landedCost: true,
+          items: {
+            include: {
+              item: true,
+            },
           },
         },
-      },
-    });
+      });
+
+      runInBackground(
+        'Update Purchase Invoice',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: id,
+          description: `Updated purchase invoice ${updated.invoiceNumber}`,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Purchase Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: id,
+          description: 'Failed to update purchase invoice',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
-  async remove(id: string) {
-    const invoice = await this.findOne(id);
+  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const invoice = await this.findOne(id);
 
-    if (invoice.status === 'APPROVED') {
-      throw new BadRequestException('Cannot delete approved invoice');
+      if (invoice.status === 'APPROVED') {
+        throw new BadRequestException('Cannot delete approved invoice');
+      }
+
+      if (Number(invoice.paidAmount) > 0) {
+        throw new BadRequestException('Cannot delete invoice with payments');
+      }
+
+      const deleted = await this.prisma.purchaseInvoice.delete({
+        where: { id },
+      });
+
+      runInBackground(
+        'Delete Purchase Invoice',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: id,
+          description: `Deleted purchase invoice ${deleted.invoiceNumber}`,
+          oldValues: JSON.stringify(invoice),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return deleted;
+    } catch (error: any) {
+      runInBackground(
+        'Delete Purchase Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: id,
+          description: 'Failed to delete purchase invoice',
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
-
-    if (Number(invoice.paidAmount) > 0) {
-      throw new BadRequestException('Cannot delete invoice with payments');
-    }
-
-    return this.prisma.purchaseInvoice.delete({
-      where: { id },
-    });
   }
 
   // Get VALUED GRNs for invoice creation (excluding those that went through Landed Cost)
@@ -770,214 +882,288 @@ export class PurchaseInvoiceService {
     };
   }
 
-  async approve(id: string) {
-    const invoice = await this.findOne(id);
+  async approve(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const invoice = await this.findOne(id);
 
-    if (invoice.status === 'APPROVED' || invoice.status === 'CANCELLED') {
-      throw new BadRequestException('Invoice is already approved or cancelled');
-    }
+      if (invoice.status === 'APPROVED' || invoice.status === 'CANCELLED') {
+        throw new BadRequestException('Invoice is already approved or cancelled');
+      }
 
-    // Fetch supplier with linked payable accounts
-    const supplier = await this.prisma.supplier.findUnique({
-      where: { id: invoice.supplierId },
-      include: { chartOfAccounts: { select: { id: true } } },
-    });
-
-    if (!supplier?.chartOfAccounts?.length) {
-      throw new BadRequestException(
-        'Supplier has no linked chart of accounts. Please link accounts to the supplier before approving.',
-      );
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.purchaseInvoice.update({
-        where: { id },
-        data: { status: 'APPROVED' },
-        include: { supplier: true, grn: true, landedCost: true, items: true },
-      });
-
-      const totalAmount = Number(invoice.totalAmount);
-
-      // Build journal lines
-      // Credit side — vendor payable accounts (split equally if multiple)
-      const payableAccounts = supplier.chartOfAccounts;
-      const creditPerAccount = totalAmount / payableAccounts.length;
-      const creditLines = payableAccounts.map(acc => ({
-        accountId: acc.id,
-        debit: 0,
-        credit: creditPerAccount,
-      }));
-
-      // Debit side — purchases/expense account resolved from finance configuration
-      const purchasesAccountId = await this.financeConfig.resolveAccount(
-        AccountRoleKey.PURCHASES_LOCAL,
-      );
-
-      const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
-
-      await this.accounting.postLines([...debitLines, ...creditLines], {
-        sourceType: 'PURCHASE_INVOICE',
-        sourceId: id,
-        sourceRef: invoice.invoiceNumber,
-        description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
-        transactionDate: new Date(),
-      }, tx);
-
-      // ── Write supplier ledger credit entry ───────────────────────────────
-      const supplierForLedger = await tx.supplier.findUnique({
+      // Fetch supplier with linked payable accounts
+      const supplier = await this.prisma.supplier.findUnique({
         where: { id: invoice.supplierId },
-        select: { currentBalance: true, advanceBalance: true },
+        include: { chartOfAccounts: { select: { id: true } } },
       });
-      if (supplierForLedger) {
-        const newBalance = Number(supplierForLedger.currentBalance) + totalAmount;
-        await tx.supplierLedger.create({
-          data: {
-            supplierId: invoice.supplierId,
-            entryDate: new Date(),
-            entryType: 'PURCHASE_INVOICE',
-            sourceId: id,
-            sourceRef: invoice.invoiceNumber,
-            description: `Purchase Invoice approved`,
-            debit: 0,
-            credit: totalAmount,
-            balanceAfter: newBalance,
-            advanceDebit: 0,
-            advanceCredit: 0,
-            advanceBalance: Number(supplierForLedger.advanceBalance),
-          },
-        });
-        await tx.supplier.update({
-          where: { id: invoice.supplierId },
-          data: { currentBalance: newBalance },
-        });
+
+      if (!supplier?.chartOfAccounts?.length) {
+        throw new BadRequestException(
+          'Supplier has no linked chart of accounts. Please link accounts to the supplier before approving.',
+        );
       }
 
-      // ── DIRECT invoice: update warehouse inventory on approval ────────────
-      if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
-        const warehouseId = (invoice as any).warehouseId as string;
-        for (const item of invoice.items) {
-          const qty = new Prisma.Decimal(item.quantity);
-          const unitPrice = new Prisma.Decimal(item.unitPrice);
-
-          // Stock ledger entry (INBOUND)
-          await this.stockLedger.createEntry(
-            {
-              itemId: item.itemId,
-              warehouseId,
-              qty,
-              movementType: MovementType.INBOUND,
-              referenceType: 'PURCHASE_INVOICE',
-              referenceId: id,
-              rate: unitPrice,
-            },
-            tx,
-          );
-
-          // Upsert InventoryItem (warehouse stock)
-          const existing = await tx.inventoryItem.findFirst({
-            where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
-          });
-          if (existing) {
-            await tx.inventoryItem.update({
-              where: { id: existing.id },
-              data: { quantity: { increment: qty } },
-            });
-          } else {
-            await tx.inventoryItem.create({
-              data: { warehouseId, locationId: null, itemId: item.itemId, quantity: qty, status: 'AVAILABLE' },
-            });
-          }
-        }
-      }
-
-      return updated;
-    });
-  }
-
-  async cancel(id: string, reason?: string) {
-    const invoice = await this.findOne(id);
-
-    if (invoice.status === 'CANCELLED') {
-      throw new BadRequestException('Invoice is already cancelled');
-    }
-
-    if (Number(invoice.paidAmount) > 0) {
-      throw new BadRequestException('Cannot cancel invoice with payments');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      // If invoice was approved, reverse the journal entries
-      if (invoice.status === 'APPROVED') {
-        const supplier = await tx.supplier.findUnique({
-          where: { id: invoice.supplierId },
-          include: { chartOfAccounts: { select: { id: true } } },
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.purchaseInvoice.update({
+          where: { id },
+          data: { status: 'APPROVED' },
+          include: { supplier: true, grn: true, landedCost: true, items: true },
         });
 
-        const purchasesAccount = await this.financeConfig.resolveAccount(
+        const totalAmount = Number(invoice.totalAmount);
+
+        // Build journal lines
+        // Credit side — vendor payable accounts (split equally if multiple)
+        const payableAccounts = supplier.chartOfAccounts;
+        const creditPerAccount = totalAmount / payableAccounts.length;
+        const creditLines = payableAccounts.map(acc => ({
+          accountId: acc.id,
+          debit: 0,
+          credit: creditPerAccount,
+        }));
+
+        // Debit side — purchases/expense account resolved from finance configuration
+        const purchasesAccountId = await this.financeConfig.resolveAccount(
           AccountRoleKey.PURCHASES_LOCAL,
         );
 
-        if (supplier?.chartOfAccounts?.length) {
-          const totalAmount = Number(invoice.totalAmount);
-          const creditPerAccount = totalAmount / supplier.chartOfAccounts.length;
+        const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
 
-          const originalLines = [
-            { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
-            ...supplier.chartOfAccounts.map(acc => ({
-              accountId: acc.id, debit: 0, credit: creditPerAccount,
-            })),
-          ];
+        await this.accounting.postLines([...debitLines, ...creditLines], {
+          sourceType: 'PURCHASE_INVOICE',
+          sourceId: id,
+          sourceRef: invoice.invoiceNumber,
+          description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
+          transactionDate: new Date(),
+        }, tx);
 
-          await this.accounting.reverseLines(originalLines, {
-            sourceType: 'PURCHASE_INVOICE',
-            sourceId: id,
-            sourceRef: invoice.invoiceNumber,
-            description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
-            transactionDate: new Date(),
-          }, tx);
+        // ── Write supplier ledger credit entry ───────────────────────────────
+        const supplierForLedger = await tx.supplier.findUnique({
+          where: { id: invoice.supplierId },
+          select: { currentBalance: true, advanceBalance: true },
+        });
+        if (supplierForLedger) {
+          const newBalance = Number(supplierForLedger.currentBalance) + totalAmount;
+          await tx.supplierLedger.create({
+            data: {
+              supplierId: invoice.supplierId,
+              entryDate: new Date(),
+              entryType: 'PURCHASE_INVOICE',
+              sourceId: id,
+              sourceRef: invoice.invoiceNumber,
+              description: `Purchase Invoice approved`,
+              debit: 0,
+              credit: totalAmount,
+              balanceAfter: newBalance,
+              advanceDebit: 0,
+              advanceCredit: 0,
+              advanceBalance: Number(supplierForLedger.advanceBalance),
+            },
+          });
+          await tx.supplier.update({
+            where: { id: invoice.supplierId },
+            data: { currentBalance: newBalance },
+          });
         }
 
-        // ── DIRECT invoice: reverse warehouse inventory on cancellation ──────
+        // ── DIRECT invoice: update warehouse inventory on approval ────────────
         if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
           const warehouseId = (invoice as any).warehouseId as string;
           for (const item of invoice.items) {
-            const qty = new Prisma.Decimal(item.quantity).negated();
+            const qty = new Prisma.Decimal(item.quantity);
+            const unitPrice = new Prisma.Decimal(item.unitPrice);
 
-            // OUTBOUND ledger entry to reverse the INBOUND
+            // Stock ledger entry (INBOUND)
             await this.stockLedger.createEntry(
               {
                 itemId: item.itemId,
                 warehouseId,
-                qty,
-                movementType: MovementType.OUTBOUND,
-                referenceType: 'PURCHASE_INVOICE_CANCEL',
+                qty: qty.toNumber(),
+                movementType: MovementType.INBOUND,
+                referenceType: 'PURCHASE_INVOICE',
                 referenceId: id,
+                rate: unitPrice,
               },
               tx,
             );
 
-            // Decrement InventoryItem
+            // Upsert InventoryItem (warehouse stock)
             const existing = await tx.inventoryItem.findFirst({
               where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
             });
             if (existing) {
               await tx.inventoryItem.update({
                 where: { id: existing.id },
-                data: { quantity: { decrement: new Prisma.Decimal(item.quantity) } },
+                data: { quantity: { increment: qty } },
+              });
+            } else {
+              await tx.inventoryItem.create({
+                data: { warehouseId, locationId: null, itemId: item.itemId, quantity: qty, status: 'AVAILABLE' },
               });
             }
           }
         }
+
+        runInBackground(
+          'Approve Purchase Invoice',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'update',
+            module: 'purchase-invoice',
+            entity: 'PurchaseInvoice',
+            entityId: id,
+            description: `Approved purchase invoice ${updated.invoiceNumber}`,
+            newValues: JSON.stringify({ status: 'APPROVED' }),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
+        );
+
+        return updated;
+      });
+    } catch (error: any) {
+      runInBackground(
+        'Approve Purchase Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: id,
+          description: 'Failed to approve purchase invoice',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ status: 'APPROVED' }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async cancel(id: string, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const invoice = await this.findOne(id);
+
+      if (invoice.status === 'CANCELLED') {
+        throw new BadRequestException('Invoice is already cancelled');
       }
 
-      return tx.purchaseInvoice.update({
-        where: { id },
-        data: {
-          status: 'CANCELLED',
-          ...(reason && { notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}` }),
-        },
-        include: { supplier: true, grn: true, landedCost: true, items: true },
+      if (Number(invoice.paidAmount) > 0) {
+        throw new BadRequestException('Cannot cancel invoice with payments');
+      }
+
+      return this.prisma.$transaction(async (tx) => {
+        // If invoice was approved, reverse the journal entries
+        if (invoice.status === 'APPROVED') {
+          const supplier = await tx.supplier.findUnique({
+            where: { id: invoice.supplierId },
+            include: { chartOfAccounts: { select: { id: true } } },
+          });
+
+          const purchasesAccount = await this.financeConfig.resolveAccount(
+            AccountRoleKey.PURCHASES_LOCAL,
+          );
+
+          if (supplier?.chartOfAccounts?.length) {
+            const totalAmount = Number(invoice.totalAmount);
+            const creditPerAccount = totalAmount / supplier.chartOfAccounts.length;
+
+            const originalLines = [
+              { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
+              ...supplier.chartOfAccounts.map(acc => ({
+                accountId: acc.id, debit: 0, credit: creditPerAccount,
+              })),
+            ];
+
+            await this.accounting.reverseLines(originalLines, {
+              sourceType: 'PURCHASE_INVOICE',
+              sourceId: id,
+              sourceRef: invoice.invoiceNumber,
+              description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
+              transactionDate: new Date(),
+            }, tx);
+          }
+
+          // ── DIRECT invoice: reverse warehouse inventory on cancellation ──────
+          if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
+            const warehouseId = (invoice as any).warehouseId as string;
+            for (const item of invoice.items) {
+              const qty = new Prisma.Decimal(item.quantity).negated();
+
+              // OUTBOUND ledger entry to reverse the INBOUND
+              await this.stockLedger.createEntry(
+                {
+                  itemId: item.itemId,
+                  warehouseId,
+                  qty: qty.toNumber(),
+                  movementType: MovementType.OUTBOUND,
+                  referenceType: 'PURCHASE_INVOICE_CANCEL',
+                  referenceId: id,
+                },
+                tx,
+              );
+
+              // Decrement InventoryItem
+              const existing = await tx.inventoryItem.findFirst({
+                where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
+              });
+              if (existing) {
+                await tx.inventoryItem.update({
+                  where: { id: existing.id },
+                  data: { quantity: { decrement: new Prisma.Decimal(item.quantity) } },
+                });
+              }
+            }
+          }
+        }
+
+        const updated = await tx.purchaseInvoice.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            ...(reason && { notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}` }),
+          },
+          include: { supplier: true, grn: true, landedCost: true, items: true },
+        });
+
+        runInBackground(
+          'Cancel Purchase Invoice',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'update',
+            module: 'purchase-invoice',
+            entity: 'PurchaseInvoice',
+            entityId: id,
+            description: `Cancelled purchase invoice ${invoice.invoiceNumber}. Reason: ${reason || 'N/A'}`,
+            newValues: JSON.stringify({ status: 'CANCELLED', cancellationReason: reason }),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
+        );
+
+        return updated;
       });
-    });
+    } catch (error: any) {
+      runInBackground(
+        'Cancel Purchase Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-invoice',
+          entity: 'PurchaseInvoice',
+          entityId: id,
+          description: `Failed to cancel purchase invoice. Reason: ${reason || 'N/A'}`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ status: 'CANCELLED', cancellationReason: reason }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 }

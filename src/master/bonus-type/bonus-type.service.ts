@@ -124,7 +124,7 @@ export class BonusTypeService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Bonus types created successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -247,7 +247,7 @@ export class BonusTypeService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Bonus type deleted successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -354,7 +354,7 @@ export class BonusTypeService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Bonus types deleted successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed bulk delete bonus types (Failure Log)',

@@ -31,7 +31,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class WorkingHoursPolicyController {
-  constructor(private service: WorkingHoursPolicyService) {}
+  constructor(private service: WorkingHoursPolicyService,) {}
 
   @Get('working-hours-policies')
   @Permissions('hr.working-hour-policy.read')

@@ -5,7 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { KpiComputeService } from '../kpi/kpi-compute.service';
 import { KpiService } from '../kpi/kpi.service';
-import { runInBackground } from '../../../../../common/utils/run-in-background.util';
+import { runInBackground } from '../common/utils/run-in-background.util';
 import {
   CreateTaskDto,
   UpdateTaskDto,
@@ -216,6 +216,23 @@ export class TaskService {
       if (body.dueDate && body.dueDate !== existing.dueDate?.toISOString()) {
         await this.logActivity(id, ctx.userId ?? 'system', 'due_date_changed', existing.dueDate?.toISOString(), body.dueDate);
       }
+
+      runInBackground(
+        `Updated task: ${updated.title}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'tasks',
+          entity: 'Task',
+          entityId: id,
+          description: `Updated task: ${updated.title}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        })
+      );
 
       return { status: true, data: updated, message: 'Task updated successfully' };
     } catch (error) {

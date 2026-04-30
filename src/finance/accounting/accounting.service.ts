@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountType } from '@prisma/client';
 
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { runInBackground } from '../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 export interface JournalLine {
     accountId: string;
     debit: number;
@@ -22,7 +22,8 @@ export interface PostOptions {
 export class AccountingService {
     private readonly logger = new Logger(AccountingService.name);
 
-    constructor(private prisma: PrismaService,
+    constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 

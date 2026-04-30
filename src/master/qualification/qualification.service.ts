@@ -53,9 +53,9 @@ export class QualificationService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      const response = { status: true, message: 'Qualifications created', data: result };
+      
       runInBackground(
         'Failed to create qualification',
         this.activityLogs.log({
@@ -111,7 +111,7 @@ export class QualificationService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Created successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -230,9 +230,9 @@ export class QualificationService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
-      const response = { status: true, message: 'Qualifications deleted', data: result };
+      
       runInBackground(
         'Failed to delete qualification',
         this.activityLogs.log({
@@ -279,7 +279,7 @@ export class QualificationService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Qualifications deleted', data: result };
     } catch (error: any) {
       runInBackground(
         'Failed to bulk delete qualifications (Failure Log)',

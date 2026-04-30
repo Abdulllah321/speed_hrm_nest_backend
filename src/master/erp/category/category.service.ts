@@ -7,11 +7,12 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { PrismaService } from '../../../database/prisma.service';
 
-import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../../common/utils/run-in-background.util';
 @Injectable()
 export class CategoryService {
-  constructor(private readonly prisma: PrismaService,
+  constructor(
+    private readonly prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
