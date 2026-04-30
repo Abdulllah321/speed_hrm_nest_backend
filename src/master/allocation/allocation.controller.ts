@@ -17,7 +17,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 @ApiTags('Allocation')
 @Controller('api')
 export class AllocationController {
-  constructor(private service: AllocationService) {}
+  constructor(private service: AllocationService,) {}
 
   @Get('allocations')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.read'))

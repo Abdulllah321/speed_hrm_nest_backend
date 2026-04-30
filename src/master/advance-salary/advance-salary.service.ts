@@ -14,8 +14,9 @@ export class AdvanceSalaryService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     private notifications: NotificationsService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   private async resolveApproverUserId(args: {

@@ -11,8 +11,7 @@ export class PFService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly prismaMaster: PrismaMasterService
-  ,
+    private readonly prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
   ) {}
 

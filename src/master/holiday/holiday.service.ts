@@ -95,46 +95,41 @@ export class HolidayService {
         },
       });
 
-      const response = {
-        status: true,
-        data: created,
-        message: 'Holiday created successfully',
-      };
       runInBackground(
         'Create Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'holidays',
-        entity: 'Holiday',
-        entityId: created.id,
-        description: `Created holiday ${created.name} from ${dateFrom.toLocaleDateString()} to ${dateTo.toLocaleDateString()}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'holidays',
+          entity: 'Holiday',
+          entityId: created.id,
+          description: `Created holiday ${created.name} from ${dateFrom.toLocaleDateString()} to ${dateTo.toLocaleDateString()}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
-    } catch (error: any) {
-      const response = {
+
+      return {
         status: true,
-        data: removed,
-        message: 'Holiday deleted successfully',
+        data: created,
+        message: 'Holiday created successfully',
       };
+    } catch (error: any) {
       runInBackground(
         'Failed to create holiday',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: 'Failed to create holiday',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
+          action: 'create',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: 'Failed to create holiday',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
         }),
       );
 
@@ -216,21 +211,20 @@ export class HolidayService {
         data: updateData,
       });
 
-      const response = { status: true, data: updated };
       runInBackground(
         'Update Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'holidays',
-        entity: 'Holiday',
-        entityId: id,
-        description: `Updated holiday ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
+          action: 'update',
+          module: 'holidays',
+          entity: 'Holiday',
+          entityId: id,
+          description: `Updated holiday ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
         }),
       );
 
@@ -252,17 +246,17 @@ export class HolidayService {
         'Failed to update holiday (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'holidays',
-        entity: 'Holiday',
-        entityId: id,
-        description: 'Failed to update holiday',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'holidays',
+          entity: 'Holiday',
+          entityId: id,
+          description: 'Failed to update holiday',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
 
       if (error?.code === 'P2002') {
@@ -290,25 +284,40 @@ export class HolidayService {
 
       const removed = await this.prisma.holiday.delete({ where: { id } });
 
-      const response = { status: true, data: removed };
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'holidays',
-        entity: 'Holiday',
-        entityId: id,
-        description: `Deleted holiday ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'holidays',
+          entity: 'Holiday',
+          entityId: id,
+          description: `Deleted holiday ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
+
+      return { status: true, data: removed, message: 'Holiday deleted successfully' };
     } catch (error: any) {
-      const response = { status: false, message: 'Failed to create holidays' };
+      runInBackground(
+        'Failed to delete holiday',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'holidays',
+          entity: 'Holiday',
+          entityId: id,
+          description: 'Failed to delete holiday',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
+      return { status: false, message: 'Failed to delete holiday' };
     }
   }
 
@@ -359,40 +368,39 @@ export class HolidayService {
         });
       }
 
-      const response = { status: true, message: 'Operation completed successfully' };
       runInBackground(
         'Bulk Update Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: `Bulk updated holidays (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
+          action: 'update',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: `Bulk updated holidays (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
         }),
       );
 
-      return { status: true, message: 'Holidays updated' };
+      return { status: true, message: 'Holidays updated successfully' };
+    } catch (error: any) {
       runInBackground(
-        'Failed to delete holiday',
+        'Failed to bulk update holidays',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'holidays',
-        entity: 'Holiday',
-        entityId: id,
-        description: 'Failed to delete holiday',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: 'Failed bulk update holidays',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
-
-      return { status: false, message: 'Failed to delete holiday' };
+      return { status: false, message: 'Failed to update holidays' };
     }
   }
 
@@ -441,19 +449,18 @@ export class HolidayService {
         createdHolidays.push(holiday);
       }
 
-      const response = { status: true, message: 'Operation completed successfully' };
       runInBackground(
         'Bulk Create Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: `Bulk created holidays (${createdHolidays.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
+          action: 'create',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: `Bulk created holidays (${createdHolidays.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
         }),
       );
 
@@ -467,7 +474,7 @@ export class HolidayService {
 
       return {
         status: true,
-        message: 'Holidays created',
+        message: 'Holidays created successfully',
         data: normalizedHolidays,
       };
     } catch (error: any) {
@@ -475,37 +482,18 @@ export class HolidayService {
         'Failed to bulk create holidays (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: 'Failed to bulk create holidays',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'create',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: 'Failed to bulk create holidays',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
-      return response;
-    } catch (error: any) {
-      const response = { status: true, message: 'Holidays deleted', data: result };
-      runInBackground(
-        'Failed to bulk update holidays',
-        this.activityLogs.log({
-          userId: ctx.userId,
-        action: 'update',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: 'Failed to bulk update holidays',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
-      );
-
-      return { status: false, message: 'Failed to update holidays' };
+      return { status: false, message: 'Failed to create holidays' };
     }
   }
 
@@ -528,31 +516,32 @@ export class HolidayService {
         'Bulk Delete Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: `Bulk deleted holidays (${result.count})`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: `Bulk deleted holidays (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
+
+      return { status: true, message: 'Holidays deleted successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to bulk delete holidays (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'holidays',
-        entity: 'Holiday',
-        description: 'Failed to bulk delete holidays',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'holidays',
+          entity: 'Holiday',
+          description: 'Failed to bulk delete holidays',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
 
       return { status: false, message: 'Failed to delete holidays' };

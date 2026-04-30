@@ -6,7 +6,8 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class SalesOrderService {
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
@@ -106,105 +107,19 @@ export class SalesOrderService {
     return { status: true, data: salesOrder };
   }
 
-  async create(createSalesOrderDto: CreateSalesOrderDto) {
-    // Generate order number
-    const lastOrder = await this.prisma.eRPSalesOrder.findFirst({
-      orderBy: { orderNo: 'desc' },
-    });
-    
-    const lastNumber = lastOrder?.orderNo ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
-    const orderNo = `SO-${String(lastNumber + 1).padStart(3, '0')}`;
-
-    // Calculate totals
-    let subtotal = 0;
-    const processedItems = createSalesOrderDto.items.map(item => {
-      const itemTotal = (item.salePrice * item.quantity) - (item.discount || 0);
-      subtotal += itemTotal;
-      return {
-        ...item,
-        total: itemTotal,
-      };
-    });
-
-    const taxAmount = subtotal * (createSalesOrderDto.taxRate || 0) / 100;
-    const grandTotal = subtotal + taxAmount - (createSalesOrderDto.discount || 0);
-
-    // Validate customer exists
-    const customer = await this.prisma.customer.findUnique({
-      where: { id: createSalesOrderDto.customerId },
-    });
-    if (!customer) {
-      throw new BadRequestException('Customer not found');
-    }
-
-    // Validate warehouse if provided
-    if (createSalesOrderDto.warehouseId) {
-      const warehouse = await this.prisma.warehouse.findUnique({
-        where: { id: createSalesOrderDto.warehouseId },
+  async create(createSalesOrderDto: CreateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      // Generate order number
+      const lastOrder = await this.prisma.eRPSalesOrder.findFirst({
+        orderBy: { orderNo: 'desc' },
       });
-      if (!warehouse) {
-        throw new BadRequestException('Warehouse not found');
-      }
-    }
+      
+      const lastNumber = lastOrder?.orderNo ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
+      const orderNo = `SO-${String(lastNumber + 1).padStart(3, '0')}`;
 
-    // Create sales order with items
-    return this.prisma.eRPSalesOrder.create({
-      data: {
-        orderNo,
-        customerId: createSalesOrderDto.customerId,
-        warehouseId: createSalesOrderDto.warehouseId,
-        subtotal,
-        taxRate: createSalesOrderDto.taxRate || 0,
-        taxAmount,
-        discount: createSalesOrderDto.discount || 0,
-        grandTotal,
-        items: {
-          create: await Promise.all(processedItems.map(async (item) => {
-            // Fetch item cost from item master
-            const itemRecord = await this.prisma.item.findUnique({
-              where: { id: item.itemId },
-              select: { unitCost: true }
-            });
-            
-            console.log(`Item ${item.itemId} cost:`, itemRecord?.unitCost);
-            
-            return {
-              itemId: item.itemId,
-              quantity: item.quantity,
-              costPrice: itemRecord?.unitCost || 0,
-              salePrice: item.salePrice,
-              discount: item.discount || 0,
-              total: item.total,
-            };
-          })),
-        },
-      },
-      include: {
-        customer: true,
-        warehouse: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
-  }
-
-  async update(id: string, updateSalesOrderDto: UpdateSalesOrderDto) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
-
-    if (salesOrder.status === 'CONFIRMED') {
-      throw new BadRequestException('Cannot update confirmed sales order');
-    }
-
-    // If items are being updated, recalculate totals
-    let updateData: any = { ...updateSalesOrderDto };
-
-    if (updateSalesOrderDto.items) {
+      // Calculate totals
       let subtotal = 0;
-      const processedItems = updateSalesOrderDto.items.map(item => {
+      const processedItems = createSalesOrderDto.items.map(item => {
         const itemTotal = (item.salePrice * item.quantity) - (item.discount || 0);
         subtotal += itemTotal;
         return {
@@ -213,165 +128,385 @@ export class SalesOrderService {
         };
       });
 
-      const taxAmount = subtotal * (Number(updateSalesOrderDto.taxRate) || Number(salesOrder.taxRate)) / 100;
-      const grandTotal = subtotal + taxAmount - (Number(updateSalesOrderDto.discount) || Number(salesOrder.discount));
+      const taxAmount = subtotal * (createSalesOrderDto.taxRate || 0) / 100;
+      const grandTotal = subtotal + taxAmount - (createSalesOrderDto.discount || 0);
 
-      updateData = {
-        ...updateData,
-        subtotal,
-        taxAmount,
-        grandTotal,
-      };
+      // Validate customer exists
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: createSalesOrderDto.customerId },
+      });
+      if (!customer) {
+        throw new BadRequestException('Customer not found');
+      }
 
-      // Delete existing items and create new ones
+      // Validate warehouse if provided
+      if (createSalesOrderDto.warehouseId) {
+        const warehouse = await this.prisma.warehouse.findUnique({
+          where: { id: createSalesOrderDto.warehouseId },
+        });
+        if (!warehouse) {
+          throw new BadRequestException('Warehouse not found');
+        }
+      }
+
+      // Create sales order with items
+      const created = await this.prisma.eRPSalesOrder.create({
+        data: {
+          orderNo,
+          customerId: createSalesOrderDto.customerId,
+          warehouseId: createSalesOrderDto.warehouseId,
+          subtotal,
+          taxRate: createSalesOrderDto.taxRate || 0,
+          taxAmount,
+          discount: createSalesOrderDto.discount || 0,
+          grandTotal,
+          items: {
+            create: await Promise.all(processedItems.map(async (item) => {
+              // Fetch item cost from item master
+              const itemRecord = await this.prisma.item.findUnique({
+                where: { id: item.itemId },
+                select: { unitCost: true }
+              });
+              
+              return {
+                itemId: item.itemId,
+                quantity: item.quantity,
+                costPrice: itemRecord?.unitCost || 0,
+                salePrice: item.salePrice,
+                discount: item.discount || 0,
+                total: item.total,
+              };
+            })),
+          },
+        },
+        include: {
+          customer: true,
+          warehouse: true,
+          items: {
+            include: {
+              item: true,
+            },
+          },
+        },
+      });
+
+      runInBackground(
+        'Create Sales Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: created.id,
+          description: `Created sales order ${created.orderNo}`,
+          newValues: JSON.stringify(createSalesOrderDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return created;
+    } catch (error: any) {
+      runInBackground(
+        'Create Sales Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          description: `Failed to create sales order`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(createSalesOrderDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async update(id: string, updateSalesOrderDto: UpdateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesOrderResponse = await this.findOne(id);
+      const salesOrder = salesOrderResponse.data; // Extract data from response
+
+      if (salesOrder.status === 'CONFIRMED') {
+        throw new BadRequestException('Cannot update confirmed sales order');
+      }
+
+      // If items are being updated, recalculate totals
+      let updateData: any = { ...updateSalesOrderDto };
+
+      if (updateSalesOrderDto.items) {
+        let subtotal = 0;
+        const processedItems = updateSalesOrderDto.items.map(item => {
+          const itemTotal = (item.salePrice * item.quantity) - (item.discount || 0);
+          subtotal += itemTotal;
+          return {
+            ...item,
+            total: itemTotal,
+          };
+        });
+
+        const taxAmount = subtotal * (Number(updateSalesOrderDto.taxRate) || Number(salesOrder.taxRate)) / 100;
+        const grandTotal = subtotal + taxAmount - (Number(updateSalesOrderDto.discount) || Number(salesOrder.discount));
+
+        updateData = {
+          ...updateData,
+          subtotal,
+          taxAmount,
+          grandTotal,
+        };
+
+        // Delete existing items and create new ones
+        await this.prisma.eRPSalesOrderItem.deleteMany({
+          where: { salesOrderId: id },
+        });
+      }
+
+      const itemsToCreate = updateSalesOrderDto.items ? await Promise.all(updateSalesOrderDto.items.map(async (item) => {
+        const itemRecord = await this.prisma.item.findUnique({
+          where: { id: item.itemId },
+          select: { unitCost: true }
+        });
+        
+        return {
+          itemId: item.itemId,
+          quantity: item.quantity,
+          costPrice: itemRecord?.unitCost || 0,
+          salePrice: item.salePrice,
+          discount: item.discount || 0,
+          total: (item.salePrice * item.quantity) - (item.discount || 0),
+        };
+      })) : undefined;
+
+      const updated = await this.prisma.eRPSalesOrder.update({
+        where: { id },
+        data: {
+          customerId: updateData.customerId,
+          warehouseId: updateData.warehouseId,
+          status: updateData.status,
+          subtotal: updateData.subtotal,
+          taxRate: updateData.taxRate,
+          taxAmount: updateData.taxAmount,
+          discount: updateData.discount,
+          grandTotal: updateData.grandTotal,
+          items: itemsToCreate ? {
+            create: itemsToCreate,
+          } : undefined,
+        },
+        include: {
+          customer: true,
+          warehouse: true,
+          items: {
+            include: {
+              item: true,
+            },
+          },
+        },
+      });
+
+      runInBackground(
+        'Update Sales Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: updated.id,
+          description: `Updated sales order ${updated.orderNo}`,
+          oldValues: JSON.stringify(salesOrder),
+          newValues: JSON.stringify(updateSalesOrderDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Sales Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: id,
+          description: `Failed to update sales order`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(updateSalesOrderDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesOrderResponse = await this.findOne(id);
+      const salesOrder = salesOrderResponse.data;
+
+      if (salesOrder.status === 'CONFIRMED') {
+        throw new BadRequestException('Cannot delete confirmed sales order');
+      }
+
       await this.prisma.eRPSalesOrderItem.deleteMany({
         where: { salesOrderId: id },
       });
-    }
 
-    const updatedOrder = await this.prisma.eRPSalesOrder.update({
-      where: { id },
-      data: updateData,
-      include: {
-        customer: true,
-        warehouse: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
+      const deleted = await this.prisma.eRPSalesOrder.delete({
+        where: { id },
+      });
 
-    // Create new items if provided
-    if (updateSalesOrderDto.items) {
-      const itemsWithCost = await Promise.all(
-        updateSalesOrderDto.items.map(async (item) => {
-          // Fetch item cost from item master
-          const itemRecord = await this.prisma.item.findUnique({
-            where: { id: item.itemId },
-            select: { unitCost: true }
-          });
-          
-          return {
-            salesOrderId: id,
-            itemId: item.itemId,
-            quantity: item.quantity,
-            costPrice: itemRecord?.unitCost || 0,
-            salePrice: item.salePrice,
-            discount: item.discount || 0,
-            total: (item.salePrice * item.quantity) - (item.discount || 0),
-          };
-        })
+      runInBackground(
+        'Delete Sales Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: id,
+          description: `Deleted sales order ${deleted.orderNo}`,
+          oldValues: JSON.stringify(salesOrder),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
 
-      await this.prisma.eRPSalesOrderItem.createMany({
-        data: itemsWithCost,
+      return { status: true, message: 'Sales order deleted successfully' };
+    } catch (error: any) {
+      runInBackground(
+        'Delete Sales Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: id,
+          description: `Failed to delete sales order`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async confirm(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesOrderResponse = await this.findOne(id);
+      const salesOrder = salesOrderResponse.data;
+
+      if (salesOrder.status !== 'DRAFT') {
+        throw new BadRequestException('Only draft orders can be confirmed');
+      }
+
+      const updated = await this.prisma.eRPSalesOrder.update({
+        where: { id },
+        data: { status: 'CONFIRMED' },
+        include: {
+          customer: true,
+          warehouse: true,
+          items: true,
+        },
       });
-    }
 
-    return this.findOne(id);
+      runInBackground(
+        'Confirm Sales Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: updated.id,
+          description: `Confirmed sales order ${updated.orderNo}`,
+          oldValues: JSON.stringify(salesOrder),
+          newValues: JSON.stringify({ status: 'CONFIRMED' }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Confirm Sales Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: id,
+          description: `Failed to confirm sales order`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
-  async confirm(id: string) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
+  async cancel(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesOrderResponse = await this.findOne(id);
+      const salesOrder = salesOrderResponse.data;
 
-    if (salesOrder.status !== 'DRAFT') {
-      throw new BadRequestException('Only draft orders can be confirmed');
+      if (salesOrder.status === 'CANCELLED') {
+        throw new BadRequestException('Order is already cancelled');
+      }
+
+      const updated = await this.prisma.eRPSalesOrder.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+      });
+
+      runInBackground(
+        'Cancel Sales Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: updated.id,
+          description: `Cancelled sales order ${updated.orderNo}`,
+          oldValues: JSON.stringify(salesOrder),
+          newValues: JSON.stringify({ status: 'CANCELLED' }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Cancel Sales Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: id,
+          description: `Failed to cancel sales order`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
-
-    // TODO: Add stock validation here
-    // Check if all items have sufficient stock
-
-    return this.prisma.eRPSalesOrder.update({
-      where: { id },
-      data: { status: 'CONFIRMED' },
-      include: {
-        customer: true,
-        warehouse: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
-  }
-
-  async cancel(id: string) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
-
-    if (salesOrder.status === 'CANCELLED') {
-      throw new BadRequestException('Order is already cancelled');
-    }
-
-    if (salesOrder.deliveryChallans.length > 0) {
-      throw new BadRequestException('Cannot cancel order with delivery challans');
-    }
-
-    return this.prisma.eRPSalesOrder.update({
-      where: { id },
-      data: { status: 'CANCELLED' },
-      include: {
-        customer: true,
-        warehouse: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
-  }
-
-  async createDeliveryChallan(id: string, data: any) {
-    const salesOrderResponse = await this.findOne(id);
-    const salesOrder = salesOrderResponse.data; // Extract data from response
-
-    if (salesOrder.status !== 'CONFIRMED') {
-      throw new BadRequestException('Only confirmed orders can have delivery challans');
-    }
-
-    // Generate challan number
-    const lastChallan = await this.prisma.deliveryChallan.findFirst({
-      orderBy: { challanNo: 'desc' },
-    });
-    
-    const lastNumber = lastChallan?.challanNo ? parseInt(lastChallan.challanNo.split('-')[1]) : 0;
-    const challanNo = `DC-${String(lastNumber + 1).padStart(3, '0')}`;
-
-    return this.prisma.deliveryChallan.create({
-      data: {
-        challanNo,
-        salesOrderId: id,
-        customerId: salesOrder.customerId,
-        warehouseId: salesOrder.warehouseId,
-        driverName: data.driverName,
-        vehicleNo: data.vehicleNo,
-        transportMode: data.transportMode,
-        totalQty: salesOrder.items.reduce((sum, item) => sum + item.quantity, 0),
-        totalAmount: salesOrder.grandTotal,
-        items: {
-          create: salesOrder.items.map(item => ({
-            itemId: item.itemId,
-            orderedQty: item.quantity,
-            deliveredQty: item.quantity, // Default to full delivery
-            salePrice: item.salePrice,
-            total: item.total,
-          })),
-        },
-      },
-      include: {
-        salesOrder: true,
-        customer: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
   }
 }

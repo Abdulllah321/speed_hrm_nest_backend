@@ -4,7 +4,7 @@ import { MovementType } from '@prisma/client';
 
 @Controller('api/stock-ledger')
 export class StockLedgerController {
-  constructor(private readonly stockLedgerService: StockLedgerService) { }
+  constructor(private readonly stockLedgerService: StockLedgerService,) { }
 
   @Get('levels')
   async getStockLevels(@Query('warehouseId') warehouseId?: string, @Query('locationId') locationId?: string) {

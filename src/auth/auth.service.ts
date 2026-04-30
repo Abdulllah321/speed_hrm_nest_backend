@@ -40,8 +40,7 @@ export class AuthService {
 
   constructor(
     private prismaMaster: PrismaMasterService,
-    @Inject(forwardRef(() => CompanyService))
-    private companyService: CompanyService,
+    @Inject(forwardRef(() => CompanyService)) private companyService: CompanyService,
     private posService: PosService,
     @Optional() private prisma: PrismaService,
     private encryptionService: EncryptionService,

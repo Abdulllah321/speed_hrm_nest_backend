@@ -19,7 +19,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class TransferController {
-  constructor(private readonly transferService: TransferService) {}
+  constructor(private readonly transferService: TransferService,) {}
 
   @Post('employee-transfer')
   @Permissions('hr.employee.transfer')

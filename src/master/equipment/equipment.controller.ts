@@ -23,7 +23,7 @@ import {
 @ApiTags('Equipment')
 @Controller('api')
 export class EquipmentController {
-  constructor(private service: EquipmentService) {}
+  constructor(private service: EquipmentService,) {}
 
   @Get('equipments')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.read'))

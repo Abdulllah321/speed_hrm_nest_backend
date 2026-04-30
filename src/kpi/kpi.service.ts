@@ -17,8 +17,9 @@ export class KpiService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     private compute: KpiComputeService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   // ─── KPI Templates ───────────────────────────────────────────────────────────

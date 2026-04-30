@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { JournalVoucherService } from './journal-voucher.service';
 import { CreateJournalVoucherDto } from './dto/create-journal-voucher.dto';
@@ -24,8 +25,12 @@ export class JournalVoucherController {
 
   @Post()
   @Permissions('erp.finance.journal-voucher.create')
-  create(@Body() createJournalVoucherDto: CreateJournalVoucherDto) {
-    return this.journalVoucherService.create(createJournalVoucherDto);
+  create(@Body() createJournalVoucherDto: CreateJournalVoucherDto, @Req() req: any) {
+    return this.journalVoucherService.create(createJournalVoucherDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get()
@@ -45,13 +50,22 @@ export class JournalVoucherController {
   update(
     @Param('id') id: string,
     @Body() updateJournalVoucherDto: UpdateJournalVoucherDto,
+    @Req() req: any,
   ) {
-    return this.journalVoucherService.update(id, updateJournalVoucherDto);
+    return this.journalVoucherService.update(id, updateJournalVoucherDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Delete(':id')
   @Permissions('erp.finance.journal-voucher.delete')
-  remove(@Param('id') id: string) {
-    return this.journalVoucherService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.journalVoucherService.remove(id, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

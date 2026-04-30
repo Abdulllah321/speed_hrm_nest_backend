@@ -7,17 +7,26 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer-dto';
 
 @Controller('api/sales/customers')
 export class CustomerController {
-  constructor(private readonly service: CustomerService) { }
+  constructor(private readonly service: CustomerService,) { }
+
+  private ctx(req: any) {
+    return {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
+  }
 
   @Post()
-  create(@Body() dto: CreateCustomerDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateCustomerDto, @Req() req) {
+    return this.service.create(dto, this.ctx(req));
   }
 
   @Get()
@@ -46,12 +55,12 @@ export class CustomerController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
-    return this.service.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateCustomerDto, @Req() req) {
+    return this.service.update(id, dto, this.ctx(req));
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  remove(@Param('id') id: string, @Req() req) {
+    return this.service.remove(id, this.ctx(req));
   }
 }

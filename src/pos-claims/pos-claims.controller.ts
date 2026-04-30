@@ -8,12 +8,16 @@ import { PosClaimsService } from './pos-claims.service';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PosClaimsController {
-    constructor(private readonly service: PosClaimsService) { }
+    constructor(private readonly service: PosClaimsService,) { }
 
     @Post()
     @ApiOperation({ summary: 'Submit a new POS return claim' })
     create(@Body() dto: any, @Req() req: any) {
-        return this.service.create(dto, req.user?.id);
+        return this.service.create(dto, req.user?.id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Get()
@@ -39,18 +43,30 @@ export class PosClaimsController {
     @Post(':id/start-review')
     @ApiOperation({ summary: 'Move claim to UNDER_REVIEW' })
     startReview(@Param('id') id: string, @Req() req: any) {
-        return this.service.startReview(id, req.user?.id);
+        return this.service.startReview(id, req.user?.id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Post(':id/review')
     @ApiOperation({ summary: 'Submit review decision (approve/reject per item)' })
     submitReview(@Param('id') id: string, @Body() dto: any, @Req() req: any) {
-        return this.service.submitReview(id, dto, req.user?.id);
+        return this.service.submitReview(id, dto, req.user?.id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Post(':id/cancel')
     @ApiOperation({ summary: 'Cancel a claim' })
-    cancel(@Param('id') id: string) {
-        return this.service.cancel(id);
+    cancel(@Param('id') id: string, @Req() req: any) {
+        return this.service.cancel(id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 }

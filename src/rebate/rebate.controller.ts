@@ -27,7 +27,7 @@ import type { FastifyRequest } from 'fastify';
 @ApiTags('Rebate')
 @Controller('api')
 export class RebateController {
-  constructor(private service: RebateService) {}
+  constructor(private service: RebateService,) {}
 
   @Get('rebates')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

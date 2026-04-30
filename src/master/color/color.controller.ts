@@ -23,7 +23,7 @@ import {
 @ApiBearerAuth()
 @Controller('api')
 export class ColorController {
-  constructor(private readonly colorService: ColorService) {}
+  constructor(private readonly colorService: ColorService,) {}
 
   @Get('colors')
   @ApiOperation({ summary: 'Get all colors' })

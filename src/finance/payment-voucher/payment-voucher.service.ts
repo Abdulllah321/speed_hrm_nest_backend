@@ -6,15 +6,14 @@ import { AccountingService } from '../accounting/accounting.service';
 import { FinanceAccountConfigService } from '../finance-account-config/finance-account-config.service';
 import { AccountRoleKey } from '../finance-account-config/dto/finance-account-config.dto';
 
-import { ActivityLogsService } from '../../../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../../../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class PaymentVoucherService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
     private readonly financeConfig: FinanceAccountConfigService,
-  ,
     private activityLogs: ActivityLogsService,
   ) { }
 

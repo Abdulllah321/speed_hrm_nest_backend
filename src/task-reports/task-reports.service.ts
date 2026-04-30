@@ -23,7 +23,7 @@ function parsePeriod(period: string): { from: Date; to: Date } {
 
 @Injectable()
 export class TaskReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,) {}
 
   // ─── Employee Summary ─────────────────────────────────────────────────────────
 

@@ -28,7 +28,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LeaveApplicationController {
-  constructor(private service: LeaveApplicationService) {}
+  constructor(private service: LeaveApplicationService,) {}
 
   @Get('leave-applications/balance/:employeeId')
   @Permissions('hr.leave.read')

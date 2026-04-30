@@ -3,14 +3,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
 import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 
-import { ActivityLogsService } from '../../../../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../../../../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class SalesInvoiceService {
   constructor(
     private prisma: PrismaService,
     private financeConfig: FinanceAccountConfigService,
-  ,
     private activityLogs: ActivityLogsService,
   ) {}
 
@@ -61,7 +60,6 @@ export class SalesInvoiceService {
             item: true,
           },
         },
-        // stockLedgers: true, // Removed - using referenceId approach instead
       },
     });
 
@@ -72,56 +70,23 @@ export class SalesInvoiceService {
     return { status: true, data: salesInvoice };
   }
 
-  async update(id: string, updateData: any) {
-    const salesInvoiceResponse = await this.findOne(id);
-    const salesInvoice = salesInvoiceResponse.data;
+  async update(id: string, updateData: any, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesInvoiceResponse = await this.findOne(id);
+      const salesInvoice = salesInvoiceResponse.data;
 
-    if (salesInvoice.status === 'PAID') {
-      throw new BadRequestException('Cannot update paid invoice');
-    }
+      if (salesInvoice.status === 'PAID') {
+        throw new BadRequestException('Cannot update paid invoice');
+      }
 
-    const updatedInvoice = await this.prisma.eRPSalesInvoice.update({
-      where: { id },
-      data: updateData,
-      include: {
-        customer: true,
-        warehouse: true,
-        salesOrder: true,
-        deliveryChallan: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
-
-    return { status: true, data: updatedInvoice };
-  }
-
-  async post(id: string) {
-    const salesInvoiceResponse = await this.findOne(id);
-    const salesInvoice = salesInvoiceResponse.data;
-
-    if (salesInvoice.status !== 'PENDING') {
-      throw new BadRequestException('Only pending invoices can be posted');
-    }
-
-    // Start transaction
-    return this.prisma.$transaction(async (tx) => {
-      // Update invoice status to POSTED (not PAID)
-      const updatedInvoice = await tx.eRPSalesInvoice.update({
+      const updatedInvoice = await this.prisma.eRPSalesInvoice.update({
         where: { id },
-        data: { 
-          status: 'POSTED',  // Changed from 'PAID' to 'POSTED'
-          balanceAmount: salesInvoice.grandTotal, // Set balance amount to full amount
-          paidAmount: 0, // No payment received yet
-          paymentStatus: 'UNPAID' // Set payment status to unpaid
-        },
+        data: updateData,
         include: {
           customer: true,
           warehouse: true,
           salesOrder: true,
+          deliveryChallan: true,
           items: {
             include: {
               item: true,
@@ -130,72 +95,202 @@ export class SalesInvoiceService {
         },
       });
 
-      // NOTE: Stock ledger entries are now created at delivery challan stage
-      // No need to create OUTBOUND entries here as inventory is already out
+      runInBackground(
+        'Update Sales Invoice',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-invoice',
+          entity: 'ERPSalesInvoice',
+          entityId: id,
+          description: `Updated sales invoice ${updatedInvoice.invoiceNo}`,
+          oldValues: JSON.stringify(salesInvoice),
+          newValues: JSON.stringify(updateData),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
 
-      // Create journal entry for accounting
-      const journalEntryNo = `JE-${Date.now()}`;
+      return { status: true, data: updatedInvoice };
+    } catch (error: any) {
+      runInBackground(
+        'Update Sales Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-invoice',
+          entity: 'ERPSalesInvoice',
+          entityId: id,
+          description: `Failed to update sales invoice`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(updateData),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
 
-      // Resolve accounts from finance configuration
-      const [receivableAccountId, salesAccountId] = await Promise.all([
-        this.financeConfig.resolveAccount(AccountRoleKey.ACCOUNTS_RECEIVABLE),
-        this.financeConfig.resolveAccount(AccountRoleKey.SALES_REVENUE_WHOLESALE),
-      ]);
+  async post(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesInvoiceResponse = await this.findOne(id);
+      const salesInvoice = salesInvoiceResponse.data;
 
-      await tx.journalVoucher.create({
-        data: {
-          jvNo: journalEntryNo,
-          jvDate: new Date(),
-          description: `Sales Invoice: ${updatedInvoice.invoiceNo}`,
-          details: {
-            create: [
-              {
-                accountId: receivableAccountId,
-                debit: updatedInvoice.grandTotal,
-                credit: 0,
-              },
-              {
-                accountId: salesAccountId,
-                debit: 0,
-                credit: updatedInvoice.subtotal,
-              },
-            ],
+      if (salesInvoice.status !== 'PENDING') {
+        throw new BadRequestException('Only draft invoices can be posted');
+      }
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const updatedInvoice = await tx.eRPSalesInvoice.update({
+          where: { id },
+          data: { status: 'POSTED' },
+          include: {
+            customer: true,
+            warehouse: true,
+            salesOrder: true,
+            items: true,
+          },
+        });
+
+        // Create journal entry for accounting
+        const journalEntryNo = `JE-${Date.now()}`;
+
+        // Resolve accounts from finance configuration
+        const [receivableAccountId, salesAccountId] = await Promise.all([
+          this.financeConfig.resolveAccount(AccountRoleKey.ACCOUNTS_RECEIVABLE),
+          this.financeConfig.resolveAccount(AccountRoleKey.SALES_REVENUE_WHOLESALE),
+        ]);
+
+        await tx.journalVoucher.create({
+          data: {
+            jvNo: journalEntryNo,
+            jvDate: new Date(),
+            description: `Sales Invoice: ${updatedInvoice.invoiceNo}`,
+            details: {
+              create: [
+                {
+                  accountId: receivableAccountId,
+                  debit: updatedInvoice.grandTotal,
+                  credit: 0,
+                },
+                {
+                  accountId: salesAccountId,
+                  debit: 0,
+                  credit: updatedInvoice.subtotal,
+                },
+              ],
+            },
+          },
+        });
+
+        return updatedInvoice;
+      });
+
+      runInBackground(
+        'Post Sales Invoice',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-invoice',
+          entity: 'ERPSalesInvoice',
+          entityId: id,
+          description: `Posted sales invoice ${result.invoiceNo}`,
+          oldValues: JSON.stringify(salesInvoice),
+          newValues: JSON.stringify({ status: 'POSTED' }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return { status: true, data: result };
+    } catch (error: any) {
+      runInBackground(
+        'Post Sales Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-invoice',
+          entity: 'ERPSalesInvoice',
+          entityId: id,
+          description: `Failed to post sales invoice`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async cancel(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesInvoiceResponse = await this.findOne(id);
+      const salesInvoice = salesInvoiceResponse.data;
+
+      if (salesInvoice.status === 'CANCELLED') {
+        throw new BadRequestException('Invoice is already cancelled');
+      }
+
+      if (salesInvoice.status === 'PAID') {
+        throw new BadRequestException('Cannot cancel paid invoice');
+      }
+
+      const updatedInvoice = await this.prisma.eRPSalesInvoice.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+        include: {
+          customer: true,
+          warehouse: true,
+          salesOrder: true,
+          deliveryChallan: true,
+          items: {
+            include: {
+              item: true,
+            },
           },
         },
       });
 
+      runInBackground(
+        'Cancel Sales Invoice',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-invoice',
+          entity: 'ERPSalesInvoice',
+          entityId: id,
+          description: `Cancelled sales invoice ${updatedInvoice.invoiceNo}`,
+          oldValues: JSON.stringify(salesInvoice),
+          newValues: JSON.stringify({ status: 'CANCELLED' }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
       return { status: true, data: updatedInvoice };
-    });
-  }
-
-  async cancel(id: string) {
-    const salesInvoiceResponse = await this.findOne(id);
-    const salesInvoice = salesInvoiceResponse.data;
-
-    if (salesInvoice.status === 'CANCELLED') {
-      throw new BadRequestException('Invoice is already cancelled');
+    } catch (error: any) {
+      runInBackground(
+        'Cancel Sales Invoice (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-invoice',
+          entity: 'ERPSalesInvoice',
+          entityId: id,
+          description: `Failed to cancel sales invoice`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
-
-    if (salesInvoice.status === 'PAID') {
-      throw new BadRequestException('Cannot cancel paid invoice');
-    }
-
-    const updatedInvoice = await this.prisma.eRPSalesInvoice.update({
-      where: { id },
-      data: { status: 'CANCELLED' },
-      include: {
-        customer: true,
-        warehouse: true,
-        salesOrder: true,
-        deliveryChallan: true,
-        items: {
-          include: {
-            item: true,
-          },
-        },
-      },
-    });
-
-    return { status: true, data: updatedInvoice };
   }
 }

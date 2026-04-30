@@ -28,7 +28,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class AttendanceExemptionController {
-  constructor(private service: AttendanceExemptionService) {}
+  constructor(private service: AttendanceExemptionService,) {}
 
   @Get('attendance-exemptions')
   @Permissions('hr.attendance.exemptions-list')

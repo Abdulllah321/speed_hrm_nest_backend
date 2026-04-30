@@ -23,7 +23,7 @@ import {
 @ApiTags('Job Type')
 @Controller('api')
 export class JobTypeController {
-  constructor(private service: JobTypeService) {}
+  constructor(private service: JobTypeService,) {}
 
   @Get('job-types')
   @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.read'))

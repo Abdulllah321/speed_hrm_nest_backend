@@ -104,9 +104,8 @@ export class ProvidentFundService {
         status: 'success',
       }),
       );
-      return response;
-    } catch (error: any) {
-      const response = { status: true, data: updated, message: 'Updated successfully' };
+      return { status: true, message: 'Created successfully' };
+    } catch (error: any) {  
       runInBackground(
         'Failed bulk create provident funds',
         this.activityLogs.log({
@@ -211,7 +210,7 @@ export class ProvidentFundService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to delete provident fund (Failure Log)',

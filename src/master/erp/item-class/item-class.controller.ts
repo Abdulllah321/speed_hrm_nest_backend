@@ -22,7 +22,7 @@ import { Permissions } from '../../../common/decorators/permissions.decorator';
 @Controller('api/master/erp/item-class')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ItemClassController {
-  constructor(private readonly itemClassService: ItemClassService) {}
+  constructor(private readonly itemClassService: ItemClassService,) {}
 
   @Get()
   @Permissions('master.item-class.read')

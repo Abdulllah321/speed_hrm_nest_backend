@@ -17,7 +17,7 @@ import { Permissions } from '../../../common/decorators/permissions.decorator';
 @Controller('api/master/erp/tax-rate')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TaxRateController {
-  constructor(private readonly service: TaxRateService) {}
+  constructor(private readonly service: TaxRateService,) {}
 
   @Post()
   @Permissions('master.tax-rate.create')

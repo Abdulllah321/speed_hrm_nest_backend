@@ -16,10 +16,11 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 export class DepartmentService {
   constructor(
     private prisma: PrismaService,
-   private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+    private prismaMaster: PrismaMasterService,
+
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) {}
+    private activityLogs: ActivityLogsService,
+  ) { }
 
   async getAllDepartments() {
     const cacheKey = 'departments_all';

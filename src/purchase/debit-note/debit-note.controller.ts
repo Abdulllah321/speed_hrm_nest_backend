@@ -5,7 +5,7 @@ import { ApiTags } from '@nestjs/swagger';
 @ApiTags('Debit Notes')
 @Controller('api/purchase/debit-notes')
 export class DebitNoteController {
-  constructor(private readonly debitNoteService: DebitNoteService) {}
+  constructor(private readonly debitNoteService: DebitNoteService,) {}
 
   @Get()
   findAll() {

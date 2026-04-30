@@ -26,6 +26,7 @@ export class PayrollService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
 
     private readonly notificationsService: NotificationsService,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
@@ -767,7 +768,8 @@ export class PayrollService {
         description: `Confirmed payroll for ${month}/${year}`,
         status: 'success',
         userId: generatedBy,
-      });
+      }),
+      );
 
       // Trigger Email Notifications (Async)
       this.sendPayslipEmails(payroll.id).catch((err) =>
@@ -792,7 +794,8 @@ export class PayrollService {
         status: 'failure',
         userId: generatedBy,
         errorMessage: error.message,
-      });
+      }),
+      );
 
       throw error instanceof BadRequestException
         ? error

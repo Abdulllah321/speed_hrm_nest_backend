@@ -16,9 +16,10 @@ export class EmployeeService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     private webhooks: WebhookService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   async list(query?: { page?: number; limit?: number; search?: string }) {

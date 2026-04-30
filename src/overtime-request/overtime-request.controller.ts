@@ -32,7 +32,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class OvertimeRequestController {
-  constructor(private service: OvertimeRequestService) {}
+  constructor(private service: OvertimeRequestService,) {}
 
   @Get('overtime-requests')
   @Permissions('hr.overtime-request.read')

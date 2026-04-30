@@ -15,7 +15,7 @@ import { ApiTags } from '@nestjs/swagger';
 @ApiTags('Supplier')
 @Controller('api/finance/suppliers')
 export class SupplierController {
-  constructor(private readonly supplierService: SupplierService) {}
+  constructor(private readonly supplierService: SupplierService,) {}
 
   @Post()
   create(@Body() createSupplierDto: CreateSupplierDto) {

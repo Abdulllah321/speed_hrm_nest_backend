@@ -23,7 +23,7 @@ import {
 @ApiBearerAuth()
 @Controller('api')
 export class SizeController {
-  constructor(private readonly sizeService: SizeService) {}
+  constructor(private readonly sizeService: SizeService,) {}
 
   @Get('sizes')
   @ApiOperation({ summary: 'Get all sizes' })

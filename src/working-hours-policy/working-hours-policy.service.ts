@@ -9,6 +9,7 @@ export class WorkingHoursPolicyService {
   constructor(
     private prisma: PrismaService,
     private activityLogsService: ActivityLogsService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async list() {

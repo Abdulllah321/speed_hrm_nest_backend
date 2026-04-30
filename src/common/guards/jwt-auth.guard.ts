@@ -14,7 +14,7 @@ import { Reflector } from '@nestjs/core';
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private prismaMaster: PrismaMasterService,
-    private reflector: Reflector
+    private reflector: Reflector,
   ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

@@ -17,7 +17,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/master/erp/tax-rate')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TaxRateController {
-  constructor(private readonly service: TaxRateService) {}
+  constructor(private readonly service: TaxRateService,) {}
 
   @Post()
   @Permissions('master.tax-rate.create')
@@ -26,7 +26,7 @@ export class TaxRateController {
     return {
       status: true,
       message: 'Tax Rate created successfully',
-      data: result.data,
+      data: (result as any).data,
     };
   }
 
@@ -34,14 +34,14 @@ export class TaxRateController {
   @Permissions('master.tax-rate.read')
   async list() {
     const result = await this.service.list();
-    return { status: true, data: result.data };
+    return { status: true, data: (result as any).data };
   }
 
   @Get(':id')
   @Permissions('master.tax-rate.read')
   async get(@Param('id') id: string) {
     const result = await this.service.get(id);
-    return { status: true, data: result.data };
+    return { status: true, data: (result as any).data };
   }
 
   @Patch(':id')
@@ -51,7 +51,7 @@ export class TaxRateController {
     return {
       status: true,
       message: 'Tax Rate updated successfully',
-      data: result.data,
+      data: (result as any).data,
     };
   }
 

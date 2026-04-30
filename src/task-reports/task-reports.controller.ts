@@ -5,13 +5,18 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { TaskReportsService } from './task-reports.service';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @ApiTags('Task Reports')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/task-reports')
 export class TaskReportsController {
-  constructor(private service: TaskReportsService) {}
+  constructor(
+    private service: TaskReportsService,
+    private activityLogs: ActivityLogsService,
+  ) {}
 
   @Get('employee-summary')
   @Permissions('task.report.read')
@@ -43,8 +48,24 @@ export class TaskReportsController {
   @Permissions('task.report.read')
   @ApiOperation({ summary: 'Export project tasks as CSV' })
   @ApiQuery({ name: 'projectId', required: true })
-  async exportCsv(@Query('projectId') projectId: string, @Res() res: FastifyReply) {
+  async exportCsv(@Query('projectId') projectId: string, @Res() res: FastifyReply, @Req() req: any) {
     const csv = await this.service.exportCsv(projectId);
+    
+    runInBackground(
+      'Export Task Report',
+      this.activityLogs.log({
+        userId: req.user?.userId,
+        action: 'read',
+        module: 'task-reports',
+        entity: 'TaskProject',
+        entityId: projectId,
+        description: `Exported task report for project ${projectId}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        status: 'success',
+      }),
+    );
+
     res
       .header('Content-Type', 'text/csv')
       .header('Content-Disposition', `attachment; filename="tasks-${projectId}.csv"`)

@@ -21,7 +21,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @ApiTags('Payroll')
 @Controller('api')
 export class PayrollController {
-  constructor(private readonly payrollService: PayrollService) {}
+  constructor(private readonly payrollService: PayrollService,) {}
 
   @Post('payroll/preview')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
