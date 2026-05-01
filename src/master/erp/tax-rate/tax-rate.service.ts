@@ -5,7 +5,7 @@ import { CreateTaxRateDto, UpdateTaxRateDto } from './tax-rate.dto';
 
 @Injectable()
 export class TaxRateService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,) {}
 
   async create(dto: CreateTaxRateDto) {
     const data = await this.prisma.taxRate1.create({

@@ -111,7 +111,6 @@ export class EquipmentService {
       );
       return response;
     } catch (error: any) {
-      const response = { status: true, data: removed, message: 'Deleted successfully' };
       runInBackground(
         'Failed to update equipment',
         this.activityLogs.log({
@@ -161,7 +160,6 @@ export class EquipmentService {
       );
       return response;
     } catch (error: any) {
-      const response = { status: true, message: 'Equipments created', data: result };
       runInBackground(
         'Failed to delete equipment',
         this.activityLogs.log({
@@ -210,7 +208,7 @@ export class EquipmentService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Equipments created successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -268,7 +266,6 @@ export class EquipmentService {
       );
       return response;
     } catch (error: any) {
-      const response = { status: true, message: 'Equipments deleted', data: result };
       runInBackground(
         'Failed to bulk update equipments',
         this.activityLogs.log({
@@ -315,7 +312,7 @@ export class EquipmentService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Equipments deleted successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to bulk delete equipments (Failure Log)',

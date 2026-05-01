@@ -22,7 +22,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/master/erp/segment')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SegmentController {
-  constructor(private readonly segmentService: SegmentService) {}
+  constructor(private readonly segmentService: SegmentService,) {}
 
   @Get()
   @Permissions('erp.segment.read')

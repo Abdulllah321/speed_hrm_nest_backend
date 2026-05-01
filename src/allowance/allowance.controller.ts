@@ -31,7 +31,7 @@ import {
 @ApiTags('Allowance')
 @Controller('api')
 export class AllowanceController {
-  constructor(private service: AllowanceService) {}
+  constructor(private service: AllowanceService,) {}
 
   @Get('allowances')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

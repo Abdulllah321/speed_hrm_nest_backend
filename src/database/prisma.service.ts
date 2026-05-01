@@ -41,7 +41,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   private readonly tenantId: string | null = null;
   private readonly isInitialized: boolean = false;
 
-  constructor(@Inject(REQUEST) private readonly request: TenantRequest) {
+  constructor(@Inject(REQUEST) private readonly request: TenantRequest,) {
     // In Fastify, the middleware might set properties on the raw node request (req.raw)
     // while the REQUEST provider gives us the Fastify Request object.
     const rawReq = (request as any)?.raw || {};

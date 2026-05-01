@@ -31,7 +31,7 @@ import {
 @ApiTags('Bonus')
 @Controller('api')
 export class BonusController {
-  constructor(private service: BonusService) {}
+  constructor(private service: BonusService,) {}
 
   @Get('bonuses')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

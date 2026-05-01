@@ -39,52 +39,45 @@ export class InstituteService {
           createdById: ctx.userId,
         },
       });
-      const response = {
+
+      runInBackground(
+        `Created institute ${created.name}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'institutes',
+          entity: 'Institute',
+          entityId: created.id,
+          description: `Created institute ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return {
         status: true,
         data: created,
         message: 'Institute created successfully',
       };
-      runInBackground(
-        'Created institute ${created.name}',
-        this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'institutes',
-        entity: 'Institute',
-        entityId: created.id,
-        description: `Created institute ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
-      );
-      return response;
     } catch (error: any) {
-      const response = {
-        status: true,
-        data: updated,
-        message: 'Institute updated successfully',
-      };
       runInBackground(
         'Failed to create institute',
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'institutes',
-        entity: 'Institute',
-        description: 'Failed to create institute',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
-      return {
-        status: false,
-        message: 'Failed to create institute',
-        data: null,
-      };
+          userId: ctx.userId,
+          action: 'create',
+          module: 'institutes',
+          entity: 'Institute',
+          description: 'Failed to create institute',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
+      return { status: false, message: 'Failed to create institute' };
     }
   }
 
@@ -97,57 +90,56 @@ export class InstituteService {
       const existing = await this.prisma.institute.findUnique({
         where: { id },
       });
+      if (!existing) return { status: false, message: 'Institute not found' };
+
       const updated = await this.prisma.institute.update({
         where: { id },
         data: {
-          name: body.name ?? existing?.name,
-          status: body.status ?? existing?.status ?? 'active',
+          name: body.name ?? existing.name,
+          status: body.status ?? existing.status,
         },
       });
+
       runInBackground(
-        'Updated institute ${updated.name} (Failure Log)',
+        `Updated institute ${updated.name}`,
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'institutes',
-        entity: 'Institute',
-        entityId: id,
-        description: `Updated institute ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          userId: ctx.userId,
+          action: 'update',
+          module: 'institutes',
+          entity: 'Institute',
+          entityId: id,
+          description: `Updated institute ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
-    } catch (error: any) {
-      const response = {
+
+      return {
         status: true,
-        data: removed,
-        message: 'Institute deleted successfully',
+        data: updated,
+        message: 'Institute updated successfully',
       };
+    } catch (error: any) {
       runInBackground(
         'Failed to update institute',
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'institutes',
-        entity: 'Institute',
-        entityId: id,
-        description: 'Failed to update institute',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          userId: ctx.userId,
+          action: 'update',
+          module: 'institutes',
+          entity: 'Institute',
+          entityId: id,
+          description: 'Failed to update institute',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
-      return {
-        status: false,
-        message: 'Failed to update institute',
-        data: null,
-      };
+      return { status: false, message: 'Failed to update institute' };
     }
   }
 
@@ -159,51 +151,46 @@ export class InstituteService {
       const existing = await this.prisma.institute.findUnique({
         where: { id },
       });
+      if (!existing) return { status: false, message: 'Institute not found' };
+
       const removed = await this.prisma.institute.delete({
         where: { id },
       });
+
       runInBackground(
-        'Deleted institute ${existing?.name} (Failure Log)',
+        `Deleted institute ${existing.name}`,
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'institutes',
-        entity: 'Institute',
-        entityId: id,
-        description: `Deleted institute ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'institutes',
+          entity: 'Institute',
+          entityId: id,
+          description: `Deleted institute ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
+
+      return { status: true, data: removed, message: 'Institute deleted successfully' };
     } catch (error: any) {
-      const response = {
-        status: true,
-        data: result,
-        message: 'Institutes created successfully',
-      };
       runInBackground(
         'Failed to delete institute',
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'institutes',
-        entity: 'Institute',
-        entityId: id,
-        description: 'Failed to delete institute',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'institutes',
+          entity: 'Institute',
+          entityId: id,
+          description: 'Failed to delete institute',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
-      return {
-        status: false,
-        message: 'Failed to delete institute',
-        data: null,
-      };
+      return { status: false, message: 'Failed to delete institute' };
     }
   }
 
@@ -213,57 +200,50 @@ export class InstituteService {
   ) {
     if (!items?.length)
       return { status: false, message: 'No institutes to create' };
-    const data = items.map((i) => ({
-      name: i.name,
-      status: i.status ?? 'active',
-      createdById: ctx.userId,
-    }));
+    
     try {
       const result = await this.prisma.institute.createMany({
-        data,
+        data: items.map((i) => ({
+          name: i.name,
+          status: i.status ?? 'active',
+          createdById: ctx.userId,
+        })),
         skipDuplicates: true,
       });
+
       runInBackground(
-        'Created institutes (${result.count}) (Failure Log)',
+        `Bulk created ${result.count} institutes`,
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'institutes',
-        entity: 'Institute',
-        description: `Created institutes (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          userId: ctx.userId,
+          action: 'create',
+          module: 'institutes',
+          entity: 'Institute',
+          description: `Bulk created ${result.count} institutes`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
+
+      return { status: true, data: result, message: 'Institutes created successfully' };
     } catch (error: any) {
-      const response = {
-      status: true,
-      data: { total: seedItems.length, created, skipped },
-      message: 'Institutes seeded successfully',
-    };
       runInBackground(
         'Failed to create institutes',
         this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'institutes',
-        entity: 'Institute',
-        description: 'Failed to create institutes',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          userId: ctx.userId,
+          action: 'create',
+          module: 'institutes',
+          entity: 'Institute',
+          description: 'Failed to create institutes',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
-      return {
-        status: false,
-        message: 'Failed to create institutes',
-        data: null,
-      };
+      return { status: false, message: 'Failed to create institutes' };
     }
   }
 
@@ -290,19 +270,19 @@ export class InstituteService {
       }
     }
     runInBackground(
-        'Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}',
+        `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
         this.activityLogs.log({
-      userId: ctx.userId,
-      action: 'seed',
-      module: 'institutes',
-      entity: 'Institute',
-      description: `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
-      newValues: JSON.stringify({ total: seedItems.length, created, skipped }),
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      status: 'success',
-    }),
+          userId: ctx.userId,
+          action: 'seed',
+          module: 'institutes',
+          entity: 'Institute',
+          description: `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
+          newValues: JSON.stringify({ total: seedItems.length, created, skipped }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
-      return response;
+      return { status: true, message: 'Seeding completed', data: { created, skipped, total: seedItems.length } };
   }
 }

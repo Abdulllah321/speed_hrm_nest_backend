@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { TransferRequestService } from './transfer-request.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -10,7 +10,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/transfer-request')
 export class TransferRequestController {
-    constructor(private readonly transferRequestService: TransferRequestService) { }
+    constructor(private readonly transferRequestService: TransferRequestService,) { }
 
     @Post()
     @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
@@ -23,8 +23,12 @@ export class TransferRequestController {
         items: { itemId: string; quantity: number }[];
         createdById?: string;
         notes?: string;
-    }) {
-        const data = await this.transferRequestService.createRequest(dto);
+    }, @Req() req: any) {
+        const data = await this.transferRequestService.createRequest(dto, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
         return { status: true, data, message: 'Transfer request created successfully' };
     }
 
@@ -71,24 +75,36 @@ export class TransferRequestController {
     @Patch(':id/status')
     @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
     @ApiOperation({ summary: 'Update transfer request status' })
-    async updateStatus(@Param('id') id: string, @Body() dto: { status: string; approvedById?: string }) {
-        const data = await this.transferRequestService.updateStatus(id, dto.status, dto.approvedById);
+    async updateStatus(@Param('id') id: string, @Body() dto: { status: string; approvedById?: string }, @Req() req: any) {
+        const data = await this.transferRequestService.updateStatus(id, dto.status, dto.approvedById, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
         return { status: true, data, message: `Request ${dto.status} successfully` };
     }
 
     @Post(':id/accept')
     @Permissions('pos.inventory.receiving.accept', 'pos.inventory.inbound.accept', 'pos.inventory.returns.approve')
     @ApiOperation({ summary: 'Accept and execute transfer movement' })
-    async accept(@Param('id') id: string, @Body() dto: { userId?: string }) {
-        const data = await this.transferRequestService.acceptRequest(id, dto.userId);
+    async accept(@Param('id') id: string, @Body() dto: { userId?: string }, @Req() req: any) {
+        const data = await this.transferRequestService.acceptRequest(id, dto.userId, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
         return { status: true, data, message: 'Transfer accepted and stock moved successfully' };
     }
 
     @Post(':id/approve-source')
     @Permissions('pos.inventory.outbound.approve')
     @ApiOperation({ summary: 'Approve transfer at source outlet (outlet to outlet only)' })
-    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string }) {
-        const data = await this.transferRequestService.approveSource(id, dto.userId);
+    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string }, @Req() req: any) {
+        const data = await this.transferRequestService.approveSource(id, dto.userId, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
         return { status: true, data, message: 'Source approval completed. Awaiting destination acceptance.' };
     }
 }

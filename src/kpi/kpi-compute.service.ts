@@ -51,7 +51,7 @@ function parsePeriodRange(period: string, periodType: string): { from: Date; to:
 
 @Injectable()
 export class KpiComputeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService,) {}
 
   /**
    * Compute a single auto KPI metric for an employee over a period.

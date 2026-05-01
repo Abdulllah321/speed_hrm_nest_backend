@@ -7,8 +7,8 @@ import { MovementType, Prisma } from '@prisma/client';
 import { FbrService } from './fbr.service';
 
 
-import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PosSalesService implements OnModuleInit {
     constructor(
@@ -16,9 +16,8 @@ export class PosSalesService implements OnModuleInit {
         private prismaMaster: PrismaMasterService,
         private stockLedgerService: StockLedgerService,
         private fbrService: FbrService,
-    ,
-    private activityLogs: ActivityLogsService,
-  ) { }
+        private activityLogs: ActivityLogsService,
+    ) { }
 
       // ─── Schedule midnight hold-clear ─────────────────────────────────
     onModuleInit() {
@@ -110,7 +109,7 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Create sales order ───────────────────────────────────────────
-    async createOrder(dto: CreateSalesOrderDto, cashierUserId?: string) {
+    async createOrder(dto: CreateSalesOrderDto, cashierUserId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         let itemsData: Array<{
             itemId: string;
             quantity: number;
@@ -455,8 +454,39 @@ export class PosSalesService implements OnModuleInit {
             // ── FBR Sync (outside transaction — never rolls back local DB) ──
             await this.syncWithFbr(result.data, itemsData);
 
+            runInBackground(
+                'Create POS Order',
+                this.activityLogs.log({
+                    userId: ctx?.userId || cashierUserId,
+                    action: 'create',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: result.data.id,
+                    description: `Created POS order ${result.data.orderNumber}`,
+                    newValues: JSON.stringify(dto),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return result;
         } catch (error: any) {
+            runInBackground(
+                'Create POS Order (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId || cashierUserId,
+                    action: 'create',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    description: `Failed to create POS order`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(dto),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -740,15 +770,15 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Partial return ───────────────────────────────────────────────
-    async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, returnLocationId?: string) {
+    async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, returnLocationId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            return await this.prisma.$transaction(async (tx) => {
+            const result = await this.prisma.$transaction(async (tx) => {
                 const order = await tx.salesOrder.findUnique({
                     where: { id },
                     include: { items: true, coupon: true },
                 });
-                if (!order) return { status: false, message: 'Order not found' };
-                if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
+                if (!order) throw new Error('Order not found');
+                if (order.status === 'voided') throw new Error('Order is already voided');
 
                 const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
                 if (!warehouse) throw new Error('No active warehouse found');
@@ -942,7 +972,41 @@ export class PosSalesService implements OnModuleInit {
 
                 return { status: true, data: updatedOrder, refundAmount: Math.round(totalRefundAmount * 100) / 100, itemRefundDetails, message: `Return processed (${newStatus}) and inventory restored` };
             });
+
+            runInBackground(
+                'Return POS Order Items',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Processed return for POS order items. New status: ${result.data.status}`,
+                    newValues: JSON.stringify({ items, reason }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return result;
         } catch (error: any) {
+            runInBackground(
+                'Return POS Order Items (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Failed to process return for POS order items`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify({ items, reason }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -1086,9 +1150,9 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Void order ───────────────────────────────────────────────────
-    async voidOrder(id: string) {
+    async voidOrder(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            return await this.prisma.$transaction(async (tx) => {
+            const result = await this.prisma.$transaction(async (tx) => {
                 // Get the order with items first
                 const order = await tx.salesOrder.findUnique({
                     where: { id },
@@ -1096,11 +1160,11 @@ export class PosSalesService implements OnModuleInit {
                 });
 
                 if (!order) {
-                    return { status: false, message: 'Order not found' };
+                    throw new Error('Order not found');
                 }
 
                 if (order.status === 'voided') {
-                    return { status: false, message: 'Order is already voided' };
+                    throw new Error('Order is already voided');
                 }
 
                 // Update order status to voided
@@ -1191,7 +1255,39 @@ export class PosSalesService implements OnModuleInit {
 
                 return { status: true, data: voidedOrder, message: 'Order voided and inventory restored' };
             });
+
+            runInBackground(
+                'Void POS Order',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Voided POS order ${id}`,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return result;
         } catch (error: any) {
+            runInBackground(
+                'Void POS Order (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Failed to void POS order`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -1201,12 +1297,13 @@ export class PosSalesService implements OnModuleInit {
         returnedItems: { orderItemId: string; itemId: string; quantity: number }[],
         newItems: { itemId: string; quantity: number; unitPrice: number }[],
         reason?: string,
+        ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
     ) {
         try {
-            return await this.prisma.$transaction(async (tx) => {
+            const result = await this.prisma.$transaction(async (tx) => {
                 const order = await tx.salesOrder.findUnique({ where: { id }, include: { items: true, coupon: true } });
-                if (!order) return { status: false, message: 'Order not found' };
-                if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
+                if (!order) throw new Error('Order not found');
+                if (order.status === 'voided') throw new Error('Order is already voided');
 
                 const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
                 if (!warehouse) throw new Error('No active warehouse found');
@@ -1308,33 +1405,99 @@ export class PosSalesService implements OnModuleInit {
 
                 return { status: true, data: { ...updatedOrder, difference }, message: 'Exchange processed successfully' };
             });
+
+            runInBackground(
+                'Exchange POS Order Items',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Processed exchange for POS order items. Difference: ${result.data.difference}`,
+                    newValues: JSON.stringify({ returnedItems, newItems, reason }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return result;
         } catch (error: any) {
+            runInBackground(
+                'Exchange POS Order Items (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Failed to process exchange for POS order items`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify({ returnedItems, newItems, reason }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
     // ─── Refund only (no stock movement) ─────────────────────────────
-    async refundOnly(id: string, refundAmount: number, reason?: string) {
+    async refundOnly(id: string, refundAmount: number, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const order = await this.prisma.salesOrder.findUnique({ where: { id } });
-            if (!order) return { status: false, message: 'Order not found' };
-            if (order.status === 'voided') return { status: false, message: 'Order is already voided' };
-            if (refundAmount <= 0) return { status: false, message: 'Refund amount must be greater than 0' };
-            if (refundAmount > Number(order.grandTotal)) return { status: false, message: 'Refund amount exceeds order total' };
+            if (!order) throw new Error('Order not found');
+            if (order.status === 'voided') throw new Error('Order is already voided');
+            if (refundAmount <= 0) throw new Error('Refund amount must be greater than 0');
+            if (refundAmount > Number(order.grandTotal)) throw new Error('Refund amount exceeds order total');
 
             const updatedOrder = await this.prisma.salesOrder.update({
                 where: { id },
                 data: { status: 'refunded', notes: reason ? `Refund Rs.${refundAmount}: ${reason}` : `Refund Rs.${refundAmount}` },
             });
 
+            runInBackground(
+                'Refund POS Order',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Processed refund of Rs.${refundAmount} for POS order ${id}`,
+                    newValues: JSON.stringify({ refundAmount, reason }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: updatedOrder, message: `Refund of Rs.${refundAmount} processed` };
         } catch (error: any) {
+            runInBackground(
+                'Refund POS Order (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Failed to process refund for POS order`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify({ refundAmount, reason }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
     // ─── Hold order (max 1 hour, auto-cleared at midnight) ───────────
-    async holdOrder(dto: CreateSalesOrderDto, cashierUserId?: string) {
+    async holdOrder(dto: CreateSalesOrderDto, cashierUserId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const orderNumber = await this.generateOrderNumber();
 
@@ -1370,7 +1533,7 @@ export class PosSalesService implements OnModuleInit {
             const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
             const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
 
-            return await this.prisma.$transaction(async (tx) => {
+            const result = await this.prisma.$transaction(async (tx) => {
                 const order = await tx.salesOrder.create({
                     data: {
                         orderNumber,
@@ -1431,13 +1594,46 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                return {
-                    status: true,
-                    data: order,
-                    message: `Order ${orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
-                };
+                return order;
             });
+
+            runInBackground(
+                'Hold POS Order',
+                this.activityLogs.log({
+                    userId: ctx?.userId || cashierUserId,
+                    action: 'create',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: result.id,
+                    description: `Placed POS order ${result.orderNumber} on hold until ${holdExpiresAt.toLocaleTimeString()}`,
+                    newValues: JSON.stringify(dto),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return {
+                status: true,
+                data: result,
+                message: `Order ${orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
+            };
         } catch (error: any) {
+            runInBackground(
+                'Hold POS Order (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId || cashierUserId,
+                    action: 'create',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    description: `Failed to place POS order on hold`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(dto),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -1482,16 +1678,16 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Cancel a hold order (restore stock) ─────────────────────────
-    async cancelHoldOrder(id: string) {
+    async cancelHoldOrder(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            return await this.prisma.$transaction(async (tx) => {
+            const result = await this.prisma.$transaction(async (tx) => {
                 const order = await tx.salesOrder.findUnique({
                     where: { id },
                     include: { items: true },
                 });
 
-                if (!order) return { status: false, message: 'Hold order not found' };
-                if (order.status !== 'hold') return { status: false, message: 'Order is not on hold' };
+                if (!order) throw new Error('Hold order not found');
+                if (order.status !== 'hold') throw new Error('Order is not on hold');
 
                 // Restore stock for each item
                 const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
@@ -1530,7 +1726,39 @@ export class PosSalesService implements OnModuleInit {
                     message: `Hold order ${order.orderNumber} cancelled successfully`,
                 };
             });
+
+            runInBackground(
+                'Cancel POS Hold Order',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Cancelled POS hold order ${id}`,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return result;
         } catch (error: any) {
+            runInBackground(
+                'Cancel POS Hold Order (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Failed to cancel POS hold order`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }

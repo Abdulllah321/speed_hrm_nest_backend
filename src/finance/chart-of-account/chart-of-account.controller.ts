@@ -23,7 +23,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @Controller('api/finance/chart-of-accounts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ChartOfAccountController {
-  constructor(private readonly chartOfAccountService: ChartOfAccountService) {}
+  constructor(private readonly chartOfAccountService: ChartOfAccountService,) {}
 
   @Post()
   @ApiBearerAuth()
@@ -31,7 +31,9 @@ export class ChartOfAccountController {
   @ApiOperation({ summary: 'Create a new chart of account' })
   create(@Body() createDto: CreateChartOfAccountDto, @Req() req: any) {
     return this.chartOfAccountService.create(createDto, {
-      userId: req.user?.userId,
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     });
   }
 
@@ -61,7 +63,9 @@ export class ChartOfAccountController {
     @Req() req: any,
   ) {
     return this.chartOfAccountService.update(id, updateDto, {
-      userId: req.user?.userId,
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     });
   }
 
@@ -69,7 +73,11 @@ export class ChartOfAccountController {
   @ApiBearerAuth()
   @Permissions('erp.finance.chart-of-account.delete')
   @ApiOperation({ summary: 'Delete a chart of account' })
-  remove(@Param('id') id: string) {
-    return this.chartOfAccountService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.chartOfAccountService.remove(id, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

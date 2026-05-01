@@ -3,8 +3,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import * as cacheManager_1 from 'cache-manager';
 
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { runInBackground } from '../common/utils/run-in-background.util';
 export interface SearchResult {
   type: 'Employee' | 'Item' | 'Supplier' | 'RFQ';
   id: string;
@@ -18,6 +16,7 @@ export class SearchService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private cacheManager: cacheManager_1.Cache,
+   
   ) {}
 
   async globalSearch(query: string): Promise<SearchResult[]> {

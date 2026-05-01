@@ -8,117 +8,155 @@ import { CreateVendorQuotationDto } from './dto/create-vendor-quotation.dto';
 import { UpdateVendorQuotationDto } from './dto/update-vendor-quotation.dto';
 import { Decimal } from '@prisma/client/runtime/client';
 
-import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { runInBackground } from '../common/utils/run-in-background.util';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
+import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class VendorQuotationService {
-  constructor(private prisma: PrismaService,
+  constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreateVendorQuotationDto) {
-    // Verify RFQ exists and vendor is part of it
-    const rfq = await this.prisma.requestForQuotation.findUnique({
-      where: { id: createDto.rfqId },
-      include: {
-        vendors: true,
-        purchaseRequisition: {
-          include: { items: true },
-        },
-      },
-    });
-
-    if (!rfq) {
-      throw new NotFoundException('RFQ not found');
-    }
-
-    const isVendorInRfq = rfq.vendors.some(
-      (v) => v.vendorId === createDto.vendorId,
-    );
-    if (!isVendorInRfq) {
-      throw new BadRequestException('Vendor is not part of this RFQ');
-    }
-
-    // Check if quotation already exists for this vendor and RFQ
-    const existing = await this.prisma.vendorQuotation.findUnique({
-      where: {
-        rfqId_vendorId: {
-          rfqId: createDto.rfqId,
-          vendorId: createDto.vendorId,
-        },
-      },
-    });
-
-    if (existing) {
-      throw new BadRequestException(
-        'Quotation already exists for this vendor and RFQ',
-      );
-    }
-
-    // Validate expiry date if provided
-    let expiry: Date | null = null;
-    if (createDto.expiryDate) {
-      expiry = new Date(createDto.expiryDate);
-      if (isNaN(expiry.getTime())) {
-        throw new BadRequestException('Expiry date must be a valid date');
-      }
-      const now = new Date();
-      if (expiry <= now) {
-        throw new BadRequestException('Expiry date must be a future date');
-      }
-    }
-
-    // Create quotation with items
-    const quotation = await this.prisma.vendorQuotation.create({
-      data: {
-        rfqId: createDto.rfqId,
-        vendorId: createDto.vendorId,
-        notes: createDto.notes,
-        expiryDate: expiry,
-        status: 'SUBMITTED', // Auto-submit as per requirement
-        items: createDto.items
-          ? {
-              create: createDto.items.map((item) => {
-                const lineTotal = this.calculateLineTotal(
-                  item.quotedQty,
-                  item.unitPrice,
-                  item.taxPercent || 0,
-                  item.discountPercent || 0,
-                );
-                return {
-                  itemId: item.itemId,
-                  description: item.description,
-                  quotedQty: new Decimal(item.quotedQty),
-                  unitPrice: new Decimal(item.unitPrice),
-                  fob: new Decimal(item.fob || 0),
-                  unitCost: new Decimal(item.unitCost || 0),
-                  taxPercent: new Decimal(item.taxPercent || 0),
-                  discountPercent: new Decimal(item.discountPercent || 0),
-                  lineTotal: new Decimal(lineTotal),
-                };
-              }),
-            }
-          : undefined,
-      },
-      include: {
-        items: {
-          include: {
-            item: true,
+  async create(createDto: CreateVendorQuotationDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      // Verify RFQ exists and vendor is part of it
+      const rfq = await this.prisma.requestForQuotation.findUnique({
+        where: { id: createDto.rfqId },
+        include: {
+          vendors: true,
+          purchaseRequisition: {
+            include: { items: true },
           },
         },
-        vendor: true,
-        rfq: {
-          include: {
-            purchaseRequisition: {
-              include: { items: true },
+      });
+
+      if (!rfq) {
+        throw new NotFoundException('RFQ not found');
+      }
+
+      const isVendorInRfq = rfq.vendors.some(
+        (v) => v.vendorId === createDto.vendorId,
+      );
+      if (!isVendorInRfq) {
+        throw new BadRequestException('Vendor is not part of this RFQ');
+      }
+
+      // Check if quotation already exists for this vendor and RFQ
+      const existing = await this.prisma.vendorQuotation.findUnique({
+        where: {
+          rfqId_vendorId: {
+            rfqId: createDto.rfqId,
+            vendorId: createDto.vendorId,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException(
+          'Quotation already exists for this vendor and RFQ',
+        );
+      }
+
+      // Validate expiry date if provided
+      let expiry: Date | null = null;
+      if (createDto.expiryDate) {
+        expiry = new Date(createDto.expiryDate);
+        if (isNaN(expiry.getTime())) {
+          throw new BadRequestException('Expiry date must be a valid date');
+        }
+        const now = new Date();
+        if (expiry <= now) {
+          throw new BadRequestException('Expiry date must be a future date');
+        }
+      }
+
+      // Create quotation with items
+      const quotation = await this.prisma.vendorQuotation.create({
+        data: {
+          rfqId: createDto.rfqId,
+          vendorId: createDto.vendorId,
+          notes: createDto.notes,
+          expiryDate: expiry,
+          status: 'SUBMITTED', // Auto-submit as per requirement
+          items: createDto.items
+            ? {
+                create: createDto.items.map((item) => {
+                  const lineTotal = this.calculateLineTotal(
+                    item.quotedQty,
+                    item.unitPrice,
+                    item.taxPercent || 0,
+                    item.discountPercent || 0,
+                  );
+                  return {
+                    itemId: item.itemId,
+                    description: item.description,
+                    quotedQty: new Decimal(item.quotedQty),
+                    unitPrice: new Decimal(item.unitPrice),
+                    fob: new Decimal(item.fob || 0),
+                    unitCost: new Decimal(item.unitCost || 0),
+                    taxPercent: new Decimal(item.taxPercent || 0),
+                    discountPercent: new Decimal(item.discountPercent || 0),
+                    lineTotal: new Decimal(lineTotal),
+                  };
+                }),
+              }
+            : undefined,
+        },
+        include: {
+          items: {
+            include: {
+              item: true,
+            },
+          },
+          vendor: true,
+          rfq: {
+            include: {
+              purchaseRequisition: {
+                include: { items: true },
+              },
             },
           },
         },
-      },
-    });
+      });
 
-    // Recalculate totals
-    return this.recalculateTotals(quotation.id);
+      // Recalculate totals
+      const result = await this.recalculateTotals(quotation.id);
+
+      runInBackground(
+        'Create Vendor Quotation',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: result.id,
+          description: `Created quotation for RFQ ${rfq.rfqNumber} from vendor ${result.vendor?.name}`,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return result;
+    } catch (error: any) {
+      runInBackground(
+        'Create Vendor Quotation (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          description: `Failed to create quotation for RFQ ${createDto.rfqId}`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
   async findAll(rfqId?: string) {
@@ -228,8 +266,6 @@ export class VendorQuotationService {
 
     // Fetch last purchase info for each unique item
     const lastPurchaseMap = new Map<string, any>();
-    console.log('--- DEBUG LAST PURCHASE INFO ---');
-    console.log('Unique PR item IDs to check:', itemIds);
     await Promise.all(
       itemIds.map(async (itemId) => {
         const lastEntry = await this.prisma.stockLedger.findFirst({
@@ -241,10 +277,7 @@ export class VendorQuotationService {
           orderBy: { createdAt: 'desc' },
         });
 
-        console.log(`[DEBUG] Item ID: ${itemId}`);
-        console.log(`[DEBUG] Last Entry Found:`, lastEntry ? 'YES' : 'NO');
         if (lastEntry) {
-          console.log(`[DEBUG] Entry Details:`, JSON.stringify(lastEntry));
           let vendorName = 'Unknown';
           let purchaseDate = lastEntry.createdAt;
 
@@ -285,7 +318,7 @@ export class VendorQuotationService {
       }),
     );
 
-    // Attach to the PR items in each quotation (though frontend usually uses quotations[0])
+    // Attach to the PR items in each quotation
     for (const q of quotations) {
       if (q.rfq?.purchaseRequisition?.items) {
         q.rfq.purchaseRequisition.items = q.rfq.purchaseRequisition.items.map((item) => {
@@ -304,129 +337,31 @@ export class VendorQuotationService {
     return quotations;
   }
 
-  async selectQuotation(id: string) {
-    const quotation = await this.findOne(id);
+  async selectQuotation(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const quotation = await this.findOne(id);
 
-    if (quotation.status !== 'SUBMITTED') {
-      throw new BadRequestException(
-        'Only SUBMITTED quotations can be selected',
-      );
-    }
-
-    // Use transaction to select one and reject others
-    return this.prisma.$transaction(async (tx) => {
-      // Reject all other quotations for this RFQ
-      await tx.vendorQuotation.updateMany({
-        where: {
-          rfqId: quotation.rfqId,
-          id: { not: id },
-          status: 'SUBMITTED',
-        },
-        data: { status: 'REJECTED' },
-      });
-
-      // Select this quotation
-      return tx.vendorQuotation.update({
-        where: { id },
-        data: { status: 'SELECTED' },
-        include: {
-          items: {
-          include: {
-            item: true,
-          },
-        },
-          vendor: true,
-          rfq: {
-            include: {
-              purchaseRequisition: {
-                include: { items: true },
-              },
-            },
-          },
-        },
-      });
-    });
-  }
-
-  async submitQuotation(id: string) {
-    const quotation = await this.findOne(id);
-
-    if (quotation.status !== 'DRAFT') {
-      throw new BadRequestException('Only DRAFT quotations can be submitted');
-    }
-
-    if (quotation.items.length === 0) {
-      throw new BadRequestException('Cannot submit quotation without items');
-    }
-
-    return this.prisma.vendorQuotation.update({
-      where: { id },
-      data: { status: 'SUBMITTED' },
-      include: {
-        items: {
-          include: {
-            item: true,
-          },
-        },
-        vendor: true,
-        rfq: {
-          include: {
-            purchaseRequisition: {
-              include: { items: true },
-            },
-          },
-        },
-      },
-    });
-  }
-
-  async update(id: string, updateDto: UpdateVendorQuotationDto) {
-    const quotation = await this.findOne(id);
-
-    if (quotation.status !== 'DRAFT' && !updateDto.status) {
-      throw new BadRequestException('Only DRAFT quotations can be edited');
-    }
-
-    const { items, ...data } = updateDto;
-
-    if (items) {
-      if (quotation.status !== 'DRAFT') {
+      if (quotation.status !== 'SUBMITTED') {
         throw new BadRequestException(
-          'Cannot modify items unless in DRAFT status',
+          'Only SUBMITTED quotations can be selected',
         );
       }
 
-      return this.prisma.$transaction(async (tx) => {
-        await tx.vendorQuotationItem.deleteMany({
-          where: { vendorQuotationId: id },
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Reject all other quotations for this RFQ
+        await tx.vendorQuotation.updateMany({
+          where: {
+            rfqId: quotation.rfqId,
+            id: { not: id },
+            status: 'SUBMITTED',
+          },
+          data: { status: 'REJECTED' },
         });
 
-        const updated = await tx.vendorQuotation.update({
+        // Select this quotation
+        return tx.vendorQuotation.update({
           where: { id },
-          data: {
-            ...data,
-            items: {
-              create: items.map((item) => {
-                const lineTotal = this.calculateLineTotal(
-                  item.quotedQty,
-                  item.unitPrice,
-                  item.taxPercent || 0,
-                  item.discountPercent || 0,
-                );
-                return {
-                  itemId: item.itemId,
-                  description: item.description,
-                  quotedQty: new Decimal(item.quotedQty),
-                  unitPrice: new Decimal(item.unitPrice),
-                  fob: new Decimal(item.fob || 0),
-                  unitCost: new Decimal(item.unitCost || 0),
-                  taxPercent: new Decimal(item.taxPercent || 0),
-                  discountPercent: new Decimal(item.discountPercent || 0),
-                  lineTotal: new Decimal(lineTotal),
-                };
-              }),
-            },
-          },
+          data: { status: 'SELECTED' },
           include: {
             items: {
               include: {
@@ -443,44 +378,273 @@ export class VendorQuotationService {
             },
           },
         });
-
-        return this.recalculateTotals(id);
       });
-    }
 
-    const updated = await this.prisma.vendorQuotation.update({
-      where: { id },
-      data: data,
-      include: {
-        items: {
-          include: {
-            item: true,
+      runInBackground(
+        'Select Vendor Quotation',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Selected quotation for RFQ ${quotation.rfq?.rfqNumber} from vendor ${result.vendor?.name}`,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return result;
+    } catch (error: any) {
+      runInBackground(
+        'Select Vendor Quotation (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Failed to select quotation`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async submitQuotation(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const quotation = await this.findOne(id);
+
+      if (quotation.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT quotations can be submitted');
+      }
+
+      if (quotation.items.length === 0) {
+        throw new BadRequestException('Cannot submit quotation without items');
+      }
+
+      const result = await this.prisma.vendorQuotation.update({
+        where: { id },
+        data: { status: 'SUBMITTED' },
+        include: {
+          items: {
+            include: {
+              item: true,
+            },
           },
-        },
-        vendor: true,
-        rfq: {
-          include: {
-            purchaseRequisition: {
-              include: { items: true },
+          vendor: true,
+          rfq: {
+            include: {
+              purchaseRequisition: {
+                include: { items: true },
+              },
             },
           },
         },
-      },
-    });
+      });
 
-    return updated;
+      runInBackground(
+        'Submit Vendor Quotation',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Submitted quotation for RFQ ${quotation.rfq?.rfqNumber} from vendor ${result.vendor?.name}`,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return result;
+    } catch (error: any) {
+      runInBackground(
+        'Submit Vendor Quotation (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Failed to submit quotation`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
-  async remove(id: string) {
-    const quotation = await this.findOne(id);
+  async update(id: string, updateDto: UpdateVendorQuotationDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const quotation = await this.findOne(id);
 
-    if (quotation.status !== 'DRAFT') {
-      throw new BadRequestException('Only DRAFT quotations can be deleted');
+      if (quotation.status !== 'DRAFT' && !updateDto.status) {
+        throw new BadRequestException('Only DRAFT quotations can be edited');
+      }
+
+      const { items, ...data } = updateDto;
+
+      let updated;
+      if (items) {
+        if (quotation.status !== 'DRAFT') {
+          throw new BadRequestException(
+            'Cannot modify items unless in DRAFT status',
+          );
+        }
+
+        updated = await this.prisma.$transaction(async (tx) => {
+          await tx.vendorQuotationItem.deleteMany({
+            where: { vendorQuotationId: id },
+          });
+
+          await tx.vendorQuotation.update({
+            where: { id },
+            data: {
+              ...data,
+              items: {
+                create: items.map((item) => {
+                  const lineTotal = this.calculateLineTotal(
+                    item.quotedQty,
+                    item.unitPrice,
+                    item.taxPercent || 0,
+                    item.discountPercent || 0,
+                  );
+                  return {
+                    itemId: item.itemId,
+                    description: item.description,
+                    quotedQty: new Decimal(item.quotedQty),
+                    unitPrice: new Decimal(item.unitPrice),
+                    fob: new Decimal(item.fob || 0),
+                    unitCost: new Decimal(item.unitCost || 0),
+                    taxPercent: new Decimal(item.taxPercent || 0),
+                    discountPercent: new Decimal(item.discountPercent || 0),
+                    lineTotal: new Decimal(lineTotal),
+                  };
+                }),
+              },
+            },
+          });
+
+          return this.recalculateTotals(id);
+        });
+      } else {
+        updated = await this.prisma.vendorQuotation.update({
+          where: { id },
+          data: data,
+          include: {
+            items: {
+              include: {
+                item: true,
+              },
+            },
+            vendor: true,
+            rfq: {
+              include: {
+                purchaseRequisition: {
+                  include: { items: true },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      runInBackground(
+        'Update Vendor Quotation',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Updated quotation for RFQ ${quotation.rfq?.rfqNumber}`,
+          oldValues: JSON.stringify(quotation),
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Vendor Quotation (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Failed to update quotation`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(updateDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
+  }
 
-    return this.prisma.vendorQuotation.delete({
-      where: { id },
-    });
+  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const quotation = await this.findOne(id);
+
+      if (quotation.status !== 'DRAFT') {
+        throw new BadRequestException('Only DRAFT quotations can be deleted');
+      }
+
+      const deleted = await this.prisma.vendorQuotation.delete({
+        where: { id },
+      });
+
+      runInBackground(
+        'Delete Vendor Quotation',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Deleted quotation for RFQ ${quotation.rfq?.rfqNumber}`,
+          oldValues: JSON.stringify(quotation),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return deleted;
+    } catch (error: any) {
+      runInBackground(
+        'Delete Vendor Quotation (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'vendor-quotation',
+          entity: 'VendorQuotation',
+          entityId: id,
+          description: `Failed to delete quotation`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
   }
 
   private calculateLineTotal(

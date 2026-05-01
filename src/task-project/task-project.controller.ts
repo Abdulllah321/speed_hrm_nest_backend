@@ -26,7 +26,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/task-projects')
 export class TaskProjectController {
-  constructor(private service: TaskProjectService) {}
+  constructor(private service: TaskProjectService,) {}
 
   @Get()
   @Permissions('task.project.read')

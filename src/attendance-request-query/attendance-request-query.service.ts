@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @Injectable()
 export class AttendanceRequestQueryService {
@@ -340,18 +341,21 @@ export class AttendanceRequestQueryService {
           },
         });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        entityId: created.id,
-        description: `Created attendance request query for ${body.employeeName || 'Unknown'}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Create Attendance Request Query',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          entityId: created.id,
+          description: `Created attendance request query for ${body.employeeName || 'Unknown'}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return {
         status: true,
@@ -365,18 +369,21 @@ export class AttendanceRequestQueryService {
           : created,
       };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        description: 'Failed to create attendance request query',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Attendance Request Query (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          description: 'Failed to create attendance request query',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -448,19 +455,22 @@ export class AttendanceRequestQueryService {
           },
         });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        entityId: id,
-        description: 'Updated attendance request query',
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Update Attendance Request Query',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          entityId: id,
+          description: 'Updated attendance request query',
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return {
         status: true,
@@ -474,19 +484,22 @@ export class AttendanceRequestQueryService {
           : updated,
       };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        entityId: id,
-        description: 'Failed to update attendance request query',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Attendance Request Query (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          entityId: id,
+          description: 'Failed to update attendance request query',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -576,19 +589,22 @@ export class AttendanceRequestQueryService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'approve',
-            module: 'attendance-request-query',
-            entity: 'AttendanceRequestQuery',
-            entityId: id,
-            description: 'Approved attendance request query (Level 1)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Approve Attendance Request Query L1',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'approve',
+              module: 'attendance-request-query',
+              entity: 'AttendanceRequestQuery',
+              entityId: id,
+              description: 'Approved attendance request query (Level 1)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -624,19 +640,22 @@ export class AttendanceRequestQueryService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'approve',
-            module: 'attendance-request-query',
-            entity: 'AttendanceRequestQuery',
-            entityId: id,
-            description: 'Approved attendance request query (Level 2)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Approve Attendance Request Query L2',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'approve',
+              module: 'attendance-request-query',
+              entity: 'AttendanceRequestQuery',
+              entityId: id,
+              description: 'Approved attendance request query (Level 2)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -666,19 +685,22 @@ export class AttendanceRequestQueryService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'reject',
-            module: 'attendance-request-query',
-            entity: 'AttendanceRequestQuery',
-            entityId: id,
-            description: 'Rejected attendance request query (Level 1)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Reject Attendance Request Query L1',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'reject',
+              module: 'attendance-request-query',
+              entity: 'AttendanceRequestQuery',
+              entityId: id,
+              description: 'Rejected attendance request query (Level 1)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -715,19 +737,22 @@ export class AttendanceRequestQueryService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'reject',
-            module: 'attendance-request-query',
-            entity: 'AttendanceRequestQuery',
-            entityId: id,
-            description: 'Rejected attendance request query (Level 2)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Reject Attendance Request Query L2',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'reject',
+              module: 'attendance-request-query',
+              entity: 'AttendanceRequestQuery',
+              entityId: id,
+              description: 'Rejected attendance request query (Level 2)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -735,19 +760,22 @@ export class AttendanceRequestQueryService {
 
       return { status: false, message: 'Invalid approval level' };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        entityId: id,
-        description: 'Failed to update attendance request query approval',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Attendance Request Query Approval (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          entityId: id,
+          description: 'Failed to update attendance request query approval',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -818,33 +846,39 @@ export class AttendanceRequestQueryService {
         where: { id },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        entityId: id,
-        description: 'Deleted attendance request query',
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Delete Attendance Request Query',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          entityId: id,
+          description: 'Deleted attendance request query',
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return { status: true, message: 'Attendance request query deleted' };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        entityId: id,
-        description: 'Failed to delete attendance request query',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Attendance Request Query (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          entityId: id,
+          description: 'Failed to delete attendance request query',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -862,30 +896,36 @@ export class AttendanceRequestQueryService {
         where: { id: { in: ids } },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        description: `Deleted ${ids.length} attendance request queries`,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Bulk Delete Attendance Request Queries',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          description: `Deleted ${ids.length} attendance request queries`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return { status: true, message: 'Attendance request queries deleted' };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendance-request-query',
-        entity: 'AttendanceRequestQuery',
-        description: 'Failed to delete multiple attendance request queries',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Bulk Delete Attendance Request Queries (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendance-request-query',
+          entity: 'AttendanceRequestQuery',
+          description: 'Failed to delete multiple attendance request queries',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,

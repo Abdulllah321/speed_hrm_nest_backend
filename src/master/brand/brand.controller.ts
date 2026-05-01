@@ -27,7 +27,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 @ApiTags('Brand')
 @Controller('api')
 export class BrandController {
-  constructor(private service: BrandService) {}
+  constructor(private service: BrandService,) {}
 
   // --- BRANDS ---
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Patch, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, UseGuards, Req } from '@nestjs/common';
 import { PurchaseOrderService } from './purchase-order.service';
 import {
   CreatePurchaseOrderDto,
@@ -12,7 +12,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/purchase-order')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseOrderController {
-  constructor(private readonly purchaseOrderService: PurchaseOrderService) {}
+  constructor(private readonly purchaseOrderService: PurchaseOrderService,) {}
 
   @Get()
   @Permissions('erp.procurement.po.read')
@@ -34,25 +34,41 @@ export class PurchaseOrderController {
 
   @Post()
   @Permissions('erp.procurement.po.create')
-  create(@Body() createDto: CreatePurchaseOrderDto) {
-    return this.purchaseOrderService.create(createDto);
+  create(@Body() createDto: CreatePurchaseOrderDto, @Req() req: any) {
+    return this.purchaseOrderService.create(createDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Post('award-from-rfq')
   @Permissions('erp.procurement.po.create')
-  awardFromRfq(@Body() body: AwardFromRfqDto) {
-    return this.purchaseOrderService.awardFromRfq(body);
+  awardFromRfq(@Body() body: AwardFromRfqDto, @Req() req: any) {
+    return this.purchaseOrderService.awardFromRfq(body, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Post('multi-direct')
   @Permissions('erp.procurement.po.create')
-  createMultiDirect(@Body() body: CreateMultiDirectPurchaseOrderDto) {
-    return this.purchaseOrderService.createMultiDirect(body);
+  createMultiDirect(@Body() body: CreateMultiDirectPurchaseOrderDto, @Req() req: any) {
+    return this.purchaseOrderService.createMultiDirect(body, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Patch(':id/status')
   @Permissions('erp.procurement.po.update')
-  updateStatus(@Param('id') id: string, @Body('status') status: string) {
-    return this.purchaseOrderService.updateStatus(id, status);
+  updateStatus(@Param('id') id: string, @Body('status') status: string, @Req() req: any) {
+    return this.purchaseOrderService.updateStatus(id, status, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

@@ -14,7 +14,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 @Controller('webhooks')
 @UseGuards(JwtAuthGuard)
 export class WebhookController {
-    constructor(private readonly webhookService: WebhookService) { }
+    constructor(private readonly webhookService: WebhookService,) { }
 
     @Get()
     findAll() {

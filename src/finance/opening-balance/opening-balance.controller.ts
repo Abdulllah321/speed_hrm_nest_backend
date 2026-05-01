@@ -9,7 +9,7 @@ import { CreateOpeningBalanceDto } from './dto/create-opening-balance.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('api/finance/opening-balance')
 export class OpeningBalanceController {
-  constructor(private readonly openingBalanceService: OpeningBalanceService) {}
+  constructor(private readonly openingBalanceService: OpeningBalanceService,) {}
 
   @Post()
   async create(@Body() dto: CreateOpeningBalanceDto) {

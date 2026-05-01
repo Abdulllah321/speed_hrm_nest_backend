@@ -12,8 +12,9 @@ export class KpiApprovalService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     private notifications: NotificationsService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   /**

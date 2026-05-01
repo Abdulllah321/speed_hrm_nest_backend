@@ -10,6 +10,7 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  Req,
 } from '@nestjs/common';
 import { PurchaseInvoiceService } from './purchase-invoice.service';
 import { CreatePurchaseInvoiceDto, UpdatePurchaseInvoiceDto } from './dto';
@@ -20,14 +21,18 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 @Controller('api/purchase/purchase-invoices')
 @UseGuards(JwtAuthGuard)
 export class PurchaseInvoiceController {
-  constructor(private readonly purchaseInvoiceService: PurchaseInvoiceService) {}
+  constructor(private readonly purchaseInvoiceService: PurchaseInvoiceService,) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new purchase invoice' })
   @ApiResponse({ status: 201, description: 'Purchase invoice created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
-  create(@Body() createPurchaseInvoiceDto: CreatePurchaseInvoiceDto) {
-    return this.purchaseInvoiceService.create(createPurchaseInvoiceDto);
+  create(@Body() createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, @Req() req: any) {
+    return this.purchaseInvoiceService.create(createPurchaseInvoiceDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get()
@@ -97,29 +102,46 @@ export class PurchaseInvoiceController {
   update(
     @Param('id') id: string,
     @Body() updatePurchaseInvoiceDto: UpdatePurchaseInvoiceDto,
+    @Req() req: any
   ) {
-    return this.purchaseInvoiceService.update(id, updatePurchaseInvoiceDto);
+    return this.purchaseInvoiceService.update(id, updatePurchaseInvoiceDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Patch(':id/approve')
   @ApiOperation({ summary: 'Approve purchase invoice' })
   @ApiResponse({ status: 200, description: 'Invoice approved successfully' })
-  approve(@Param('id') id: string) {
-    return this.purchaseInvoiceService.approve(id);
+  approve(@Param('id') id: string, @Req() req: any) {
+    return this.purchaseInvoiceService.approve(id, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancel purchase invoice' })
   @ApiResponse({ status: 200, description: 'Invoice cancelled successfully' })
-  cancel(@Param('id') id: string, @Body() cancelDto: { reason?: string }) {
-    return this.purchaseInvoiceService.cancel(id, cancelDto.reason);
+  cancel(@Param('id') id: string, @Body() cancelDto: { reason?: string }, @Req() req: any) {
+    return this.purchaseInvoiceService.cancel(id, cancelDto.reason, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete purchase invoice' })
   @ApiResponse({ status: 200, description: 'Purchase invoice deleted successfully' })
   @ApiResponse({ status: 404, description: 'Purchase invoice not found' })
-  remove(@Param('id') id: string) {
-    return this.purchaseInvoiceService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.purchaseInvoiceService.remove(id, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

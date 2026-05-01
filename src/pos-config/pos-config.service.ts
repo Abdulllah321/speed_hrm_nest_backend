@@ -5,7 +5,8 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PosConfigService {
-    constructor(private prisma: PrismaService,
+    constructor(
+    private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -36,7 +37,7 @@ export class PosConfigService {
         endDate: string;
         isActive?: boolean;
         locationIds: string[];
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const promo = await this.prisma.promoCampaign.create({
                 data: {
@@ -55,8 +56,40 @@ export class PosConfigService {
                 },
                 include: { locations: { include: { location: true } } },
             });
+
+            runInBackground(
+                'Create Promo Campaign',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'PromoCampaign',
+                    entityId: promo.id,
+                    description: `Created promo campaign ${promo.name} (${promo.code})`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: promo, message: 'Promo campaign created' };
         } catch (error: any) {
+            runInBackground(
+                'Create Promo Campaign (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'PromoCampaign',
+                    description: `Failed to create promo campaign`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -72,8 +105,10 @@ export class PosConfigService {
         endDate?: string;
         isActive?: boolean;
         locationIds?: string[];
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const oldPromo = await this.prisma.promoCampaign.findUnique({ where: { id } });
+            
             // If locationIds provided, replace junction records
             if (data.locationIds) {
                 await this.prisma.promoCampaignLocation.deleteMany({ where: { promoId: id } });
@@ -98,17 +133,84 @@ export class PosConfigService {
                 },
                 include: { locations: { include: { location: true } } },
             });
+
+            runInBackground(
+                'Update Promo Campaign',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'PromoCampaign',
+                    entityId: promo.id,
+                    description: `Updated promo campaign ${promo.name} (${promo.code})`,
+                    oldValues: JSON.stringify(oldPromo),
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: promo, message: 'Promo campaign updated' };
         } catch (error: any) {
+            runInBackground(
+                'Update Promo Campaign (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'PromoCampaign',
+                    entityId: id,
+                    description: `Failed to update promo campaign`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
-    async deletePromo(id: string) {
+    async deletePromo(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const promo = await this.prisma.promoCampaign.findUnique({ where: { id } });
             await this.prisma.promoCampaign.delete({ where: { id } });
+
+            runInBackground(
+                'Delete Promo Campaign',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'PromoCampaign',
+                    entityId: id,
+                    description: `Deleted promo campaign ${promo?.name} (${promo?.code})`,
+                    oldValues: JSON.stringify(promo),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, message: 'Promo campaign deleted' };
         } catch (error: any) {
+            runInBackground(
+                'Delete Promo Campaign (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'PromoCampaign',
+                    entityId: id,
+                    description: `Failed to delete promo campaign`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -140,7 +242,7 @@ export class PosConfigService {
         expiresAt?: string;
         isActive?: boolean;
         locationIds: string[];
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const coupon = await this.prisma.couponCode.create({
                 data: {
@@ -159,8 +261,40 @@ export class PosConfigService {
                 },
                 include: { locations: { include: { location: true } } },
             });
+
+            runInBackground(
+                'Create Coupon Code',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: coupon.id,
+                    description: `Created coupon code ${coupon.code}`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: coupon, message: 'Coupon code created' };
         } catch (error: any) {
+            runInBackground(
+                'Create Coupon Code (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    description: `Failed to create coupon code`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -176,8 +310,10 @@ export class PosConfigService {
         expiresAt?: string;
         isActive?: boolean;
         locationIds?: string[];
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const oldCoupon = await this.prisma.couponCode.findUnique({ where: { id } });
+
             if (data.locationIds) {
                 await this.prisma.couponCodeLocation.deleteMany({ where: { couponId: id } });
             }
@@ -201,17 +337,84 @@ export class PosConfigService {
                 },
                 include: { locations: { include: { location: true } } },
             });
+
+            runInBackground(
+                'Update Coupon Code',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: coupon.id,
+                    description: `Updated coupon code ${coupon.code}`,
+                    oldValues: JSON.stringify(oldCoupon),
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: coupon, message: 'Coupon code updated' };
         } catch (error: any) {
+            runInBackground(
+                'Update Coupon Code (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: id,
+                    description: `Failed to update coupon code`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
-    async deleteCoupon(id: string) {
+    async deleteCoupon(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const coupon = await this.prisma.couponCode.findUnique({ where: { id } });
             await this.prisma.couponCode.delete({ where: { id } });
+
+            runInBackground(
+                'Delete Coupon Code',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: id,
+                    description: `Deleted coupon code ${coupon?.code}`,
+                    oldValues: JSON.stringify(coupon),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, message: 'Coupon code deleted' };
         } catch (error: any) {
+            runInBackground(
+                'Delete Coupon Code (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: id,
+                    description: `Failed to delete coupon code`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -239,7 +442,7 @@ export class PosConfigService {
         description?: string;
         expiresAt?: string;
         issuedBy?: string;
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             // Auto-generate a unique voucher code: VCH-XXXXXX
             const code = `VCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -256,33 +459,129 @@ export class PosConfigService {
                     // No locations → valid at all POS terminals
                 },
             });
+
+            runInBackground(
+                'Create Voucher',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: voucher.id,
+                    description: `Created voucher ${voucher.code}`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: voucher, message: `Voucher ${code} created` };
         } catch (error: any) {
+            runInBackground(
+                'Create Voucher (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    description: `Failed to create voucher`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
-    async deactivateVoucher(id: string) {
+    async deactivateVoucher(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const voucher = await this.prisma.couponCode.update({
                 where: { id },
                 data: { isActive: false },
             });
+
+            runInBackground(
+                'Deactivate Voucher',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: voucher.id,
+                    description: `Deactivated voucher ${voucher.code}`,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: voucher, message: 'Voucher deactivated' };
         } catch (error: any) {
+            runInBackground(
+                'Deactivate Voucher (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: id,
+                    description: `Failed to deactivate voucher`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
-    async deleteVoucher(id: string) {
+    async deleteVoucher(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             // Only allow deleting unused vouchers
             const voucher = await this.prisma.couponCode.findUnique({ where: { id } });
             if (!voucher) return { status: false, message: 'Voucher not found' };
             if (voucher.usedCount > 0) return { status: false, message: 'Cannot delete a voucher that has been redeemed' };
+            
             await this.prisma.couponCode.delete({ where: { id } });
+
+            runInBackground(
+                'Delete Voucher',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: id,
+                    description: `Deleted voucher ${voucher.code}`,
+                    oldValues: JSON.stringify(voucher),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, message: 'Voucher deleted' };
         } catch (error: any) {
+            runInBackground(
+                'Delete Voucher (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'CouponCode',
+                    entityId: id,
+                    description: `Failed to delete voucher`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -311,7 +610,7 @@ export class PosConfigService {
         description?: string;
         isActive?: boolean;
         locationIds: string[];
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const alliance = await this.prisma.allianceDiscount.create({
                 data: {
@@ -327,8 +626,40 @@ export class PosConfigService {
                 },
                 include: { locations: { include: { location: true } } },
             });
+
+            runInBackground(
+                'Create Alliance Discount',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    entityId: alliance.id,
+                    description: `Created alliance discount for ${alliance.partnerName} (${alliance.code})`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: alliance, message: 'Alliance discount created' };
         } catch (error: any) {
+            runInBackground(
+                'Create Alliance Discount (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    description: `Failed to create alliance discount`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -341,8 +672,10 @@ export class PosConfigService {
         description?: string;
         isActive?: boolean;
         locationIds?: string[];
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const oldAlliance = await this.prisma.allianceDiscount.findUnique({ where: { id } });
+
             if (data.locationIds) {
                 await this.prisma.allianceDiscountLocation.deleteMany({ where: { allianceId: id } });
             }
@@ -363,17 +696,84 @@ export class PosConfigService {
                 },
                 include: { locations: { include: { location: true } } },
             });
+
+            runInBackground(
+                'Update Alliance Discount',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    entityId: alliance.id,
+                    description: `Updated alliance discount for ${alliance.partnerName} (${alliance.code})`,
+                    oldValues: JSON.stringify(oldAlliance),
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: alliance, message: 'Alliance discount updated' };
         } catch (error: any) {
+            runInBackground(
+                'Update Alliance Discount (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    entityId: id,
+                    description: `Failed to update alliance discount`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
 
-    async deleteAlliance(id: string) {
+    async deleteAlliance(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const alliance = await this.prisma.allianceDiscount.findUnique({ where: { id } });
             await this.prisma.allianceDiscount.delete({ where: { id } });
+
+            runInBackground(
+                'Delete Alliance Discount',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    entityId: id,
+                    description: `Deleted alliance discount for ${alliance?.partnerName} (${alliance?.code})`,
+                    oldValues: JSON.stringify(alliance),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, message: 'Alliance discount deleted' };
         } catch (error: any) {
+            runInBackground(
+                'Delete Alliance Discount (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'delete',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    entityId: id,
+                    description: `Failed to delete alliance discount`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }

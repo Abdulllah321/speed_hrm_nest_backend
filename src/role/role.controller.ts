@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { RoleService } from './role.service';
@@ -26,13 +27,18 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/roles')
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {}
+  constructor(private readonly roleService: RoleService,) {}
 
   @Post()
   @Permissions('role.create')
   @ApiOperation({ summary: 'Create a new role' })
-  create(@Body() createRoleDto: CreateRoleDto) {
-    return this.roleService.create(createRoleDto);
+  create(@Body() createRoleDto: CreateRoleDto, @Req() req: any) {
+    const ctx = {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
+    return this.roleService.create(createRoleDto, ctx);
   }
 
   @Get()
@@ -52,18 +58,24 @@ export class RoleController {
   @Patch(':id')
   @Permissions('role.update')
   @ApiOperation({ summary: 'Update a role' })
-  update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
-    return this.roleService.update(id, updateRoleDto);
+  update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto, @Req() req: any) {
+    const ctx = {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
+    return this.roleService.update(id, updateRoleDto, ctx);
   }
 
   @Delete(':id')
   @Permissions('role.delete')
   @ApiOperation({ summary: 'Delete a role' })
-  remove(@Param('id') id: string) {
-    // RoleService usually has remove or delete method.
-    // The previous read of controller showed remove().
-    // I will assume it exists or I will fix it if compilation fails.
-    // Wait, I should check if remove exists in service first.
-    return this.roleService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    const ctx = {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
+    return this.roleService.remove(id, ctx);
   }
 }

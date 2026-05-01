@@ -27,7 +27,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class AttendanceRequestQueryController {
-  constructor(private service: AttendanceRequestQueryService) {}
+  constructor(private service: AttendanceRequestQueryService,) {}
 
   @Get('attendance-request-queries')
   @Permissions('hr.attendance.request-list')

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { StockMovementService } from './stock-movement.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -10,14 +10,18 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('stock-operation')
 export class StockOperationController {
-  constructor(private readonly stockMovementService: StockMovementService) {}
+  constructor(private readonly stockMovementService: StockMovementService,) {}
 
   @Post('move')
   @Permissions('pos.stock.move')
   @ApiOperation({
     summary: 'Execute a stock movement (Inbound/Outbound/Transfer)',
   })
-  executeMovement(@Body() dto: any) {
-    return this.stockMovementService.executeMovement(dto);
+  executeMovement(@Body() dto: any, @Req() req: any) {
+    return this.stockMovementService.executeMovement(dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { PurchaseRequisitionService } from './purchase-requisition.service';
 import { CreatePurchaseRequisitionDto } from './dto/create-purchase-requisition.dto';
@@ -21,13 +22,17 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/purchase-requisition')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseRequisitionController {
-  constructor(private readonly service: PurchaseRequisitionService) {}
+  constructor(private readonly service: PurchaseRequisitionService,) {}
 
   @Post()
   @Permissions('erp.procurement.pr.create')
   @ApiOperation({ summary: 'Create a new purchase requisition (DRAFT)' })
-  create(@Body() createDto: CreatePurchaseRequisitionDto) {
-    return this.service.create(createDto);
+  create(@Body() createDto: CreatePurchaseRequisitionDto, @Req() req: any) {
+    return this.service.create(createDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get()
@@ -51,14 +56,23 @@ export class PurchaseRequisitionController {
   update(
     @Param('id') id: string,
     @Body() updateDto: UpdatePurchaseRequisitionDto,
+    @Req() req: any,
   ) {
-    return this.service.update(id, updateDto);
+    return this.service.update(id, updateDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Delete(':id')
   @Permissions('erp.procurement.pr.delete')
   @ApiOperation({ summary: 'Delete a DRAFT purchase requisition' })
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.service.remove(id, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

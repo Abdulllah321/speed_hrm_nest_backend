@@ -18,7 +18,6 @@ export class GrnService {
   constructor(
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
-  ,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -132,7 +131,7 @@ export class GrnService {
     return grn;
   }
 
-  async create(dto: CreateGrnDto) {
+  async create(dto: CreateGrnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     this.logger.log(`Starting GRN creation for PO: ${dto.purchaseOrderId}`);
     this.logger.debug(`GRN DTO: ${JSON.stringify(dto)}`);
 
@@ -311,7 +310,7 @@ export class GrnService {
               {
                 itemId: itemRecord.id,
                 warehouseId: dto.warehouseId,
-                qty: new Prisma.Decimal(grnItem.receivedQty),
+                qty: Number(grnItem.receivedQty),
                 movementType: MovementType.INBOUND,
                 referenceType: 'GRN',
                 referenceId: grn.id,
@@ -399,10 +398,39 @@ export class GrnService {
           },
         });
 
-        this.logger.log(`GRN creation completed successfully. GRN ID: ${grn.id}, Number: ${grn.grnNumber}`);
+        runInBackground(
+          'Create GRN',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'create',
+            module: 'warehouse-grn',
+            entity: 'GoodsReceiptNote',
+            entityId: grn.id,
+            description: `Created GRN ${grn.grnNumber} for PO ${dto.purchaseOrderId}`,
+            newValues: JSON.stringify(dto),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
+        );
         return grn;
         
-      } catch (error) {
+      } catch (error: any) {
+        runInBackground(
+          'Create GRN (Failure Log)',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'create',
+            module: 'warehouse-grn',
+            entity: 'GoodsReceiptNote',
+            description: `Failed to create GRN for PO ${dto.purchaseOrderId}`,
+            errorMessage: error?.message,
+            newValues: JSON.stringify(dto),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'failure',
+          }),
+        );
         this.logger.error(`Error in GRN transaction: ${error.message}`, error.stack);
         throw error;
       }
