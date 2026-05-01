@@ -123,44 +123,22 @@ export class EmployeeService {
       where.subDepartmentId = query.subDepartmentId;
     }
 
-    if (search) {
-      where.OR = [
-        { employeeName: { contains: search, mode: 'insensitive' } },
-        { employeeId: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    const [employees, total] = await Promise.all([
-      this.prisma.employee.findMany({
-        where,
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          employeeId: true,
-          employeeName: true,
-          departmentId: true,
-          subDepartmentId: true,
-          workingHoursPolicyId: true,
-          department: true,
-          subDepartment: true,
-          workingHoursPolicy: true,
-        },
-        orderBy: { employeeName: 'asc' },
-      }),
-      this.prisma.employee.count({ where }),
-    ]);
-
-    return {
-      status: true,
-      data: employees,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+    const employees = await this.prisma.employee.findMany({
+      where,
+      select: {
+        id: true,
+        employeeId: true,
+        employeeName: true,
+        departmentId: true,
+        subDepartmentId: true,
+        workingHoursPolicyId: true,
+        joiningDate: true,
+        lastExitDate: true,
+        department: true,
+        subDepartment: true,
+        workingHoursPolicy: true,
       },
-    };
+    });
   }
 
   // Minimal fields for dropdowns/selects

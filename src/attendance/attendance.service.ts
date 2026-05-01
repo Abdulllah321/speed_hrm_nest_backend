@@ -255,7 +255,7 @@ export class AttendanceService {
   ) {
     try {
       const date = new Date(body.date);
-      date.setHours(0, 0, 0, 0); // Normalize to start of day
+      date.setUTCHours(0, 0, 0, 0); // Normalize to start of day in UTC
 
       const checkIn = body.checkIn ? new Date(body.checkIn) : null;
       const checkOut = body.checkOut ? new Date(body.checkOut) : null;
@@ -275,6 +275,37 @@ export class AttendanceService {
           status: false,
           message: 'Attendance record already exists for this date',
         };
+      }
+
+      // --- Joining date validation ---
+      const empInfo = await this.prisma.employee.findUnique({
+        where: { id: body.employeeId },
+        select: { joiningDate: true, employeeName: true },
+      });
+      if (empInfo?.joiningDate) {
+        // Use UTC components to avoid server-local timezone shifts (setHours(0) shifts to previous day in UTC if server is in positive TZ)
+        const jd = new Date(empInfo.joiningDate);
+        const joiningDateStr = `${jd.getUTCFullYear()}-${String(jd.getUTCMonth() + 1).padStart(2, '0')}-${String(jd.getUTCDate()).padStart(2, '0')}`;
+        
+        const rawDate = new Date(body.date);
+        const targetDateStr = `${rawDate.getUTCFullYear()}-${String(rawDate.getUTCMonth() + 1).padStart(2, '0')}-${String(rawDate.getUTCDate()).padStart(2, '0')}`;
+
+        if (targetDateStr < joiningDateStr) {
+          await this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'create',
+            module: 'attendances',
+            entity: 'Attendance',
+            description: `Blocked: Attendance before joining date for ${empInfo.employeeName} on ${date.toISOString().split('T')[0]}`,
+            status: 'failure',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+          });
+          return {
+            status: false,
+            message: 'Attendance cannot be marked before employee joining date.',
+          };
+        }
       }
 
       let workingHours: Decimal | null = null;
@@ -344,7 +375,11 @@ export class AttendanceService {
         }),
       );
 
-      return response;
+      // Apply sandwich rule if status is absent
+      const status = body.status || 'present';
+      await this.applySandwichRule(body.employeeId, date, status, ctx);
+
+      return { status: true, data: created };
     } catch (error: any) {
       runInBackground(
         'Create Attendance (Failure Log)',
@@ -390,8 +425,8 @@ export class AttendanceService {
     try {
       const fromDate = new Date(body.fromDate);
       const toDate = new Date(body.toDate);
-      fromDate.setHours(0, 0, 0, 0);
-      toDate.setHours(23, 59, 59, 999);
+      fromDate.setUTCHours(0, 0, 0, 0);
+      toDate.setUTCHours(23, 59, 59, 999);
 
       const results: any[] = [];
       const errors: Array<{ date: string; error: string }> = [];
@@ -400,6 +435,34 @@ export class AttendanceService {
       const holidays = await this.prisma.holiday.findMany({
         where: { status: 'active' },
       });
+
+      // --- Joining date clamp ---
+      const empForRange = await this.prisma.employee.findUnique({
+        where: { id: body.employeeId },
+        select: { joiningDate: true },
+      });
+      if (empForRange?.joiningDate) {
+        const jd = new Date(empForRange.joiningDate);
+        const joiningDateStr = `${jd.getUTCFullYear()}-${String(jd.getUTCMonth() + 1).padStart(2, '0')}-${String(jd.getUTCDate()).padStart(2, '0')}`;
+        
+        const rawFromDate = new Date(body.fromDate);
+        const fromDateStr = `${rawFromDate.getUTCFullYear()}-${String(rawFromDate.getUTCMonth() + 1).padStart(2, '0')}-${String(rawFromDate.getUTCDate()).padStart(2, '0')}`;
+        
+        const rawToDate = new Date(body.toDate);
+        const toDateStr = `${rawToDate.getUTCFullYear()}-${String(rawToDate.getUTCMonth() + 1).padStart(2, '0')}-${String(rawToDate.getUTCDate()).padStart(2, '0')}`;
+
+        if (toDateStr < joiningDateStr) {
+          return {
+            status: false,
+            message: 'Entire date range is before employee joining date.',
+          };
+        }
+        if (fromDateStr < joiningDateStr) {
+          const jdObj = new Date(empForRange.joiningDate);
+          fromDate.setUTCFullYear(jdObj.getUTCFullYear(), jdObj.getUTCMonth(), jdObj.getUTCDate());
+          fromDate.setUTCHours(0, 0, 0, 0);
+        }
+      }
 
       // Iterate through each day in the range
       const currentDate = new Date(fromDate);
@@ -442,21 +505,45 @@ export class AttendanceService {
           : undefined;
 
         try {
-          const result = await this.create(
-            {
-              employeeId: body.employeeId,
-              date: new Date(currentDate),
+          // If record exists, update it; otherwise create it
+          const existing = await this.prisma.attendance.findUnique({
+            where: {
+              employeeId_date: {
+                employeeId: body.employeeId,
+                date: currentDate,
+              },
+            },
+          });
+
+          let result;
+          if (existing) {
+            result = await this.update(existing.id, {
+              status: body.status,
               checkIn: checkInDateTime,
               checkOut: checkOutDateTime,
-              status: body.status,
               isRemote: body.isRemote,
               location: body.location,
               latitude: body.latitude,
               longitude: body.longitude,
               notes: body.notes,
-            },
-            ctx,
-          );
+            }, ctx);
+          } else {
+            result = await this.create(
+              {
+                employeeId: body.employeeId,
+                date: new Date(currentDate),
+                checkIn: checkInDateTime,
+                checkOut: checkOutDateTime,
+                status: body.status,
+                isRemote: body.isRemote,
+                location: body.location,
+                latitude: body.latitude,
+                longitude: body.longitude,
+                notes: body.notes,
+              },
+              ctx,
+            );
+          }
 
           if (result.status) {
             results.push((result as any).data);
@@ -467,8 +554,8 @@ export class AttendanceService {
           errors.push({ date: dateStr, error: error.message });
         }
 
-        // Move to next day
-        currentDate.setDate(currentDate.getDate() + 1);
+        // Move to next day (UTC-safe)
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
       }
 
       runInBackground(
@@ -502,6 +589,190 @@ export class AttendanceService {
     }
   }
 
+  /**
+   * Apply sandwich rule: If Friday and Monday are absent, mark weekend (Sat, Sun) as absent too
+   * Also handles removal: If Friday or Monday changes from absent to present, remove sandwich rule from weekend
+   * IMPORTANT: Do NOT apply sandwich rule if Friday or Monday has an approved leave
+   */
+  private async applySandwichRule(
+    employeeId: string,
+    date: Date,
+    status: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, 5 = Friday, 6 = Saturday
+
+    // Check if it's Friday (5) or Monday (1)
+    if (dayOfWeek === 5) {
+      // Friday
+      const monday = new Date(date);
+      monday.setDate(monday.getDate() + 3); // Friday + 3 days = Monday
+      monday.setHours(0, 0, 0, 0);
+
+      const mondayAttendance = await this.prisma.attendance.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date: monday,
+          },
+        },
+      });
+
+      if (status === 'absent' && mondayAttendance && mondayAttendance.status === 'absent') {
+        // Check if Friday or Monday has approved leave - if yes, don't apply sandwich rule
+        const hasApprovedLeave = await this.hasApprovedLeaveOnDates(employeeId, date, monday);
+        
+        if (!hasApprovedLeave) {
+          // Both Friday and Monday are absent and no approved leave, mark Saturday and Sunday as absent
+          await this.markWeekendAsAbsent(employeeId, date, ctx);
+        }
+      } else if (status !== 'absent') {
+        // Friday is no longer absent, remove sandwich rule from weekend if it was applied
+        await this.removeWeekendSandwichRule(employeeId, date, ctx);
+      }
+    } else if (dayOfWeek === 1) {
+      // Monday
+      const friday = new Date(date);
+      friday.setDate(friday.getDate() - 3); // Monday - 3 days = Friday
+      friday.setHours(0, 0, 0, 0);
+
+      const fridayAttendance = await this.prisma.attendance.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date: friday,
+          },
+        },
+      });
+
+      if (status === 'absent' && fridayAttendance && fridayAttendance.status === 'absent') {
+        // Check if Friday or Monday has approved leave - if yes, don't apply sandwich rule
+        const hasApprovedLeave = await this.hasApprovedLeaveOnDates(employeeId, friday, date);
+        
+        if (!hasApprovedLeave) {
+          // Both Friday and Monday are absent and no approved leave, mark Saturday and Sunday as absent
+          await this.markWeekendAsAbsent(employeeId, friday, ctx);
+        }
+      } else if (status !== 'absent') {
+        // Monday is no longer absent, remove sandwich rule from weekend if it was applied
+        await this.removeWeekendSandwichRule(employeeId, friday, ctx);
+      }
+    }
+  }
+
+  /**
+   * Check if employee has approved leave on Friday or Monday
+   * Returns true if there's an approved leave covering either date
+   */
+  private async hasApprovedLeaveOnDates(
+    employeeId: string,
+    friday: Date,
+    monday: Date,
+  ): Promise<boolean> {
+    const approvedLeaves = await this.prisma.leaveApplication.findMany({
+      where: {
+        employeeId,
+        status: 'approved',
+        fromDate: { lte: monday },
+        toDate: { gte: friday },
+      },
+    });
+
+    return approvedLeaves.length > 0;
+  }
+
+  /**
+   * Mark Saturday and Sunday as absent (sandwich days)
+   */
+  private async markWeekendAsAbsent(
+    employeeId: string,
+    fridayDate: Date,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const saturday = new Date(fridayDate);
+    saturday.setDate(saturday.getDate() + 1);
+    saturday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(fridayDate);
+    sunday.setDate(sunday.getDate() + 2);
+    sunday.setHours(0, 0, 0, 0);
+
+    const weekendDates = [saturday, sunday];
+
+    for (const date of weekendDates) {
+      const existing = await this.prisma.attendance.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date,
+          },
+        },
+      });
+
+      if (existing) {
+        // Update existing record to absent
+        await this.prisma.attendance.update({
+          where: { id: existing.id },
+          data: {
+            status: 'absent',
+            notes: existing.notes
+              ? `${existing.notes} | Sandwich rule applied`
+              : 'Sandwich rule applied - absent due to Friday and Monday absence',
+            updatedById: ctx.userId,
+          },
+        });
+      } else {
+        // Create new absent record
+        await this.prisma.attendance.create({
+          data: {
+            employeeId,
+            date,
+            status: 'absent',
+            notes: 'Sandwich rule applied - absent due to Friday and Monday absence',
+            createdById: ctx.userId,
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * Remove sandwich rule from weekend if Friday or Monday is no longer absent
+   */
+  private async removeWeekendSandwichRule(
+    employeeId: string,
+    fridayDate: Date,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const saturday = new Date(fridayDate);
+    saturday.setDate(saturday.getDate() + 1);
+    saturday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(fridayDate);
+    sunday.setDate(sunday.getDate() + 2);
+    sunday.setHours(0, 0, 0, 0);
+
+    const weekendDates = [saturday, sunday];
+
+    for (const date of weekendDates) {
+      const existing = await this.prisma.attendance.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date,
+          },
+        },
+      });
+
+      // Only remove if it was created by sandwich rule
+      if (existing && existing.notes?.includes('Sandwich rule applied')) {
+        await this.prisma.attendance.delete({
+          where: { id: existing.id },
+        });
+      }
+    }
+  }
+
   async update(
     id: string,
     body: {
@@ -519,9 +790,26 @@ export class AttendanceService {
     try {
       const existing = await this.prisma.attendance.findUnique({
         where: { id },
+        include: { employee: { select: { joiningDate: true, employeeName: true } } },
       });
       if (!existing) {
         return { status: false, message: 'Attendance not found' };
+      }
+
+      // --- Joining date validation ---
+      if (existing.employee?.joiningDate) {
+        const jd = new Date(existing.employee.joiningDate);
+        const joiningDateStr = `${jd.getUTCFullYear()}-${String(jd.getUTCMonth() + 1).padStart(2, '0')}-${String(jd.getUTCDate()).padStart(2, '0')}`;
+        
+        const dateObj = new Date(existing.date);
+        const targetDateStr = `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')}`;
+
+        if (targetDateStr < joiningDateStr) {
+          return {
+            status: false,
+            message: 'Attendance cannot be modified before employee joining date.',
+          };
+        }
       }
 
       const updateData: any = {};
@@ -574,23 +862,29 @@ export class AttendanceService {
         },
       });
 
-      const response = { status: true, data: updated };
-      runInBackground(
-        'Update Attendance',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'attendances',
-          entity: 'Attendance',
-          entityId: updated.id,
-          description: `Updated attendance record for ${updated.employee.employeeName}`,
-          oldValues: JSON.stringify(existing),
-          newValues: JSON.stringify(updateData),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+      // Apply sandwich rule if status changed to absent
+      if (body.status !== undefined) {
+        await this.applySandwichRule(
+          existing.employeeId,
+          existing.date,
+          body.status,
+          ctx,
+        );
+      }
+
+      await this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'update',
+        module: 'attendances',
+        entity: 'Attendance',
+        entityId: updated.id,
+        description: `Updated attendance record for ${updated.employee.employeeName}`,
+        oldValues: JSON.stringify(existing),
+        newValues: JSON.stringify(updateData),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      });
 
       return response;
     } catch (error: any) {
@@ -923,6 +1217,14 @@ export class AttendanceService {
       const results: any[] = [];
       const errors: Array<{ row: Record<string, string>; error: string }> = [];
 
+      // Preload all employees (avoid N+1 queries in loop)
+      const allEmps = await this.prisma.employee.findMany({
+        select: { id: true, employeeId: true, joiningDate: true },
+      });
+      const employeeByCodeMap = new Map(
+        allEmps.map((e) => [String(e.employeeId), e]),
+      );
+
       for (const record of records) {
         try {
           // Find employee by employeeId - support multiple column name formats
@@ -933,10 +1235,8 @@ export class AttendanceService {
             record.employeeId ||
             record['Employee ID'] ||
             record['ID'];
-          const employee = await this.prisma.employee.findUnique({
-            where: { employeeId: employeeIdValue },
-            select: { id: true, employeeId: true },
-          });
+
+          const employee = employeeByCodeMap.get(String(employeeIdValue));
 
           if (!employee) {
             errors.push({
@@ -956,7 +1256,21 @@ export class AttendanceService {
             });
             continue;
           }
+          const targetDateStr = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
           date.setHours(0, 0, 0, 0);
+
+          // Joining date guard
+          if (employee.joiningDate) {
+            const jd = new Date(employee.joiningDate);
+            const joiningDateStr = `${jd.getUTCFullYear()}-${String(jd.getUTCMonth() + 1).padStart(2, '0')}-${String(jd.getUTCDate()).padStart(2, '0')}`;
+            if (targetDateStr < joiningDateStr) {
+              errors.push({
+                row: record,
+                error: `Date ${dateValue} is before employee joining date`,
+              });
+              continue;
+            }
+          }
 
           // Helper function to convert 12-hour time (HH:MM:SS AM/PM) to 24-hour format (HH:MM:SS)
           const convertTo24Hour = (timeStr: string): string => {
