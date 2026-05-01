@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Logger, Req } from '@nestjs/common';
 import { GrnService } from './grn.service';
 import { CreateGrnDto } from './dto/grn.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
@@ -8,16 +8,20 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 export class GrnController {
   private readonly logger = new Logger(GrnController.name);
 
-  constructor(private readonly grnService: GrnService) {}
+  constructor(private readonly grnService: GrnService,) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new GRN and update stock' })
-  async create(@Body() createDto: CreateGrnDto) {
+  async create(@Body() createDto: CreateGrnDto, @Req() req: any) {
     this.logger.log(`GRN creation request received`);
     this.logger.debug(`Request payload: ${JSON.stringify(createDto)}`);
     
     try {
-      const result = await this.grnService.create(createDto);
+      const result = await this.grnService.create(createDto, {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
       this.logger.log(`GRN creation successful: ${result.id}`);
       return result;
     } catch (error) {

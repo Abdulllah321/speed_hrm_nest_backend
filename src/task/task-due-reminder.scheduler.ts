@@ -6,7 +6,7 @@ import type { Queue } from 'bull';
 export class TaskDueReminderScheduler implements OnModuleInit {
   private readonly logger = new Logger(TaskDueReminderScheduler.name);
 
-  constructor(@InjectQueue('task-due-reminder') private queue: Queue) {}
+  constructor(@InjectQueue('task-due-reminder') private queue: Queue,) {}
 
   async onModuleInit() {
     // Remove any existing repeatable jobs to avoid duplicates on restart

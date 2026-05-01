@@ -27,7 +27,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class RequestForwardingController {
-  constructor(private service: RequestForwardingService) {}
+  constructor(private service: RequestForwardingService,) {}
 
   @Get('request-forwarding')
   @Permissions('hr.request-forwarding.view')

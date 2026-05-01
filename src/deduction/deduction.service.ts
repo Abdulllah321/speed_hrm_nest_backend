@@ -14,7 +14,6 @@ export class DeductionService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -542,7 +541,7 @@ export class DeductionService {
         );
       }
 
-      return response;
+      return { status: true, message: 'Deduction deleted successfully' };
     } catch (error) {
       console.error('Error deleting deduction:', error);
       return {

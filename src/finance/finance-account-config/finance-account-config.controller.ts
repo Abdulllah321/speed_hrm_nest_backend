@@ -20,7 +20,7 @@ import {
 @ApiTags('Finance Account Configuration')
 @Controller('api/finance/account-config')
 export class FinanceAccountConfigController {
-  constructor(private readonly service: FinanceAccountConfigService) {}
+  constructor(private readonly service: FinanceAccountConfigService,) {}
 
   @Get()
   @UseGuards(JwtAuthGuard, PermissionGuard('erp.finance.account-config.read'))

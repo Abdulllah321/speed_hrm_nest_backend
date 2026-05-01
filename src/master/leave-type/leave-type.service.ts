@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 

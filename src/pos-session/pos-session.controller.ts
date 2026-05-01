@@ -11,7 +11,7 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSessionController {
-    constructor(private readonly sessionService: PosSessionService) { }
+    constructor(private readonly sessionService: PosSessionService,) { }
 
     private extractTerminalContext(req: any) {
         const token = req.cookies?.posTerminalToken;
@@ -47,7 +47,12 @@ export class PosSessionController {
         @Body() body: { amount: number; note?: string },
     ) {
         const { terminalId } = this.extractTerminalContext(req);
-        return this.sessionService.openDrawer(terminalId, body.amount, body.note);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.sessionService.openDrawer(terminalId, body.amount, body.note, ctx);
     }
 
     @Post('current/close')
@@ -58,7 +63,12 @@ export class PosSessionController {
         @Body() body: { actualCash: number; note?: string },
     ) {
         const { terminalId, posId, locationId } = this.extractTerminalContext(req);
-        return this.sessionService.closeDrawer(terminalId, posId, locationId, body.actualCash, body.note);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.sessionService.closeDrawer(terminalId, posId, locationId, body.actualCash, body.note, ctx);
     }
 
     @Get('history')

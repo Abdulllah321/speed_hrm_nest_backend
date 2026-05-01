@@ -16,9 +16,10 @@ import {
 export class ItemSubclassService {
   constructor(
     private prisma: PrismaService,
-    private activityLogs: ActivityLogsService,    private prismaMaster: PrismaMasterService,
+        private prismaMaster: PrismaMasterService,
     
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async getAll() {

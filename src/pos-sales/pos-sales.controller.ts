@@ -22,7 +22,7 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSalesController {
-    constructor(private readonly posSalesService: PosSalesService) { }
+    constructor(private readonly posSalesService: PosSalesService,) { }
 
     // ─── Item lookup for POS (search by barcode, SKU, description) ────
     @Get('lookup')
@@ -86,7 +86,13 @@ export class PosSalesController {
             }
         }
 
-        return this.posSalesService.createOrder(dto, cashierUserId);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+
+        return this.posSalesService.createOrder(dto, cashierUserId, ctx);
     }
 
     // ─── List orders (Sales History) ───────────────────────────────────
@@ -163,7 +169,12 @@ export class PosSalesController {
         @Req() req: any,
     ) {
         const returnLocationId = req.user?.locationId;
-        return this.posSalesService.returnItems(id, body.items, body.reason, returnLocationId);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.posSalesService.returnItems(id, body.items, body.reason, returnLocationId, ctx);
     }
 
     // ─── Exchange items ───────────────────────────────────────────────
@@ -177,8 +188,14 @@ export class PosSalesController {
             newItems: { itemId: string; quantity: number; unitPrice: number }[];
             reason?: string;
         },
+        @Req() req: any,
     ) {
-        return this.posSalesService.exchangeItems(id, body.returnedItems, body.newItems, body.reason);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.posSalesService.exchangeItems(id, body.returnedItems, body.newItems, body.reason, ctx);
     }
 
     // ─── Refund only (no stock movement) ─────────────────────────────
@@ -187,15 +204,26 @@ export class PosSalesController {
     async refundOrder(
         @Param('id') id: string,
         @Body() body: { refundAmount: number; reason?: string },
+        @Req() req: any,
     ) {
-        return this.posSalesService.refundOnly(id, body.refundAmount, body.reason);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.posSalesService.refundOnly(id, body.refundAmount, body.reason, ctx);
     }
 
     // ─── Void order ───────────────────────────────────────────────────
     @Post('orders/:id/void')
     @ApiOperation({ summary: 'Void a sales order' })
-    async voidOrder(@Param('id') id: string) {
-        return this.posSalesService.voidOrder(id);
+    async voidOrder(@Param('id') id: string, @Req() req: any) {
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.posSalesService.voidOrder(id, ctx);
     }
 
     // ─── Hold order ───────────────────────────────────────────────────
@@ -219,7 +247,12 @@ export class PosSalesController {
                 }
             } catch (e) { }
         }
-        return this.posSalesService.holdOrder(dto, cashierUserId);
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.posSalesService.holdOrder(dto, cashierUserId, ctx);
     }
 
     // ─── Resume hold order ────────────────────────────────────────────
@@ -233,8 +266,13 @@ export class PosSalesController {
     // ─── Cancel hold order ────────────────────────────────────────────
     @Post('orders/:id/cancel-hold')
     @ApiOperation({ summary: 'Cancel a held order — restores stock' })
-    async cancelHoldOrder(@Param('id') id: string) {
-        return this.posSalesService.cancelHoldOrder(id);
+    async cancelHoldOrder(@Param('id') id: string, @Req() req: any) {
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.posSalesService.cancelHoldOrder(id, ctx);
     }
 
     // ─── List hold orders ─────────────────────────────────────────────

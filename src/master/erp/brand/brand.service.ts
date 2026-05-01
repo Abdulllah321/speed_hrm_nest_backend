@@ -16,8 +16,9 @@ export class BrandService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   // --- BRAND LOGIC ---

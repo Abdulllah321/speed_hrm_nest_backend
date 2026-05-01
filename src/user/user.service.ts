@@ -16,11 +16,10 @@ export class UserService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private prisma: PrismaService,
-  ,
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const existing = await this.prismaMaster.user.findUnique({
       where: { email: createUserDto.email },
     });
@@ -84,6 +83,22 @@ export class UserService {
         };
       }
     }
+
+    runInBackground(
+      'Create User',
+      this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'create',
+        module: 'user-management',
+        entity: 'User',
+        entityId: user.id,
+        description: `Created user ${user.email}`,
+        newValues: JSON.stringify(createUserDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      }),
+    );
 
     return {
       ...user,
@@ -203,7 +218,7 @@ export class UserService {
     };
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
+  async update(id: string, updateUserDto: UpdateUserDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const user = await this.prismaMaster.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -216,12 +231,30 @@ export class UserService {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
-    return this.prismaMaster.user.update({
+    const updated = await this.prismaMaster.user.update({
       where: { id },
       data: updateData,
       include: {
         role: true,
       },
     });
+
+    runInBackground(
+      'Update User',
+      this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'user-management',
+        entity: 'User',
+        entityId: updated.id,
+        description: `Updated user ${updated.email}`,
+        newValues: JSON.stringify(updateUserDto),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      }),
+    );
+
+    return updated;
   }
 }

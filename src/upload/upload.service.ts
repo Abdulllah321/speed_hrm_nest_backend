@@ -12,7 +12,8 @@ import { runInBackground } from '../common/utils/run-in-background.util';
 export class UploadService {
   private readonly uploadRoot = path.join(process.cwd(), 'public', 'uploads');
 
-  constructor(private readonly prisma: PrismaService,
+  constructor(
+    private readonly prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {
     if (!fs.existsSync(this.uploadRoot)) {
@@ -20,7 +21,7 @@ export class UploadService {
     }
   }
 
-  async uploadFile(file: MultipartFile, createdById: string | null = null) {
+  async uploadFile(file: MultipartFile, createdById: string | null = null, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const ts = Date.now();
     const safeFilename = file.filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
     const filename = `${ts}_${safeFilename}`;
@@ -71,6 +72,22 @@ export class UploadService {
 
     // Generate URL for the uploaded file
     const fileUrl = `/api/uploads/${record.id}`;
+
+    runInBackground(
+      'Upload File',
+      this.activityLogs.log({
+        userId: ctx?.userId || createdById || undefined,
+        action: 'create',
+        module: 'uploads',
+        entity: 'FileUpload',
+        entityId: record.id,
+        description: `Uploaded file ${record.filename}`,
+        newValues: JSON.stringify({ filename: record.filename, size: record.size }),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      }),
+    );
 
     return {
       status: true,
@@ -126,7 +143,7 @@ export class UploadService {
     return { item, stream: fs.createReadStream(absPath) };
   }
 
-  async deleteUpload(id: string) {
+  async deleteUpload(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const item = await this.prisma.fileUpload.findUnique({
       where: { id },
     });
@@ -143,6 +160,22 @@ export class UploadService {
       }
     }
     await this.prisma.fileUpload.delete({ where: { id } });
+
+    runInBackground(
+      'Delete Upload',
+      this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'delete',
+        module: 'uploads',
+        entity: 'FileUpload',
+        entityId: item.id,
+        description: `Deleted file ${item.filename}`,
+        oldValues: JSON.stringify(item),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      }),
+    );
     return { status: true, message: 'File deleted successfully' };
   }
 }

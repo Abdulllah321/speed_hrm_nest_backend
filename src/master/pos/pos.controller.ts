@@ -19,7 +19,7 @@ import { UpdatePosDto } from './dto/update-pos.dto';
 @Controller('api/pos')
 @ApiBearerAuth()
 export class PosController {
-  constructor(private readonly posService: PosService) {}
+  constructor(private readonly posService: PosService,) {}
 
   @Get()
   @ApiOperation({ summary: 'List all POS' })

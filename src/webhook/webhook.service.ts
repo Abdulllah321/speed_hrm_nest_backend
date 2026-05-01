@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 export class WebhookService {
     private readonly logger = new Logger(WebhookService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService,) { }
 
     async findAll() {
         return this.prisma.webhook.findMany({

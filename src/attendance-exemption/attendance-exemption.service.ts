@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
 
 @Injectable()
 export class AttendanceExemptionService {
@@ -356,33 +357,39 @@ export class AttendanceExemptionService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        entityId: created.id,
-        description: `Created attendance exemption for ${body.employeeName || 'Unknown'}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Create Attendance Exemption',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          entityId: created.id,
+          description: `Created attendance exemption for ${body.employeeName || 'Unknown'}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return { status: true, data: created };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'create',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        description: 'Failed to create attendance exemption',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Create Attendance Exemption (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          description: 'Failed to create attendance exemption',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -416,35 +423,41 @@ export class AttendanceExemptionService {
         },
       });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        entityId: id,
-        description: `Updated attendance exemption status to ${body.approvalStatus}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Update Attendance Exemption',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          entityId: id,
+          description: `Updated attendance exemption status to ${body.approvalStatus}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return { status: true, data: updated };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        entityId: id,
-        description: 'Failed to update attendance exemption',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Attendance Exemption (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          entityId: id,
+          description: 'Failed to update attendance exemption',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -534,19 +547,22 @@ export class AttendanceExemptionService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'approve',
-            module: 'attendance-exemption',
-            entity: 'AttendanceExemption',
-            entityId: id,
-            description: 'Approved attendance exemption (Level 1)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Approve Attendance Exemption L1',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'approve',
+              module: 'attendance-exemption',
+              entity: 'AttendanceExemption',
+              entityId: id,
+              description: 'Approved attendance exemption (Level 1)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -582,19 +598,22 @@ export class AttendanceExemptionService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'approve',
-            module: 'attendance-exemption',
-            entity: 'AttendanceExemption',
-            entityId: id,
-            description: 'Approved attendance exemption (Level 2)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Approve Attendance Exemption L2',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'approve',
+              module: 'attendance-exemption',
+              entity: 'AttendanceExemption',
+              entityId: id,
+              description: 'Approved attendance exemption (Level 2)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -624,19 +643,22 @@ export class AttendanceExemptionService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'reject',
-            module: 'attendance-exemption',
-            entity: 'AttendanceExemption',
-            entityId: id,
-            description: 'Rejected attendance exemption (Level 1)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Reject Attendance Exemption L1',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'reject',
+              module: 'attendance-exemption',
+              entity: 'AttendanceExemption',
+              entityId: id,
+              description: 'Rejected attendance exemption (Level 1)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -673,19 +695,22 @@ export class AttendanceExemptionService {
             },
           });
 
-          await this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'reject',
-            module: 'attendance-exemption',
-            entity: 'AttendanceExemption',
-            entityId: id,
-            description: 'Rejected attendance exemption (Level 2)',
-            oldValues: JSON.stringify(existing),
-            newValues: JSON.stringify(updated),
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-          });
+          runInBackground(
+            'Reject Attendance Exemption L2',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'reject',
+              module: 'attendance-exemption',
+              entity: 'AttendanceExemption',
+              entityId: id,
+              description: 'Rejected attendance exemption (Level 2)',
+              oldValues: JSON.stringify(existing),
+              newValues: JSON.stringify(updated),
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           return { status: true, data: updated };
         }
@@ -693,19 +718,22 @@ export class AttendanceExemptionService {
 
       return { status: false, message: 'Invalid approval level' };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'update',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        entityId: id,
-        description: 'Failed to update attendance exemption approval',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Update Attendance Exemption Approval (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          entityId: id,
+          description: 'Failed to update attendance exemption approval',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,
@@ -773,36 +801,42 @@ export class AttendanceExemptionService {
 
       await this.prisma.attendanceExemption.delete({ where: { id } });
 
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        entityId: id,
-        description: `Deleted attendance exemption for ${existing.employeeName || 'Unknown'}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      });
+      runInBackground(
+        'Delete Attendance Exemption',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          entityId: id,
+          description: `Deleted attendance exemption for ${existing.employeeName || 'Unknown'}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
 
       return {
         status: true,
         message: 'Attendance exemption deleted successfully',
       };
     } catch (error: any) {
-      await this.activityLogs.log({
-        userId: ctx.userId,
-        action: 'delete',
-        module: 'attendance-exemption',
-        entity: 'AttendanceExemption',
-        entityId: id,
-        description: 'Failed to delete attendance exemption',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      });
+      runInBackground(
+        'Delete Attendance Exemption (Failure)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'delete',
+          module: 'attendance-exemption',
+          entity: 'AttendanceExemption',
+          entityId: id,
+          description: 'Failed to delete attendance exemption',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
 
       return {
         status: false,

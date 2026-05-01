@@ -13,7 +13,7 @@ export class MasterDataService {
     private cache: MasterDataCache = {};
     private pendingPromises: Map<string, Promise<string | null>> = new Map();
 
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService,) { }
 
     /**
      * Get cache key for a master type

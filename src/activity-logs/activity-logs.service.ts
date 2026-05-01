@@ -9,7 +9,6 @@ export class ActivityLogsService implements OnModuleInit {
 
   constructor(
     private prismaMaster: PrismaMasterService,
-    @Inject(forwardRef(() => ActivityLogsGateway))
     private gateway: ActivityLogsGateway,
   ) {}
 

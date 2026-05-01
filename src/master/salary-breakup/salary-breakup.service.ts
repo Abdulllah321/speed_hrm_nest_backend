@@ -66,13 +66,9 @@ export class SalaryBreakupService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      const response = {
-        status: true,
-        data: updated,
-        message: 'Salary breakup updated successfully',
-      };
+      
       runInBackground(
         'Failed to create salary breakup',
         this.activityLogs.log({
@@ -198,7 +194,7 @@ export class SalaryBreakupService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to delete salary breakup (Failure Log)',

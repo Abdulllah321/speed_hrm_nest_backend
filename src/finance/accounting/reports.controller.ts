@@ -8,7 +8,7 @@ import { ReportsService } from './reports.service';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ReportsController {
-  constructor(private readonly reports: ReportsService) {}
+  constructor(private readonly reports: ReportsService,) {}
 
   /**
    * GET /api/finance/reports/trial-balance

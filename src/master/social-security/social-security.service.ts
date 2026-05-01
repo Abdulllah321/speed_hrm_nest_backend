@@ -86,9 +86,8 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      const response = { status: true, data: updated, message: 'Updated successfully' };
       runInBackground(
         'Failed to create institution',
         this.activityLogs.log({
@@ -203,9 +202,9 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
-      const response = { status: true, data: created, message: 'Created successfully' };
+      
       runInBackground(
         'Failed to delete institution',
         this.activityLogs.log({
@@ -311,9 +310,8 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, data: created, message: 'Created successfully' };
     } catch (error: any) {
-      const response = { status: true, data: updated, message: 'Updated successfully' };
       runInBackground(
         'Failed to create employer registration',
         this.activityLogs.log({
@@ -397,7 +395,7 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, data: updated, message: 'Updated successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -452,9 +450,8 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
-      const response = { status: true, data: created, message: 'Created successfully' };
       runInBackground(
         'Failed to delete employer registration',
         this.activityLogs.log({
@@ -648,9 +645,8 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      const response = { status: true, data: updated, message: 'Updated successfully' };
       runInBackground(
         'Failed to create employee registration',
         this.activityLogs.log({
@@ -746,7 +742,7 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Updated successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -801,9 +797,8 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
-      const response = { status: true, data: created, message: 'Created successfully' };
       runInBackground(
         'Failed to delete employee registration',
         this.activityLogs.log({
@@ -956,9 +951,9 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true,  message: 'Created successfully' };
     } catch (error: any) {
-      const response = { status: true, data: updated, message: 'Updated successfully' };
+    
       runInBackground(
         'Failed to create contribution',
         this.activityLogs.log({
@@ -1093,7 +1088,7 @@ export class SocialSecurityService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Contribution deleted successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to delete contribution (Failure Log)',

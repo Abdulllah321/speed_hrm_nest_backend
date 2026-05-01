@@ -133,9 +133,9 @@ export class EobiService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'EOBIs created successfully' };
     } catch (error: any) {
-      const response = { status: true, data: updated, message: 'Updated successfully' };
+
       runInBackground(
         'Failed bulk create EOBIs',
         this.activityLogs.log({
@@ -263,7 +263,7 @@ export class EobiService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'EOBI deleted successfully' };
     } catch (error: any) {
       
       runInBackground(
@@ -306,7 +306,7 @@ export class EobiService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'EOBIs deleted successfully' };
     } catch (error: any) {
       
       runInBackground(

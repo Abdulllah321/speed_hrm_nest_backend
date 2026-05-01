@@ -11,7 +11,7 @@ import { CreateTaskListDto, UpdateTaskListDto, ReorderTaskListDto } from './dto/
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class TaskListController {
-  constructor(private service: TaskListService) {}
+  constructor(private service: TaskListService,) {}
 
   @Get('task-projects/:projectId/lists')
   @Permissions('task.read')

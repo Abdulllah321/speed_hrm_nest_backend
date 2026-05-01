@@ -594,7 +594,7 @@ export class IncrementService {
         );
       }
 
-      return response;
+      return { status: true, message: 'Increment deleted successfully' };
     } catch (error) {
       console.error('Error deleting increment:', error);
       return {

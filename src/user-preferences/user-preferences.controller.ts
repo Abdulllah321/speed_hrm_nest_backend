@@ -20,7 +20,7 @@ import { UpsertUserPreferenceDto } from './dto/user-preference.dto';
 @ApiTags('User Preferences')
 @Controller('api')
 export class UserPreferencesController {
-  constructor(private service: UserPreferencesService) {}
+  constructor(private service: UserPreferencesService,) {}
 
   @Get('user-preferences/:key')
   @UseGuards(JwtAuthGuard)

@@ -22,7 +22,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/master/erp/season')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SeasonController {
-  constructor(private readonly seasonService: SeasonService) {}
+  constructor(private readonly seasonService: SeasonService,) {}
 
   @Get()
   @Permissions('erp.season.read')

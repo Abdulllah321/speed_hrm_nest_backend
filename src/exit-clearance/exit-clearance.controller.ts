@@ -30,7 +30,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class ExitClearanceController {
-  constructor(private service: ExitClearanceService) {}
+  constructor(private service: ExitClearanceService,) {}
 
   @Get('exit-clearances')
   @Permissions('hr.exit-clearance.read')

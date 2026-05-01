@@ -30,7 +30,7 @@ import {
 @ApiTags('Increment')
 @Controller('api')
 export class IncrementController {
-  constructor(private service: IncrementService) {}
+  constructor(private service: IncrementService,) {}
 
   @Get('increments')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

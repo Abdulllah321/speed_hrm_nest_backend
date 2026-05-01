@@ -33,7 +33,7 @@ import {
   required: true,
 })
 export class IntegrationController {
-  constructor(private readonly service: IntegrationService) {}
+  constructor(private readonly service: IntegrationService,) {}
 
   /**
    * Provision or update a Tenant (Dealer).

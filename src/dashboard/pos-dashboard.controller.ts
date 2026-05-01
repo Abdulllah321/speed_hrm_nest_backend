@@ -15,7 +15,7 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PosDashboardController {
-  constructor(private readonly posDashboardService: PosDashboardService) { }
+  constructor(private readonly posDashboardService: PosDashboardService,) { }
 
   private extractLocationFromCookie(req: any): string | undefined {
     if (req.cookies?.posTerminalToken) {

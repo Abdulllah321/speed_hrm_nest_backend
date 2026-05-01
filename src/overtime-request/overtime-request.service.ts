@@ -13,8 +13,9 @@ export class OvertimeRequestService {
   constructor(
     private prismaMaster: PrismaMasterService,
     private prisma: PrismaService,
-    private activityLogs: ActivityLogsService,
+
     private notifications: NotificationsService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   private async resolveApproverUserId(args: {

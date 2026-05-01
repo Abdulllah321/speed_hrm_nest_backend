@@ -21,7 +21,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/finance/receipt-vouchers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ReceiptVoucherController {
-  constructor(private readonly receiptVoucherService: ReceiptVoucherService) {}
+  constructor(private readonly receiptVoucherService: ReceiptVoucherService,) {}
 
   @Post()
   @Permissions('erp.finance.receipt-voucher.create')

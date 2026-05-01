@@ -6,7 +6,7 @@ import { PermissionGuard } from '../../../common/guards/permission.guard';
 
 @Controller('api')
 export class HsCodeController {
-    constructor(private readonly hsCodeService: HsCodeService) { }
+    constructor(private readonly hsCodeService: HsCodeService,) { }
 
     @Post('hs-codes')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.create'))

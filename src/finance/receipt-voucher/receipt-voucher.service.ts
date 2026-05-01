@@ -11,7 +11,6 @@ export class ReceiptVoucherService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
-  ,
     private activityLogs: ActivityLogsService,
   ) {}
 

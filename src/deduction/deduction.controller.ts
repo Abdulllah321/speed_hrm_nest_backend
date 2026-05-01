@@ -31,7 +31,7 @@ import {
 @ApiTags('Deduction')
 @Controller('api')
 export class DeductionController {
-  constructor(private service: DeductionService) {}
+  constructor(private service: DeductionService,) {}
 
   @Get('deductions')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

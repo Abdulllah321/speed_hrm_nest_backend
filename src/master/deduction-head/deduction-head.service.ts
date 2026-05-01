@@ -102,7 +102,7 @@ export class DeductionHeadService {
         status: 'success',
       }),
       );
-      return response;
+      return { status: true, message: 'Deduction heads created successfully' };
     } catch (error: any) {
       
       runInBackground(

@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { CompanyService } from './company.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -43,7 +44,7 @@ class UpdateCompanyDto {
 @Controller('api/admin/companies')
 @UseGuards(JwtAuthGuard)
 export class CompanyController {
-  constructor(private readonly companyService: CompanyService) {}
+  constructor(private readonly companyService: CompanyService,) {}
 
   /**
    * Get all companies
@@ -91,18 +92,26 @@ export class CompanyController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() body: CreateCompanyDto) {
-    return this.companyService.createCompany({
-      name: body.name,
-      code: body.code,
-    });
+  async create(@Body() body: CreateCompanyDto, @Req() req: any) {
+    return this.companyService.createCompany(
+      { name: body.name, code: body.code },
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
   }
 
   /**
    * Update company details
    */
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() body: UpdateCompanyDto) {
-    return this.companyService.updateCompany(id, body);
+  async update(@Param('id') id: string, @Body() body: UpdateCompanyDto, @Req() req: any) {
+    return this.companyService.updateCompany(id, body, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }

@@ -48,7 +48,7 @@ export class AttendanceController {
   constructor(
     private service: AttendanceService,
     private bulkUploadService: AttendanceBulkUploadService,
-    private eventsService: AttendanceUploadEventsService
+    private eventsService: AttendanceUploadEventsService,
   ) {}
 
   @Get('attendances')

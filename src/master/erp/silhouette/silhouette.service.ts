@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import type { Cache } from 'cache-manager';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../../database/prisma-master.service';
@@ -16,8 +16,9 @@ export class SilhouetteService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async getAllSilhouettes() {

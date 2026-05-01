@@ -24,7 +24,7 @@ import {
 @ApiBearerAuth()
 @Controller('api')
 export class GenderController {
-  constructor(private readonly genderService: GenderService) {} // recompile trigger
+  constructor(private readonly genderService: GenderService,) {} // recompile trigger
 
   @Get('genders')
   @ApiOperation({ summary: 'Get all genders' })

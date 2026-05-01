@@ -24,7 +24,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/finance/payment-vouchers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PaymentVoucherController {
-  constructor(private readonly paymentVoucherService: PaymentVoucherService) {}
+  constructor(private readonly paymentVoucherService: PaymentVoucherService,) {}
 
   @Post()
   @Permissions('erp.finance.payment-voucher.create')

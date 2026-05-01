@@ -24,7 +24,7 @@ import {
 @ApiTags('Upload')
 @Controller('api')
 export class UploadController {
-  constructor(private readonly uploadService: UploadService) {}
+  constructor(private readonly uploadService: UploadService,) {}
 
   @Post('uploads')
   @UseGuards(JwtAuthGuard)

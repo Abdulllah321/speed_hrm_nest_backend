@@ -18,8 +18,9 @@ export class PosService {
   constructor(
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
-    private activityLogs: ActivityLogsService,
+
     private encryptionService: EncryptionService,
+    private activityLogs: ActivityLogsService,
   ) { }
 
   async list(locationId?: string) {

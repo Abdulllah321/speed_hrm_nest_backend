@@ -8,7 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AccountLedgerController {
-    constructor(private prisma: PrismaService) {}
+    constructor(private prisma: PrismaService,) {}
 
     /**
      * GET /api/finance/account-ledger

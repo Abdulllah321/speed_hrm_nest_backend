@@ -10,8 +10,9 @@ import { runInBackground } from '../../common/utils/run-in-background.util';
 export class CityService {
   constructor(
     private prisma: PrismaService,
-    private activityLogs: ActivityLogsService,
+
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async getAllCountries() {

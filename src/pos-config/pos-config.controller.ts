@@ -42,22 +42,34 @@ export class PosConfigController {
     @Post('promos')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.create'))
     @ApiOperation({ summary: 'Create a promo campaign' })
-    async createPromo(@Body() body: any) {
-        return this.service.createPromo(body);
+    async createPromo(@Body() body: any, @Req() req: any) {
+        return this.service.createPromo(body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Put('promos/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.update'))
     @ApiOperation({ summary: 'Update a promo campaign' })
-    async updatePromo(@Param('id') id: string, @Body() body: any) {
-        return this.service.updatePromo(id, body);
+    async updatePromo(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+        return this.service.updatePromo(id, body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Delete('promos/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.delete'))
     @ApiOperation({ summary: 'Delete a promo campaign' })
-    async deletePromo(@Param('id') id: string) {
-        return this.service.deletePromo(id);
+    async deletePromo(@Param('id') id: string, @Req() req: any) {
+        return this.service.deletePromo(id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -74,22 +86,34 @@ export class PosConfigController {
     @Post('coupons')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.create'))
     @ApiOperation({ summary: 'Create a coupon code' })
-    async createCoupon(@Body() body: any) {
-        return this.service.createCoupon(body);
+    async createCoupon(@Body() body: any, @Req() req: any) {
+        return this.service.createCoupon(body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Put('coupons/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.update'))
     @ApiOperation({ summary: 'Update a coupon code' })
-    async updateCoupon(@Param('id') id: string, @Body() body: any) {
-        return this.service.updateCoupon(id, body);
+    async updateCoupon(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+        return this.service.updateCoupon(id, body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Delete('coupons/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.delete'))
     @ApiOperation({ summary: 'Delete a coupon code' })
-    async deleteCoupon(@Param('id') id: string) {
-        return this.service.deleteCoupon(id);
+    async deleteCoupon(@Param('id') id: string, @Req() req: any) {
+        return this.service.deleteCoupon(id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -106,22 +130,34 @@ export class PosConfigController {
     @Post('alliances')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.create'))
     @ApiOperation({ summary: 'Create an alliance discount' })
-    async createAlliance(@Body() body: any) {
-        return this.service.createAlliance(body);
+    async createAlliance(@Body() body: any, @Req() req: any) {
+        return this.service.createAlliance(body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Put('alliances/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.update'))
     @ApiOperation({ summary: 'Update an alliance discount' })
-    async updateAlliance(@Param('id') id: string, @Body() body: any) {
-        return this.service.updateAlliance(id, body);
+    async updateAlliance(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+        return this.service.updateAlliance(id, body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Delete('alliances/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.delete'))
     @ApiOperation({ summary: 'Delete an alliance discount' })
-    async deleteAlliance(@Param('id') id: string) {
-        return this.service.deleteAlliance(id);
+    async deleteAlliance(@Param('id') id: string, @Req() req: any) {
+        return this.service.deleteAlliance(id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -205,7 +241,11 @@ export class PosConfigController {
                 if (decoded?.locationId) issuedByLocationId = decoded.locationId;
             } catch { /* ignore */ }
         }
-        return this.voucherService.issueVoucher({ ...body, issuedByLocationId, issuedByUserId });
+        return this.voucherService.issueVoucher({ ...body, issuedByLocationId, issuedByUserId }, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Post('vouchers/bulk')
@@ -223,7 +263,11 @@ export class PosConfigController {
                 if (decoded?.locationId) issuedByLocationId = decoded.locationId;
             } catch { /* ignore */ }
         }
-        return this.voucherService.bulkIssueVouchers({ ...body, issuedByLocationId, issuedByUserId });
+        return this.voucherService.bulkIssueVouchers({ ...body, issuedByLocationId, issuedByUserId }, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 
     @Post('vouchers/validate')
@@ -248,7 +292,11 @@ export class PosConfigController {
     @UseGuards(JwtAuthGuard, PermissionsGuard)
     @Permissions('pos.voucher.void')
     @ApiOperation({ summary: 'Void a voucher' })
-    async voidVoucher(@Param('id') id: string, @Body() body: { reason?: string }) {
-        return this.voucherService.voidVoucher(id, body.reason);
+    async voidVoucher(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: any) {
+        return this.voucherService.voidVoucher(id, body.reason, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
     }
 }

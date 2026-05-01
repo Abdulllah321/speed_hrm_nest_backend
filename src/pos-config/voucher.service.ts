@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { runInBackground } from '../common/utils/run-in-background.util';
+
 export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET_GIFT';
 
 // Code format per type:
@@ -23,7 +26,10 @@ function generateCode(type: VoucherType): string {
 
 @Injectable()
 export class VoucherService {
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private activityLogs: ActivityLogsService,
+    ) {}
 
     // ── List vouchers (admin) ─────────────────────────────────────
     async listVouchers(filters?: {
@@ -78,7 +84,7 @@ export class VoucherService {
         sourceOrderId?: string;
         expiresAt?: string;
         locationIds?: string[]; // empty = all locations
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const code = generateCode(data.voucherType);
 
@@ -118,8 +124,39 @@ export class VoucherService {
                 },
             });
 
+            runInBackground(
+                'Issue Voucher',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    entityId: voucher.id,
+                    description: `Issued voucher ${voucher.code} (${voucher.voucherType})`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, data: voucher, message: `Voucher ${code} issued` };
         } catch (error: any) {
+            runInBackground(
+                'Issue Voucher (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    description: `Failed to issue voucher`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -135,7 +172,7 @@ export class VoucherService {
         locationIds?: string[];
         issuedByLocationId?: string;
         issuedByUserId?: string;
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const qty = Math.min(data.quantity, 500);
             const locationIds = data.locationIds ?? [];
@@ -183,12 +220,42 @@ export class VoucherService {
                 return vouchers;
             });
 
+            runInBackground(
+                'Bulk Issue Vouchers',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    description: `Bulk issued ${created.length} vouchers of type ${data.voucherType}`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return {
                 status: true,
                 data: { count: created.length, codes: created.map((v) => v.code) },
                 message: `${created.length} vouchers issued successfully`,
             };
         } catch (error: any) {
+            runInBackground(
+                'Bulk Issue Vouchers (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'create',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    description: `Failed to bulk issue vouchers`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
@@ -294,7 +361,7 @@ export class VoucherService {
         issuedByUserId?: string;
         customerId?: string;
         expiresInDays?: number;
-    }) {
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + (data.expiresInDays ?? 30));
 
@@ -307,11 +374,11 @@ export class VoucherService {
             issuedByUserId: data.issuedByUserId,
             sourceOrderId: data.sourceOrderId,
             expiresAt: expiresAt.toISOString(),
-        });
+        }, ctx);
     }
 
     // ── Void a voucher ────────────────────────────────────────────
-    async voidVoucher(id: string, reason?: string) {
+    async voidVoucher(id: string, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const voucher = await this.prisma.voucher.findUnique({ where: { id } });
             if (!voucher) return { status: false, message: 'Voucher not found' };
@@ -331,8 +398,38 @@ export class VoucherService {
                 },
             });
 
+            runInBackground(
+                'Void Voucher',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    entityId: id,
+                    description: `Voided voucher ${voucher.code}. Reason: ${reason ?? 'N/A'}`,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
             return { status: true, message: 'Voucher voided' };
         } catch (error: any) {
+            runInBackground(
+                'Void Voucher (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    entityId: id,
+                    description: `Failed to void voucher`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
             return { status: false, message: error.message };
         }
     }
