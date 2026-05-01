@@ -285,6 +285,7 @@ INSERT INTO "Employee" (id, "userId", "employeeId", "employeeName", "fatherHusba
 ALTER TABLE "Employee" ENABLE TRIGGER ALL;
 
 
+
 --
 -- Data for Name: ActivityLog; Type: TABLE DATA; Schema: public; Owner: -
 --
@@ -1679,8 +1680,22 @@ INSERT INTO "LeavesPolicy" (id, name, details, "policyDateFrom", "policyDateTill
 -- Data for Name: LeavesPolicyLeaveType; Type: TABLE DATA; Schema: public; Owner: -
 --
 
+-- Screenshot specific leave types add
 
+INSERT INTO "LeavesPolicyLeaveType" 
+(id, "leavesPolicyId", "leaveTypeId", "numberOfLeaves", "createdAt", "updatedAt") 
+VALUES 
+('11111111-aaaa-4bbb-8ccc-111111111111', '9d080e70-d566-4d16-a819-5396a1ca1f5a', 'fedf503a-7685-482d-87a1-3edeebae7875', 5, NOW(), NOW()); -- Casual Leave
 
+INSERT INTO "LeavesPolicyLeaveType" 
+(id, "leavesPolicyId", "leaveTypeId", "numberOfLeaves", "createdAt", "updatedAt") 
+VALUES 
+('22222222-bbbb-4ccc-9ddd-222222222222', '9d080e70-d566-4d16-a819-5396a1ca1f5a', 'a7506464-3789-49fa-bfe8-670bf48e625d', 10, NOW(), NOW()); -- Sick Leave
+
+INSERT INTO "LeavesPolicyLeaveType" 
+(id, "leavesPolicyId", "leaveTypeId", "numberOfLeaves", "createdAt", "updatedAt") 
+VALUES 
+('33333333-cccc-4ddd-0eee-333333333333', '9d080e70-d566-4d16-a819-5396a1ca1f5a', '10c73c47-bbf6-4271-89e3-407546a7036d', 15, NOW(), NOW()); -- Privilege Leave
 --
 -- Data for Name: LoanType; Type: TABLE DATA; Schema: public; Owner: -
 --
