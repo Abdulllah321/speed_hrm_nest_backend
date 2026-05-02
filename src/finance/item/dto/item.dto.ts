@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsDate,
   IsUUID,
+  IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -157,3 +158,104 @@ export class CreateItemDto {
 }
 
 export class UpdateItemDto extends CreateItemDto { }
+
+// ─── Bulk Discount ────────────────────────────────────────────────────────────
+
+export class BulkDiscountItemOverrideDto {
+  @IsUUID()
+  id: string;
+
+  @IsNumber()
+  @IsOptional()
+  discountRate?: number;
+
+  @IsNumber()
+  @IsOptional()
+  discountAmount?: number;
+
+  // Pre-apply snapshot for DB rollback (sent by frontend)
+  @IsNumber()
+  @IsOptional()
+  prevDiscountRate?: number;
+
+  @IsNumber()
+  @IsOptional()
+  prevDiscountAmount?: number;
+
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  prevStartDate?: Date;
+
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  prevEndDate?: Date;
+}
+
+export class BulkDiscountDto {
+  /** Campaign name — stored in DiscountCampaign table */
+  @IsString()
+  campaignName: string;
+
+  @IsUUID(undefined, { each: true })
+  itemIds: string[];
+
+  /** Percent discount applied to all items */
+  @IsNumber()
+  @IsOptional()
+  discountRate?: number;
+
+  /** Fixed amount discount applied to all items */
+  @IsNumber()
+  @IsOptional()
+  discountAmount?: number;
+
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  discountStartDate?: Date;
+
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  discountEndDate?: Date;
+
+  /** When true, clears all discount fields on the selected items */
+  @IsBoolean()
+  @IsOptional()
+  clearDiscount?: boolean;
+
+  /** Internal notes */
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  /** WarehouseLocation IDs this campaign is scoped to (empty = global) */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  locationIds?: string[];
+
+  /** Display names for the locations (parallel array to locationIds, for history display) */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  locationNames?: string[];
+
+  /** Per-item overrides with pre-apply snapshots */
+  @IsOptional()
+  overrides?: BulkDiscountItemOverrideDto[];
+
+  /** ID of the user applying the campaign */
+  @IsString()
+  @IsOptional()
+  appliedById?: string;
+}
+
+// ─── Campaign Rollback ────────────────────────────────────────────────────────
+
+export class RollbackCampaignDto {
+  @IsUUID()
+  campaignId: string;
+}

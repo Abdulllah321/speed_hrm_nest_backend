@@ -69,4 +69,79 @@ model Item {
   deliveryChallanItems     DeliveryChallanItem[]
   erpSalesInvoiceItems     ERPSalesInvoiceItem[]
   posClaimItems            PosClaimItem[]
+
+  // Discount Campaigns
+  discountCampaignItems    DiscountCampaignItem[]
+}
+
+// ─── Discount Campaign ────────────────────────────────────────────────────────
+// Stores every bulk-discount operation as a named campaign with full audit trail.
+// Items and locations are linked via junction tables so the campaign is fully
+// queryable and reversible without relying on localStorage.
+
+model DiscountCampaign {
+  id            String                   @id @default(uuid())
+  name          String
+  discountType  String                   @default("percent") // "percent" | "fixed" | "clear"
+  discountRate  Float?                   @default(0)         // percent value (0-100)
+  discountAmount Float?                  @default(0)         // fixed PKR amount
+  startDate     DateTime?                @map("start_date")
+  endDate       DateTime?                @map("end_date")
+  notes         String?
+  clearMode     Boolean                  @default(false)     @map("clear_mode")
+  itemCount     Int                      @default(0)         @map("item_count")
+  appliedById   String?                  @map("applied_by_id")
+  createdAt     DateTime                 @default(now())     @map("created_at")
+  updatedAt     DateTime                 @updatedAt          @map("updated_at")
+
+  items         DiscountCampaignItem[]
+  locations     DiscountCampaignLocation[]
+
+  @@index([createdAt])
+  @@index([appliedById])
+  @@map("discount_campaigns")
+}
+
+// Junction: which items belong to this campaign + their individual override values
+// and a snapshot of the pre-apply state for rollback
+model DiscountCampaignItem {
+  id               String           @id @default(uuid())
+  campaignId       String           @map("campaign_id")
+  itemId           String           @map("item_id")
+
+  // Override — null means the campaign default was used
+  overrideRate     Float?           @map("override_rate")
+  overrideAmount   Float?           @map("override_amount")
+
+  // Pre-apply snapshot for rollback
+  prevDiscountRate   Float?         @map("prev_discount_rate")
+  prevDiscountAmount Float?         @map("prev_discount_amount")
+  prevStartDate      DateTime?      @map("prev_start_date")
+  prevEndDate        DateTime?      @map("prev_end_date")
+
+  campaign         DiscountCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  item             Item             @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, itemId])
+  @@index([campaignId])
+  @@index([itemId])
+  @@map("discount_campaign_items")
+}
+
+// Junction: which Locations (POS outlets/counters) this campaign is scoped to.
+// Empty = global (applies to all locations).
+// Location is the POS outlet model (warehouse/warehouse.prisma), not WarehouseLocation (WMS bins).
+model DiscountCampaignLocation {
+  id           String           @id @default(uuid())
+  campaignId   String           @map("campaign_id")
+  locationId   String           @map("location_id")   // FK → Location.id (POS outlet)
+  locationName String?          @map("location_name") // denormalized for display without join
+
+  campaign     DiscountCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  location     Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, locationId])
+  @@index([campaignId])
+  @@index([locationId])
+  @@map("discount_campaign_locations")
 }

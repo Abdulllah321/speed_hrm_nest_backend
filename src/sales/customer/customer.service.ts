@@ -4,6 +4,11 @@ import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer-dto';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 
+// Customers visible in ERP: ERP-only + shared
+const ERP_TYPES = ['ERP', 'BOTH'] as const;
+// Customers visible in POS: POS-only + shared
+const POS_TYPES = ['POS', 'BOTH'] as const;
+
 @Injectable()
 export class CustomerService {
   constructor(
@@ -11,10 +16,14 @@ export class CustomerService {
     private activityLogs: ActivityLogsService,
   ) { }
 
+  // ─── ERP: Create (defaults to ERP type) ──────────────────────────
   async create(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const customer = await this.prisma.customer.create({
-        data: createDto,
+        data: {
+          ...createDto,
+          customerType: createDto.customerType ?? 'ERP',
+        },
       });
 
       runInBackground(
@@ -33,11 +42,7 @@ export class CustomerService {
         }),
       );
 
-      return {
-        status: true,
-        data: customer,
-        message: 'Customer created successfully',
-      };
+      return { status: true, data: customer, message: 'Customer created successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to create customer',
@@ -58,18 +63,20 @@ export class CustomerService {
     }
   }
 
+  // ─── ERP: List (ERP + BOTH only) ─────────────────────────────────
   async findAll(search?: string) {
     try {
       const customers = await this.prisma.customer.findMany({
-        where: search
-          ? {
+        where: {
+          customerType: { in: ERP_TYPES as unknown as any },
+          ...(search && {
             OR: [
               { name: { contains: search, mode: 'insensitive' } },
               { code: { contains: search, mode: 'insensitive' } },
               { contactNo: { contains: search, mode: 'insensitive' } },
             ],
-          }
-          : {},
+          }),
+        },
         orderBy: { createdAt: 'desc' },
       });
       return { status: true, data: customers };
@@ -78,6 +85,7 @@ export class CustomerService {
     }
   }
 
+  // ─── Shared: Get single by ID (no type restriction — used by both sides) ──
   async findOne(id: string) {
     try {
       const customer = await this.prisma.customer.findUnique({ where: { id } });
@@ -91,6 +99,7 @@ export class CustomerService {
     }
   }
 
+  // ─── Shared: Update ───────────────────────────────────────────────
   async update(id: string, updateDto: UpdateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.customer.findUnique({ where: { id } });
@@ -116,11 +125,7 @@ export class CustomerService {
         }),
       );
 
-      return {
-        status: true,
-        data: customer,
-        message: 'Customer updated successfully',
-      };
+      return { status: true, data: customer, message: 'Customer updated successfully' };
     } catch (error: any) {
       runInBackground(
         'Failed to update customer',
@@ -142,6 +147,7 @@ export class CustomerService {
     }
   }
 
+  // ─── Shared: Delete ───────────────────────────────────────────────
   async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const existing = await this.prisma.customer.findUnique({ where: { id } });
@@ -184,15 +190,47 @@ export class CustomerService {
     }
   }
 
-  // ─── Customer Ledger ──────────────────────────────────────────────
+  // ─── POS: Create (defaults to POS type) ──────────────────────────
+  async posCreate(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    return this.create(
+      { ...createDto, customerType: createDto.customerType ?? 'POS' },
+      ctx,
+    );
+  }
+
+  // ─── POS: List (POS + BOTH only) ─────────────────────────────────
+  async posFindAll(search?: string) {
+    try {
+      const customers = await this.prisma.customer.findMany({
+        where: {
+          customerType: { in: POS_TYPES as unknown as any },
+          ...(search && {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { code: { contains: search, mode: 'insensitive' } },
+              { contactNo: { contains: search, mode: 'insensitive' } },
+            ],
+          }),
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return { status: true, data: customers };
+    } catch (error: any) {
+      return { status: false, message: error.message, data: null };
+    }
+  }
+
+  // ─── ERP Customer Ledger (ERP + BOTH customers only) ─────────────
   async getCustomerLedger(customerId?: string, search?: string) {
     try {
-      const where: any = {};
-      
+      const where: any = {
+        customerType: { in: ERP_TYPES },
+      };
+
       if (customerId) {
         where.id = customerId;
       }
-      
+
       if (search) {
         where.OR = [
           { name: { contains: search, mode: 'insensitive' } },
@@ -211,6 +249,7 @@ export class CustomerService {
           email: true,
           address: true,
           balance: true,
+          customerType: true,
           salesInvoices: {
             select: {
               id: true,
@@ -238,50 +277,36 @@ export class CustomerService {
         orderBy: { name: 'asc' },
       });
 
-      // Calculate summary for each customer
       const ledgerData = await Promise.all(
         customers.map(async (customer) => {
-          // ERP Sales Invoices
           const invoiceStats = await this.prisma.eRPSalesInvoice.aggregate({
             where: { customerId: customer.id },
-            _sum: {
-              grandTotal: true,
-              paidAmount: true,
-            },
+            _sum: { grandTotal: true, paidAmount: true },
             _count: true,
           });
 
-          // ERP Sales Orders
           const orderStats = await this.prisma.eRPSalesOrder.aggregate({
             where: { customerId: customer.id },
-            _sum: {
-              grandTotal: true,
-            },
+            _sum: { grandTotal: true },
             _count: true,
           });
 
-          // POS Sales (completed orders only)
           const posSalesStats = await this.prisma.salesOrder.aggregate({
-            where: { 
+            where: {
               customerId: customer.id,
               status: { in: ['completed', 'partially_returned', 'returned'] },
             },
-            _sum: {
-              grandTotal: true,
-            },
+            _sum: { grandTotal: true },
             _count: true,
           });
 
-          // POS Credit Sales (only unpaid, not partial)
           const posCreditStats = await this.prisma.salesOrder.aggregate({
             where: {
               customerId: customer.id,
               status: 'completed',
-              paymentStatus: 'unpaid', // Only truly unpaid orders
+              paymentStatus: 'unpaid',
             },
-            _sum: {
-              grandTotal: true,
-            },
+            _sum: { grandTotal: true },
             _count: true,
           });
 
@@ -290,9 +315,6 @@ export class CustomerService {
           const totalOrders = Number(orderStats._sum?.grandTotal || 0);
           const totalPosSales = Number(posSalesStats._sum?.grandTotal || 0);
           const totalPosCredit = Number(posCreditStats._sum?.grandTotal || 0);
-          
-          // POS sales are considered paid immediately unless it's a credit sale
-          // Outstanding = ERP invoices unpaid + POS credit sales
           const outstandingBalance = (totalInvoiced - totalPaid) + totalPosCredit;
 
           return {
@@ -311,7 +333,7 @@ export class CustomerService {
               grandTotalSales: totalInvoiced + totalOrders + totalPosSales,
             },
           };
-        })
+        }),
       );
 
       return { status: true, data: ledgerData };
@@ -331,12 +353,7 @@ export class CustomerService {
             include: {
               items: {
                 include: {
-                  item: {
-                    select: {
-                      description: true,
-                      sku: true,
-                    },
-                  },
+                  item: { select: { description: true, sku: true } },
                 },
               },
             },
@@ -346,12 +363,7 @@ export class CustomerService {
             include: {
               items: {
                 include: {
-                  item: {
-                    select: {
-                      description: true,
-                      sku: true,
-                    },
-                  },
+                  item: { select: { description: true, sku: true } },
                 },
               },
             },
@@ -363,10 +375,9 @@ export class CustomerService {
         return { status: false, message: 'Customer not found', data: null };
       }
 
-      // Fetch POS sales for this customer
       const posSales = await this.prisma.salesOrder.findMany({
         where: {
-          customerId: customerId,
+          customerId,
           status: { in: ['completed', 'partially_returned', 'returned'] },
         },
         orderBy: { createdAt: 'desc' },
@@ -377,30 +388,107 @@ export class CustomerService {
           grandTotal: true,
           paymentMethod: true,
           paymentStatus: true,
+          tenderType: true,
           status: true,
+          locationId: true,
           createdAt: true,
           items: {
             include: {
-              item: {
-                select: {
-                  description: true,
-                  sku: true,
-                },
-              },
+              item: { select: { description: true, sku: true } },
             },
           },
         },
       });
 
-      return { 
-        status: true, 
-        data: {
-          ...customer,
-          posSales,
-        },
-      };
+      // Enrich with location names
+      const locationIds = [...new Set(posSales.map(s => s.locationId).filter(Boolean))] as string[];
+      const locationMap = new Map<string, string>();
+      if (locationIds.length > 0) {
+        const locs = await this.prisma.location.findMany({
+          where: { id: { in: locationIds } },
+          select: { id: true, name: true },
+        });
+        for (const loc of locs) locationMap.set(loc.id, loc.name);
+      }
+
+      const enrichedPosSales = posSales.map(s => ({
+        ...s,
+        locationName: s.locationId ? (locationMap.get(s.locationId) ?? null) : null,
+      }));
+
+      return { status: true, data: { ...customer, posSales: enrichedPosSales } };
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
+    }
+  }
+
+  // ─── Record credit payment — mark selected orders as paid ─────────
+  async recordCreditPayment(
+    customerId: string,
+    dto: { orderIds: string[]; paymentMethod: string; notes?: string; cardLast4?: string; slipRef?: string },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      if (!dto.orderIds?.length) {
+        return { status: false, message: 'No orders selected.' };
+      }
+
+      // Verify all orders belong to this customer and are unpaid
+      const orders = await this.prisma.salesOrder.findMany({
+        where: {
+          id: { in: dto.orderIds },
+          customerId,
+          paymentStatus: 'unpaid',
+        },
+        select: { id: true, grandTotal: true, orderNumber: true },
+      });
+
+      if (orders.length === 0) {
+        return { status: false, message: 'No matching unpaid orders found.' };
+      }
+
+      const totalPaid = orders.reduce((sum, o) => sum + Number(o.grandTotal), 0);
+
+      await this.prisma.$transaction(async (tx) => {
+        // Mark each order as paid
+        await tx.salesOrder.updateMany({
+          where: { id: { in: orders.map(o => o.id) } },
+          data: {
+            paymentStatus: 'paid',
+            paymentMethod: dto.paymentMethod,
+          },
+        });
+
+        // Decrement customer balance
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { balance: { decrement: totalPaid } },
+        });
+      });
+
+      runInBackground(
+        `Credit payment recorded for customer ${customerId}`,
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'sales-customers',
+          entity: 'Customer',
+          entityId: customerId,
+          description: `Recorded credit payment of PKR ${totalPaid} for ${orders.length} order(s)`,
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return {
+        status: true,
+        message: `Payment recorded for ${orders.length} order(s). Total: PKR ${totalPaid.toLocaleString()}`,
+        data: { orderCount: orders.length, totalPaid },
+      };
+    } catch (error: any) {
+      return { status: false, message: error.message };
     }
   }
 }

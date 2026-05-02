@@ -8,6 +8,7 @@ import {
     Req,
     UseGuards,
     BadRequestException,
+    Patch,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
@@ -15,6 +16,8 @@ import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { CustomerService } from '../sales/customer/customer.service';
+import { CreateCustomerDto, UpdateCustomerDto } from '../sales/customer/dto/customer-dto';
 import * as jwt from 'jsonwebtoken';
 
 @ApiTags('POS Sales')
@@ -22,7 +25,67 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSalesController {
-    constructor(private readonly posSalesService: PosSalesService,) { }
+    constructor(
+        private readonly posSalesService: PosSalesService,
+        private readonly customerService: CustomerService,
+    ) { }
+
+    // ─── POS Customer Endpoints ────────────────────────────────────────
+    // These mirror /api/sales/customers but are mounted under /api/pos-sales/customers
+    // so the POS frontend has a single base URL and doesn't need to cross modules.
+
+    @Post('customers')
+    @ApiOperation({ summary: 'Create a new customer from POS' })
+    async createCustomer(@Body() dto: CreateCustomerDto, @Req() req: any) {
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.customerService.posCreate(dto, ctx);
+    }
+
+    @Get('customers')
+    @ApiOperation({ summary: 'Search / list customers from POS' })
+    async listCustomers(@Query('search') search?: string) {
+        return this.customerService.posFindAll(search);
+    }
+
+    @Get('customers/:id')
+    @ApiOperation({ summary: 'Get a single customer by ID' })
+    async getCustomer(@Param('id') id: string) {
+        return this.customerService.findOne(id);
+    }
+
+    @Patch('customers/:id')
+    @ApiOperation({ summary: 'Update a customer from POS' })
+    async updateCustomer(
+        @Param('id') id: string,
+        @Body() dto: UpdateCustomerDto,
+        @Req() req: any,
+    ) {
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.customerService.update(id, dto, ctx);
+    }
+
+    @Post('customers/:id/pay-credit')
+    @ApiOperation({ summary: 'Record credit payment for a customer — marks selected orders as paid' })
+    async recordCreditPayment(
+        @Param('id') id: string,
+        @Body() dto: { orderIds: string[]; paymentMethod: string; notes?: string; cardLast4?: string; slipRef?: string },
+        @Req() req: any,
+    ) {
+        const ctx = {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        };
+        return this.customerService.recordCreditPayment(id, dto, ctx);
+    }
 
     // ─── Item lookup for POS (search by barcode, SKU, description) ────
     @Get('lookup')
