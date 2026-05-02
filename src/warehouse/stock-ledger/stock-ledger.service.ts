@@ -93,20 +93,59 @@ export class StockLedgerService {
     const groupBy = await this.prisma.stockLedger.groupBy({
       by: ['itemId', 'warehouseId', 'locationId'],
       where: {
-        warehouseId,
-        locationId,
+        ...(warehouseId ? { warehouseId } : {}),
+        ...(locationId ? { locationId } : {}),
       },
       _sum: {
         qty: true,
       },
     });
 
-    return groupBy.map((item) => ({
-      itemId: item.itemId,
-      warehouseId: item.warehouseId,
-      locationId: item.locationId,
-      totalQuantity: Number(item._sum.qty || 0),
-    }));
+    // Fetch related entities in parallel
+    const itemIds = [...new Set(groupBy.map((r) => r.itemId))];
+    const warehouseIds = [...new Set(groupBy.map((r) => r.warehouseId))];
+    const locationIds = [...new Set(groupBy.map((r) => r.locationId).filter(Boolean))] as string[];
+
+    const [items, warehouses, locations] = await Promise.all([
+      this.prisma.item.findMany({
+        where: { id: { in: itemIds } },
+        select: { id: true, itemId: true, sku: true, description: true },
+      }),
+      this.prisma.warehouse.findMany({
+        where: { id: { in: warehouseIds } },
+        select: { id: true, name: true, code: true },
+      }),
+      locationIds.length > 0
+        ? this.prisma.location.findMany({
+            where: { id: { in: locationIds } },
+            select: { id: true, name: true, code: true },
+          })
+        : Promise.resolve([] as { id: string; name: string; code: string }[]),
+    ]);
+
+    const itemMap = new Map(items.map((i) => [i.id, i]));
+    const warehouseMap = new Map(warehouses.map((w) => [w.id, w]));
+    const locationMap = new Map(locations.map((l) => [l.id, l]));
+
+    return groupBy.map((row) => {
+      const loc = row.locationId ? locationMap.get(row.locationId) : null;
+      const wh = warehouseMap.get(row.warehouseId);
+      return {
+        itemId: row.itemId,
+        warehouseId: row.warehouseId,
+        locationId: row.locationId ?? null,
+        totalQty: Number(row._sum.qty || 0),
+        item: itemMap.get(row.itemId) ?? null,
+        warehouse: wh ? { name: wh.name, code: wh.code } : null,
+        location: loc
+          ? {
+              name: loc.name,
+              code: loc.code,
+              warehouse: wh ? { name: wh.name } : null,
+            }
+          : null,
+      };
+    });
   }
 
   async createEntry(

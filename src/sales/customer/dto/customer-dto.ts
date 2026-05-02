@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsEmail } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsEmail, IsIn } from 'class-validator';
 
 export class CreateCustomerDto {
   @IsString()
@@ -20,6 +20,11 @@ export class CreateCustomerDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['ERP', 'POS', 'BOTH'])
+  customerType?: 'ERP' | 'POS' | 'BOTH';
 }
 
 export class UpdateCustomerDto {
@@ -42,4 +47,9 @@ export class UpdateCustomerDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['ERP', 'POS', 'BOTH'])
+  customerType?: 'ERP' | 'POS' | 'BOTH';
 }

@@ -48,6 +48,15 @@ export class CustomerController {
     return this.service.getCustomerTransactions(customerId);
   }
 
+  @Post('ledger/:customerId/pay-credit')
+  recordCreditPayment(
+    @Param('customerId') customerId: string,
+    @Body() dto: { orderIds: string[]; paymentMethod: string; notes?: string; cardLast4?: string; slipRef?: string },
+    @Req() req,
+  ) {
+    return this.service.recordCreditPayment(customerId, dto, this.ctx(req));
+  }
+
   // ─── Standard CRUD (after specific routes) ────────────────────────
   @Get(':id')
   findOne(@Param('id') id: string) {

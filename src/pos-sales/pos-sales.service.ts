@@ -624,7 +624,12 @@ export class PosSalesService implements OnModuleInit {
             }
         }
         if (locationId) where.locationId = locationId;
-        if (status) where.status = status;
+        if (status) {
+            where.status = status;
+        } else {
+            // Always exclude hold_expired orders from history listing
+            where.status = { not: 'hold_expired' };
+        }
 
         // ── Handle search (by order number) ──
         if (filters?.search) {
@@ -1834,11 +1839,37 @@ export class PosSalesService implements OnModuleInit {
             stockMap.set(entry.itemId, Number(entry._sum.qty || 0));
         }
 
+        const now = new Date();
+
         return items.map((item) => {
             const stockQty = stockMap.get(item.id) || 0;
             const latestPrice = Number(item.unitCost || 0) > 0
                 ? Number(item.unitCost)
                 : Number(item.unitPrice || 0);
+
+            // ── Resolve effective discount respecting date validity ──────────
+            // A discount is active if:
+            //   - discountStartDate is null OR discountStartDate <= now
+            //   - discountEndDate is null OR discountEndDate >= now
+            const startDate = item.discountStartDate ? new Date(item.discountStartDate) : null;
+            const endDate = item.discountEndDate ? new Date(item.discountEndDate) : null;
+            const discountActive =
+                (!startDate || startDate <= now) &&
+                (!endDate || endDate >= now);
+
+            const discountRate = discountActive ? Number(item.discountRate || 0) : 0;
+            const discountAmount = discountActive ? Number(item.discountAmount || 0) : 0;
+
+            // Effective discount percent for the cart:
+            // If discountRate (%) is set, use it directly.
+            // If only discountAmount (fixed PKR) is set, convert to percent of unit price.
+            let effectiveDiscountPercent = 0;
+            if (discountRate > 0) {
+                effectiveDiscountPercent = discountRate;
+            } else if (discountAmount > 0 && latestPrice > 0) {
+                effectiveDiscountPercent = Math.min(100, (discountAmount / latestPrice) * 100);
+            }
+
             return {
                 id: item.id,
                 itemId: item.itemId,
@@ -1849,7 +1880,13 @@ export class PosSalesService implements OnModuleInit {
                 unitCost: Number(item.unitCost || 0),
                 taxRate1: Number(item.taxRate1 || 0),
                 taxRate2: Number(item.taxRate2 || 0),
-                discountRate: Number(item.discountRate || 0),
+                // Raw discount fields
+                discountRate,
+                discountAmount,
+                discountStartDate: item.discountStartDate ?? null,
+                discountEndDate: item.discountEndDate ?? null,
+                // Computed effective discount percent (ready for cart)
+                effectiveDiscountPercent: Math.round(effectiveDiscountPercent * 100) / 100,
                 brand: item.brand?.name || null,
                 size: item.size?.name || null,
                 color: item.color?.name || null,

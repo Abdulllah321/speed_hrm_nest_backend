@@ -1825,6 +1825,7 @@ export const PERMISSIONS = [
   { name: 'erp.item.update', description: 'Update Item' },
   { name: 'erp.item.delete', description: 'Delete Item' },
   { name: 'erp.item.bulk-upload', description: 'Bulk Upload Items' },
+  { name: 'erp.item.bulk-discount', description: 'Apply Bulk Discounts to Items' },
 
   // ── ERP Procurement — Purchase Requisition ──────────────────────────────────
   { name: 'erp.procurement.pr.read', description: 'View Purchase Requisitions' },

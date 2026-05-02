@@ -886,7 +886,11 @@ export class AttendanceService {
         status: 'success',
       });
 
-      return response;
+      return {
+        status: true,
+        message: 'Attendance updated successfully',
+        data: updated,
+      };
     } catch (error: any) {
       runInBackground(
         'Update Attendance (Failure Log)',
