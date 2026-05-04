@@ -247,6 +247,10 @@ export class CreateSalesOrderDto {
     @ValidateNested({ each: true })
     @Type(() => VoucherRedemptionDto)
     voucherRedemptions?: VoucherRedemptionDto[];
+    @ApiPropertyOptional({ description: 'ID of the cashier/employee who performed the sale' })
+    @IsOptional()
+    @IsString()
+    cashierUserId?: string;
 
     @ApiProperty({ type: [SalesOrderItemDto] })
     @IsArray()

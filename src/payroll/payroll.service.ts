@@ -305,10 +305,15 @@ export class PayrollService {
         joiningDate && joiningDate > monthStartDate
           ? joiningDate
           : new Date(monthStartDate);
+      
+      // Set effectiveEnd to end of day to include the full last day
+      const monthEndDateEndOfDay = new Date(monthEndDate);
+      monthEndDateEndOfDay.setHours(23, 59, 59, 999);
+      
       const effectiveEnd =
-        lastExitDate && lastExitDate < monthEndDate
+        lastExitDate && lastExitDate < monthEndDateEndOfDay
           ? lastExitDate
-          : new Date(monthEndDate);
+          : monthEndDateEndOfDay;
 
       // Guard: employee not active in this month at all
       if (effectiveStart > monthEndDate || effectiveEnd < monthStartDate) {
@@ -548,6 +553,82 @@ export class PayrollService {
           effectiveEnd,
           workedDays,
         );
+
+      // ── ZERO ATTENDANCE CHECK ──────────────────────────────────────────
+      // If employee has NO attendance records at all in the month, set everything to zero
+      // This prevents negative amounts and ensures clean zero payroll
+      const hasAnyAttendance = await this.prisma.attendance.count({
+        where: {
+          employeeId: employee.id,
+          date: {
+            gte: monthStartDate,
+            lte: monthEndDate,
+          },
+        },
+      });
+
+      if (hasAnyAttendance === 0) {
+        // No attendance at all - push zero payroll entry
+        previewData.push({
+          employeeId: employee.id,
+          employeeName: employee.employeeName,
+          employeeCode: employee.employeeId,
+          employee: {
+            employeeId: employee.employeeId,
+            employeeName: employee.employeeName,
+            department: emp.department?.name || null,
+            subDepartment: emp.subDepartment?.name || null,
+            designation: emp.designation?.name || null,
+            country: emp.country?.name || null,
+            state: emp.state?.name || null,
+            city: emp.city?.name || null,
+            branch: emp.location?.name || null,
+          },
+          workingHoursPolicy: emp.workingHoursPolicy,
+          policyAssignments: emp.policyAssignments,
+          basicSalary: 0,
+          salaryBreakup: [],
+          allowanceBreakup: [],
+          totalAllowances: 0,
+          overtimeBreakup: [],
+          overtimeAmount: 0,
+          bonusBreakup: [],
+          bonusAmount: 0,
+          leaveEncashmentAmount: 0,
+          socialSecurityContributionAmount: 0,
+          incrementBreakup: [],
+          deductionBreakup: [],
+          totalDeductions: 0,
+          attendanceBreakup: {
+            absent: { count: 0, amount: 0 },
+            sandwichAbsent: { count: 0, amount: 0 },
+            late: { count: 0, chargeableCount: 0, amount: 0 },
+            halfDay: { count: 0, amount: 0 },
+            shortDay: { count: 0, amount: 0 },
+            leave: { count: 0, amount: 0 },
+          },
+          attendanceDeduction: 0,
+          loanDeduction: 0,
+          advanceSalaryDeduction: 0,
+          eobiDeduction: 0,
+          providentFundDeduction: 0,
+          taxBreakup: {},
+          taxDeduction: 0,
+          grossSalary: 0,
+          netSalary: 0,
+          joiningDate: emp.joiningDate || null,
+          lastExitDate: emp.lastExitDate || null,
+          workedDays: 0,
+          totalDaysInMonth,
+          salaryFraction: 0,
+          isMidMonthEntry: false,
+          paymentStatus: 'pending',
+          hasZeroAttendance: true, // Flag to show warning message
+          zeroAttendanceMessage: 'No attendance record found for this month',
+        });
+        continue; // Skip to next employee
+      }
+      // ──────────────────────────────────────────────────────────────────
 
       // D. Calculate Bonuses
       const bonusAmount = this.calculateBonuses(emp.bonuses || []);
@@ -2012,16 +2093,19 @@ export class PayrollService {
       }
 
       if (bucket) {
-        if (!att || att.status === 'absent') {
+        // Only count as absent if there's an explicit attendance record with absent status
+        // Missing attendance records on working days should not automatically be counted as absent
+        // This prevents false absents on holidays or days without attendance records
+        if (att && att.status === 'absent') {
           bucket.stats.absent++;
         } else if (
-          att.status === 'late' ||
-          (att.lateMinutes && att.lateMinutes > 0)
+          att &&
+          (att.status === 'late' || (att.lateMinutes && att.lateMinutes > 0))
         ) {
           bucket.stats.late++;
-        } else if (att.status === 'half-day') {
+        } else if (att && att.status === 'half-day') {
           bucket.stats.halfDay++;
-        } else if (att.status === 'short-day') {
+        } else if (att && att.status === 'short-day') {
           bucket.stats.shortDay++;
         }
       }
