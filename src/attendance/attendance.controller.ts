@@ -192,4 +192,31 @@ export class AttendanceController {
       };
     }
   }
+
+  @Post('attendances/apply-sandwich-rules')
+  @Permissions('hr.attendance.update')
+  @ApiOperation({ summary: 'Apply sandwich rules to all Friday-Monday absent pairs' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        dateFrom: { type: 'string', format: 'date', description: 'Start date (optional)' },
+        dateTo: { type: 'string', format: 'date', description: 'End date (optional)' },
+        employeeId: { type: 'string', description: 'Specific employee ID (optional)' },
+      },
+    },
+  })
+  async applySandwichRules(
+    @Body() body: { dateFrom?: string; dateTo?: string; employeeId?: string },
+    @Req() req: any,
+  ) {
+    return this.service.applySandwichRulesToAll({
+      dateFrom: body.dateFrom ? new Date(body.dateFrom) : undefined,
+      dateTo: body.dateTo ? new Date(body.dateTo) : undefined,
+      employeeId: body.employeeId,
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 }

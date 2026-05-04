@@ -127,7 +127,6 @@ model Increment {
   salary              Decimal  @db.Decimal(10, 2)
   promotionDate       DateTime
   currentMonth        String
-  monthsOfIncrement   Int
   notes               String?
   status              String   @default("active")
   createdById         String?
