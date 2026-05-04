@@ -163,6 +163,18 @@ export class StockMovementService {
         }
       });
     }
+
+    // 3. Write INBOUND ledger entry for the outlet so POS stock lookup reflects the transfer
+    await this.stockLedgerService.createEntry({
+      itemId: dto.itemId,
+      warehouseId: dto.fromWarehouseId,
+      locationId: dto.toLocationId,
+      qty: dto.quantity,
+      movementType: MovementType.INBOUND,
+      referenceType: 'TRANSFER_REQUEST',
+      referenceId: dto.referenceId || movementId,
+      rate: itemRate,
+    }, tx);
   }
 
   private async executeOutletToWarehouseTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
