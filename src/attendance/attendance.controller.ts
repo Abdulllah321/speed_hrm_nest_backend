@@ -12,7 +12,7 @@ import {
   UseGuards,
   Sse,
   MessageEvent,
-  Logger
+  Logger,
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -29,7 +29,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiQuery,
-  ApiConsumes
+  ApiConsumes,
 } from '@nestjs/swagger';
 import {
   CreateAttendanceDto,
@@ -48,8 +48,7 @@ export class AttendanceController {
   constructor(
     private service: AttendanceService,
     private bulkUploadService: AttendanceBulkUploadService,
-    private eventsService: AttendanceUploadEventsService
-,
+    private eventsService: AttendanceUploadEventsService,
   ) {}
 
   @Get('attendances')
@@ -177,21 +176,34 @@ export class AttendanceController {
     if (fileExtension !== '.csv' && fileExtension !== '.xlsx') {
       return {
         status: false,
-        message: error?.message || 'Failed to process file',
+        message: 'Failed to process file',
       };
     }
   }
 
   @Post('attendances/apply-sandwich-rules')
   @Permissions('hr.attendance.update')
-  @ApiOperation({ summary: 'Apply sandwich rules to all Friday-Monday absent pairs' })
+  @ApiOperation({
+    summary: 'Apply sandwich rules to all Friday-Monday absent pairs',
+  })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        dateFrom: { type: 'string', format: 'date', description: 'Start date (optional)' },
-        dateTo: { type: 'string', format: 'date', description: 'End date (optional)' },
-        employeeId: { type: 'string', description: 'Specific employee ID (optional)' },
+        dateFrom: {
+          type: 'string',
+          format: 'date',
+          description: 'Start date (optional)',
+        },
+        dateTo: {
+          type: 'string',
+          format: 'date',
+          description: 'End date (optional)',
+        },
+        employeeId: {
+          type: 'string',
+          description: 'Specific employee ID (optional)',
+        },
       },
     },
   })
