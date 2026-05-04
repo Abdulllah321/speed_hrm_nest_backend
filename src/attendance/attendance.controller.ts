@@ -48,7 +48,8 @@ export class AttendanceController {
   constructor(
     private service: AttendanceService,
     private bulkUploadService: AttendanceBulkUploadService,
-    private eventsService: AttendanceUploadEventsService,
+    private eventsService: AttendanceUploadEventsService
+,
   ) {}
 
   @Get('attendances')
@@ -176,63 +177,35 @@ export class AttendanceController {
     if (fileExtension !== '.csv' && fileExtension !== '.xlsx') {
       return {
         status: false,
-        message: 'Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file',
+        message: error?.message || 'Failed to process file',
       };
     }
-
-    const user = request.user as any;
-    const userId = user?.userId || user?.sub || user?.id || 'system';
-
-    const fileBuffer = await data.toBuffer();
-    return this.bulkUploadService.initiateValidation(fileBuffer, data.filename, userId);
   }
 
-  @Get('attendances/bulk-upload/:uploadId/status')
-  @Permissions('hr.attendance.read')
-  @ApiOperation({ summary: 'Get bulk upload status' })
-  async getBulkUploadStatus(@Param('uploadId') uploadId: string) {
-    const status = await this.bulkUploadService.getUploadStatus(uploadId);
-    return {
-      status: true,
-      data: status,
-    };
-  }
-
-  @Post('attendances/bulk-upload/:uploadId/confirm')
-  @Permissions('hr.attendance.create')
-  @ApiOperation({ summary: 'Confirm and start attendance import' })
-  async confirmBulkUpload(@Param('uploadId') uploadId: string, @Req() req: FastifyRequest) {
-    const user = req.user as any;
-    const userId = user?.userId || user?.sub || user?.id || 'system';
-    return this.bulkUploadService.confirmUpload(uploadId, userId);
-  }
-
-  @Get('attendances/bulk-upload/:uploadId/errors/stream')
-  @Permissions('hr.attendance.read')
-  @ApiOperation({ summary: 'Stream bulk upload error report' })
-  async streamBulkUploadErrors(@Param('uploadId') uploadId: string, @Res() res: any) {
-    return this.bulkUploadService.streamErrorReport(uploadId, res);
-  }
-
-  @Get('attendances/import-template')
-  @Permissions('hr.attendance.read')
-  @ApiOperation({ summary: 'Download attendance import template' })
-  async downloadTemplate(@Res() res: any) {
-    try {
-      const buffer = await this.bulkUploadService.generateTemplate();
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.header('Content-Disposition', 'attachment; filename=attendance_import_template.xlsx');
-      res.send(buffer);
-    } catch (error) {
-      this.logger.error(`Failed to generate template: ${error.message}`);
-      res.status(500).send({ status: false, message: 'Failed to generate template' });
-    }
-  }
-
-  @Sse('attendances/bulk-upload/:uploadId/events')
-  @Permissions('hr.attendance.read')
-  @ApiOperation({ summary: 'Stream bulk upload real-time events (SSE)' })
-  streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
-    return this.eventsService.subscribe(uploadId);
+  @Post('attendances/apply-sandwich-rules')
+  @Permissions('hr.attendance.update')
+  @ApiOperation({ summary: 'Apply sandwich rules to all Friday-Monday absent pairs' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        dateFrom: { type: 'string', format: 'date', description: 'Start date (optional)' },
+        dateTo: { type: 'string', format: 'date', description: 'End date (optional)' },
+        employeeId: { type: 'string', description: 'Specific employee ID (optional)' },
+      },
+    },
+  })
+  async applySandwichRules(
+    @Body() body: { dateFrom?: string; dateTo?: string; employeeId?: string },
+    @Req() req: any,
+  ) {
+    return this.service.applySandwichRulesToAll({
+      dateFrom: body.dateFrom ? new Date(body.dateFrom) : undefined,
+      dateTo: body.dateTo ? new Date(body.dateTo) : undefined,
+      employeeId: body.employeeId,
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 }
