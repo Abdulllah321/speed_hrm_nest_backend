@@ -527,10 +527,20 @@ export class LeaveApplicationService {
         where.status = filters.status;
       }
 
-      if (filters?.fromDate) {
+      if (filters?.fromDate && filters?.toDate) {
+        // Find leaves that overlap with the given date range
+        // A leave overlaps if: leave.fromDate <= filters.toDate AND leave.toDate >= filters.fromDate
+        where.OR = [
+          {
+            AND: [
+              { fromDate: { lte: new Date(filters.toDate) } },
+              { toDate: { gte: new Date(filters.fromDate) } },
+            ],
+          },
+        ];
+      } else if (filters?.fromDate) {
         where.fromDate = { gte: new Date(filters.fromDate) };
-      }
-      if (filters?.toDate) {
+      } else if (filters?.toDate) {
         where.toDate = { lte: new Date(filters.toDate) };
       }
 

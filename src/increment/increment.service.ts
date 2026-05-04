@@ -229,7 +229,6 @@ export class IncrementService {
           salary: Number(increment.salary),
           promotionDate: increment.promotionDate.toISOString(),
           currentMonth: increment.currentMonth,
-          monthsOfIncrement: increment.monthsOfIncrement,
           notes: increment.notes,
           status: increment.status,
           createdById: increment.createdById,
@@ -367,7 +366,6 @@ export class IncrementService {
               salary: incrementItem.salary,
               promotionDate: promotionDate,
               currentMonth: incrementItem.currentMonth,
-              monthsOfIncrement: incrementItem.monthsOfIncrement,
               notes: incrementItem.notes || null,
               status: 'active',
               createdById: ctx.userId,
@@ -491,8 +489,6 @@ export class IncrementService {
       if (body.promotionDate)
         updateData.promotionDate = new Date(body.promotionDate);
       if (body.currentMonth) updateData.currentMonth = body.currentMonth;
-      if (body.monthsOfIncrement !== undefined)
-        updateData.monthsOfIncrement = body.monthsOfIncrement;
       if (body.notes !== undefined) updateData.notes = body.notes || null;
       if (body.status) updateData.status = body.status;
       updateData.updatedById = ctx.userId;

@@ -1387,4 +1387,49 @@ export class PosSalesService implements OnModuleInit {
             };
         });
     }
+
+    // ─── List available cashiers for a location ─────────────────────
+    async listCashiers(locationId: string) {
+        // 1. Find all employees at this location
+        const employees = await this.prisma.employee.findMany({
+            where: { locationId },
+            select: { id: true, employeeName: true, employeeId: true, userId: true, status: true }
+        });
+
+        if (employees.length === 0) return { status: true, data: [] };
+
+        const employeeIds = employees.map(e => e.id);
+        const userIdsFromEmployees = employees.map(e => e.userId).filter(Boolean) as string[];
+
+        // 2. Find users linked to these employees (by both directions)
+        const users = await this.prismaMaster.user.findMany({
+            where: {
+                OR: [
+                    { id: { in: userIdsFromEmployees } },
+                    { employeeId: { in: employeeIds } }
+                ],
+                status: 'active'
+            },
+            select: { id: true, firstName: true, lastName: true, email: true, employeeId: true }
+        });
+
+        // 3. Merge data
+        // We want to return a list where each entry has a valid userId for the SalesOrder
+        const cashierList = users.map(user => {
+            // Find the corresponding employee record
+            const emp = employees.find(e => e.id === user.employeeId || e.userId === user.id);
+            return {
+                userId: user.id,
+                employeeId: emp?.id || user.employeeId,
+                name: emp ? emp.employeeName : `${user.firstName} ${user.lastName}`,
+                email: user.email,
+                empCode: emp ? emp.employeeId : null
+            };
+        });
+
+        // Deduplicate by userId
+        const uniqueCashiers = Array.from(new Map(cashierList.map(c => [c.userId, c])).values());
+
+        return { status: true, data: uniqueCashiers };
+    }
 }

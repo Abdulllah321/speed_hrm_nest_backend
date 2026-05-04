@@ -211,6 +211,11 @@ export class CreateSalesOrderDto {
     @IsString()
     holdOrderId?: string;
 
+    @ApiPropertyOptional({ description: 'ID of the cashier/employee who performed the sale' })
+    @IsOptional()
+    @IsString()
+    cashierUserId?: string;
+
     @ApiProperty({ type: [SalesOrderItemDto] })
     @IsArray()
     @ValidateNested({ each: true })

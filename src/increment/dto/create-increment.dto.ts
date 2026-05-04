@@ -71,16 +71,10 @@ export class CreateIncrementItemDto {
   @IsDateString()
   promotionDate: string;
 
-  @ApiProperty({ example: '08' })
+  @ApiProperty({ example: '2024-08' })
   @IsNotEmpty()
   @IsString()
-  currentMonth: string; // Format: "01" to "12"
-
-  @ApiProperty({ example: 12 })
-  @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
-  monthsOfIncrement: number;
+  currentMonth: string; // Format: "YYYY-MM" (e.g., "2024-08")
 
   @ApiPropertyOptional({ example: 'Annual Increment' })
   @IsOptional()
@@ -147,16 +141,10 @@ export class UpdateIncrementDto {
   @IsDateString()
   promotionDate?: string;
 
-  @ApiPropertyOptional({ example: '08' })
+  @ApiPropertyOptional({ example: '2024-08' })
   @IsOptional()
   @IsString()
   currentMonth?: string;
-
-  @ApiPropertyOptional({ example: 12 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  monthsOfIncrement?: number;
 
   @ApiPropertyOptional({ example: 'Adjusted Increment' })
   @IsOptional()

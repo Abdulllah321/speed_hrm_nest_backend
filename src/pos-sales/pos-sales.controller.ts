@@ -62,7 +62,9 @@ export class PosSalesController {
     @Post('orders')
     @ApiOperation({ summary: 'Create a sales order / checkout' })
     async createOrder(@Body() dto: CreateSalesOrderDto, @Req() req: any) {
-        const cashierUserId = req.user?.id;
+        // Use cashierUserId from DTO if provided (manual selection on checkout), 
+        // otherwise fall back to the logged-in user's ID
+        const cashierUserId = dto.cashierUserId || req.user?.id;
 
         // 1. Context from req.user (Preferred - comes from combined cashier token)
         if (req.user?.isPosUser || req.user?.isTerminal) {
@@ -242,5 +244,16 @@ export class PosSalesController {
     @ApiOperation({ summary: 'Clear all expired hold orders (called by scheduler)' })
     async clearExpiredHolds() {
         return this.posSalesService.clearExpiredHolds();
+    }
+
+    // ─── List available cashiers for a location ─────────────────────
+    @Get('cashiers')
+    @ApiOperation({ summary: 'List employees/users available as cashiers for a location' })
+    async listCashiers(@Req() req: any, @Query('locationId') locationId?: string) {
+        const effectiveLocationId = locationId || req.user?.locationId || this.extractLocationFromCookie(req);
+        if (!effectiveLocationId) {
+            throw new BadRequestException('Location ID is required to list cashiers');
+        }
+        return this.posSalesService.listCashiers(effectiveLocationId);
     }
 }
