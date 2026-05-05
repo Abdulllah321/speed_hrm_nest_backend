@@ -82,7 +82,7 @@ export class AttendanceUploadProcessor {
                     where: { id: uploadId },
                     select: { errors: true, totalRecords: true }
                 });
-                
+
                 const allValidationErrors = (Array.isArray(uploadRecord?.errors) ? uploadRecord.errors : []) as any[];
                 const invalidRows = new Set(allValidationErrors.map(e => e.row));
                 const totalToBeProcessed = (uploadRecord?.totalRecords || 0) - invalidRows.size;
@@ -93,7 +93,7 @@ export class AttendanceUploadProcessor {
 
                 const startTime = Date.now();
                 let importBatch: ParsedRecord[] = [];
-                
+
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
                     if (invalidRows.has(record.row)) return;
@@ -112,7 +112,7 @@ export class AttendanceUploadProcessor {
                             const elapsedSec = (now - startTime) / 1000;
                             const recsPerSec = Math.round(progress.processedRecords / (elapsedSec || 1));
                             const currentProgress = totalToBeProcessed > 0 ? Math.round((progress.processedRecords / totalToBeProcessed) * 100) : 0;
-                            
+
                             await job.progress(currentProgress);
                             this.eventsService.emit({
                                 uploadId,
@@ -156,7 +156,7 @@ export class AttendanceUploadProcessor {
 
                         const invalidRowNums = new Set(allBatchErrors.map(e => e.row));
                         const validCount = validationBatch.length - invalidRowNums.size;
-                        
+
                         totalValidRows += validCount;
                         totalInvalidRows += invalidRowNums.size;
 
@@ -166,7 +166,7 @@ export class AttendanceUploadProcessor {
                         }
 
                         validationBatch = [];
-                        
+
                         const now = Date.now();
                         if (now - lastEmitTime > 500) {
                             lastEmitTime = now;
@@ -189,7 +189,7 @@ export class AttendanceUploadProcessor {
 
                     const invalidRowNums = new Set(allBatchErrors.map(e => e.row));
                     const validCount = validationBatch.length - invalidRowNums.size;
-                    
+
                     totalValidRows += validCount;
                     totalInvalidRows += invalidRowNums.size;
 
@@ -198,7 +198,7 @@ export class AttendanceUploadProcessor {
                         if (previewErrors.length < 50) previewErrors.push(err);
                     }
                 }
-                
+
                 errorStream.end();
 
                 await prisma.bulkUpload.update({
@@ -218,8 +218,8 @@ export class AttendanceUploadProcessor {
                 this.eventsService.emit({
                     uploadId,
                     type: 'completed',
-                    data: { 
-                        status: 'validated', 
+                    data: {
+                        status: 'validated',
                         progress: 100,
                         totalRecords: totalRecordsCount,
                         successRecords: totalValidRows,
@@ -258,7 +258,7 @@ export class AttendanceUploadProcessor {
 
         } catch (error) {
             this.logger.error(`[Job ${job.id}] Failed: ${error.message}`, error.stack);
-            
+
             await prisma.bulkUpload.update({
                 where: { id: uploadId },
                 data: {
@@ -283,7 +283,7 @@ export class AttendanceUploadProcessor {
             try {
                 const data = record.data;
                 const empIdString = String(data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID']);
-                
+
                 const employee = await prisma.employee.findUnique({
                     where: { employeeId: empIdString },
                     select: { id: true }
@@ -296,10 +296,10 @@ export class AttendanceUploadProcessor {
                 const dateInput = data.date || data.Date;
                 const date = new Date(dateInput);
                 const dateStr = date.toISOString().split('T')[0];
-                
+
                 const checkInStr = data.checkIn || data['Check In'];
                 const checkOutStr = data.checkOut || data['Check Out'];
-                
+
                 const checkIn = checkInStr ? new Date(`${dateStr}T${checkInStr}`) : null;
                 const checkOut = checkOutStr ? new Date(`${dateStr}T${checkOutStr}`) : null;
                 const notes = data.notes || data.Notes || null;
@@ -327,7 +327,7 @@ export class AttendanceUploadProcessor {
                         data: attendanceData
                     });
                 }
-                
+
                 progress.successRecords++;
             } catch (error) {
                 this.logger.warn(`Failed row ${record.row}: ${error.message}`);

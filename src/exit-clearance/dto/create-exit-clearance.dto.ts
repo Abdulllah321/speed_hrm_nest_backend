@@ -13,6 +13,11 @@ export class CreateExitClearanceDto {
   @IsString()
   employeeName: string;
 
+  @ApiProperty({ example: 'EMP001' })
+  @IsNotEmpty()
+  @IsString()
+  employeeId: string;
+
   @ApiPropertyOptional({ example: 'Software Engineer' })
   @IsOptional()
   @IsString()
@@ -52,6 +57,10 @@ export class CreateExitClearanceDto {
   @IsOptional()
   @IsString()
   reportingManager?: string;
+  @ApiPropertyOptional({ example: '2023-11-01' })
+  @IsOptional()
+  @IsDateString()
+  date?: string;
 
   // IT Department
   @ApiPropertyOptional({ example: true })
@@ -197,6 +206,11 @@ export class UpdateExitClearanceDto {
   @IsString()
   employeeName?: string;
 
+  @ApiPropertyOptional({ example: 'EMP001' })
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
+
   @ApiPropertyOptional({ example: 'Software Engineer' })
   @IsOptional()
   @IsString()
@@ -236,6 +250,10 @@ export class UpdateExitClearanceDto {
   @IsOptional()
   @IsString()
   reportingManager?: string;
+  @ApiPropertyOptional({ example: '2023-11-01' })
+  @IsOptional()
+  @IsDateString()
+  date?: string;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
