@@ -217,6 +217,21 @@ export class PosSalesController {
         return this.posSalesService.getReturnDetails(id);
     }
 
+    // ─── List hold orders ─────────────────────────────────────────────
+    // IMPORTANT: Must be BEFORE @Get('orders/:id') — otherwise 'holds' is matched as :id
+    @Get('orders/holds')
+    @Permissions('pos.hold.view')
+    @ApiOperation({ summary: 'List active hold orders for this POS/location' })
+    async listHoldOrders(@Req() req: any, @Query('posId') posId?: string, @Query('locationId') locationId?: string) {
+        let effectivePosId = posId;
+        let effectiveLocationId = locationId;
+        if (req.user?.isPosUser || req.user?.isTerminal) {
+            if (!effectivePosId) effectivePosId = req.user.posId;
+            if (!effectiveLocationId) effectiveLocationId = req.user.locationId;
+        }
+        return this.posSalesService.listHoldOrders(effectivePosId, effectiveLocationId);
+    }
+
     // ─── Get single order ─────────────────────────────────────────────
     @Get('orders/:id')
     @ApiOperation({ summary: 'Get sales order by ID' })
@@ -340,20 +355,6 @@ export class PosSalesController {
         return this.posSalesService.cancelHoldOrder(id, ctx);
     }
 
-    // ─── List hold orders ─────────────────────────────────────────────
-    @Get('orders/holds')
-    @Permissions('pos.hold.view')
-    @ApiOperation({ summary: 'List active hold orders for this POS/location' })
-    async listHoldOrders(@Req() req: any, @Query('posId') posId?: string, @Query('locationId') locationId?: string) {
-        let effectivePosId = posId;
-        let effectiveLocationId = locationId;
-        if (req.user?.isPosUser || req.user?.isTerminal) {
-            if (!effectivePosId) effectivePosId = req.user.posId;
-            if (!effectiveLocationId) effectiveLocationId = req.user.locationId;
-        }
-        return this.posSalesService.listHoldOrders(effectivePosId, effectiveLocationId);
-    }
-
     // ─── Clear expired holds (internal / cron) ────────────────────────
     @Post('orders/clear-expired-holds')
     @ApiOperation({ summary: 'Clear all expired hold orders (called by scheduler)' })
@@ -370,5 +371,68 @@ export class PosSalesController {
             throw new BadRequestException('Location ID is required to list cashiers');
         }
         return this.posSalesService.listCashiers(effectiveLocationId);
+    }
+
+    // ─── Update tender ────────────────────────────────────────────────
+    @Post('orders/:id/update-tender')
+    @Permissions('pos.sales.history.update-tender')
+    @ApiOperation({ summary: 'Update payment tender on an existing order' })
+    async updateTender(
+        @Param('id') id: string,
+        @Body() body: { tenders: { method: string; amount: number; cardLast4?: string; slipNo?: string }[] },
+        @Req() req: any,
+    ) {
+        return this.posSalesService.updateTender(id, body.tenders, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers?.['user-agent'],
+        });
+    }
+
+    // ─── Sales Report ─────────────────────────────────────────────────
+    @Get('reports/sales')
+    @Permissions('pos.dashboard.view')
+    @ApiOperation({ summary: 'POS Sales Report — summary, trends, top items, cashier stats, paginated orders' })
+    async getSalesReport(
+        @Req() req: any,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('locationId') locationId?: string,
+        @Query('cashierUserId') cashierUserId?: string,
+        @Query('paymentMethod') paymentMethod?: string,
+        @Query('status') status?: string,
+        @Query('groupBy') groupBy?: 'day' | 'week' | 'month',
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+    ) {
+        // Scope to user's location if they are a POS user
+        let effectiveLocationId = locationId;
+        if (!effectiveLocationId) {
+            if (req.user?.isPosUser || req.user?.isTerminal) {
+                effectiveLocationId = req.user.locationId;
+            } else if (req.user?.locationId) {
+                effectiveLocationId = req.user.locationId;
+            }
+        }
+        if (!effectiveLocationId && req.cookies?.posTerminalToken) {
+            try {
+                const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+                effectiveLocationId = decoded?.locationId;
+            } catch (e) { }
+        }
+
+        return this.posSalesService.getSalesReport(req.user, {
+            startDate,
+            endDate,
+            locationId: effectiveLocationId,
+            cashierUserId,
+            paymentMethod,
+            status,
+            groupBy,
+            page: page ? Number(page) : 1,
+            limit: limit ? Number(limit) : 50,
+            search,
+        });
     }
 }
