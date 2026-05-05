@@ -31,6 +31,7 @@ export class TaxSlabService {
       minAmount: number;
       maxAmount: number;
       rate: number;
+      fixedAmount?: number;
       status?: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -42,6 +43,7 @@ export class TaxSlabService {
           minAmount: body.minAmount as any,
           maxAmount: body.maxAmount as any,
           rate: body.rate as any,
+          fixedAmount: (body.fixedAmount ?? 0) as any,
           status: body.status ?? 'active',
           createdById: ctx.userId,
         },
@@ -90,6 +92,7 @@ export class TaxSlabService {
       minAmount: number;
       maxAmount: number;
       rate: number;
+      fixedAmount?: number;
       status?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -102,6 +105,7 @@ export class TaxSlabService {
           minAmount: i.minAmount as any,
           maxAmount: i.maxAmount as any,
           rate: i.rate as any,
+          fixedAmount: (i.fixedAmount ?? 0) as any,
           status: i.status ?? 'active',
           createdById: ctx.userId,
         })),
@@ -151,6 +155,7 @@ export class TaxSlabService {
       minAmount?: number;
       maxAmount?: number;
       rate?: number;
+      fixedAmount?: number;
       status?: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -168,6 +173,7 @@ export class TaxSlabService {
           minAmount: (body.minAmount ?? (existing as any).minAmount) as any,
           maxAmount: (body.maxAmount ?? (existing as any).maxAmount) as any,
           rate: (body.rate ?? (existing as any).rate) as any,
+          fixedAmount: (body.fixedAmount !== undefined ? body.fixedAmount : (existing as any).fixedAmount ?? 0) as any,
           status: body.status ?? existing.status,
         },
       });
@@ -337,6 +343,7 @@ export class TaxSlabService {
       minAmount: number;
       maxAmount: number;
       rate: number;
+      fixedAmount?: number;
       status?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -351,6 +358,7 @@ export class TaxSlabService {
             minAmount: i.minAmount as any,
             maxAmount: i.maxAmount as any,
             rate: i.rate as any,
+            fixedAmount: (i.fixedAmount ?? 0) as any,
             status: i.status ?? 'active',
           },
         });
