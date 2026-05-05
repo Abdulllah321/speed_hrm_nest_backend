@@ -8,6 +8,7 @@ import { QueueModule } from './queue/queue.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandModule } from './master/erp/brand/brand.module';
+import { UnitOfMeasurementModule } from './master/unit-of-measurement/unit-of-measurement.module';
 import { GenderModule } from './master/erp/gender/gender.module';
 import { EmployeeModule } from './employee/employee.module';
 import { CityModule } from './master/city/city.module';
@@ -209,6 +210,7 @@ import { TaskReportsModule } from './task-reports/task-reports.module';
     TransferModule,
     CompanyModule,
     BrandModule,
+    UnitOfMeasurementModule,
     GenderModule,
     SizeModule,
     SilhouetteModule,
