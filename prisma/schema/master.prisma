@@ -597,6 +597,16 @@ model Division {
   @@unique([name, brandId])
 }
 
+model UnitOfMeasurement {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  abbreviation String   @unique
+  status       String   @default("active")
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Gender {
   id          String   @id @default(uuid())
   name        String   @unique

@@ -26,6 +26,12 @@ export class CreateTaxSlabDto {
   @Type(() => Number)
   rate: number;
 
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  fixedAmount?: number;
+
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()
   @IsString()
@@ -60,6 +66,12 @@ export class UpdateTaxSlabDto {
   @IsNumber()
   @Type(() => Number)
   rate: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  fixedAmount?: number;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()

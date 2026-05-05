@@ -207,9 +207,10 @@ export class PosSalesService implements OnModuleInit {
                 if (dto.allianceId) {
                     const alliance = await tx.allianceDiscount.findUnique({ where: { id: dto.allianceId } });
                     if (alliance) {
-                        allianceDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
                         if (alliance.maxDiscount) {
-                            allianceDiscount = Math.min(allianceDiscount, Number(alliance.maxDiscount));
+                            allianceDiscount = Number(alliance.maxDiscount);
+                        } else {
+                            allianceDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
                         }
                     }
                 }
@@ -239,6 +240,30 @@ export class PosSalesService implements OnModuleInit {
                         globalDiscAmt = allianceDiscount;
                         finalLineItemDiscount = 0; // Remove item discount
                         appliedDiscountType = 'alliance';
+
+                        // IMPORTANT: Distribute alliance discount across itemsData
+                        const count = itemsData.length;
+                        const baseDisc = Math.floor(globalDiscAmt / count);
+                        let remainder = Math.round((globalDiscAmt - (baseDisc * count)) * 100) / 100;
+
+                        itemsData = itemsData.map((item, idx) => {
+                            const lineSubtotal = item.unitPrice * item.quantity;
+                            let disc = baseDisc;
+                            if (remainder > 0) {
+                                disc += 1;
+                                remainder -= 1;
+                            }
+                            return {
+                                ...item,
+                                discountPercent: Math.round((disc / lineSubtotal) * 100 * 100) / 100,
+                                discountAmount: disc,
+                                lineTotal: Math.round((lineSubtotal + item.taxAmount - disc) * 100) / 100
+                            };
+                        });
+                        // Since it's distributed, we can set globalDiscAmt to 0 if we want it to ONLY show on items,
+                        // but usually it's better to keep it and hide it in the UI if needed.
+                        // The user said "Alliance: UBL-SIGNATURE -3000 isko items ke sath show karo", 
+                        // so I will keep globalDiscAmt for the label but ensure receipt summary doesn't double count.
                     } else {
                         // Item discount is greater - keep item discount, no alliance
                         globalDiscAmt = 0;
@@ -246,9 +271,28 @@ export class PosSalesService implements OnModuleInit {
                         appliedDiscountType = 'item';
                     }
                 } else if (allianceDiscount > 0) {
-                    // Only alliance discount
+                    // Only alliance discount - distribute across items
                     globalDiscAmt = allianceDiscount;
                     appliedDiscountType = 'alliance';
+                    
+                    const count = itemsData.length;
+                    const baseDisc = Math.floor(globalDiscAmt / count);
+                    let remainder = Math.round((globalDiscAmt - (baseDisc * count)) * 100) / 100;
+
+                    itemsData = itemsData.map((item, idx) => {
+                        const lineSubtotal = item.unitPrice * item.quantity;
+                        let disc = baseDisc;
+                        if (remainder > 0) {
+                            disc += 1;
+                            remainder -= 1;
+                        }
+                        return {
+                            ...item,
+                            discountPercent: Math.round((disc / lineSubtotal) * 100 * 100) / 100,
+                            discountAmount: disc,
+                            lineTotal: Math.round((lineSubtotal + item.taxAmount - disc) * 100) / 100
+                        };
+                    });
                 } else if (couponDiscount > 0) {
                     // Coupon discount
                     globalDiscAmt = couponDiscount;

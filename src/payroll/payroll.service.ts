@@ -509,20 +509,8 @@ export class PayrollService {
           .mul(socialSecurityRate)
           .div(100);
 
-        if (socialSecurityContributionAmount.gt(0)) {
-          // Add to allowance breakup so it flows into Gross and Net salary
-          allowanceBreakup.push({
-            id: 'social-security-contribution',
-            name: 'Social Security',
-            amount: Math.round(socialSecurityContributionAmount.toNumber()),
-            isTaxable: false, // Social security is typically not taxed
-            taxPercentage: null,
-            isRecurring: true,
-          });
-          totalAdHocAllowances = totalAdHocAllowances.add(
-            Math.round(socialSecurityContributionAmount.toNumber()),
-          );
-        }
+        // Social Security contribution is calculated but NOT added to gross salary
+        // It's kept separate for reporting purposes only
       }
 
       // B. Calculate Overtime (Using calculated Basic Salary for rate)
@@ -1621,7 +1609,13 @@ export class PayrollService {
     }
 
     // Calculate EOBI deduction from master table
+    // EOBI deduction is disabled - always return 0
     if (employee.eobi) {
+      this.logger.debug(
+        `EOBI deduction is disabled for employee ${employee.id} (${employee.employeeId}). EOBI deduction will be 0.`,
+      );
+      // EOBI calculation is commented out - no deduction will be applied
+      /*
       try {
         // Format yearMonth as "MMMM yyyy" (e.g., "January 2024") to match frontend format
         const monthNames = [
@@ -1668,6 +1662,7 @@ export class PayrollService {
         );
         // Continue with 0 deduction if error occurs
       }
+      */
     }
 
     // Provident Fund calculation from master table
