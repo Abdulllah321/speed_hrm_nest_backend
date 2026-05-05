@@ -60,6 +60,8 @@ export class PosSalesService implements OnModuleInit {
         const searchTerm = query.trim();
         if (!searchTerm) return { status: false, message: 'Search query is required' };
 
+        // ── Step 1: text-match items first (selective, small result set) ──
+        // Exact matches on barCode/sku/itemId are boosted by ordering them first.
         const items = await this.prisma.item.findMany({
             where: {
                 isActive: true,
@@ -77,12 +79,17 @@ export class PosSalesService implements OnModuleInit {
                 brand: true,
                 size: true,
                 color: true,
-            }
+            },
         });
 
-        // Enrich with master data names + stock levels
+        if (!items.length) return { status: true, data: [] };
+
+        // ── Step 2: check stock only for the matched items (≤20 IDs) ──
+        // Single enrichForPos call handles both ledger + inventoryItem fallback.
         const enriched = await this.enrichForPos(items, locationId);
-        return { status: true, data: enriched };
+
+        // Return only items that are actually in stock at this location
+        return { status: true, data: enriched.filter((i) => i.stockQty > 0) };
     }
 
     // ─── Quick barcode scan (exact match only, returns single item) ───
@@ -1913,6 +1920,351 @@ export class PosSalesService implements OnModuleInit {
                 inStock: stockQty > 0,
             };
         });
+    }
+
+    // ─── Sales Report ─────────────────────────────────────────────────
+    async getSalesReport(
+        user: any,
+        filters: {
+            startDate?: string;
+            endDate?: string;
+            locationId?: string;
+            cashierUserId?: string;
+            paymentMethod?: string;
+            status?: string;
+            groupBy?: 'day' | 'week' | 'month' | 'cashier' | 'payment_method' | 'item';
+            page?: number;
+            limit?: number;
+            search?: string;
+        },
+    ) {
+        const page = filters.page || 1;
+        const limit = filters.limit || 50;
+        const skip = (page - 1) * limit;
+
+        // ── Permission check ──────────────────────────────────────────
+        const role = await this.prismaMaster.role.findUnique({
+            where: { id: user.roleId },
+            include: { permissions: { include: { permission: true } } },
+        });
+        const userPerms = role?.permissions.map((p: any) => p.permission.name) || [];
+        const canViewAll =
+            userPerms.includes('*') ||
+            userPerms.includes('pos.sales.history.view_all') ||
+            ['super_admin', 'admin'].includes(role?.name?.toLowerCase() || '');
+
+        // ── Build where clause ────────────────────────────────────────
+        const where: any = {
+            status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged', 'voided'] },
+        };
+
+        if (!canViewAll) {
+            where.cashierUserId = user.id;
+        }
+
+        if (filters.locationId) where.locationId = filters.locationId;
+        if (filters.cashierUserId) where.cashierUserId = filters.cashierUserId;
+        if (filters.paymentMethod) where.paymentMethod = filters.paymentMethod;
+        if (filters.status) where.status = filters.status;
+        if (filters.search) {
+            where.orderNumber = { contains: filters.search, mode: 'insensitive' };
+        }
+
+        if (filters.startDate || filters.endDate) {
+            where.createdAt = {};
+            if (filters.startDate) where.createdAt.gte = new Date(filters.startDate);
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                where.createdAt.lte = end;
+            }
+        }
+
+        // ── Aggregate summary ─────────────────────────────────────────
+        const [summaryAgg, totalOrders] = await Promise.all([
+            this.prisma.salesOrder.aggregate({
+                where,
+                _sum: {
+                    grandTotal: true,
+                    subtotal: true,
+                    discountAmount: true,
+                    taxAmount: true,
+                    cashAmount: true,
+                    cardAmount: true,
+                    voucherAmount: true,
+                },
+                _count: { id: true },
+                _avg: { grandTotal: true },
+            }),
+            this.prisma.salesOrder.count({ where }),
+        ]);
+
+        // ── Payment method breakdown ──────────────────────────────────
+        const paymentBreakdown = await this.prisma.salesOrder.groupBy({
+            by: ['paymentMethod'],
+            where,
+            _sum: { grandTotal: true },
+            _count: { id: true },
+        });
+
+        // ── Status breakdown ──────────────────────────────────────────
+        const statusBreakdown = await this.prisma.salesOrder.groupBy({
+            by: ['status'],
+            where,
+            _sum: { grandTotal: true },
+            _count: { id: true },
+        });
+
+        // ── Discount type breakdown ───────────────────────────────────
+        const discountBreakdown = await this.prisma.salesOrder.aggregate({
+            where: { ...where, discountAmount: { gt: 0 } },
+            _sum: { discountAmount: true, globalDiscountAmount: true },
+            _count: { id: true },
+        });
+
+        // ── Top selling items ─────────────────────────────────────────
+        const topItemsRaw = await this.prisma.salesOrderItem.groupBy({
+            by: ['itemId'],
+            where: { salesOrder: where },
+            _sum: { quantity: true, lineTotal: true, discountAmount: true },
+            _count: { id: true },
+            orderBy: { _sum: { lineTotal: 'desc' } },
+            take: 10,
+        });
+
+        const topItemIds = topItemsRaw.map((i) => i.itemId);
+        const topItemDetails = await this.prisma.item.findMany({
+            where: { id: { in: topItemIds } },
+            select: { id: true, description: true, sku: true, barCode: true },
+        });
+        const itemDetailMap = new Map(topItemDetails.map((i) => [i.id, i]));
+
+        const topItems = topItemsRaw.map((row) => {
+            const detail = itemDetailMap.get(row.itemId);
+            return {
+                itemId: row.itemId,
+                description: detail?.description || 'Unknown',
+                sku: detail?.sku || '-',
+                barCode: detail?.barCode || '-',
+                qtySold: Number(row._sum.quantity || 0),
+                revenue: Number(row._sum.lineTotal || 0),
+                discountGiven: Number(row._sum.discountAmount || 0),
+                orderCount: row._count.id,
+            };
+        });
+
+        // ── Daily / period trend ──────────────────────────────────────
+        const trendOrders = await this.prisma.salesOrder.findMany({
+            where,
+            select: { createdAt: true, grandTotal: true, status: true },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        const groupBy = filters.groupBy || 'day';
+        const trendMap = new Map<string, { label: string; sales: number; orders: number; returns: number }>();
+
+        for (const o of trendOrders) {
+            const d = new Date(o.createdAt);
+            let key: string;
+            let label: string;
+
+            if (groupBy === 'month') {
+                key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                label = d.toLocaleDateString('en-PK', { year: 'numeric', month: 'short' });
+            } else if (groupBy === 'week') {
+                // ISO week
+                const startOfWeek = new Date(d);
+                startOfWeek.setDate(d.getDate() - d.getDay());
+                key = startOfWeek.toISOString().split('T')[0];
+                label = `Wk ${startOfWeek.toLocaleDateString('en-PK', { month: 'short', day: 'numeric' })}`;
+            } else {
+                key = d.toISOString().split('T')[0];
+                label = d.toLocaleDateString('en-PK', { month: 'short', day: 'numeric' });
+            }
+
+            if (!trendMap.has(key)) {
+                trendMap.set(key, { label, sales: 0, orders: 0, returns: 0 });
+            }
+            const bucket = trendMap.get(key)!;
+            const isReturn = ['refunded', 'partially_returned'].includes(o.status);
+            bucket.sales += isReturn ? 0 : Number(o.grandTotal);
+            bucket.orders += isReturn ? 0 : 1;
+            bucket.returns += isReturn ? 1 : 0;
+        }
+
+        const trend = Array.from(trendMap.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, val]) => ({ key, ...val }));
+
+        // ── Cashier performance ───────────────────────────────────────
+        const cashierPerf = await this.prisma.salesOrder.groupBy({
+            by: ['cashierUserId'],
+            where,
+            _sum: { grandTotal: true, discountAmount: true },
+            _count: { id: true },
+            _avg: { grandTotal: true },
+            orderBy: { _sum: { grandTotal: 'desc' } },
+            take: 10,
+        });
+
+        const cashierUserIds = cashierPerf.map((c) => c.cashierUserId).filter(Boolean) as string[];
+        const cashierUsers = cashierUserIds.length
+            ? await this.prismaMaster.user.findMany({
+                where: { id: { in: cashierUserIds } },
+                select: { id: true, firstName: true, lastName: true, email: true },
+            })
+            : [];
+        const cashierUserMap = new Map(cashierUsers.map((u) => [u.id, u]));
+
+        const cashierStats = cashierPerf.map((row) => {
+            const u = cashierUserMap.get(row.cashierUserId || '');
+            return {
+                cashierUserId: row.cashierUserId,
+                name: u ? `${u.firstName} ${u.lastName}` : 'Unknown',
+                email: u?.email || '-',
+                totalSales: Number(row._sum.grandTotal || 0),
+                totalDiscount: Number(row._sum.discountAmount || 0),
+                orderCount: row._count.id,
+                avgOrderValue: Number(row._avg.grandTotal || 0),
+            };
+        });
+
+        // ── Paginated order list ──────────────────────────────────────
+        const rawOrders = await this.prisma.salesOrder.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                items: {
+                    include: {
+                        item: { select: { description: true, sku: true, barCode: true } },
+                    },
+                },
+                promo: { select: { name: true, code: true } },
+                coupon: { select: { code: true } },
+                alliance: { select: { partnerName: true, code: true } },
+            },
+        });
+
+        // Enrich orders with cashier names
+        const orderCashierIds = [...new Set(rawOrders.map((o) => o.cashierUserId).filter(Boolean))] as string[];
+        const orderCashierUsers = orderCashierIds.length
+            ? await this.prismaMaster.user.findMany({
+                where: { id: { in: orderCashierIds } },
+                select: { id: true, firstName: true, lastName: true },
+            })
+            : [];
+        const orderCashierMap = new Map(orderCashierUsers.map((u) => [u.id, `${u.firstName} ${u.lastName}`]));
+
+        const orders = rawOrders.map((o) => ({
+            ...o,
+            cashierName: orderCashierMap.get(o.cashierUserId || '') || '-',
+        }));
+
+        return {
+            status: true,
+            data: {
+                summary: {
+                    totalOrders,
+                    totalRevenue: Number(summaryAgg._sum.grandTotal || 0),
+                    totalSubtotal: Number(summaryAgg._sum.subtotal || 0),
+                    totalDiscount: Number(summaryAgg._sum.discountAmount || 0),
+                    totalTax: Number(summaryAgg._sum.taxAmount || 0),
+                    totalCash: Number(summaryAgg._sum.cashAmount || 0),
+                    totalCard: Number(summaryAgg._sum.cardAmount || 0),
+                    totalVoucher: Number(summaryAgg._sum.voucherAmount || 0),
+                    avgOrderValue: Number(summaryAgg._avg.grandTotal || 0),
+                    discountedOrders: discountBreakdown._count.id,
+                    totalDiscountGiven: Number(discountBreakdown._sum.discountAmount || 0),
+                },
+                paymentBreakdown: paymentBreakdown.map((p) => ({
+                    method: p.paymentMethod || 'unknown',
+                    total: Number(p._sum.grandTotal || 0),
+                    count: p._count.id,
+                })),
+                statusBreakdown: statusBreakdown.map((s) => ({
+                    status: s.status,
+                    total: Number(s._sum.grandTotal || 0),
+                    count: s._count.id,
+                })),
+                trend,
+                topItems,
+                cashierStats,
+                orders,
+                meta: {
+                    total: totalOrders,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(totalOrders / limit),
+                },
+            },
+        };
+    }
+
+    // ─── Update tender on an existing order ──────────────────────────
+    async updateTender(
+        id: string,
+        tenders: { method: string; amount: number; cardLast4?: string; slipNo?: string }[],
+        ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+    ) {
+        try {
+            const order = await this.prisma.salesOrder.findUnique({ where: { id } });
+            if (!order) return { status: false, message: 'Order not found' };
+            if (order.status === 'voided') return { status: false, message: 'Cannot update tender on a voided order' };
+
+            const totalPaid = tenders.reduce((acc, t) => acc + Number(t.amount), 0);
+            const tenderMethods = [...new Set(tenders.map((t) => t.method))];
+            const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
+            const cashAmount = tenders.filter((t) => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
+            const cardAmount = tenders.filter((t) => t.method !== 'cash').reduce((a, t) => a + Number(t.amount), 0);
+            const grandTotal = Number(order.grandTotal);
+
+            const totalPaidRounded = Math.round(totalPaid * 100) / 100;
+            const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+            const changeAmount = Math.max(0, totalPaidRounded - grandTotalRounded);
+
+            let paymentStatus: string;
+            if (totalPaidRounded >= grandTotalRounded) {
+                paymentStatus = 'paid';
+            } else if (totalPaidRounded > 0) {
+                paymentStatus = 'partial';
+            } else {
+                paymentStatus = 'unpaid';
+            }
+
+            const updated = await this.prisma.salesOrder.update({
+                where: { id },
+                data: {
+                    paymentMethod,
+                    tenderType: paymentMethod,
+                    cashAmount: cashAmount || undefined,
+                    cardAmount: cardAmount || undefined,
+                    changeAmount: changeAmount || undefined,
+                    paymentStatus,
+                },
+            });
+
+            runInBackground(
+                'Update Tender',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-sales',
+                    entity: 'SalesOrder',
+                    entityId: id,
+                    description: `Updated tender for order ${order.orderNumber}`,
+                    newValues: JSON.stringify({ tenders }),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return { status: true, data: updated, message: 'Tender updated successfully' };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
     }
 
     // ─── List available cashiers for a location ─────────────────────

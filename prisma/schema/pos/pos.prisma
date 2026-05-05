@@ -139,6 +139,10 @@ model AllianceDiscount {
   discountPercent Decimal                    @map("discount_percent") @db.Decimal(5, 2)
   maxDiscount     Decimal?                   @map("max_discount") @db.Decimal(10, 2)
   description     String?
+  startDate       DateTime?                  @map("start_date")
+  endDate         DateTime?                  @map("end_date")
+  /// JSON array of BIN prefixes (4–8 digits) that qualify for this alliance, e.g. ["12345678","52341234"]
+  binNumbers      String[]                   @map("bin_numbers")
   isActive        Boolean                    @default(true) @map("is_active")
   createdAt       DateTime                   @default(now()) @map("created_at")
   updatedAt       DateTime                   @updatedAt @map("updated_at")
