@@ -5,7 +5,7 @@ import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
 import { MovementType, Prisma } from '@prisma/client';
 import { FbrService } from './fbr.service';
-
+import { VoucherService } from '../pos-config/voucher.service';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
@@ -17,6 +17,7 @@ export class PosSalesService implements OnModuleInit {
         private stockLedgerService: StockLedgerService,
         private fbrService: FbrService,
         private activityLogs: ActivityLogsService,
+        private voucherService: VoucherService,
     ) { }
 
       // ─── Schedule midnight hold-clear ─────────────────────────────────
@@ -463,25 +464,15 @@ export class PosSalesService implements OnModuleInit {
 
                 // ── Redeem vouchers ────────────────────────────────────────
                 const voucherRedemptions = dto.voucherRedemptions;
+                let creditVouchers: { code: string; faceValue: number; expiresAt: Date | null }[] = [];
                 if (voucherRedemptions?.length) {
-                    for (const r of voucherRedemptions) {
-                        await tx.voucher.update({
-                            where: { id: r.voucherId },
-                            data: { isRedeemed: true, isActive: false },
-                        });
-                        await tx.voucherTransaction.create({
-                            data: {
-                                voucherId: r.voucherId,
-                                orderId: order.id,
-                                locationId: locationId,
-                                action: 'REDEEMED',
-                                amountUsed: r.amount,
-                            },
-                        });
-                        await tx.voucherRedemption.create({
-                            data: { voucherId: r.voucherId, orderId: order.id, amountUsed: r.amount },
-                        });
-                    }
+                    creditVouchers = await this.voucherService.redeemVouchers(
+                        voucherRedemptions.map(r => ({ voucherId: r.voucherId, amountUsed: r.amount })),
+                        order.id,
+                        locationId || '',
+                        tx,
+                        ctx,
+                    );
                 }
 
                 return {
@@ -490,8 +481,11 @@ export class PosSalesService implements OnModuleInit {
                         ...order,
                         tenders,
                         changeAmount,
+                        creditVouchers: creditVouchers.length > 0 ? creditVouchers : undefined,
                     },
-                    message: `Order ${orderNumber} created successfully`,
+                    message: creditVouchers.length > 0
+                        ? `Order ${orderNumber} created successfully. Credit voucher(s) issued: ${creditVouchers.map(v => v.code).join(', ')}`
+                        : `Order ${orderNumber} created successfully`,
                 };
             });
 
@@ -1095,7 +1089,37 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                return { status: true, data: updatedOrder, refundAmount: Math.round(totalRefundAmount * 100) / 100, itemRefundDetails, message: `Return processed (${newStatus}) and inventory restored` };
+                // ── Generate Exchange Voucher for refund amount ──
+                let exchangeVoucher: any = null;
+                if (totalRefundAmount > 0) {
+                    const voucherResult = await this.voucherService.issueExchangeVoucher({
+                        faceValue: Math.round(totalRefundAmount * 100) / 100,
+                        sourceOrderId: id,
+                        issuedByLocationId: effectiveLocationId || order.locationId || '',
+                        issuedByUserId: ctx?.userId,
+                        customerId: order.customerId || undefined,
+                        expiresInDays: 30,
+                    }, ctx);
+
+                    if (voucherResult.status && voucherResult.data) {
+                        exchangeVoucher = voucherResult.data;
+                    }
+                }
+
+                return { 
+                    status: true, 
+                    data: updatedOrder, 
+                    refundAmount: Math.round(totalRefundAmount * 100) / 100, 
+                    itemRefundDetails, 
+                    exchangeVoucher: exchangeVoucher ? {
+                        code: exchangeVoucher.code,
+                        faceValue: exchangeVoucher.faceValue,
+                        expiresAt: exchangeVoucher.expiresAt,
+                    } : null,
+                    message: exchangeVoucher 
+                        ? `Return processed (${newStatus}), inventory restored, and exchange voucher ${exchangeVoucher.code} issued for Rs.${Math.round(totalRefundAmount * 100) / 100}`
+                        : `Return processed (${newStatus}) and inventory restored`
+                };
             });
 
             runInBackground(
@@ -1578,9 +1602,31 @@ export class PosSalesService implements OnModuleInit {
             if (refundAmount <= 0) throw new Error('Refund amount must be greater than 0');
             if (refundAmount > Number(order.grandTotal)) throw new Error('Refund amount exceeds order total');
 
+            // ── Generate Exchange Voucher for refund amount ──
+            let exchangeVoucher: any = null;
+            if (refundAmount > 0) {
+                const voucherResult = await this.voucherService.issueExchangeVoucher({
+                    faceValue: Math.round(refundAmount * 100) / 100,
+                    sourceOrderId: id,
+                    issuedByLocationId: order.locationId || '',
+                    issuedByUserId: ctx?.userId,
+                    customerId: order.customerId || undefined,
+                    expiresInDays: 30,
+                }, ctx);
+
+                if (voucherResult.status && voucherResult.data) {
+                    exchangeVoucher = voucherResult.data;
+                }
+            }
+
             const updatedOrder = await this.prisma.salesOrder.update({
                 where: { id },
-                data: { status: 'refunded', notes: reason ? `Refund Rs.${refundAmount}: ${reason}` : `Refund Rs.${refundAmount}` },
+                data: { 
+                    status: 'refunded', 
+                    notes: exchangeVoucher 
+                        ? `Exchange voucher ${exchangeVoucher.code} issued for Rs.${refundAmount}${reason ? `: ${reason}` : ''}`
+                        : (reason ? `Refund Rs.${refundAmount}: ${reason}` : `Refund Rs.${refundAmount}`)
+                },
             });
 
             runInBackground(
@@ -1591,15 +1637,28 @@ export class PosSalesService implements OnModuleInit {
                     module: 'pos-sales',
                     entity: 'SalesOrder',
                     entityId: id,
-                    description: `Processed refund of Rs.${refundAmount} for POS order ${id}`,
-                    newValues: JSON.stringify({ refundAmount, reason }),
+                    description: exchangeVoucher 
+                        ? `Issued exchange voucher ${exchangeVoucher.code} for Rs.${refundAmount} for POS order ${id}`
+                        : `Processed refund of Rs.${refundAmount} for POS order ${id}`,
+                    newValues: JSON.stringify({ refundAmount, reason, voucherCode: exchangeVoucher?.code }),
                     ipAddress: ctx?.ipAddress,
                     userAgent: ctx?.userAgent,
                     status: 'success',
                 }),
             );
 
-            return { status: true, data: updatedOrder, message: `Refund of Rs.${refundAmount} processed` };
+            return { 
+                status: true, 
+                data: updatedOrder, 
+                exchangeVoucher: exchangeVoucher ? {
+                    code: exchangeVoucher.code,
+                    faceValue: exchangeVoucher.faceValue,
+                    expiresAt: exchangeVoucher.expiresAt,
+                } : null,
+                message: exchangeVoucher 
+                    ? `Exchange voucher ${exchangeVoucher.code} issued for Rs.${refundAmount}`
+                    : `Refund of Rs.${refundAmount} processed`
+            };
         } catch (error: any) {
             runInBackground(
                 'Refund POS Order (Failure)',
