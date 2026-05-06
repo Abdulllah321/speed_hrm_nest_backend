@@ -21,11 +21,11 @@ model ReceiptVoucher {
 }
 
 model ReceiptVoucherToInvoice {
-  id               String          @id @default(uuid())
-  receiptVoucherId String          @map("receipt_voucher_id")
-  salesInvoiceId   String          @map("sales_invoice_id")
-  receivedAmount   Decimal         @map("received_amount") @db.Decimal(15, 2)
-  receiptVoucher   ReceiptVoucher  @relation(fields: [receiptVoucherId], references: [id], onDelete: Cascade)
+  id               String         @id @default(uuid())
+  receiptVoucherId String         @map("receipt_voucher_id")
+  salesInvoiceId   String         @map("sales_invoice_id")
+  receivedAmount   Decimal        @map("received_amount") @db.Decimal(15, 2)
+  receiptVoucher   ReceiptVoucher @relation(fields: [receiptVoucherId], references: [id], onDelete: Cascade)
 
   @@index([receiptVoucherId])
   @@index([salesInvoiceId])
