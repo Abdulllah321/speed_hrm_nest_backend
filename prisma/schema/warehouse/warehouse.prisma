@@ -1,30 +1,30 @@
 model Warehouse {
-  id                 String              @id @default(uuid())
-  code               String              @unique
-  name               String
-  address            String?
-  type               String              @default("GENERAL")
-  description        String?
-  isActive           Boolean             @default(true)
-  managerId          String?
-  companyId          String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  createdById        String?
-  updatedById        String?
-  WarehouseLocation  WarehouseLocation[]
-  goodsReceiptNotes  GoodsReceiptNote[]
-  stockLedgerEntries StockLedger[]
-  inventoryItems     InventoryItem[]
-  purchaseReturns    PurchaseReturn[]
-  fromTransferRequests TransferRequest[] @relation("TransferRequest_fromWarehouse")
-  toTransferRequests   TransferRequest[] @relation("TransferRequest_toWarehouse")
-  
+  id                   String              @id @default(uuid())
+  code                 String              @unique
+  name                 String
+  address              String?
+  type                 String              @default("GENERAL")
+  description          String?
+  isActive             Boolean             @default(true)
+  managerId            String?
+  companyId            String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  createdById          String?
+  updatedById          String?
+  WarehouseLocation    WarehouseLocation[]
+  goodsReceiptNotes    GoodsReceiptNote[]
+  stockLedgerEntries   StockLedger[]
+  inventoryItems       InventoryItem[]
+  purchaseReturns      PurchaseReturn[]
+  fromTransferRequests TransferRequest[]   @relation("TransferRequest_fromWarehouse")
+  toTransferRequests   TransferRequest[]   @relation("TransferRequest_toWarehouse")
+
   // Sales Relations
-  erpSalesOrders     ERPSalesOrder[]
-  deliveryChallans   DeliveryChallan[]
-  erpSalesInvoices   ERPSalesInvoice[]
-  purchaseInvoices   PurchaseInvoice[]
+  erpSalesOrders   ERPSalesOrder[]
+  deliveryChallans DeliveryChallan[]
+  erpSalesInvoices ERPSalesInvoice[]
+  purchaseInvoices PurchaseInvoice[]
 
   @@index([companyId])
   @@index([type])
@@ -35,6 +35,7 @@ model Location {
   name                      String                     @unique
   code                      String                     @unique @default(cuid())
   phone                     String?
+  warehouseId               String?                    @map("warehouse_id")
   geoFenceEnabled           Boolean                    @default(false)
   geoFenceRadius            Int                        @default(100)
   ipWhitelist               String?
@@ -69,4 +70,6 @@ model Location {
 
   voucherLocations          VoucherLocation[]
   discountCampaignLocations DiscountCampaignLocation[]
+
+  @@index([warehouseId])
 }

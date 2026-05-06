@@ -53,7 +53,7 @@ export class SalesOrderService {
     // Find confirmed orders that don't have delivery challans yet
     const orders = await this.prisma.eRPSalesOrder.findMany({
       where: {
-        status: 'CONFIRMED',
+        status: 'WAREHOUSE_VERIFIED' as any,
         deliveryChallans: {
           none: {} // No delivery challans created yet
         }
@@ -449,6 +449,99 @@ export class SalesOrderService {
           entityId: id,
           description: `Failed to confirm sales order`,
           errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async verify(id: string, items: any[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    try {
+      const salesOrderResponse = await this.findOne(id);
+      const salesOrder = salesOrderResponse.data;
+
+      if (salesOrder.status !== 'CONFIRMED' && salesOrder.status !== 'WAREHOUSE_VERIFIED') {
+        throw new BadRequestException('Only confirmed orders can be verified by warehouse');
+      }
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Update items with new quantities
+        let subtotal = 0;
+        for (const item of items) {
+          const itemTotal = (item.salePrice * item.quantity) - (item.discount || 0);
+          subtotal += itemTotal;
+
+          await tx.eRPSalesOrderItem.updateMany({
+            where: {
+              salesOrderId: id,
+              itemId: item.itemId,
+            },
+            data: {
+              quantity: item.quantity,
+              total: itemTotal,
+            },
+          });
+        }
+
+        const taxAmount = subtotal * (Number(salesOrder.taxRate) || 0) / 100;
+        const grandTotal = subtotal + taxAmount - (Number(salesOrder.discount) || 0);
+
+        // Update sales order status and totals
+        const updated = await tx.eRPSalesOrder.update({
+          where: { id },
+          data: {
+            status: 'WAREHOUSE_VERIFIED' as any,
+            subtotal,
+            taxAmount,
+            grandTotal,
+          },
+          include: {
+            customer: true,
+            warehouse: true,
+            items: {
+              include: {
+                item: true,
+              },
+            },
+          },
+        });
+
+        return updated;
+      });
+
+      runInBackground(
+        'Warehouse Verify Sales Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: result.id,
+          description: `Warehouse verified sales order ${result.orderNo}`,
+          oldValues: JSON.stringify(salesOrder),
+          newValues: JSON.stringify({ status: 'WAREHOUSE_VERIFIED', items }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return result;
+    } catch (error: any) {
+      runInBackground(
+        'Warehouse Verify Sales Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sales-order',
+          entity: 'ERPSalesOrder',
+          entityId: id,
+          description: `Failed to warehouse verify sales order`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',

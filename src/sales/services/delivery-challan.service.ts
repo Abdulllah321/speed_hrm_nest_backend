@@ -37,8 +37,8 @@ export class DeliveryChallanService {
           throw new NotFoundException('Sales order not found');
         }
 
-        if (salesOrder.status !== 'CONFIRMED') {
-          throw new BadRequestException('Sales order must be confirmed to create delivery challan');
+        if (salesOrder.status !== 'WAREHOUSE_VERIFIED') {
+          throw new BadRequestException('Sales order must be warehouse verified to create delivery challan');
         }
 
         // Generate challan number
