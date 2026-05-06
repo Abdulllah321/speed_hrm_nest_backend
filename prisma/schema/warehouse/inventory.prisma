@@ -1,5 +1,5 @@
 model InventoryItem {
-  id                String            @id @default(uuid())
+  id                String    @id @default(uuid())
   warehouseId       String
   locationId        String?
   itemId            String
@@ -7,12 +7,12 @@ model InventoryItem {
   serialNumber      String?
   expiryDate        DateTime?
   manufacturingDate DateTime?
-  quantity          Decimal           @default(0) @db.Decimal(15, 4)
-  status            String            @default("AVAILABLE")
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  location          Location?         @relation(fields: [locationId], references: [id])
-  warehouse         Warehouse         @relation(fields: [warehouseId], references: [id])
+  quantity          Decimal   @default(0) @db.Decimal(15, 4)
+  status            String    @default("AVAILABLE")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  location          Location? @relation(fields: [locationId], references: [id])
+  warehouse         Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@unique([locationId, itemId, batchNumber, serialNumber, status])
   @@index([itemId])

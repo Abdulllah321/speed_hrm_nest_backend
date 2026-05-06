@@ -2,9 +2,9 @@
 model Customer {
   id           String       @id @default(cuid())
   code         String       @unique // 310001, 310003, etc.
-  name         String       // ZAHID ASSOCIATES, NIZAM WATCH HOUSE, etc.
-  address      String?      // Full address like "OFFICE NO 4, 109-WEST, SARDAR BEGUM PLAZA"
-  contactNo    String?      // Contact No from your data
+  name         String // ZAHID ASSOCIATES, NIZAM WATCH HOUSE, etc.
+  address      String? // Full address like "OFFICE NO 4, 109-WEST, SARDAR BEGUM PLAZA"
+  contactNo    String? // Contact No from your data
   email        String?
   balance      Decimal      @default(0) // Current outstanding balance
   customerType CustomerType @default(ERP) @map("customer_type")
@@ -16,17 +16,17 @@ model Customer {
   posSalesOrders   SalesOrder[]
 
   // Audit
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  createdBy   String?
-  updatedBy   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?
+  updatedBy String?
 
   @@index([customerType])
   @@map("customers")
 }
 
 enum CustomerType {
-  ERP  // Wholesale / B2B customers — visible only in ERP
-  POS  // Walk-in / retail customers — visible only in POS
+  ERP // Wholesale / B2B customers — visible only in ERP
+  POS // Walk-in / retail customers — visible only in POS
   BOTH // Shared customers — visible in both ERP and POS
 }
