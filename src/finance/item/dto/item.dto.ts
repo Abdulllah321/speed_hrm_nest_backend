@@ -259,3 +259,44 @@ export class RollbackCampaignDto {
   @IsUUID()
   campaignId: string;
 }
+
+// ─── Bulk Sale Price Update ───────────────────────────────────────────────────
+
+export class BulkSalePriceItemOverrideDto {
+  @IsUUID()
+  id: string;
+
+  @IsNumber()
+  unitPrice: number;
+}
+
+export class BulkSalePriceDto {
+  /** Human-readable label stored for audit trail */
+  @IsString()
+  campaignName: string;
+
+  @IsUUID(undefined, { each: true })
+  itemIds: string[];
+
+  /**
+   * New unit price applied to all selected items.
+   * Ignored when overrides are provided for a specific item.
+   */
+  @IsNumber()
+  @IsOptional()
+  unitPrice?: number;
+
+  /** Per-item price overrides — takes precedence over the shared unitPrice */
+  @IsOptional()
+  overrides?: BulkSalePriceItemOverrideDto[];
+
+  /** Internal notes */
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  /** ID of the user applying the update */
+  @IsString()
+  @IsOptional()
+  appliedById?: string;
+}
