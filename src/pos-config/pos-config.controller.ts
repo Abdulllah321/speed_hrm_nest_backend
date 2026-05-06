@@ -39,6 +39,13 @@ export class PosConfigController {
         return this.service.listPromos();
     }
 
+    @Get('promos/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.read'))
+    @ApiOperation({ summary: 'Get a promo campaign by ID' })
+    async getPromo(@Param('id') id: string) {
+        return this.service.getPromoById(id);
+    }
+
     @Post('promos')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.create'))
     @ApiOperation({ summary: 'Create a promo campaign' })
@@ -52,20 +59,9 @@ export class PosConfigController {
 
     @Put('promos/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.update'))
-    @ApiOperation({ summary: 'Update a promo campaign' })
+    @ApiOperation({ summary: 'Update a promo campaign (also used for soft-deactivation)' })
     async updatePromo(@Param('id') id: string, @Body() body: any, @Req() req: any) {
         return this.service.updatePromo(id, body, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
-
-    @Delete('promos/:id')
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.promo.delete'))
-    @ApiOperation({ summary: 'Delete a promo campaign' })
-    async deletePromo(@Param('id') id: string, @Req() req: any) {
-        return this.service.deletePromo(id, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
@@ -83,6 +79,13 @@ export class PosConfigController {
         return this.service.listCoupons();
     }
 
+    @Get('coupons/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.read'))
+    @ApiOperation({ summary: 'Get a coupon code by ID' })
+    async getCoupon(@Param('id') id: string) {
+        return this.service.getCouponById(id);
+    }
+
     @Post('coupons')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.create'))
     @ApiOperation({ summary: 'Create a coupon code' })
@@ -96,20 +99,9 @@ export class PosConfigController {
 
     @Put('coupons/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.update'))
-    @ApiOperation({ summary: 'Update a coupon code' })
+    @ApiOperation({ summary: 'Update a coupon code (also used for soft-deactivation)' })
     async updateCoupon(@Param('id') id: string, @Body() body: any, @Req() req: any) {
         return this.service.updateCoupon(id, body, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
-
-    @Delete('coupons/:id')
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.coupon.delete'))
-    @ApiOperation({ summary: 'Delete a coupon code' })
-    async deleteCoupon(@Param('id') id: string, @Req() req: any) {
-        return this.service.deleteCoupon(id, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
@@ -127,6 +119,13 @@ export class PosConfigController {
         return this.service.listAlliances();
     }
 
+    @Get('alliances/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.read'))
+    @ApiOperation({ summary: 'Get an alliance discount by ID' })
+    async getAlliance(@Param('id') id: string) {
+        return this.service.getAllianceById(id);
+    }
+
     @Post('alliances')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.create'))
     @ApiOperation({ summary: 'Create an alliance discount' })
@@ -140,20 +139,9 @@ export class PosConfigController {
 
     @Put('alliances/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.update'))
-    @ApiOperation({ summary: 'Update an alliance discount' })
+    @ApiOperation({ summary: 'Update an alliance discount (also used for soft-deactivation)' })
     async updateAlliance(@Param('id') id: string, @Body() body: any, @Req() req: any) {
         return this.service.updateAlliance(id, body, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-    }
-
-    @Delete('alliances/:id')
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.delete'))
-    @ApiOperation({ summary: 'Delete an alliance discount' })
-    async deleteAlliance(@Param('id') id: string, @Req() req: any) {
-        return this.service.deleteAlliance(id, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],

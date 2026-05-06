@@ -26,6 +26,19 @@ export class PosConfigService {
         }
     }
 
+    async getPromoById(id: string) {
+        try {
+            const promo = await this.prisma.promoCampaign.findUnique({
+                where: { id },
+                include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
+            });
+            if (!promo) return { status: false, message: 'Promo campaign not found' };
+            return { status: true, data: promo };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
     async createPromo(data: {
         name: string;
         code: string;
@@ -226,6 +239,19 @@ export class PosConfigService {
                 orderBy: { createdAt: 'desc' },
             });
             return { status: true, data: coupons };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
+    async getCouponById(id: string) {
+        try {
+            const coupon = await this.prisma.couponCode.findUnique({
+                where: { id },
+                include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
+            });
+            if (!coupon) return { status: false, message: 'Coupon code not found' };
+            return { status: true, data: coupon };
         } catch (error: any) {
             return { status: false, message: error.message };
         }
@@ -602,16 +628,40 @@ export class PosConfigService {
         }
     }
 
+    async getAllianceById(id: string) {
+        try {
+            const alliance = await this.prisma.allianceDiscount.findUnique({
+                where: { id },
+                include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
+            });
+            if (!alliance) return { status: false, message: 'Alliance discount not found' };
+            return { status: true, data: alliance };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
+
     async createAlliance(data: {
         partnerName: string;
         code: string;
         discountPercent: number;
         maxDiscount?: number;
         description?: string;
+        startDate?: string;
+        endDate?: string;
         isActive?: boolean;
         locationIds: string[];
+        binNumbers?: string[];
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            // Validate BIN numbers: each must be 4–8 digits
+            const bins = (data.binNumbers ?? []).map(b => b.trim()).filter(Boolean);
+            for (const bin of bins) {
+                if (!/^\d{4,8}$/.test(bin)) {
+                    return { status: false, message: `Invalid BIN "${bin}". Each BIN must be 4–8 digits.` };
+                }
+            }
+
             const alliance = await this.prisma.allianceDiscount.create({
                 data: {
                     partnerName: data.partnerName,
@@ -619,7 +669,10 @@ export class PosConfigService {
                     discountPercent: data.discountPercent,
                     maxDiscount: data.maxDiscount,
                     description: data.description,
+                    startDate: data.startDate ? new Date(data.startDate) : undefined,
+                    endDate: data.endDate ? new Date(data.endDate) : undefined,
                     isActive: data.isActive ?? true,
+                    binNumbers: bins,
                     locations: {
                         create: data.locationIds.map(locId => ({ locationId: locId })),
                     },
@@ -670,11 +723,25 @@ export class PosConfigService {
         discountPercent?: number;
         maxDiscount?: number;
         description?: string;
+        startDate?: string;
+        endDate?: string;
         isActive?: boolean;
         locationIds?: string[];
+        binNumbers?: string[];
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const oldAlliance = await this.prisma.allianceDiscount.findUnique({ where: { id } });
+
+            // Validate BIN numbers if provided
+            if (data.binNumbers !== undefined) {
+                const bins = data.binNumbers.map(b => b.trim()).filter(Boolean);
+                for (const bin of bins) {
+                    if (!/^\d{4,8}$/.test(bin)) {
+                        return { status: false, message: `Invalid BIN "${bin}". Each BIN must be 4–8 digits.` };
+                    }
+                }
+                data.binNumbers = bins;
+            }
 
             if (data.locationIds) {
                 await this.prisma.allianceDiscountLocation.deleteMany({ where: { allianceId: id } });
@@ -687,7 +754,10 @@ export class PosConfigService {
                     ...(data.discountPercent !== undefined && { discountPercent: data.discountPercent }),
                     ...(data.maxDiscount !== undefined && { maxDiscount: data.maxDiscount }),
                     ...(data.description !== undefined && { description: data.description }),
+                    ...(data.startDate !== undefined && { startDate: data.startDate ? new Date(data.startDate) : null }),
+                    ...(data.endDate !== undefined && { endDate: data.endDate ? new Date(data.endDate) : null }),
                     ...(data.isActive !== undefined && { isActive: data.isActive }),
+                    ...(data.binNumbers !== undefined && { binNumbers: data.binNumbers }),
                     ...(data.locationIds && {
                         locations: {
                             create: data.locationIds.map(locId => ({ locationId: locId })),

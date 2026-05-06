@@ -130,6 +130,8 @@ export class EmployeeService {
       ];
     }
 
+    where.status = 'active';
+
     const [employees, total] = await Promise.all([
       this.prisma.employee.findMany({
         where,
@@ -144,9 +146,16 @@ export class EmployeeService {
           workingHoursPolicyId: true,
           joiningDate: true,
           lastExitDate: true,
-          department: true,
-          subDepartment: true,
-          workingHoursPolicy: true,
+          department: { select: { id: true, name: true } },
+          subDepartment: { select: { id: true, name: true } },
+          workingHoursPolicy: {
+            select: {
+              id: true,
+              name: true,
+              startWorkingHours: true,
+              endWorkingHours: true,
+            },
+          },
         },
         orderBy: { employeeName: 'asc' },
       }),
@@ -164,6 +173,7 @@ export class EmployeeService {
       },
     };
   }
+
 
   // Minimal fields for dropdowns/selects
   async listForDropdown(query?: { page?: number; limit?: number; search?: string }) {
