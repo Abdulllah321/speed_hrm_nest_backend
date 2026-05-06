@@ -33,10 +33,6 @@ export class PosDashboardController {
   @ApiOperation({ summary: 'Get POS dashboard stats for the active location' })
   async getStats(@Req() req: any) {
     const locationId = req.user?.locationId || this.extractLocationFromCookie(req);
-    const cashierUserId: string | undefined = req.user?.id;
-    console.log("===============================")
-    console.log(locationId)
-    console.log("===============================")
-    return this.posDashboardService.getDashboardStats(locationId, cashierUserId);
+    return this.posDashboardService.getDashboardStats(locationId);
   }
 }

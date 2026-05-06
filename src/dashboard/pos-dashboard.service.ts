@@ -1,30 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class PosDashboardService {
-  constructor(private readonly prisma: PrismaService,) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prismaMaster: PrismaMasterService,
+  ) {}
 
   /**
    * Returns all POS dashboard stats scoped to the active location.
    * locationId is extracted from the posTerminalToken cookie by the controller.
    */
-  async getDashboardStats(locationId: string, cashierUserId?: string) {
+  async getDashboardStats(locationId: string) {
     this.prisma.ensureTenantContext();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    // Quick sanity check — count all completed orders for this location regardless of date
-    const totalCompleted = await this.prisma.salesOrder.count({
-      where: { locationId, status: 'completed' },
-    });
-    const todayCompleted = await this.prisma.salesOrder.count({
-      where: { locationId, status: 'completed', createdAt: { gte: today, lt: tomorrow } },
-    });
-  
-    const cashierFilter = cashierUserId ? { cashierUserId } : {};
 
     const [
       salesAgg,
@@ -33,8 +27,7 @@ export class PosDashboardService {
       claimStats,
       topItems,
       hourlySales,
-      cashierAgg,
-      cashierOrders,
+      salespersonAgg,
     ] = await Promise.all([
       // ── Today's totals ──────────────────────────────────────────────
       this.prisma.salesOrder.aggregate({
@@ -111,42 +104,18 @@ export class PosDashboardService {
         select: { createdAt: true, grandTotal: true },
       }),
 
-      // ── Cashier's own sales today ───────────────────────────────────
-      cashierUserId
-        ? this.prisma.salesOrder.aggregate({
-            where: {
-              locationId,
-              cashierUserId,
-              status: 'completed',
-              createdAt: { gte: today, lt: tomorrow },
-            },
-            _sum: { grandTotal: true, cashAmount: true, cardAmount: true },
-            _count: { id: true },
-          })
-        : Promise.resolve(null),
-
-      // ── Cashier's recent orders today ───────────────────────────────
-      cashierUserId
-        ? this.prisma.salesOrder.findMany({
-            where: {
-              locationId,
-              cashierUserId,
-              status: 'completed',
-              createdAt: { gte: today, lt: tomorrow },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 5,
-            select: {
-              id: true,
-              orderNumber: true,
-              grandTotal: true,
-              status: true,
-              createdAt: true,
-              customerId: true,
-              items: { select: { id: true } },
-            },
-          })
-        : Promise.resolve([]),
+      // ── Sales grouped by salesperson today ─────────────────────────
+      this.prisma.salesOrder.groupBy({
+        by: ['cashierUserId'],
+        where: {
+          locationId,
+          status: 'completed',
+          createdAt: { gte: today, lt: tomorrow },
+        },
+        _sum: { grandTotal: true, cashAmount: true, cardAmount: true },
+        _count: { id: true },
+        orderBy: { _sum: { grandTotal: 'desc' } },
+      }),
     ]);
 
     // ── Enrich top items with names ─────────────────────────────────
@@ -206,10 +175,33 @@ export class PosDashboardService {
     const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
     const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
 
-    const cashierSales = cashierAgg ? Number(cashierAgg._sum.grandTotal ?? 0) : null;
-    const cashierTransactions = cashierAgg ? cashierAgg._count.id : null;
-    const cashierCash = cashierAgg ? Number(cashierAgg._sum.cashAmount ?? 0) : null;
-    const cashierCard = cashierAgg ? Number(cashierAgg._sum.cardAmount ?? 0) : null;
+    // ── Enrich salesperson rows with names from master DB ───────────
+    const spUserIds = salespersonAgg
+      .map((r) => r.cashierUserId)
+      .filter(Boolean) as string[];
+
+    const spUsers = spUserIds.length
+      ? await this.prismaMaster.user.findMany({
+          where: { id: { in: spUserIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const spUserMap = new Map(spUsers.map((u) => [u.id, u]));
+
+    const salespeople = salespersonAgg.map((row) => {
+      const u = spUserMap.get(row.cashierUserId ?? '');
+      const sales = Number(row._sum.grandTotal ?? 0);
+      const txns = row._count.id;
+      return {
+        userId: row.cashierUserId,
+        name: u ? `${u.firstName} ${u.lastName}` : 'Unknown',
+        sales,
+        transactions: txns,
+        cashSales: Number(row._sum.cashAmount ?? 0),
+        cardSales: Number(row._sum.cardAmount ?? 0),
+        avgTransaction: txns > 0 ? sales / txns : 0,
+      };
+    });
 
     return {
       stats: {
@@ -220,19 +212,7 @@ export class PosDashboardService {
         cashSales,
         cardSales,
       },
-      cashier: cashierUserId
-        ? {
-            sales: cashierSales,
-            transactions: cashierTransactions,
-            cashSales: cashierCash,
-            cardSales: cashierCard,
-            avgTransaction:
-              cashierTransactions && cashierTransactions > 0
-                ? (cashierSales ?? 0) / cashierTransactions
-                : 0,
-            recentOrders: cashierOrders,
-          }
-        : null,
+      salespeople,
       recentOrders,
       topItems: topItemsEnriched,
       hourlySales: hourlyBuckets,
