@@ -325,13 +325,21 @@ export class VoucherService {
         orderId: string,
         locationId: string,
         tx: any,
+        ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
     ) {
+        const creditVouchers: { code: string; faceValue: number; expiresAt: Date | null }[] = [];
+
         for (const r of voucherRedemptions) {
             const voucher = await tx.voucher.findUnique({ where: { id: r.voucherId } });
             if (!voucher || !voucher.isActive || voucher.isRedeemed) {
                 throw new Error(`Voucher ${r.voucherId} is no longer valid`);
             }
 
+            const faceValue = Number(voucher.faceValue);
+            const amountUsed = Number(r.amountUsed);
+            const remainingBalance = faceValue - amountUsed;
+
+            // Mark original voucher as redeemed
             await tx.voucher.update({
                 where: { id: r.voucherId },
                 data: { isRedeemed: true, isActive: false },
@@ -350,7 +358,70 @@ export class VoucherService {
             await tx.voucherRedemption.create({
                 data: { voucherId: r.voucherId, orderId, amountUsed: r.amountUsed },
             });
+
+            // ── Generate CREDIT voucher ONLY if NOT an EXCHANGE voucher ──
+            // EXCHANGE vouchers do NOT generate credit vouchers (remaining balance is forfeited)
+            if (remainingBalance > 0 && voucher.voucherType !== 'EXCHANGE') {
+                const creditVoucherCode = this.generateCreditVoucherCode();
+                const expiresAt = voucher.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+                const creditVoucher = await tx.voucher.create({
+                    data: {
+                        code: creditVoucherCode,
+                        voucherType: 'CREDIT',
+                        faceValue: remainingBalance,
+                        description: `Credit voucher for unused balance from ${voucher.code}`,
+                        customerId: voucher.customerId,
+                        issuedByLocationId: locationId,
+                        issuedByUserId: ctx?.userId,
+                        sourceOrderId: orderId,
+                        expiresAt,
+                        isActive: true,
+                        isRedeemed: false,
+                    },
+                });
+
+                // Add location restriction (same as original voucher)
+                const originalLocations = await tx.voucherLocation.findMany({
+                    where: { voucherId: voucher.id },
+                    select: { locationId: true },
+                });
+
+                if (originalLocations.length > 0) {
+                    await tx.voucherLocation.createMany({
+                        data: originalLocations.map(loc => ({
+                            voucherId: creditVoucher.id,
+                            locationId: loc.locationId,
+                        })),
+                    });
+                }
+
+                // Log credit voucher issuance
+                await tx.voucherTransaction.create({
+                    data: {
+                        voucherId: creditVoucher.id,
+                        action: 'ISSUED',
+                        amountUsed: 0,
+                        locationId,
+                        notes: `Credit voucher issued for unused balance of ${voucher.code}`,
+                    },
+                });
+
+                creditVouchers.push({
+                    code: creditVoucher.code,
+                    faceValue: remainingBalance,
+                    expiresAt: creditVoucher.expiresAt,
+                });
+            }
         }
+
+        return creditVouchers;
+    }
+
+    // Helper to generate credit voucher code
+    private generateCreditVoucherCode(): string {
+        const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+        return `CRD-${rand}`;
     }
 
     // ── Auto-issue exchange voucher on return ─────────────────────
