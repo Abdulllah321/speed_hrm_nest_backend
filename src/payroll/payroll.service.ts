@@ -1294,7 +1294,6 @@ export class PayrollService {
   }) {
     return this.prisma.payrollDetail.findMany({
       where: {
-        bankName: filters.bankName,
         payroll: {
           month: filters.month,
           year: filters.year,
