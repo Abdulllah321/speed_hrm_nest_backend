@@ -1,22 +1,22 @@
 // ─── Task Assessment Module — Prisma Schema ──────────────────────────────────
 
 model TaskProject {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  code        String   @unique // e.g. "PROJ-001"
-  color       String?
-  icon        String?
-  status      String   @default("active") // "active" | "archived" | "on_hold"
-  ownerId     String   // employeeId
+  id           String    @id @default(uuid())
+  name         String
+  description  String?
+  code         String    @unique // e.g. "PROJ-001"
+  color        String?
+  icon         String?
+  status       String    @default("active") // "active" | "archived" | "on_hold"
+  ownerId      String // employeeId
   departmentId String?
-  startDate   DateTime?
-  dueDate     DateTime?
-  visibility  String   @default("public") // "public" | "private" | "department"
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  startDate    DateTime?
+  dueDate      DateTime?
+  visibility   String    @default("public") // "public" | "private" | "department"
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   lists   TaskList[]
   members ProjectMember[]
@@ -65,7 +65,7 @@ model TaskLabel {
   name      String
   color     String @default("#6366f1")
 
-  project     TaskProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     TaskProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignments TaskLabelAssignment[]
 
   @@unique([projectId, name])
@@ -97,9 +97,9 @@ model Task {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  list        TaskList             @relation(fields: [listId], references: [id], onDelete: Cascade)
-  parent      Task?                @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  subtasks    Task[]               @relation("TaskSubtasks")
+  list        TaskList              @relation(fields: [listId], references: [id], onDelete: Cascade)
+  parent      Task?                 @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subtasks    Task[]                @relation("TaskSubtasks")
   assignees   TaskAssignee[]
   comments    TaskComment[]
   activities  TaskActivity[]
@@ -116,11 +116,11 @@ model Task {
 }
 
 model TaskAssignee {
-  id         String   @id @default(uuid())
-  taskId     String
-  employeeId String
-  role       String   @default("collaborator") // "primary" | "collaborator" | "reviewer"
-  assignedAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  taskId       String
+  employeeId   String
+  role         String   @default("collaborator") // "primary" | "collaborator" | "reviewer"
+  assignedAt   DateTime @default(now())
   assignedById String?
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
@@ -158,7 +158,7 @@ model TaskAttachment {
 model TaskComment {
   id              String    @id @default(uuid())
   taskId          String
-  authorId        String    // userId from master DB
+  authorId        String // userId from master DB
   content         String
   parentCommentId String?
   isEdited        Boolean   @default(false)
@@ -166,8 +166,8 @@ model TaskComment {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  task   Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  parent TaskComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  task    Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  parent  TaskComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies TaskComment[] @relation("CommentReplies")
 
   @@index([taskId])
@@ -177,8 +177,8 @@ model TaskComment {
 model TaskActivity {
   id        String   @id @default(uuid())
   taskId    String
-  actorId   String   // userId
-  action    String   // "created" | "status_changed" | "assigned" | "unassigned" | "priority_changed" | "due_date_changed" | "commented" | "attachment_added" | "subtask_added" | "completed"
+  actorId   String // userId
+  action    String // "created" | "status_changed" | "assigned" | "unassigned" | "priority_changed" | "due_date_changed" | "commented" | "attachment_added" | "subtask_added" | "completed"
   oldValue  String?
   newValue  String?
   createdAt DateTime @default(now())
@@ -192,8 +192,8 @@ model TaskActivity {
 model TaskReview {
   id         String   @id @default(uuid())
   taskId     String   @unique
-  reviewerId String   // userId
-  rating     Int      // 1-5
+  reviewerId String // userId
+  rating     Int // 1-5
   feedback   String?
   createdAt  DateTime @default(now())
 

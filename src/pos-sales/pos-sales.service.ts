@@ -744,7 +744,50 @@ export class PosSalesService implements OnModuleInit {
             itemMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
         }
 
-        // Reconstruct tenders and attach returnedQty to each order item
+        // ── Fetch claims for ALL orders ──
+        const claims = await this.prisma.posClaim.findMany({
+            where: {
+                salesOrderId: { in: orderIds },
+            },
+            select: {
+                id: true,
+                claimNumber: true,
+                salesOrderId: true,
+                claimType: true,
+                status: true,
+                claimedAmount: true,
+                approvedAmount: true,
+                submittedAt: true,
+                reviewedAt: true,
+                items: {
+                    select: {
+                        itemId: true,
+                        claimedQty: true,
+                        approvedQty: true,
+                        itemStatus: true,
+                    },
+                },
+            },
+            orderBy: { submittedAt: 'desc' },
+        });
+
+        console.log('🔍 [POS Sales] Fetching claims for orders:', {
+            totalOrders: orderIds.length,
+            orderIds: orderIds.slice(0, 3), // First 3 for brevity
+            claimsFound: claims.length,
+            claimNumbers: claims.map(c => c.claimNumber),
+        });
+
+        // Build map: orderId -> claims[]
+        const claimsMap = new Map<string, any[]>();
+        for (const claim of claims) {
+            if (!claimsMap.has(claim.salesOrderId)) {
+                claimsMap.set(claim.salesOrderId, []);
+            }
+            claimsMap.get(claim.salesOrderId)!.push(claim);
+        }
+
+        // Reconstruct tenders and attach returnedQty and claimedQty to each order item
         const orders = rawOrders.map(order => {
             const tenders: { method: string; amount: number }[] = [];
             if (order.tenderType === 'split') {
@@ -757,12 +800,45 @@ export class PosSalesService implements OnModuleInit {
 
             // Attach returnedQty to each item
             const itemMap = returnedQtyMap.get(order.id);
+            
+            // Get claims for this order
+            const orderClaims = claimsMap.get(order.id) || [];
+            
+            // Build map of itemId -> total claimed/approved quantities across all claims
+            const claimedQtyMap = new Map<string, { claimed: number; approved: number }>();
+            for (const claim of orderClaims) {
+                for (const claimItem of claim.items) {
+                    const current = claimedQtyMap.get(claimItem.itemId) || { claimed: 0, approved: 0 };
+                    claimedQtyMap.set(claimItem.itemId, {
+                        claimed: current.claimed + Number(claimItem.claimedQty),
+                        approved: current.approved + Number(claimItem.approvedQty),
+                    });
+                }
+            }
+            
             const enrichedItems = order.items.map(oi => ({
                 ...oi,
                 returnedQty: itemMap?.get(oi.itemId) || 0,
+                claimedQty: claimedQtyMap.get(oi.itemId)?.claimed || 0,
+                approvedClaimQty: claimedQtyMap.get(oi.itemId)?.approved || 0,
             }));
 
-            return { ...order, tenders, items: enrichedItems };
+            return { 
+                ...order, 
+                tenders, 
+                items: enrichedItems,
+                claims: orderClaims,
+            };
+        });
+
+        console.log('✅ [POS Sales] Orders enriched with claims:', {
+            totalOrders: orders.length,
+            ordersWithClaims: orders.filter(o => o.claims && o.claims.length > 0).length,
+            sampleOrder: orders[0] ? {
+                orderNumber: orders[0].orderNumber,
+                claimsCount: orders[0].claims?.length || 0,
+                claimNumbers: orders[0].claims?.map(c => c.claimNumber) || []
+            } : null
         });
 
         return {

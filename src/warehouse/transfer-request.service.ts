@@ -517,17 +517,79 @@ export class TransferRequestService {
                         throw new BadRequestException(`Request is not in PENDING status (Current: ${request.status})`);
                     }
 
-                    for (const item of request.items) {
-                        await this.stockMovementService.executeMovement({
-                            itemId: item.itemId,
-                            fromLocationId: request.fromLocationId!,
-                            toWarehouseId: request.fromWarehouseId!,
-                            quantity: Number(item.quantity),
-                            type: 'RETURN_TRANSFER',
-                            referenceType: 'RETURN_REQUEST',
-                            referenceId: request.id,
-                            userId: userId,
-                        });
+                    // Check if this is a claim-based transfer (items need to be added to POS first)
+                    const isClaimBased = request.notes?.includes('approved claim');
+                    
+                    if (isClaimBased) {
+                        // For claim-based transfers: First add items to POS inventory, then transfer to warehouse
+                        for (const item of request.items) {
+                            const posStock = await tx.inventoryItem.findFirst({
+                                where: {
+                                    itemId: item.itemId,
+                                    locationId: request.fromLocationId!,
+                                    status: 'AVAILABLE'
+                                }
+                            });
+
+                            const actualWarehouseId = posStock?.warehouseId || request.fromWarehouseId!;
+                            const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+
+                            // 1. Add items to POS inventory (claim approved items)
+                            if (posStock) {
+                                await tx.inventoryItem.update({
+                                    where: { id: posStock.id },
+                                    data: { quantity: { increment: Number(item.quantity) } }
+                                });
+                            } else {
+                                await tx.inventoryItem.create({
+                                    data: {
+                                        itemId: item.itemId,
+                                        warehouseId: actualWarehouseId,
+                                        locationId: request.fromLocationId!,
+                                        quantity: Number(item.quantity),
+                                        status: 'AVAILABLE'
+                                    }
+                                });
+                            }
+
+                            // 2. Create inbound ledger entry for POS (claim approved)
+                            await this.stockLedgerService.createEntry({
+                                itemId: item.itemId,
+                                warehouseId: actualWarehouseId,
+                                locationId: request.fromLocationId!,
+                                qty: Number(item.quantity),
+                                movementType: 'INBOUND' as any,
+                                referenceType: 'POS_CLAIM_APPROVED',
+                                referenceId: request.id,
+                                rate: itemRate,
+                            }, tx);
+
+                            // 3. Now execute the normal outlet-to-warehouse transfer
+                            await this.stockMovementService.executeMovement({
+                                itemId: item.itemId,
+                                fromLocationId: request.fromLocationId!,
+                                toWarehouseId: request.fromWarehouseId!,
+                                quantity: Number(item.quantity),
+                                type: 'RETURN_TRANSFER',
+                                referenceType: 'CLAIM_RETURN_REQUEST',
+                                referenceId: request.id,
+                                userId: userId,
+                            });
+                        }
+                    } else {
+                        // Normal outlet-to-warehouse transfer (non-claim)
+                        for (const item of request.items) {
+                            await this.stockMovementService.executeMovement({
+                                itemId: item.itemId,
+                                fromLocationId: request.fromLocationId!,
+                                toWarehouseId: request.fromWarehouseId!,
+                                quantity: Number(item.quantity),
+                                type: 'RETURN_TRANSFER',
+                                referenceType: 'RETURN_REQUEST',
+                                referenceId: request.id,
+                                userId: userId,
+                            });
+                        }
                     }
                 } else if (request.transferType === 'OUTLET_TO_OUTLET') {
                     // Outlet-to-outlet transfer: Only destination can accept after source approval

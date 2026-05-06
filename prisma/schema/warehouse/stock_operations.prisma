@@ -1,24 +1,24 @@
 model StockMovement {
-  id                                                                String             @id @default(uuid())
-  movementNo                                                        String             @unique
-  itemId                                                            String
-  fromLocationId                                                    String?
-  toLocationId                                                      String?
-  quantity                                                          Decimal            @db.Decimal(15, 4)
-  batchNumber                                                       String?
-  serialNumber                                                      String?
-  expiryDate                                                        DateTime?
-  type                                                              String
-  referenceType                                                     String?
-  referenceId                                                       String?
-  reason                                                            String?
-  notes                                                             String?
-  movementDate                                                      DateTime           @default(now())
-  createdById                                                       String?
-  createdAt                                                         DateTime           @default(now())
-  updatedAt                                                         DateTime           @updatedAt
-  fromLocation                                                    Location?          @relation("StockMovement_fromLocation", fields: [fromLocationId], references: [id])
-  toLocation                                                      Location?          @relation("StockMovement_toLocation", fields: [toLocationId], references: [id])
+  id             String    @id @default(uuid())
+  movementNo     String    @unique
+  itemId         String
+  fromLocationId String?
+  toLocationId   String?
+  quantity       Decimal   @db.Decimal(15, 4)
+  batchNumber    String?
+  serialNumber   String?
+  expiryDate     DateTime?
+  type           String
+  referenceType  String?
+  referenceId    String?
+  reason         String?
+  notes          String?
+  movementDate   DateTime  @default(now())
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  fromLocation   Location? @relation("StockMovement_fromLocation", fields: [fromLocationId], references: [id])
+  toLocation     Location? @relation("StockMovement_toLocation", fields: [toLocationId], references: [id])
 
   @@index([itemId])
   @@index([fromLocationId])

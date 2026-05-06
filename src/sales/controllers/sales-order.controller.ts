@@ -75,4 +75,17 @@ export class SalesOrderController {
       userAgent: req.headers['user-agent'],
     });
   }
+
+  @Post(':id/verify')
+  async verify(
+    @Param('id') id: string,
+    @Body('items') items: any[],
+    @Req() req: any,
+  ) {
+    return this.salesOrderService.verify(id, items, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 }
