@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ItemService } from './item.service';
-import { CreateItemDto, UpdateItemDto, BulkDiscountDto, RollbackCampaignDto } from './dto/item.dto';
+import { CreateItemDto, UpdateItemDto, BulkDiscountDto, RollbackCampaignDto, BulkSalePriceDto } from './dto/item.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -82,6 +82,13 @@ export class ItemController {
   @ApiOperation({ summary: 'Apply or clear discount on multiple items — persists a DiscountCampaign record' })
   async bulkDiscount(@Body() dto: BulkDiscountDto) {
     return this.itemService.bulkDiscount(dto);
+  }
+
+  @Patch('bulk-sale-price')
+  @Permissions('erp.item.update')
+  @ApiOperation({ summary: 'Update unit price on multiple items in bulk' })
+  async bulkSalePrice(@Body() dto: BulkSalePriceDto) {
+    return this.itemService.bulkSalePrice(dto);
   }
 
   @Get('campaigns')

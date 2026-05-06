@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateItemDto, UpdateItemDto, BulkDiscountDto, RollbackCampaignDto } from './dto/item.dto';
+import { CreateItemDto, UpdateItemDto, BulkDiscountDto, RollbackCampaignDto, BulkSalePriceDto } from './dto/item.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
@@ -389,6 +389,55 @@ export class ItemService {
         status: true,
         message: `Rolled back "${campaign.name}" — ${campaign.items.length} items restored`,
         data: { restoredCount: campaign.items.length },
+      };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Bulk Sale Price Update ─────────────────────────────────────────────────
+
+  async bulkSalePrice(dto: BulkSalePriceDto) {
+    try {
+      if (!dto.itemIds || dto.itemIds.length === 0) {
+        return { status: false, message: 'No item IDs provided' };
+      }
+      if (dto.unitPrice === undefined && (!dto.overrides || dto.overrides.length === 0)) {
+        return { status: false, message: 'Provide a unitPrice or per-item overrides' };
+      }
+
+      // Build override map for O(1) lookup
+      const overrideMap = new Map<string, number>();
+      for (const ov of dto.overrides ?? []) {
+        overrideMap.set(ov.id, ov.unitPrice);
+      }
+
+      const overriddenIds = new Set(overrideMap.keys());
+      const bulkIds = dto.itemIds.filter((id) => !overriddenIds.has(id));
+      const overriddenItemIds = dto.itemIds.filter((id) => overriddenIds.has(id));
+
+      await this.prisma.$transaction(async (tx) => {
+        // Single updateMany for items with no override
+        if (bulkIds.length > 0 && dto.unitPrice !== undefined) {
+          await tx.item.updateMany({
+            where: { id: { in: bulkIds } },
+            data: { unitPrice: dto.unitPrice },
+          });
+        }
+
+        // Individual updates only for items with overrides
+        for (const id of overriddenItemIds) {
+          await tx.item.update({
+            where: { id },
+            data: { unitPrice: overrideMap.get(id)! },
+          });
+        }
+      });
+
+      return {
+        status: true,
+        message: `Unit price updated for ${dto.itemIds.length} item${dto.itemIds.length !== 1 ? 's' : ''} successfully`,
+        data: { updatedCount: dto.itemIds.length },
       };
     } catch (error: any) {
       return { status: false, message: error.message };
