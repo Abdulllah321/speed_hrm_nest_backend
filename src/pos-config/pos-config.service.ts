@@ -669,8 +669,8 @@ export class PosConfigService {
                     discountPercent: data.discountPercent,
                     maxDiscount: data.maxDiscount,
                     description: data.description,
-                    startDate: data.startDate ? new Date(data.startDate) : undefined,
-                    endDate: data.endDate ? new Date(data.endDate) : undefined,
+                    ...(data.startDate && { startDate: new Date(data.startDate) }),
+                    ...(data.endDate && { endDate: new Date(data.endDate) }),
                     isActive: data.isActive ?? true,
                     binNumbers: bins,
                     locations: {
