@@ -17,8 +17,13 @@ model Item {
   case                 String?
   band                 String?
   movementType         String?
+  movementName         String?               @map("movement_name")
   heelHeight           String?
   width                String?
+  uom                  String?               @map("uom")
+  currency             String?               @map("currency")
+  launchDate           DateTime?             @map("launch_date")
+  oldSeason            String?               @map("old_season")
   brandId              String?
   divisionId           String?
   genderId             String?
