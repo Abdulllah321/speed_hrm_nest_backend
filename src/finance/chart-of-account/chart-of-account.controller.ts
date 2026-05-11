@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Put,
+  Patch,
   Param,
   Delete,
   UseGuards,
@@ -56,7 +57,23 @@ export class ChartOfAccountController {
   @Put(':id')
   @ApiBearerAuth()
   @Permissions('erp.finance.chart-of-account.update')
-  @ApiOperation({ summary: 'Update a chart of account' })
+  @ApiOperation({ summary: 'Update a chart of account (PUT)' })
+  updatePut(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateChartOfAccountDto,
+    @Req() req: any,
+  ) {
+    return this.chartOfAccountService.update(id, updateDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Patch(':id')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.update')
+  @ApiOperation({ summary: 'Update a chart of account (PATCH)' })
   update(
     @Param('id') id: string,
     @Body() updateDto: UpdateChartOfAccountDto,
