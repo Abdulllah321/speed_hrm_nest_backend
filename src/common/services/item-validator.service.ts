@@ -20,7 +20,9 @@ export class ItemValidatorService {
     private readonly logger = new Logger(ItemValidatorService.name);
 
     /**
-     * Validate a single item record
+     * Validate a single item record.
+     * Supports both the new uploader column names and legacy column names
+     * (mapping is handled upstream in CsvParserService.mapColumns).
      */
     validateRecord(record: ParsedRecord): ValidationResult {
         const errors: ValidationError[] = [];
@@ -33,45 +35,105 @@ export class ItemValidatorService {
         const err = (field: string, value: any, reason: string): ValidationError =>
             ({ row, field, value, reason, itemId, barCode });
 
-        // Required fields
+        // ── Required fields ────────────────────────────────────────────────────
+
         if (!data.sku || String(data.sku).trim() === '') {
             errors.push(err('SKU', data.sku, 'SKU is a required field and cannot be empty.'));
         }
 
+        // "Unique No." / "Item ID" both map to itemId
         if (!data.itemId || String(data.itemId).trim() === '') {
-            errors.push(err('ItemID', data.itemId, 'ItemID is a required unique identifier.'));
+            errors.push(err('Item ID / Unique No.', data.itemId, 'Item ID (Unique No.) is a required unique identifier.'));
         }
 
         if (data.unitPrice === null || data.unitPrice === undefined) {
-            errors.push(err('UnitPrice', data.unitPrice, 'UnitPrice is required for catalog items.'));
+            errors.push(err('Unit Price', data.unitPrice, 'Unit Price is required for catalog items.'));
         }
+
+        // ── Numeric range checks ───────────────────────────────────────────────
 
         if (data.unitPrice !== null && data.unitPrice !== undefined) {
             const price = Number(data.unitPrice);
             if (isNaN(price)) {
-                errors.push(err('UnitPrice', data.unitPrice, 'UnitPrice must be a valid number.'));
+                errors.push(err('Unit Price', data.unitPrice, 'Unit Price must be a valid number.'));
             } else if (price < 0) {
-                errors.push(err('UnitPrice', data.unitPrice, 'UnitPrice must be zero or a positive value.'));
+                errors.push(err('Unit Price', data.unitPrice, 'Unit Price must be zero or a positive value.'));
             }
         }
 
         if (data.unitCost !== null && data.unitCost !== undefined) {
             const cost = Number(data.unitCost);
             if (isNaN(cost)) {
-                errors.push(err('UnitCost', data.unitCost, 'UnitCost must be a valid number.'));
+                errors.push(err('Unit Cost', data.unitCost, 'Unit Cost must be a valid number.'));
             } else if (cost < 0) {
-                errors.push(err('UnitCost', data.unitCost, 'UnitCost must be zero or a positive value.'));
+                errors.push(err('Unit Cost', data.unitCost, 'Unit Cost must be zero or a positive value.'));
             }
         }
 
+        if (data.fob !== null && data.fob !== undefined) {
+            const fob = Number(data.fob);
+            if (isNaN(fob)) {
+                errors.push(err('FOB', data.fob, 'FOB must be a valid number.'));
+            } else if (fob < 0) {
+                errors.push(err('FOB', data.fob, 'FOB must be zero or a positive value.'));
+            }
+        }
+
+        // Sale Tax Rate (taxRate1)
         if (data.taxRate1 !== null && data.taxRate1 !== undefined) {
             const tr1 = Number(data.taxRate1);
             if (isNaN(tr1)) {
-                errors.push(err('TaxRate1', data.taxRate1, 'TaxRate1 must be a valid number.'));
+                errors.push(err('Sale Tax Rate', data.taxRate1, 'Sale Tax Rate must be a valid number.'));
             } else if (tr1 < 0 || tr1 > 100) {
-                errors.push(err('TaxRate1', data.taxRate1, 'TaxRate1 must be a percentage between 0 and 100.'));
+                errors.push(err('Sale Tax Rate', data.taxRate1, 'Sale Tax Rate must be a percentage between 0 and 100.'));
             }
         }
+
+        // Additional Sales Tax (taxRate2)
+        if (data.taxRate2 !== null && data.taxRate2 !== undefined) {
+            const tr2 = Number(data.taxRate2);
+            if (isNaN(tr2)) {
+                errors.push(err('Additional Sales Tax', data.taxRate2, 'Additional Sales Tax must be a valid number.'));
+            } else if (tr2 < 0 || tr2 > 100) {
+                errors.push(err('Additional Sales Tax', data.taxRate2, 'Additional Sales Tax must be a percentage between 0 and 100.'));
+            }
+        }
+
+        // Discount %
+        if (data.discountRate !== null && data.discountRate !== undefined) {
+            const dr = Number(data.discountRate);
+            if (isNaN(dr)) {
+                errors.push(err('Discount %', data.discountRate, 'Discount % must be a valid number.'));
+            } else if (dr < 0 || dr > 100) {
+                errors.push(err('Discount %', data.discountRate, 'Discount % must be between 0 and 100.'));
+            }
+        }
+
+        // ── Discount date logic ────────────────────────────────────────────────
+
+        if (data.discountStartDate && !(data.discountStartDate instanceof Date) && isNaN(Date.parse(data.discountStartDate))) {
+            errors.push(err('Discount Start Date', data.discountStartDate, 'Discount Start Date is not a valid date.'));
+        }
+
+        if (data.discountEndDate && !(data.discountEndDate instanceof Date) && isNaN(Date.parse(data.discountEndDate))) {
+            errors.push(err('Discount End Date', data.discountEndDate, 'Discount End Date is not a valid date.'));
+        }
+
+        if (data.discountStartDate && data.discountEndDate) {
+            const start = new Date(data.discountStartDate);
+            const end = new Date(data.discountEndDate);
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end < start) {
+                errors.push(err('Discount End Date', data.discountEndDate, 'Discount End Date must be on or after Discount Start Date.'));
+            }
+        }
+
+        // ── Launch Date ────────────────────────────────────────────────────────
+
+        if (data.launchDate && !(data.launchDate instanceof Date) && isNaN(Date.parse(data.launchDate))) {
+            errors.push(err('Launch Date', data.launchDate, 'Launch Date is not a valid date.'));
+        }
+
+        // ── String length guards ───────────────────────────────────────────────
 
         if (data.barCode && String(data.barCode).length > 50) {
             errors.push(err('BarCode', data.barCode, 'BarCode is too long (max 50 characters).'));
@@ -81,8 +143,14 @@ export class ItemValidatorService {
             errors.push(err('Description', data.description, 'Description is too long (max 1000 characters).'));
         }
 
+        // ── Recommended fields ─────────────────────────────────────────────────
+
         if (!data.concept || String(data.concept).trim() === '') {
-            errors.push(err('Concept', data.concept, 'Concept (Brand) is highly recommended for item classification.'));
+            errors.push(err('Brand', data.concept, 'Brand is highly recommended for item classification.'));
+        }
+
+        if (!data.division || String(data.division).trim() === '') {
+            errors.push(err('Division', data.division, 'Division is recommended for item classification.'));
         }
 
         return {

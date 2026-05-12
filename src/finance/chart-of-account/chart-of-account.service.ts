@@ -91,8 +91,8 @@ export class ChartOfAccountService {
   }
 
   async findAll() {
-    // Return all accounts, frontend can build the tree
-    return this.prisma.chartOfAccount.findMany({
+    // Fetch all accounts in one query
+    const accounts = await this.prisma.chartOfAccount.findMany({
       orderBy: { code: 'asc' },
       include: {
         parent: {
@@ -100,6 +100,41 @@ export class ChartOfAccountService {
         },
       },
     });
+
+    // Build a map for O(1) lookup
+    const map = new Map<string, (typeof accounts)[0] & { balance: any }>();
+    for (const acc of accounts) {
+      map.set(acc.id, { ...acc });
+    }
+
+    // Compute rolled-up balances bottom-up:
+    // Process in reverse order so children are handled before parents
+    // (works because accounts are ordered by code, children always have longer codes)
+    const sorted = [...map.values()];
+
+    // Reset group balances to 0 before rolling up
+    for (const acc of sorted) {
+      if (acc.isGroup) {
+        (acc as any).balance = 0;
+      }
+    }
+
+    // Propagate leaf balances up the tree
+    for (const acc of sorted) {
+      if (!acc.isGroup && acc.parentId) {
+        let currentParentId: string | null = acc.parentId;
+        const leafBalance = Number(acc.balance);
+
+        while (currentParentId) {
+          const parent = map.get(currentParentId);
+          if (!parent) break;
+          (parent as any).balance = Number((parent as any).balance) + leafBalance;
+          currentParentId = parent.parentId ?? null;
+        }
+      }
+    }
+
+    return [...map.values()];
   }
 
   async findOne(id: string) {

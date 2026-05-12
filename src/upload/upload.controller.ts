@@ -103,14 +103,17 @@ export class UploadController {
           .send({ status: false, message: 'File not found' });
       }
 
-      const { stream } = await this.uploadService.downloadUpload(id);
+      const result = await this.uploadService.downloadUpload(id);
+
+      // S3: redirect to signed/public URL instead of proxying
+      if (result.url) {
+        return reply.redirect(result.url, 302);
+      }
+
       reply.header('Content-Type', item.mimetype);
-      reply.header(
-        'Content-Disposition',
-        `inline; filename="${item.filename}"`,
-      );
-      reply.header('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-      return reply.send(stream);
+      reply.header('Content-Disposition', `inline; filename="${item.filename}"`);
+      reply.header('Cache-Control', 'public, max-age=31536000');
+      return reply.send(result.stream);
     } catch (error: any) {
       return reply
         .status(404)
@@ -123,13 +126,17 @@ export class UploadController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Download upload file' })
   async downloadUpload(@Param('id') id: string, @Res() reply: FastifyReply) {
-    const { item, stream } = await this.uploadService.downloadUpload(id);
+    const result = await this.uploadService.downloadUpload(id);
+    const { item } = result;
+
+    // S3: redirect to signed URL for direct download
+    if (result.url) {
+      return reply.redirect(result.url, 302);
+    }
+
     reply.header('Content-Type', item.mimetype);
-    reply.header(
-      'Content-Disposition',
-      `attachment; filename="${item.filename}"`,
-    );
-    return reply.send(stream);
+    reply.header('Content-Disposition', `attachment; filename="${item.filename}"`);
+    return reply.send(result.stream);
   }
 
   @Delete('uploads/:id')

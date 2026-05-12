@@ -13,31 +13,31 @@ import {
     MessageEvent,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { PermissionGuard } from '../../../common/guards/permission.guard';
-import { HsCodeBulkUploadService } from './hs-code-bulk-upload.service';
-import { GetUser } from '../../../common/decorators/get-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { CoaBulkUploadService } from './coa-bulk-upload.service';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { UploadEventsService } from '../../../finance/item/upload-events.service';
+import { UploadEventsService } from '../item/upload-events.service';
 import { Observable } from 'rxjs';
 
-@ApiTags('HS Code Bulk Upload')
-@Controller('api/master/hs-codes/bulk-upload')
+@ApiTags('Chart of Accounts Bulk Upload')
+@Controller('api/finance/chart-of-accounts/bulk-upload')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
-export class HsCodeBulkUploadController {
+export class CoaBulkUploadController {
     constructor(
-        private bulkUploadService: HsCodeBulkUploadService,
+        private bulkUploadService: CoaBulkUploadService,
         private eventsService: UploadEventsService,
     ) { }
 
     /**
-     * POST /api/master/hs-codes/bulk-upload
+     * POST /api/finance/chart-of-accounts/bulk-upload
      * Upload CSV/Excel file and initiate validation
      */
     @Post()
-    @ApiOperation({ summary: 'Upload HS Code file for validation' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.create'))
+    @ApiOperation({ summary: 'Upload Chart of Accounts file for validation' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.create'))
     async uploadFile(
         @Req() req: any,
         @GetUser('id') userId: string,
@@ -68,18 +68,18 @@ export class HsCodeBulkUploadController {
 
         return {
             status: true,
-            message: 'HS Code validation initiated',
+            message: 'Chart of Accounts validation initiated',
             data: result,
         };
     }
 
     /**
-     * POST /api/master/hs-codes/bulk-upload/:uploadId/confirm
+     * POST /api/finance/chart-of-accounts/bulk-upload/:uploadId/confirm
      * Confirm validation and start actual import
      */
     @Post(':uploadId/confirm')
-    @ApiOperation({ summary: 'Confirm and start import of valid HS Code records' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.create'))
+    @ApiOperation({ summary: 'Confirm and start import of valid COA records' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.create'))
     async confirmUpload(
         @Param('uploadId') uploadId: string,
         @GetUser('id') userId: string,
@@ -87,29 +87,29 @@ export class HsCodeBulkUploadController {
         const result = await this.bulkUploadService.confirmUpload(uploadId, userId);
         return {
             status: true,
-            message: 'HS Code import confirmed and started',
+            message: 'Chart of Accounts import confirmed and started',
             data: result,
         };
     }
 
     /**
-     * SSE /api/master/hs-codes/bulk-upload/:uploadId/events
+     * SSE /api/finance/chart-of-accounts/bulk-upload/:uploadId/events
      * Stream real-time progress events
      */
     @Sse(':uploadId/events')
-    @ApiOperation({ summary: 'Stream HS Code bulk upload events (SSE)' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+    @ApiOperation({ summary: 'Stream COA bulk upload events (SSE)' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.read'))
     streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
         return this.eventsService.subscribe(uploadId);
     }
 
     /**
-     * GET /api/master/hs-codes/bulk-upload/:uploadId/status
+     * GET /api/finance/chart-of-accounts/bulk-upload/:uploadId/status
      * Get current status (polling fallback)
      */
     @Get(':uploadId/status')
-    @ApiOperation({ summary: 'Get HS Code upload status' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+    @ApiOperation({ summary: 'Get COA upload status' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.read'))
     async getUploadStatus(@Param('uploadId') uploadId: string) {
         const status = await this.bulkUploadService.getUploadStatus(uploadId);
         return {
@@ -119,26 +119,26 @@ export class HsCodeBulkUploadController {
     }
 
     /**
-     * DELETE /api/master/hs-codes/bulk-upload/:uploadId
+     * DELETE /api/finance/chart-of-accounts/bulk-upload/:uploadId
      * Cancel job
      */
     @Delete(':uploadId')
-    @ApiOperation({ summary: 'Cancel HS Code upload' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.delete'))
+    @ApiOperation({ summary: 'Cancel COA upload' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.delete'))
     async cancelUpload(@Param('uploadId') uploadId: string) {
         await this.bulkUploadService.cancelUpload(uploadId);
         return {
             status: true,
-            message: 'HS Code upload cancelled successfully',
+            message: 'Chart of Accounts upload cancelled successfully',
         };
     }
 
     /**
-     * GET /api/master/hs-codes/bulk-upload/history
+     * GET /api/finance/chart-of-accounts/bulk-upload/history
      */
     @Get('history/list')
-    @ApiOperation({ summary: 'Get HS Code upload history' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+    @ApiOperation({ summary: 'Get COA upload history' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.read'))
     async getUploadHistory(@GetUser('id') userId: string) {
         const history = await this.bulkUploadService.getUploadHistory(userId);
         return {
@@ -148,8 +148,8 @@ export class HsCodeBulkUploadController {
     }
 
     @Get(':uploadId/error-report')
-    @ApiOperation({ summary: 'Download HS Code error report' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+    @ApiOperation({ summary: 'Download COA error report' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.read'))
     async downloadErrorReport(
         @Param('uploadId') uploadId: string,
         @Res() res: any,
@@ -157,29 +157,25 @@ export class HsCodeBulkUploadController {
         const upload = await this.bulkUploadService.getUploadStatus(uploadId);
         const csv = this.bulkUploadService.generateErrorReport(upload.errors as any[]);
         res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', `attachment; filename="hscode-upload-errors-${uploadId}.csv"`);
+        res.header('Content-Disposition', `attachment; filename="coa-upload-errors-${uploadId}.csv"`);
         return res.status(HttpStatus.OK).send(csv);
     }
 
     @Get('template/download')
-    @ApiOperation({ summary: 'Download HS Code CSV template' })
-    @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+    @ApiOperation({ summary: 'Download COA CSV template' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('finance.chart-of-account.read'))
     async downloadTemplate(@Res() res: any) {
         const template = [
-            'HS CODES,CD,RD,ACD,ST,AST,IT',
-            '6404.1900,20%,32%,4%,25%,3%,6%',
-            '4202.2200,20%,20%,4%,25%,3%,6%',
-            '4202.2900,20%,20%,4%,25%,3%,6%',
-            '4202.9200,20%,20%,4%,25%,3%,6%',
-            '4203.3000,20%,40%,4%,25%,3%,6%',
-            '9004.1000,-,24%,-,25%,-,6%',
-            '4202.3100,20%,20%,4%,25%,3%,6%',
-            '4202.3200,20%,20%,4%,25%,3%,6%',
-            '6105.9000,20%,10%,4%,18%,3%,6%',
-            '6103.4900,20%,10%,4%,18%,3%,6%',
+            'CODE,MAIN,DEBIT,CREDIT,CODE,CONTROL ACCOUNT,DEBIT,CREDIT,CODE,SUB CONTROL ACCOUNT,DEBIT,CREDIT,CODE,TAG ID,GL DESCRIPTION,DEBIT,CREDIT',
+            '1,CAPITAL,-,1671498040,10,SHARE HOLDERS\' EQUITY,-,1671498040,1001,SHARE CAPITAL & RESERVES,-,363111685,10010001,,AUTHORIZED CAPITAL,-,73370900',
+            ',,,,,,,,,,,,,,DIR001,MUHAMMAD GHOUSE AKBAR,-,35480000',
+            ',,,,,,,,,,,,,,DIR002,ADIL MATCHESWALA,-,11500000',
+            ',,,,,,,,,,,,10010002,,SHARE PREMIUM,-,289740785',
+            ',,,,,,,,1002,UN APPROPRIATED PROFIT/(LOSS),-,2269521093,10020001,,UN APPROPRIATED PROFIT/(LOSS),-,2269521093',
+            ',,,,,,,,,,,,10020002,,DIVIDEND,961134738,-',
         ].join('\n');
         res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', 'attachment; filename="hscode-upload-template.csv"');
+        res.header('Content-Disposition', 'attachment; filename="coa-upload-template.csv"');
         return res.status(HttpStatus.OK).send(template);
     }
 }

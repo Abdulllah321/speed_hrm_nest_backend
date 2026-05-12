@@ -129,45 +129,125 @@ export class CsvParserService {
     }
 
     /**
-     * Map Excel column names to schema field names and preserve original fields
+     * Map Excel column names to schema field names and preserve original fields.
+     * Supports both legacy column names and the new uploader header format.
      */
     private mapColumns(row: any): ParsedRecord['data'] {
         return {
             ...row, // Keep all original row properties available for generic processors
-            concept: this.normalizeValue(this.getValue(row, 'Concept')),
+
+            // Brand / Concept — new header: "Brand", legacy: "Concept"
+            concept: this.normalizeValue(
+                this.getValue(row, 'Brand') || this.getValue(row, 'Concept'),
+            ),
+
             description: this.normalizeValue(this.getValue(row, 'Description')),
+
             fob: this.parseNumber(this.getValue(row, 'FOB')) as number,
-            unitCost: this.parseNumber(this.getValue(row, 'UnitCost')) as number,
-            unitPrice: this.parseNumber(this.getValue(row, 'UnitPrice')) as number,
-            taxRate1: this.parseNumber(this.getValue(row, 'TaxRate1')) as number,
-            taxRate2: this.parseNumber(this.getValue(row, 'TaxRate2')) as number,
-            discountStartDate: this.parseDate(this.getValue(row, 'DiscountStartDate')),
-            discountEndDate: this.parseDate(this.getValue(row, 'DiscountEndDate')),
-            discountRate: this.parseNumber(this.getValue(row, 'DiscountRate')) as number,
+            unitCost: this.parseNumber(this.getValue(row, 'Unit Cost') ?? this.getValue(row, 'UnitCost')) as number,
+            unitPrice: this.parseNumber(this.getValue(row, 'Unit Price') ?? this.getValue(row, 'UnitPrice')) as number,
+
+            // Tax rates — new headers: "Sale Tax Rate" / "Additional Sales Tax", legacy: "TaxRate1" / "TaxRate2"
+            taxRate1: this.parseNumber(
+                this.getValue(row, 'Sale Tax Rate') ?? this.getValue(row, 'TaxRate1'),
+            ) as number,
+            taxRate2: this.parseNumber(
+                this.getValue(row, 'Additional Sales Tax') ?? this.getValue(row, 'TaxRate2'),
+            ) as number,
+
+            // Discount fields — new headers use spaces; legacy used PascalCase
+            discountStartDate: this.parseDate(
+                this.getValue(row, 'Discount Start Date') ?? this.getValue(row, 'DiscountStartDate'),
+            ),
+            discountEndDate: this.parseDate(
+                this.getValue(row, 'Discount End Date') ?? this.getValue(row, 'DiscountEndDate'),
+            ),
+            discountRate: this.parseNumber(
+                this.getValue(row, 'Discount %') ?? this.getValue(row, 'DiscountRate'),
+            ) as number,
             discountAmount: this.parseNumber(this.getValue(row, 'DiscountAmount')) as number,
+
             isActive: this.parseBoolean(this.getValue(row, 'IsActive')) as boolean,
+
             sku: this.normalizeValue(this.getValue(row, 'SKU')),
             size: this.normalizeValue(this.getValue(row, 'Size')),
             color: this.normalizeValue(this.getValue(row, 'Color')),
             division: this.normalizeValue(this.getValue(row, 'Division')),
             department: this.normalizeValue(this.getValue(row, 'Department')),
-            productCategory: this.normalizeValue(this.getValue(row, 'ProductCategory')),
-            silhouette: this.normalizeValue(this.getValue(row, 'Silhouette')),
+
+            // Product Category — new header: "Product Category/Series", legacy: "ProductCategory"
+            productCategory: this.normalizeValue(
+                this.getValue(row, 'Product Category/Series') || this.getValue(row, 'ProductCategory'),
+            ),
+
+            // Silhouette — new header: "Silhouette/Prodcut Type" (note typo in spec), legacy: "Silhouette"
+            silhouette: this.normalizeValue(
+                this.getValue(row, 'Silhouette/Prodcut Type') ||
+                this.getValue(row, 'Silhouette/Product Type') ||
+                this.getValue(row, 'Silhouette'),
+            ),
+
             class: this.normalizeValue(this.getValue(row, 'Class')),
-            subclass: this.normalizeValue(this.getValue(row, 'Subclass')),
-            channelClass: this.normalizeValue(this.getValue(row, 'ChannelClass') || this.getValue(row, 'Channel Class')),
+
+            // Sub Class — new header uses a space: "Sub Class", legacy: "Subclass"
+            subclass: this.normalizeValue(
+                this.getValue(row, 'Sub Class') || this.getValue(row, 'Subclass'),
+            ),
+
+            channelClass: this.normalizeValue(
+                this.getValue(row, 'Channel Class') || this.getValue(row, 'ChannelClass'),
+            ),
+
             season: this.normalizeValue(this.getValue(row, 'Season')),
-            oldSeason: this.normalizeValue(this.getValue(row, 'OldSeason')),
+
+            // Old Season — new header: "Old Season", legacy: "OldSeason"
+            oldSeason: this.normalizeValue(
+                this.getValue(row, 'Old Season') || this.getValue(row, 'OldSeason'),
+            ),
+
             gender: this.normalizeValue(this.getValue(row, 'Gender')),
-            case: this.normalizeValue(this.getValue(row, 'Case')),
+
+            // Case Material — new header: "Case Material", legacy: "Case"
+            case: this.normalizeValue(
+                this.getValue(row, 'Case Material') || this.getValue(row, 'Case'),
+            ),
+
             band: this.normalizeValue(this.getValue(row, 'Band')),
-            movementType: this.normalizeValue(this.getValue(row, 'MovementType') || this.getValue(row, 'Movement Type')),
-            heelHeight: this.normalizeValue(this.getValue(row, 'HeelHeight') || this.getValue(row, 'Heel Height')),
+
+            // Movement Type — new header: "Movement Type" (with space), legacy: "MovementType"
+            movementType: this.normalizeValue(
+                this.getValue(row, 'Movement Type') || this.getValue(row, 'MovementType'),
+            ),
+
+            // Movement Name — new field
+            movementName: this.normalizeValue(this.getValue(row, 'Movement Name')),
+
+            // Heel Height — new header: "Heel Height" (with space), legacy: "HeelHeight"
+            heelHeight: this.normalizeValue(
+                this.getValue(row, 'Heel Height') || this.getValue(row, 'HeelHeight'),
+            ),
+
             width: this.normalizeValue(this.getValue(row, 'Width')),
-            hsCode: this.normalizeValue(this.getValue(row, 'HSCode')),
-            itemId: this.normalizeValue(this.getValue(row, 'ItemID')),
+
+            // HS Code — new header: "HS Code" (with space), legacy: "HSCode"
+            hsCode: this.normalizeValue(
+                this.getValue(row, 'HS Code') || this.getValue(row, 'HSCode'),
+            ),
+
+            // Item ID — new header: "Item ID" (with space) or "Unique No.", legacy: "ItemID"
+            itemId: this.normalizeValue(
+                this.getValue(row, 'Item ID') ||
+                this.getValue(row, 'Unique No.') ||
+                this.getValue(row, 'ItemID'),
+            ),
+
             barCode: this.normalizeValue(this.getValue(row, 'BarCode')),
             segment: this.normalizeValue(this.getValue(row, 'Segment')),
+
+            // New fields
+            uom: this.normalizeValue(this.getValue(row, 'UOM')),
+            currency: this.normalizeValue(this.getValue(row, 'Currency')),
+            launchDate: this.parseDate(this.getValue(row, 'Launch Date') ?? this.getValue(row, 'LaunchDate')),
         };
     }
 
