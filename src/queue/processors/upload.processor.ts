@@ -497,7 +497,10 @@ export class UploadProcessor {
         ] = await Promise.all([
             tenantMasterData.getOrCreateBrand(data.concept as string),
             tenantMasterData.getOrCreateItemClass(data.class as string),
-            tenantMasterData.getOrCreateCategory(data.productCategory as string),
+            // "Department" in the sheet is a top-level product category (e.g. "Footwear").
+            // "ProductCategory/Series" is its child (e.g. "Shoes").
+            // We resolve the department-level category first so productCategory can be nested under it.
+            tenantMasterData.getOrCreateCategory(data.department as string),
             tenantMasterData.getOrCreateSize(data.size as string),
             tenantMasterData.getOrCreateColor(data.color as string),
             tenantMasterData.getOrCreateGender(data.gender as string),
@@ -509,10 +512,11 @@ export class UploadProcessor {
         ]);
 
         // Step 2: Dependent master data (needs brandId / itemClassId / categoryId from above)
+        // productCategory is a child of the department-level category resolved above
         const [divisionId, itemSubclassId, subCategoryId] = await Promise.all([
             tenantMasterData.getOrCreateDivision(data.division as string, brandId),
             tenantMasterData.getOrCreateItemSubclass(data.subclass as string, itemClassId),
-            tenantMasterData.getOrCreateSubCategory(data.subclass as string, categoryId),
+            tenantMasterData.getOrCreateSubCategory(data.productCategory as string, categoryId),
         ]);
 
         return {
@@ -521,9 +525,28 @@ export class UploadProcessor {
             description: data.description ? String(data.description) : null,
             unitPrice: data.unitPrice ? Number(data.unitPrice) : 0,
             unitCost: data.unitCost ? Number(data.unitCost) : 0,
+            fob: data.fob ? Number(data.fob) : 0,
             taxRate1: data.taxRate1 ? Number(data.taxRate1) : 0,
             taxRate2: data.taxRate2 ? Number(data.taxRate2) : 0,
+            discountRate: data.discountRate ? Number(data.discountRate) : 0,
+            discountAmount: data.discountAmount ? Number(data.discountAmount) : 0,
+            discountStartDate: data.discountStartDate ?? null,
+            discountEndDate: data.discountEndDate ?? null,
             status: data.isActive === false ? 'inactive' : 'active',
+            isActive: data.isActive !== false,
+            // Scalar string fields stored directly on Item
+            case: data.case ? String(data.case) : null,
+            band: data.band ? String(data.band) : null,
+            movementType: data.movementType ? String(data.movementType) : null,
+            movementName: data.movementName ? String(data.movementName) : null,
+            heelHeight: data.heelHeight ? String(data.heelHeight) : null,
+            width: data.width ? String(data.width) : null,
+            hsCodeStr: data.hsCode ? String(data.hsCode) : null,
+            uom: data.uom ? String(data.uom) : null,
+            currency: data.currency ? String(data.currency) : null,
+            launchDate: data.launchDate ?? null,
+            oldSeason: data.oldSeason ? String(data.oldSeason) : null,
+            // Resolved FK IDs
             brandId, itemClassId, itemSubclassId, silhouetteId,
             sizeId, colorId, seasonId, genderId, categoryId,
             subCategoryId, hsCodeId, divisionId, channelClassId, segmentId,

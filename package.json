@@ -30,10 +30,13 @@
     "prisma:tenant:push": "bun scripts/push-tenants-schema.ts",
     "prisma:tenant:seed": "bun scripts/seed-tenant.ts",
     "seed:kpi-templates": "bun scripts/seed-kpi-templates.ts",
+    "seed:opening-balances": "bun scripts/seed-opening-balances.ts",
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.787.0",
+    "@aws-sdk/s3-request-presigner": "^3.787.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.3.0",

@@ -361,6 +361,18 @@ export const liabilitiesChart: any[] = [
                 type: 'LIABILITY',
                 isGroup: false,
               },
+              {
+                code: '12030017',
+                name: 'A/P-PARTIES RENT',
+                type: 'LIABILITY',
+                isGroup: false,
+              },
+              {
+                code: '12030018',
+                name: 'A/P-MISCELLANEOUS',
+                type: 'LIABILITY',
+                isGroup: false,
+              },
             ],
           },
           {

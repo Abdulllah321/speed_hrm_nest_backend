@@ -116,8 +116,8 @@ export class ItemBulkUploadController {
     @ApiOperation({ summary: 'Download CSV template' })
     async downloadTemplate(@Res() res: any) {
         const template = [
-            'Concept,ItemID,SKU,BarCode,Description,UnitPrice,TaxRate1,TaxRate2,DiscountRate,DiscountAmount,DiscountStartDate,DiscountEndDate,IsActive,Concept,Size,Color,Division,Department,ProductCategory,Silhouette,Class,Subclass,Channel Class,Season,OldSeason,Gender,Case,Band,Movement Type,Heel Height,Width,HSCode,UOM,Segment',
-            'Sample,ITEM-001,SKU-001,BAR-001,Description,150,5,0,0,0,,,true,BrandX,M,Red,Mens,Footwear,Shoes,Casual,ClassA,Subclass1,Retail,Summer 2024,N/A,Male,N/A,Premium,Standard,Low,Medium,1234,PC,Standard',
+            'Brand,Division,SKU,Description,Size,Unique No.,Color,Product Category/Series,Silhouette/Product Type,Channel Class,Department,Class,Sub Class,Heel Height,Season,Old Season,Gender,Width,Case Material,Band,Movement Type,Movement Name,HS Code,UOM,Item ID,Currency,FOB,Unit Cost,Unit Price,Sale Tax Rate,Additional Sales Tax,Discount Start Date,Discount End Date,Discount %,BarCode,Launch Date',
+            'BrandX,Mens,SKU-001,Sample Description,M,ITEM-001,Red,Shoes,Casual,Retail,Footwear,ClassA,Subclass1,Low,Summer 2026,,Male,Medium,Steel,Leather,Automatic,ETA 5001,1234,PC,ITEM-001,PKR,12.50,150,200,5,0,,,0,BAR-001,',
         ].join('\n');
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="item-upload-template.csv"');
