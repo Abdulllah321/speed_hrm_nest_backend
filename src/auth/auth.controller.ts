@@ -11,6 +11,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionGuard } from '../common/guards/permission.guard';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { PrismaService } from '../database/prisma.service';
 
@@ -702,7 +703,7 @@ export class AuthController {
   }
 
   @Post('update-profile')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard('profile.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update current user profile' })
   async updateProfile(@Req() req: any, @Body() body: UpdateUserProfileDto) {

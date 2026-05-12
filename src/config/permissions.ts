@@ -1996,5 +1996,8 @@ export const PERMISSIONS = [
   // ── POS — Dashboard ─────────────────────────────────────────────────────────
   { name: 'pos.dashboard.view', description: 'View POS Dashboard & Stats' },
 
+  // ── Profile Management ──────────────────────────────────────────────────────
+  { name: 'profile.update', description: 'Update Own Profile Information' },
+
 ];
 
