@@ -11,6 +11,7 @@ export interface HsCodeParsedRecord {
         regulatoryDutyRd?: number;
         additionalCustomsDutyAcd?: number;
         salesTax?: number;
+        additionalSalesTaxAst?: number;
         incomeTax?: number;
     };
 }
@@ -129,6 +130,9 @@ export class HsCodeCsvParserService {
             ])) as number,
             salesTax: this.parseNumber(this.getValue(row, [
                 'ST', 'st', 'Sales Tax', 'salesTax', 'ST%', 'ST (%)', 'ST(%)'
+            ])) as number,
+            additionalSalesTaxAst: this.parseNumber(this.getValue(row, [
+                'AST', 'ast', 'Additional Sales Tax', 'additionalSalesTaxAst', 'AST%', 'AST (%)', 'AST(%)'
             ])) as number,
             incomeTax: this.parseNumber(this.getValue(row, [
                 'IT', 'it', 'Income Tax', 'incomeTax', 'IT%', 'IT (%)', 'IT(%)'
