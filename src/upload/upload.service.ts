@@ -148,9 +148,9 @@ export class UploadService {
         path: true,
       },
     });
-
     // Resolve the URL to return to the caller
-    const fileUrl = publicUrl ?? `/api/uploads/${record.id}`;
+    // The frontend base URL already includes /api, so return a path without it
+    const fileUrl = publicUrl ? publicUrl: `/uploads/${record.id}`;
 
     runInBackground(
       'Upload File',
