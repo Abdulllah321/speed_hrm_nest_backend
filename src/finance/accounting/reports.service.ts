@@ -19,39 +19,85 @@ export class ReportsService {
     });
 
     if (!from && !to) {
-      // Use stored running balances (no period specified)
+      // Calculate opening balances from OPENING_BALANCE transactions
+      const openingBalanceAgg = await this.prisma.accountTransaction.groupBy({
+        by: ['accountId'],
+        where: { sourceType: 'OPENING_BALANCE' },
+        _sum: { debit: true, credit: true },
+      });
+
+      const openingBalanceMap = new Map(openingBalanceAgg.map(t => [t.accountId, {
+        debit:  Number(t._sum.debit  ?? 0),
+        credit: Number(t._sum.credit ?? 0),
+      }]));
+
+      let totalOpeningDebit = 0, totalOpeningCredit = 0;
       let totalDebit = 0, totalCredit = 0;
+
       const rows = accounts.map(a => {
-        const bal = Number(a.balance);
+        const opening = openingBalanceMap.get(a.id) ?? { debit: 0, credit: 0 };
         const isDebitNormal = a.type === AccountType.ASSET || a.type === AccountType.EXPENSE;
-        const debit  = isDebitNormal && bal > 0 ? bal : (!isDebitNormal && bal < 0 ? -bal : 0);
-        const credit = !isDebitNormal && bal > 0 ? bal : (isDebitNormal && bal < 0 ? -bal : 0);
-        totalDebit  += debit;
-        totalCredit += credit;
+        
+        // Calculate opening balance
+        const openingBalance = isDebitNormal 
+          ? opening.debit - opening.credit 
+          : opening.credit - opening.debit;
+        
+        const openingDebit = openingBalance > 0 ? openingBalance : 0;
+        const openingCredit = openingBalance < 0 ? -openingBalance : 0;
+
+        // Use stored balance for closing (since no date range)
+        const bal = Number(a.balance);
+        const closingDebit  = isDebitNormal && bal > 0 ? bal : (!isDebitNormal && bal < 0 ? -bal : 0);
+        const closingCredit = !isDebitNormal && bal > 0 ? bal : (isDebitNormal && bal < 0 ? -bal : 0);
+
+        totalOpeningDebit  += openingDebit;
+        totalOpeningCredit += openingCredit;
+        totalDebit  += closingDebit;
+        totalCredit += closingCredit;
+
         return { 
           ...a, 
           balance: bal, 
-          debit, 
-          credit,
-          openingDebit: 0,
-          openingCredit: 0,
+          debit: closingDebit, 
+          credit: closingCredit,
+          openingDebit,
+          openingCredit,
           transactionDebit: 0,
           transactionCredit: 0,
-          closingDebit: debit,
-          closingCredit: credit,
+          closingDebit,
+          closingCredit,
         };
-      });
-      return { rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 };
+      }).filter(r => r.openingDebit !== 0 || r.openingCredit !== 0 || 
+                     r.closingDebit !== 0 || r.closingCredit !== 0);
+
+      return { 
+        rows, 
+        totalDebit, 
+        totalCredit,
+        totalOpeningDebit,
+        totalOpeningCredit,
+        totalTransactionDebit: 0,
+        totalTransactionCredit: 0,
+        totalClosingDebit: totalDebit,
+        totalClosingCredit: totalCredit,
+        balanced: Math.abs(totalDebit - totalCredit) < 0.01 
+      };
     }
 
     // Period-based: calculate opening, transactions, and closing
     const fromDate = from ? new Date(from) : undefined;
     const toDate = to ? new Date(to) : undefined;
 
-    // Get opening balances (transactions before 'from' date)
+    // Get opening balances from OPENING_BALANCE transactions + transactions before 'from' date
     const openingAgg = fromDate ? await this.prisma.accountTransaction.groupBy({
       by: ['accountId'],
-      where: { transactionDate: { lt: fromDate } },
+      where: { 
+        OR: [
+          { sourceType: 'OPENING_BALANCE' },
+          { transactionDate: { lt: fromDate }, sourceType: { not: 'OPENING_BALANCE' } }
+        ]
+      },
       _sum: { debit: true, credit: true },
     }) : [];
 
@@ -60,14 +106,17 @@ export class ReportsService {
       credit: Number(t._sum.credit ?? 0),
     }]));
 
-    // Get period transactions (between 'from' and 'to')
+    // Get period transactions (between 'from' and 'to', excluding OPENING_BALANCE)
     const dateFilter: any = {};
     if (fromDate) dateFilter.gte = fromDate;
     if (toDate)   dateFilter.lte = toDate;
 
     const txAgg = await this.prisma.accountTransaction.groupBy({
       by: ['accountId'],
-      where: { transactionDate: dateFilter },
+      where: { 
+        transactionDate: dateFilter,
+        sourceType: { not: 'OPENING_BALANCE' }
+      },
       _sum: { debit: true, credit: true },
     });
 
