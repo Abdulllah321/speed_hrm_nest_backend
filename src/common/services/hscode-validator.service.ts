@@ -130,7 +130,7 @@ export class HsCodeValidatorService {
 
         records.forEach((record) => {
             if (record.data.hsCode) {
-                const normalized = record.data.hsCode.trim().toLowerCase();
+                const normalized = String(record.data.hsCode).trim();
                 const existing = hsCodeMap.get(normalized) || [];
                 hsCodeMap.set(normalized, [...existing, record.row]);
             }

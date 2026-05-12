@@ -25,7 +25,7 @@ export class HsCodeBulkUploadService {
         userId: string,
     ): Promise<{ uploadId: string; jobId: string }> {
         // Generate a temporary unique jobId to avoid constraint violation
-        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         
         // Create upload record with status 'validating'
         const upload = await this.prisma.bulkUpload.create({
@@ -63,17 +63,19 @@ export class HsCodeBulkUploadService {
             removeOnFail: false,
         });
 
-        // Update upload with actual job ID
+        // Store job ID prefixed with upload ID to guarantee uniqueness across Redis restarts
+        // Bull resets sequential IDs (1, 2, 3...) after restart which would collide with old records
+        const uniqueJobId = `${upload.id}:${job.id}`;
         await this.prisma.bulkUpload.update({
             where: { id: upload.id },
-            data: { jobId: String(job.id) },
+            data: { jobId: uniqueJobId },
         });
 
         this.logger.log(`HS Code validation initiated: ${upload.id} (Job ID: ${job.id}), File saved to ${filePath}`);
 
         return {
             uploadId: upload.id,
-            jobId: String(job.id),
+            jobId: uniqueJobId,
         };
     }
 
@@ -129,14 +131,14 @@ export class HsCodeBulkUploadService {
 
         await this.prisma.bulkUpload.update({
             where: { id: upload.id },
-            data: { jobId: String(job.id) },
+            data: { jobId: `${upload.id}:${job.id}` },
         });
 
         this.logger.log(`HS Code import confirmed: ${upload.id} (Job ID: ${job.id})`);
 
         return {
             uploadId,
-            jobId: String(job.id),
+            jobId: `${upload.id}:${job.id}`,
         };
     }
 
@@ -157,7 +159,9 @@ export class HsCodeBulkUploadService {
         let jobState = 'unknown';
 
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            // jobId is stored as "uploadId:bullJobId" — extract the Bull part
+            const bullJobId = upload.jobId.includes(':') ? upload.jobId.split(':').slice(1).join(':') : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) {
                 jobProgress = await job.progress();
                 jobState = await job.getState();
@@ -198,7 +202,9 @@ export class HsCodeBulkUploadService {
 
         // Remove job from queue
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            // jobId is stored as "uploadId:bullJobId" — extract the Bull part
+            const bullJobId = upload.jobId.includes(':') ? upload.jobId.split(':').slice(1).join(':') : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) {
                 await job.remove();
             }
