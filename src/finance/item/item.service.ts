@@ -500,6 +500,7 @@ export class ItemService {
       return { status: false, message: error.message };
     }
   }
+
   private async enrichItems(items: any[]) {
     if (!items.length) return [];
 
