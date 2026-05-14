@@ -101,10 +101,15 @@ export class ChartOfAccountService {
       },
     });
 
-    // Build a map for O(1) lookup
-    const map = new Map<string, (typeof accounts)[0] & { balance: any }>();
+    // Build a map for O(1) lookup with debit/credit separation
+    const map = new Map<string, (typeof accounts)[0] & { balance: any; debit: number; credit: number }>();
     for (const acc of accounts) {
-      map.set(acc.id, { ...acc });
+      const balance = Number(acc.balance);
+      map.set(acc.id, { 
+        ...acc, 
+        debit: balance > 0 ? balance : 0,
+        credit: balance < 0 ? Math.abs(balance) : 0
+      });
     }
 
     // Compute rolled-up balances bottom-up:
@@ -113,9 +118,12 @@ export class ChartOfAccountService {
     const sorted = [...map.values()];
 
     // Reset group balances to 0 before rolling up
+    const parentIds = new Set(accounts.map((a) => a.parentId).filter(Boolean));
     for (const acc of sorted) {
-      if (acc.isGroup) {
+      if (acc.isGroup || parentIds.has(acc.id)) {
         (acc as any).balance = 0;
+        (acc as any).debit = 0;
+        (acc as any).credit = 0;
       }
     }
 
@@ -124,11 +132,15 @@ export class ChartOfAccountService {
       if (!acc.isGroup && acc.parentId) {
         let currentParentId: string | null = acc.parentId;
         const leafBalance = Number(acc.balance);
+        const leafDebit = (acc as any).debit;
+        const leafCredit = (acc as any).credit;
 
         while (currentParentId) {
           const parent = map.get(currentParentId);
           if (!parent) break;
           (parent as any).balance = Number((parent as any).balance) + leafBalance;
+          (parent as any).debit = Number((parent as any).debit) + leafDebit;
+          (parent as any).credit = Number((parent as any).credit) + leafCredit;
           currentParentId = parent.parentId ?? null;
         }
       }
