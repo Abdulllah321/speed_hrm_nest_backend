@@ -10,16 +10,22 @@ import { CoaValidatorService } from '../../common/services/coa-validator.service
 import { UploadEventsService } from '../item/upload-events.service';
 import { AccountingModule } from '../accounting/accounting.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
+import { ChartOfAccountExportController } from './chart-of-account-export.controller';
+import { ChartOfAccountExportService } from './chart-of-account-export.service';
+import { ChartOfAccountExportProcessor } from './chart-of-account-export.processor';
 
 @Module({
   imports: [
     PrismaModule,
     AccountingModule,
-    BullModule.registerQueue({
-      name: 'coa-upload',
-    }),
+    NotificationsModule,
+    BullModule.registerQueue(
+      { name: 'coa-upload' },
+      { name: 'chart-of-account-export' },
+    ),
   ],
-  controllers: [ChartOfAccountController, CoaBulkUploadController],
+  controllers: [ChartOfAccountController, CoaBulkUploadController, ChartOfAccountExportController],
   providers: [
     ChartOfAccountService,
     CoaBulkUploadService,
@@ -27,6 +33,8 @@ import { PrismaModule } from '../../prisma/prisma.module';
     CoaCsvParserService,
     CoaValidatorService,
     UploadEventsService,
+    ChartOfAccountExportService,
+    ChartOfAccountExportProcessor,
   ],
   exports: [ChartOfAccountService],
 })
