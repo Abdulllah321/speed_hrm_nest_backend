@@ -971,13 +971,13 @@ export class PosSalesService implements OnModuleInit {
                     const itemShare = lineTotal - itemCouponDeduction;
                     const originalPaidPerUnit = itemShare / qty;
 
-                    // Current item price — POS uses unitCost when set, otherwise unitPrice
+                    // Current item price — POS uses unitPrice from item setup
                     const currentItem = await tx.item.findUnique({
                         where: { id: returnItem.itemId },
-                        select: { unitPrice: true, unitCost: true },
+                        select: { unitPrice: true },
                     });
                     const baseCurrentPrice = currentItem
-                        ? (Number(currentItem.unitCost) > 0 ? Number(currentItem.unitCost) : Number(currentItem.unitPrice))
+                        ? Number(currentItem.unitPrice)
                         : originalPaidPerUnit;
 
                     // Apply the same tax rate that was charged at sale time
@@ -1253,11 +1253,9 @@ export class PosSalesService implements OnModuleInit {
                         ? (lineTotal / lineTotalsSum) * grandTotal / returnedQty
                         : lineTotal / returnedQty;
 
-                    // Current price logic (use unitCost if available)
+                    // Current price logic (use unitPrice from item setup)
                     const currentItem = oi.item;
-                    const baseCurrentPrice = Number((currentItem as any).unitCost || 0) > 0
-                        ? Number((currentItem as any).unitCost)
-                        : unitPrice;
+                    const baseCurrentPrice = Number((currentItem as any).unitPrice || 0);
                     const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
 
                     // Refund rule: min(original, current)
@@ -2048,9 +2046,8 @@ export class PosSalesService implements OnModuleInit {
 
         return items.map((item) => {
             const stockQty = stockMap.get(item.id) || 0;
-            const latestPrice = Number(item.unitCost || 0) > 0
-                ? Number(item.unitCost)
-                : Number(item.unitPrice || 0);
+            // Use unitPrice from item setup, not unitCost
+            const latestPrice = Number(item.unitPrice || 0);
 
             // ── Resolve effective discount respecting date validity ──────────
             // A discount is active if:
@@ -2082,7 +2079,6 @@ export class PosSalesService implements OnModuleInit {
                 barCode: item.barCode,
                 description: item.description,
                 unitPrice: latestPrice,
-                unitCost: Number(item.unitCost || 0),
                 taxRate1: Number(item.taxRate1 || 0),
                 taxRate2: Number(item.taxRate2 || 0),
                 // Raw discount fields
