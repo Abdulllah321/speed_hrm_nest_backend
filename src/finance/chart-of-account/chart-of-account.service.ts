@@ -9,6 +9,7 @@ import { runInBackground } from '../../common/utils/run-in-background.util';
 import {
   CreateChartOfAccountDto,
   UpdateChartOfAccountDto,
+  AccountType,
 } from './dto/chart-of-account.dto';
 
 @Injectable()
@@ -165,6 +166,33 @@ export class ChartOfAccountService {
     return account;
   }
 
+  /**
+   * Recursively update account type for all descendants
+   */
+  private async updateChildrenAccountType(
+    parentId: string,
+    newType: AccountType,
+  ): Promise<void> {
+    // Find all direct children
+    const children = await this.prisma.chartOfAccount.findMany({
+      where: { parentId },
+      select: { id: true },
+    });
+
+    if (children.length === 0) return;
+
+    // Update all direct children
+    await this.prisma.chartOfAccount.updateMany({
+      where: { parentId },
+      data: { type: newType },
+    });
+
+    // Recursively update grandchildren and beyond
+    for (const child of children) {
+      await this.updateChildrenAccountType(child.id, newType);
+    }
+  }
+
   async update(
     id: string,
     updateDto: UpdateChartOfAccountDto,
@@ -189,7 +217,8 @@ export class ChartOfAccountService {
         }
       }
 
-      // Validate parent loop
+      // Check if parent is changing
+      let newParentType: any = null;
       if (updateDto.parentId && updateDto.parentId !== account.parentId) {
         if (updateDto.parentId === id) {
           throw new BadRequestException('Account cannot be its own parent');
@@ -201,6 +230,17 @@ export class ChartOfAccountService {
         if (!parent) throw new NotFoundException('Parent account not found');
         if (!parent.isGroup)
           throw new BadRequestException('Parent account must be a group');
+        
+        // Store parent's type to inherit
+        newParentType = parent.type as AccountType;
+      }
+
+      // Check if account type is being changed explicitly
+      const isTypeChanging = updateDto.type && updateDto.type !== account.type;
+
+      // If parent is changing and type is not explicitly set, inherit parent's type
+      if (newParentType && !updateDto.type) {
+        updateDto.type = newParentType as AccountType;
       }
 
       const updatedAccount = await this.prisma.chartOfAccount.update({
@@ -210,6 +250,12 @@ export class ChartOfAccountService {
         },
       });
 
+      // If type changed (either explicitly or inherited from parent), update all descendants
+      if (isTypeChanging || newParentType) {
+        const finalType = updateDto.type || newParentType;
+        await this.updateChildrenAccountType(id, finalType);
+      }
+
       runInBackground(
         'Update Chart of Account',
         this.activityLogs.log({
@@ -218,7 +264,7 @@ export class ChartOfAccountService {
           module: 'finance',
           entity: 'ChartOfAccount',
           entityId: id,
-          description: `Updated account ${updatedAccount.name} (${updatedAccount.code})`,
+          description: `Updated account ${updatedAccount.name} (${updatedAccount.code})${isTypeChanging || newParentType ? ' and all child accounts' : ''}`,
           oldValues: JSON.stringify(account),
           newValues: JSON.stringify(updateDto),
           ipAddress: ctx?.ipAddress,
