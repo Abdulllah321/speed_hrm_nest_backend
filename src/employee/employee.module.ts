@@ -9,6 +9,9 @@ import { EmployeeBulkUploadService } from './employee-bulk-upload.service';
 import { EmployeeValidatorService } from '../common/services/employee-validator.service';
 import { EmployeeUploadEventsService } from './employee-upload-events.service';
 import { EmployeeUploadProcessor } from '../queue/processors/employee-upload.processor';
+import { EmployeeExportController } from './employee-export.controller';
+import { EmployeeExportService } from './employee-export.service';
+import { EmployeeExportProcessor } from './employee-export.processor';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
@@ -16,11 +19,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
     PrismaModule,
     DatabaseModule,
     NotificationsModule,
-    BullModule.registerQueue({
-      name: 'employee-upload',
-    }),
+    BullModule.registerQueue(
+      { name: 'employee-upload' },
+      { name: 'employee-export' },
+    ),
   ],
-  controllers: [EmployeeController],
+  controllers: [EmployeeController, EmployeeExportController],
   providers: [
     EmployeeService,
     CsvParserService,
@@ -28,6 +32,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     EmployeeValidatorService,
     EmployeeUploadEventsService,
     EmployeeUploadProcessor,
+    EmployeeExportService,
+    EmployeeExportProcessor,
   ],
   exports: [EmployeeService, EmployeeBulkUploadService],
 })
