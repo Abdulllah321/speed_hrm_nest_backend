@@ -1739,6 +1739,66 @@ export class AuthService {
     return bcrypt.compare(password, user.password);
   }
 
+  /**
+   * Admin-initiated password reset for any user.
+   * Sets isFirstPassword = true so the user is forced to change on next login.
+   */
+  async adminResetPassword(
+    actingUserId: string,
+    targetUserId: string,
+    newPassword: string,
+  ) {
+    // Only admins can reset other users' passwords
+    const actingUser = await this.prismaMaster.user.findUnique({
+      where: { id: actingUserId },
+      include: { role: true },
+    });
+
+    const roleName = (actingUser?.role?.name || '').toLowerCase().trim();
+    const isAdmin =
+      actingUser?.role?.isSystem ||
+      ['admin', 'super_admin', 'super admin', 'super-admin'].includes(roleName);
+
+    if (!isAdmin) {
+      return { status: false, message: 'Not authorized to reset passwords' };
+    }
+
+    const targetUser = await this.prismaMaster.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      return { status: false, message: 'User not found' };
+    }
+
+    if ((newPassword || '').length < authConfig.password.minLength) {
+      return {
+        status: false,
+        message: `Password must be at least ${authConfig.password.minLength} characters`,
+      };
+    }
+
+    const hashed = await bcrypt.hash(
+      newPassword,
+      authConfig.password.saltRounds,
+    );
+
+    await this.prismaMaster.user.update({
+      where: { id: targetUserId },
+      data: {
+        password: hashed,
+        isFirstPassword: true,
+        mustChangePassword: true,
+      },
+    });
+
+    this.logger.log(
+      `[ADMIN RESET PASSWORD] userId=${targetUserId} reset by actingUserId=${actingUserId}`,
+    );
+
+    return { status: true, message: 'Password reset successfully' };
+  }
+
   // Helper to detect device type from user agent
   private getDeviceType(userAgent?: string): string {
     if (!userAgent) return 'DESKTOP';
