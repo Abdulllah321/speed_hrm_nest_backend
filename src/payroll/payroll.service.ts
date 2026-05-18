@@ -618,6 +618,22 @@ export class PayrollService {
       }
       // ──────────────────────────────────────────────────────────────────
 
+      // IMPORTANT: Adjust salary breakup components AFTER attendance deduction
+      // This ensures tax is calculated on the actual amount employee will receive
+      // Pakistan Tax Law: Tax should be calculated on net salary after attendance deductions
+      const adjustedSalaryBreakup = salaryBreakup.map((component) => ({
+        ...component,
+        amount: Math.round(
+          new Decimal(component.amount)
+            .minus(
+              new Decimal(component.amount)
+                .div(totalPackageAmount)
+                .mul(attendanceDeduction)
+            )
+            .toNumber()
+        ),
+      }));
+
       // D. Calculate Bonuses
       const bonusAmount = this.calculateBonuses(emp.bonuses || []);
 
@@ -651,28 +667,40 @@ export class PayrollService {
         taxPercentage: ded.taxPercentage ? Number(ded.taxPercentage) : null,
       }));
 
-      // E. Calculate Gross Salary (Pre-tax)
-      // Gross = Sum of All Salary Breakup Components + AdHoc Allowances + Overtime + Bonus + Leave Encashment
+      // E. Calculate Gross Salary (Pre-tax, but after attendance deduction)
+      // Gross = Sum of All Salary Breakup Components (after attendance adjustment) + AdHoc Allowances + Overtime + Bonus + Leave Encashment
       // All salary components are included in gross regardless of isDeductible flag
-      const grossSalary = totalPackageAmount
+      const adjustedTotalPackageAmount = totalPackageAmount.minus(attendanceDeduction);
+      const grossSalary = adjustedTotalPackageAmount
         .add(totalAdHocAllowances)
         .add(overtimeAmount)
         .add(bonusAmount)
         .add(leaveEncashmentAmount);
 
-      // F. Calculate Tax (with Rebates)
-      // Tax is calculated based on taxable components from salary, allowances, and bonuses
-      // Combine all taxable components
+      // F. Calculate Tax (with Rebates) - YTD Cumulative Method
+      // Tax is calculated based on Year-to-Date actual income + projected remaining months
+      // Pakistan Tax Year: July 1 to June 30
+      
+      // Combine all taxable components - use adjusted salary breakup
       const allTaxableComponents = [
-        ...salaryBreakup,
+        ...adjustedSalaryBreakup,
         ...allowanceBreakup,
         ...bonusBreakup,
       ];
-      const { taxDeduction, taxBreakup } = await this.calculateTax(
+      
+      const { taxDeduction, taxBreakup } = await this.calculateTaxYTD(
+        employee.id,
         allTaxableComponents,
         emp.rebates || [],
         packageAmount,
+        adjustedTotalPackageAmount, // Current month's actual amount after attendance
+        totalAdHocAllowances,
+        overtimeAmount,
+        bonusAmount,
+        leaveEncashmentAmount,
         allTaxSlabs,
+        normalizedMonth,
+        normalizedYear,
         salaryFraction,
       );
 
@@ -2652,6 +2680,216 @@ export class PayrollService {
       percentageTax: percentageTaxAmount.toNumber(), // Percentage tax on excess amount
       monthlyTax: taxDeduction.toNumber(),
       rebateBreakup,
+    };
+
+    return { taxDeduction, taxBreakup };
+  }
+
+  /**
+   * Calculate Tax using Year-to-Date (YTD) Cumulative Method
+   * Pakistan Tax Year: July 1 to June 30
+   * 
+   * Method:
+   * 1. Fetch all previous months' actual gross salary (from start of tax year to current month - 1)
+   * 2. Add current month's actual gross (after attendance deduction)
+   * 3. Project remaining months with full gross salary (current month + 1 to end of tax year)
+   * 4. Calculate annual tax on total projected income
+   * 5. Monthly tax = Annual tax / 12
+   */
+  private async calculateTaxYTD(
+    employeeId: string,
+    salaryBreakup: Array<{
+      id: string;
+      name: string;
+      percentage: number | null;
+      amount: number;
+      isTaxable?: boolean;
+      isRecurring?: boolean;
+    }>,
+    rebates: any[],
+    originalPackageAmount: Decimal, // Original monthly package (for projection)
+    currentMonthActualAmount: Decimal, // Current month after attendance deduction
+    currentMonthAllowances: Decimal,
+    currentMonthOvertime: Decimal,
+    currentMonthBonus: Decimal,
+    currentMonthLeaveEncashment: Decimal,
+    allTaxSlabs: any[],
+    currentMonth: string, // "01" to "12"
+    currentYear: string,
+    salaryFraction: Decimal,
+  ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
+    
+    const monthNum = parseInt(currentMonth, 10);
+    const yearNum = parseInt(currentYear, 10);
+
+    // Determine tax year boundaries (July 1 to June 30)
+    let taxYearStart: Date;
+    let taxYearEnd: Date;
+    
+    if (monthNum >= 7) {
+      // July to December - tax year is current year to next year
+      taxYearStart = new Date(yearNum, 6, 1); // July 1 current year
+      taxYearEnd = new Date(yearNum + 1, 5, 30); // June 30 next year
+    } else {
+      // January to June - tax year is previous year to current year
+      taxYearStart = new Date(yearNum - 1, 6, 1); // July 1 previous year
+      taxYearEnd = new Date(yearNum, 5, 30); // June 30 current year
+    }
+
+    // Step 1: Fetch previous months' actual payroll data (confirmed payrolls only)
+    const previousPayrolls = await this.prisma.payrollDetail.findMany({
+      where: {
+        employeeId: employeeId,
+        payroll: {
+          status: 'confirmed',
+        },
+      },
+      include: {
+        payroll: {
+          select: {
+            month: true,
+            year: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Filter payrolls within current tax year and before current month
+    let ytdGrossIncome = new Decimal(0);
+    const currentMonthDate = new Date(yearNum, monthNum - 1, 1);
+
+    for (const payroll of previousPayrolls) {
+      const payrollDate = new Date(
+        parseInt(payroll.payroll.year),
+        parseInt(payroll.payroll.month) - 1,
+        1
+      );
+
+      // Check if payroll is within tax year and before current month
+      if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
+        ytdGrossIncome = ytdGrossIncome.add(new Decimal(payroll.grossSalary));
+      }
+    }
+
+    // Step 2: Add current month's actual gross (after attendance deduction)
+    const currentMonthGross = currentMonthActualAmount
+      .add(currentMonthAllowances)
+      .add(currentMonthOvertime)
+      .add(currentMonthBonus)
+      .add(currentMonthLeaveEncashment);
+    
+    ytdGrossIncome = ytdGrossIncome.add(currentMonthGross);
+
+    // Step 3: Project remaining months (assume full salary)
+    const projectedMonthlyGross = originalPackageAmount; // Use original package for projection
+    
+    // Calculate how many months remaining in tax year after current month
+    let remainingMonths = 0;
+    const nextMonthDate = new Date(yearNum, monthNum, 1); // First day of next month
+    
+    let checkDate = new Date(nextMonthDate);
+    while (checkDate <= taxYearEnd) {
+      remainingMonths++;
+      checkDate.setMonth(checkDate.getMonth() + 1);
+    }
+
+    const projectedRemainingIncome = projectedMonthlyGross.mul(remainingMonths);
+
+    // Step 4: Calculate total annual taxable income
+    let annualTaxableIncome = ytdGrossIncome.add(projectedRemainingIncome);
+
+    // Apply rebates
+    let totalRebateAmount = new Decimal(0);
+    const rebateBreakup: any[] = [];
+
+    if (rebates && rebates.length > 0) {
+      for (const rebate of rebates) {
+        const rebateAmount = new Decimal(rebate.rebateAmount);
+        totalRebateAmount = totalRebateAmount.add(rebateAmount);
+        annualTaxableIncome = annualTaxableIncome.minus(rebateAmount);
+        rebateBreakup.push({
+          id: rebate.id,
+          name: rebate.rebateNature?.name || 'Rebate',
+          amount: rebateAmount.toNumber(),
+        });
+      }
+    }
+
+    // Ensure taxable income is not negative
+    if (annualTaxableIncome.lt(0)) {
+      annualTaxableIncome = new Decimal(0);
+    }
+
+    // Step 5: Calculate annual tax
+    let taxDeduction = new Decimal(0);
+    let taxSlabUsed: {
+      minAmount: number;
+      maxAmount: number;
+      rate: number;
+    } | null = null;
+    let fixedAmountTax = new Decimal(0);
+    let percentageTaxAmount = new Decimal(0);
+
+    if (annualTaxableIncome.gt(0)) {
+      const slab = allTaxSlabs
+        .filter((s) => s.status === 'active')
+        .sort((a, b) => Number(b.minAmount) - Number(a.minAmount))
+        .find(
+          (s) =>
+            annualTaxableIncome.gte(new Decimal(s.minAmount)) &&
+            (s.maxAmount === null ||
+              annualTaxableIncome.lte(new Decimal(s.maxAmount))),
+        );
+
+      if (slab) {
+        taxSlabUsed = {
+          minAmount: Number(slab.minAmount),
+          maxAmount: Number(slab.maxAmount),
+          rate: Number(slab.rate),
+        };
+
+        const slabFixedAmount = (slab as any).fixedAmount;
+        fixedAmountTax = slabFixedAmount
+          ? new Decimal(slabFixedAmount)
+          : new Decimal(0);
+        const excess = annualTaxableIncome.minus(new Decimal(slab.minAmount));
+        percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
+        const annualTax = fixedAmountTax.add(percentageTaxAmount);
+        
+        // Step 6: Monthly tax = Annual tax / 12
+        taxDeduction = annualTax.div(12);
+      }
+    }
+
+    // Prepare detailed breakdown for display
+    const taxableComponents = salaryBreakup
+      .filter((c) => c.isTaxable !== false && c.amount > 0)
+      .map((c) => ({
+        name: c.name,
+        amount: c.amount,
+        isRecurring: c.isRecurring !== false,
+        annualAmount: 0, // Not used in YTD method
+      }));
+
+    const taxBreakup = {
+      method: 'YTD', // Indicate this is YTD method
+      ytdGrossIncome: ytdGrossIncome.toNumber(),
+      currentMonthGross: currentMonthGross.toNumber(),
+      projectedRemainingIncome: projectedRemainingIncome.toNumber(),
+      remainingMonths: remainingMonths,
+      annualGross: ytdGrossIncome.add(projectedRemainingIncome).toNumber(),
+      annualTaxableComponents: annualTaxableIncome.toNumber(),
+      taxableComponents: taxableComponents,
+      totalRebate: totalRebateAmount.toNumber(),
+      taxableIncome: annualTaxableIncome.toNumber(),
+      taxSlab: taxSlabUsed,
+      fixedAmountTax: fixedAmountTax.toNumber(),
+      percentageTax: percentageTaxAmount.toNumber(),
+      monthlyTax: taxDeduction.toNumber(),
+      rebateBreakup,
+      taxYearStart: taxYearStart.toISOString(),
+      taxYearEnd: taxYearEnd.toISOString(),
     };
 
     return { taxDeduction, taxBreakup };
