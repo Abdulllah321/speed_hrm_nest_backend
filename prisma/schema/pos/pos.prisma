@@ -188,12 +188,13 @@ model VoucherAuditLog {
 //    CREDIT        – store credit tied to a customer, issued on refund
 //    CORPORATE     – bulk gift voucher tied to a company/account
 //    OUTLET_GIFT   – gift voucher restricted to specific outlet(s)
+//    REFUND        – record-only voucher for cash refunds (NOT redeemable)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Voucher {
   id          String  @id @default(uuid())
   code        String  @unique
-  voucherType String  @map("voucher_type") // GIFT | EXCHANGE | CREDIT | CORPORATE | OUTLET_GIFT
+  voucherType String  @map("voucher_type") // GIFT | EXCHANGE | CREDIT | CORPORATE | OUTLET_GIFT | REFUND
   faceValue   Decimal @map("face_value") @db.Decimal(15, 2)
   description String?
 
