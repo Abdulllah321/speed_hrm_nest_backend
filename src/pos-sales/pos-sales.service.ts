@@ -984,10 +984,10 @@ export class PosSalesService implements OnModuleInit {
                     const taxPercent = Number(orderItem.taxPercent) || 0;
                     const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
 
-                    // Rule: refund = min(originalPaid, currentPriceWithTax)
-                    // i.e. if price dropped/discounted → refund current (lower) price
-                    //      if price rose               → refund original (lower) price
-                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    // Rule: ALWAYS refund the original paid price (what customer actually paid)
+                    // Customer gets full cash refund regardless of current stock price
+                    // Refund voucher is generated for record keeping only
+                    const refundPerUnit = originalPaidPerUnit;
                     totalRefundAmount += refundPerUnit * returnItem.quantity;
 
                     itemRefundDetails.push({
@@ -1258,8 +1258,9 @@ export class PosSalesService implements OnModuleInit {
                     const baseCurrentPrice = Number((currentItem as any).unitPrice || 0);
                     const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
 
-                    // Refund rule: min(original, current)
-                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    // Rule: ALWAYS refund the original paid price (what customer actually paid)
+                    // Customer gets full cash refund regardless of current stock price
+                    const refundPerUnit = originalPaidPerUnit;
                     const priceAdjusted = currentPriceWithTax < originalPaidPerUnit;
 
                     return {
@@ -1607,20 +1608,19 @@ export class PosSalesService implements OnModuleInit {
             if (refundAmount <= 0) throw new Error('Refund amount must be greater than 0');
             if (refundAmount > Number(order.grandTotal)) throw new Error('Refund amount exceeds order total');
 
-            // ── Generate Exchange Voucher for refund amount ──
-            let exchangeVoucher: any = null;
+            // ── Generate REFUND Voucher (record-only, cash refunded to customer) ──
+            let refundVoucher: any = null;
             if (refundAmount > 0) {
-                const voucherResult = await this.voucherService.issueExchangeVoucher({
+                const voucherResult = await this.voucherService.issueRefundVoucher({
                     faceValue: Math.round(refundAmount * 100) / 100,
                     sourceOrderId: id,
                     issuedByLocationId: order.locationId || '',
                     issuedByUserId: ctx?.userId,
                     customerId: order.customerId || undefined,
-                    expiresInDays: 30,
                 }, ctx);
 
                 if (voucherResult.status && voucherResult.data) {
-                    exchangeVoucher = voucherResult.data;
+                    refundVoucher = voucherResult.data;
                 }
             }
 
@@ -1628,9 +1628,9 @@ export class PosSalesService implements OnModuleInit {
                 where: { id },
                 data: { 
                     status: 'refunded', 
-                    notes: exchangeVoucher 
-                        ? `Exchange voucher ${exchangeVoucher.code} issued for Rs.${refundAmount}${reason ? `: ${reason}` : ''}`
-                        : (reason ? `Refund Rs.${refundAmount}: ${reason}` : `Refund Rs.${refundAmount}`)
+                    notes: refundVoucher 
+                        ? `Cash refunded Rs.${refundAmount} - Refund voucher ${refundVoucher.code} (Record only)${reason ? `: ${reason}` : ''}`
+                        : (reason ? `Cash refund Rs.${refundAmount}: ${reason}` : `Cash refund Rs.${refundAmount}`)
                 },
             });
 
@@ -1642,10 +1642,10 @@ export class PosSalesService implements OnModuleInit {
                     module: 'pos-sales',
                     entity: 'SalesOrder',
                     entityId: id,
-                    description: exchangeVoucher 
-                        ? `Issued exchange voucher ${exchangeVoucher.code} for Rs.${refundAmount} for POS order ${id}`
-                        : `Processed refund of Rs.${refundAmount} for POS order ${id}`,
-                    newValues: JSON.stringify({ refundAmount, reason, voucherCode: exchangeVoucher?.code }),
+                    description: refundVoucher 
+                        ? `Cash refunded Rs.${refundAmount} - Refund voucher ${refundVoucher.code} issued for record for POS order ${id}`
+                        : `Processed cash refund of Rs.${refundAmount} for POS order ${id}`,
+                    newValues: JSON.stringify({ refundAmount, reason, voucherCode: refundVoucher?.code }),
                     ipAddress: ctx?.ipAddress,
                     userAgent: ctx?.userAgent,
                     status: 'success',
@@ -1655,14 +1655,14 @@ export class PosSalesService implements OnModuleInit {
             return { 
                 status: true, 
                 data: updatedOrder, 
-                exchangeVoucher: exchangeVoucher ? {
-                    code: exchangeVoucher.code,
-                    faceValue: exchangeVoucher.faceValue,
-                    expiresAt: exchangeVoucher.expiresAt,
+                refundVoucher: refundVoucher ? {
+                    code: refundVoucher.code,
+                    faceValue: refundVoucher.faceValue,
+                    voucherType: 'REFUND',
                 } : null,
-                message: exchangeVoucher 
-                    ? `Exchange voucher ${exchangeVoucher.code} issued for Rs.${refundAmount}`
-                    : `Refund of Rs.${refundAmount} processed`
+                message: refundVoucher 
+                    ? `Cash refunded Rs.${refundAmount} - Refund voucher ${refundVoucher.code} issued for record`
+                    : `Cash refund of Rs.${refundAmount} processed`
             };
         } catch (error: any) {
             runInBackground(

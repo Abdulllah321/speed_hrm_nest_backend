@@ -4,7 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 
-export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET_GIFT';
+export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET_GIFT' | 'REFUND';
 
 // Code format per type:
 //   GIFT        → GFT-XXXXXX
@@ -12,6 +12,7 @@ export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET
 //   CREDIT      → CRD-XXXXXX
 //   CORPORATE   → CRP-XXXXXX
 //   OUTLET_GIFT → OGT-XXXXXX
+//   REFUND      → RFD-XXXXXX
 function generateCode(type: VoucherType): string {
     const prefix: Record<VoucherType, string> = {
         GIFT: 'GFT',
@@ -19,6 +20,7 @@ function generateCode(type: VoucherType): string {
         CREDIT: 'CRD',
         CORPORATE: 'CRP',
         OUTLET_GIFT: 'OGT',
+        REFUND: 'RFD',
     };
     const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
     return `${prefix[type]}-${rand}`;
@@ -89,10 +91,14 @@ export class VoucherService {
             const code = generateCode(data.voucherType);
 
             // EXCHANGE vouchers are locked to issuing location
+            // REFUND vouchers are also locked to issuing location (record-only)
             const locationIds =
-                data.voucherType === 'EXCHANGE' && data.issuedByLocationId
+                (data.voucherType === 'EXCHANGE' || data.voucherType === 'REFUND') && data.issuedByLocationId
                     ? [data.issuedByLocationId]
                     : (data.locationIds ?? []);
+
+            // REFUND vouchers are immediately marked as redeemed (record-only, not usable)
+            const isRefundVoucher = data.voucherType === 'REFUND';
 
             const voucher = await this.prisma.voucher.create({
                 data: {
@@ -107,15 +113,19 @@ export class VoucherService {
                     issuedByUserId: data.issuedByUserId,
                     sourceOrderId: data.sourceOrderId,
                     expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+                    isActive: !isRefundVoucher, // REFUND vouchers are inactive (not redeemable)
+                    isRedeemed: isRefundVoucher, // REFUND vouchers are marked as redeemed
                     locations: {
                         create: locationIds.map((locId) => ({ locationId: locId })),
                     },
                     transactions: {
                         create: {
-                            action: 'ISSUED',
+                            action: isRefundVoucher ? 'ISSUED_REFUND' : 'ISSUED',
                             amountUsed: 0,
                             locationId: data.issuedByLocationId,
-                            notes: `Issued as ${data.voucherType}`,
+                            notes: isRefundVoucher 
+                                ? `Refund voucher issued - Cash refunded to customer (Record only)`
+                                : `Issued as ${data.voucherType}`,
                         },
                     },
                 },
@@ -359,9 +369,9 @@ export class VoucherService {
                 data: { voucherId: r.voucherId, orderId, amountUsed: r.amountUsed },
             });
 
-            // ── Generate CREDIT voucher ONLY if NOT an EXCHANGE voucher ──
-            // EXCHANGE vouchers do NOT generate credit vouchers (remaining balance is forfeited)
-            if (remainingBalance > 0 && voucher.voucherType !== 'EXCHANGE') {
+            // ── Generate CREDIT voucher for unused balance ──
+            // All voucher types (including EXCHANGE) generate credit vouchers for remaining balance
+            if (remainingBalance > 0) {
                 const creditVoucherCode = this.generateCreditVoucherCode();
                 const expiresAt = voucher.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
@@ -445,6 +455,26 @@ export class VoucherService {
             issuedByUserId: data.issuedByUserId,
             sourceOrderId: data.sourceOrderId,
             expiresAt: expiresAt.toISOString(),
+        }, ctx);
+    }
+
+    // ── Auto-issue refund voucher (record-only, NOT redeemable) ───
+    async issueRefundVoucher(data: {
+        faceValue: number;
+        sourceOrderId: string;
+        issuedByLocationId: string;
+        issuedByUserId?: string;
+        customerId?: string;
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        return this.issueVoucher({
+            voucherType: 'REFUND',
+            faceValue: data.faceValue,
+            description: `Refund voucher - Cash refunded to customer (Record only)`,
+            customerId: data.customerId,
+            issuedByLocationId: data.issuedByLocationId,
+            issuedByUserId: data.issuedByUserId,
+            sourceOrderId: data.sourceOrderId,
+            // REFUND vouchers are immediately marked as redeemed (record-only)
         }, ctx);
     }
 
