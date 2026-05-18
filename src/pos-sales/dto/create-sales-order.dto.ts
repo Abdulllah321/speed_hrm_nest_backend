@@ -35,6 +35,13 @@ export class SalesOrderItemDto {
     @Max(100)
     discountPercent?: number;
 
+    @ApiPropertyOptional({ description: 'Manager override discount percentage (0-50)', default: null })
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    @Max(50)
+    overrideDiscountPercent?: number;
+
     @ApiPropertyOptional({ description: 'Tax percentage', default: 0 })
     @IsOptional()
     @IsNumber()
