@@ -150,6 +150,57 @@ export class ChartOfAccountService {
     return [...map.values()];
   }
 
+  async findTree() {    // Fetch all accounts flat, ordered by code so parents always precede children
+    const accounts = await this.prisma.chartOfAccount.findMany({
+      orderBy: { code: 'asc' },
+    });
+
+    // Build id → node map with an empty children array
+    type TreeNode = (typeof accounts)[0] & { children: TreeNode[] };
+    const map = new Map<string, TreeNode>();
+    for (const acc of accounts) {
+      map.set(acc.id, { ...acc, children: [] });
+    }
+
+    // Wire up parent → children relationships
+    const roots: TreeNode[] = [];
+    for (const node of map.values()) {
+      if (node.parentId && map.has(node.parentId)) {
+        map.get(node.parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    return roots;
+  }
+
+  /** Returns direct children of an account (for tag-account selection). */
+  async findChildAccounts(accountId: string) {
+    const account = await this.prisma.chartOfAccount.findUnique({
+      where: { id: accountId },
+      include: {
+        children: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+            isGroup: true,
+            isActive: true,
+          },
+          orderBy: { code: 'asc' },
+        },
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Chart of account not found');
+    }
+
+    return account.children;
+  }
+
   async findOne(id: string) {
     const account = await this.prisma.chartOfAccount.findUnique({
       where: { id },

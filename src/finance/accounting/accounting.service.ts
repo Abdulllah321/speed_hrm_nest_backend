@@ -6,8 +6,13 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 export interface JournalLine {
     accountId: string;
+    tagAccountId?: string;  // optional sub-ledger tag for drill-down analysis
     debit: number;
     credit: number;
+    // ── Per-line details (optional — falls back to PostOptions.description) ──
+    narration?: string;       // line-level narration
+    refBillNo?: string;       // bill/ref number for this specific line
+    isTaxApplicable?: boolean; // withholding tax flag for this line
 }
 
 export interface PostOptions {
@@ -36,7 +41,13 @@ export class AccountingService {
         const client = tx ?? this.prisma;
         const date = options.transactionDate ?? new Date();
 
-        const accountIds = [...new Set(lines.map(l => l.accountId))];
+        // Sanitize: coerce empty-string tagAccountId to undefined so FK is never violated
+        const sanitizedLines = lines.map(l => ({
+            ...l,
+            tagAccountId: l.tagAccountId && l.tagAccountId.trim() !== '' ? l.tagAccountId : undefined,
+        }));
+
+        const accountIds = [...new Set(sanitizedLines.map(l => l.accountId))];
         const accounts = await client.chartOfAccount.findMany({
             where: { id: { in: accountIds } },
             select: { id: true, type: true, balance: true },
@@ -45,7 +56,7 @@ export class AccountingService {
             accounts.map((a: any) => [a.id, { type: a.type, balance: Number(a.balance) }])
         );
 
-        for (const line of lines) {
+        for (const line of sanitizedLines) {
             const account = accountMap.get(line.accountId);
             if (!account) {
                 this.logger.warn(`Account ${line.accountId} not found — skipping`);
@@ -67,12 +78,17 @@ export class AccountingService {
             await client.accountTransaction.create({
                 data: {
                     accountId: line.accountId,
+                    tagAccountId: line.tagAccountId ?? null,
                     debit: line.debit,
                     credit: line.credit,
                     balanceAfter: newBalance,
                     sourceType: options.sourceType,
                     sourceId: options.sourceId,
                     sourceRef: options.sourceRef,
+                    // Per-line narration takes priority; fall back to voucher-level description
+                    narration: line.narration ?? null,
+                    refBillNo: line.refBillNo ?? null,
+                    isTaxApplicable: line.isTaxApplicable ?? false,
                     description: options.description ?? null,
                     transactionDate: date,
                 },

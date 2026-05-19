@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosConfigService } from './pos-config.service';
 import { VoucherService } from './voucher.service';
+import { MerchantService } from './merchant.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../common/guards/permission.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -26,6 +27,7 @@ export class PosConfigController {
     constructor(
         private readonly service: PosConfigService,
         private readonly voucherService: VoucherService,
+        private readonly merchantService: MerchantService,
     ) { }
 
     // ══════════════════════════════════════════════════════════════
@@ -282,6 +284,91 @@ export class PosConfigController {
     @ApiOperation({ summary: 'Void a voucher' })
     async voidVoucher(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: any) {
         return this.voucherService.voidVoucher(id, body.reason, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  MERCHANT / BANK COMMISSION CONFIGS
+    // ══════════════════════════════════════════════════════════════
+
+    @Get('merchants')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.merchant.read'))
+    @ApiOperation({ summary: 'List all merchant configs' })
+    async listMerchants(
+        @Query('locationId') locationId?: string,
+        @Query('bankName') bankName?: string,
+        @Query('isActive') isActive?: string,
+    ) {
+        const filters: any = {};
+        if (locationId) filters.locationId = locationId;
+        if (bankName) filters.bankName = bankName;
+        if (isActive !== undefined) filters.isActive = isActive === 'true';
+        return this.merchantService.listMerchants(filters);
+    }
+
+    @Get('merchants/for-location')
+    @ApiOperation({ summary: 'Get active merchants for a location (POS checkout)' })
+    async getMerchantsForLocation(@Req() req: any, @Query('locationId') locationIdParam?: string) {
+        let locationId = locationIdParam || '';
+        const posTerminalToken = req.cookies?.['posTerminalToken'];
+        if (posTerminalToken) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded: any = jwt.decode(posTerminalToken);
+                if (decoded?.locationId) locationId = decoded.locationId;
+            } catch { /* ignore */ }
+        }
+        return this.merchantService.getMerchantsForLocation(locationId);
+    }
+
+    @Get('merchants/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.merchant.read'))
+    @ApiOperation({ summary: 'Get a merchant config by ID' })
+    async getMerchant(@Param('id') id: string) {
+        return this.merchantService.getMerchantById(id);
+    }
+
+    @Post('merchants')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.merchant.create'))
+    @ApiOperation({ summary: 'Create a merchant config' })
+    async createMerchant(@Body() body: any, @Req() req: any) {
+        return this.merchantService.createMerchant(body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
+    @Put('merchants/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.merchant.update'))
+    @ApiOperation({ summary: 'Update a merchant config' })
+    async updateMerchant(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+        return this.merchantService.updateMerchant(id, body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
+    @Delete('merchants/:id')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.merchant.delete'))
+    @ApiOperation({ summary: 'Delete a merchant config' })
+    async deleteMerchant(@Param('id') id: string, @Req() req: any) {
+        return this.merchantService.deleteMerchant(id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
+    @Post('merchants/bulk')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.merchant.create'))
+    @ApiOperation({ summary: 'Bulk upsert merchant configs (seed / import)' })
+    async bulkUpsertMerchants(@Body() body: { records: any[] }, @Req() req: any) {
+        return this.merchantService.bulkUpsert(body.records, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],

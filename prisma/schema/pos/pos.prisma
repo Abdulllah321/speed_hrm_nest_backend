@@ -1,3 +1,59 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  MERCHANT / BANK COMMISSION CONFIG
+//
+//  Stores per-location, per-bank merchant commission rates.
+//  Used at POS checkout to record which merchant (bank/acquirer) processed
+//  a card payment and to calculate the commission expense for accounting.
+//
+//  CostCentreTag  – e.g. "C&K-CENTAURUS MALL"
+//  Tag ID         – e.g. "CK1006"
+//  Bank           – e.g. "HBL", "AL-Falah", "Keenu"
+//  Merchant Code  – numeric priority code (1=HBL, 2=AL-Falah, 3=Keenu …)
+//  Commission Rate – decimal e.g. 0.011 = 1.1%
+//  Bank GL Code   – e.g. "31100005" (maps to ChartOfAccount.code)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MerchantConfig {
+  id               String   @id @default(uuid())
+  /// Human-readable label, e.g. "C&K-CENTAURUS MALL | HBL"
+  description      String
+  /// Cost centre tag, e.g. "C&K-CENTAURUS MALL"
+  costCentreTag    String   @map("cost_centre_tag")
+  /// Short tag ID, e.g. "CK1006"
+  tagId            String   @map("tag_id")
+  /// Bank / acquirer name, e.g. "HBL", "AL-Falah", "Keenu", "Allied Bank", "Meezan"
+  bankName         String   @map("bank_name")
+  /// Numeric priority / merchant code (1=HBL, 2=AL-Falah, 3=Keenu, 4=AMEX, 5=ABL, 6=Meezan, 7=HBL IPG, 8=BAFL IPG)
+  merchantCode     Int      @map("merchant_code")
+  /// Commission rate as decimal, e.g. 0.011 for 1.1%
+  commissionRate   Decimal  @map("commission_rate") @db.Decimal(8, 6)
+  /// Bank GL account code, e.g. "31100005"
+  bankGlCode       String   @map("bank_gl_code")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  locations    MerchantConfigLocation[]
+  salesOrders  SalesOrder[]
+
+  @@index([tagId])
+  @@index([bankName])
+  @@index([costCentreTag])
+  @@map("pos_merchant_configs")
+}
+
+/// Junction: which locations this merchant config applies to
+model MerchantConfigLocation {
+  id               String         @id @default(uuid())
+  merchantConfigId String         @map("merchant_config_id")
+  locationId       String         @map("location_id")
+  merchantConfig   MerchantConfig @relation(fields: [merchantConfigId], references: [id], onDelete: Cascade)
+  location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantConfigId, locationId])
+  @@map("pos_merchant_config_locations")
+}
+
 model SalesOrder {
   id                    String              @id @default(uuid())
   orderNumber           String              @unique
@@ -20,6 +76,8 @@ model SalesOrder {
   promoId               String?             @map("promo_id")
   couponId              String?             @map("coupon_id")
   allianceId            String?             @map("alliance_id")
+  /// Merchant config used for card payment (bank/acquirer commission tracking)
+  merchantId            String?             @map("merchant_id")
   tenderType            String?             @map("tender_type")
   cashAmount            Decimal?            @map("cash_amount") @db.Decimal(15, 2)
   cardAmount            Decimal?            @map("card_amount") @db.Decimal(15, 2)
@@ -36,6 +94,7 @@ model SalesOrder {
   alliance              AllianceDiscount?   @relation(fields: [allianceId], references: [id])
   coupon                CouponCode?         @relation(fields: [couponId], references: [id])
   promo                 PromoCampaign?      @relation(fields: [promoId], references: [id])
+  merchant              MerchantConfig?     @relation(fields: [merchantId], references: [id])
   isVoucherRestored     Boolean             @default(false) @map("is_voucher_restored")
   claims                PosClaim[]
   voucherRedemptions    VoucherRedemption[]
@@ -44,6 +103,7 @@ model SalesOrder {
   @@index([terminalId])
   @@index([locationId])
   @@index([customerId])
+  @@index([merchantId])
   @@index([status])
   @@index([orderNumber])
   @@map("sales_orders")

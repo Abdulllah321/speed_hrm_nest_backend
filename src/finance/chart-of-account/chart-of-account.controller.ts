@@ -46,6 +46,22 @@ export class ChartOfAccountController {
     return this.chartOfAccountService.findAll();
   }
 
+  @Get('tree')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.read')
+  @ApiOperation({ summary: 'Get all chart of accounts as a nested tree' })
+  findTree() {
+    return this.chartOfAccountService.findTree();
+  }
+
+  @Get(':id/children')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.read')
+  @ApiOperation({ summary: 'Get direct child accounts (for tag-account selection)' })
+  findChildAccounts(@Param('id') id: string) {
+    return this.chartOfAccountService.findChildAccounts(id);
+  }
+
   @Get(':id')
   @ApiBearerAuth()
   @Permissions('erp.finance.chart-of-account.read')
