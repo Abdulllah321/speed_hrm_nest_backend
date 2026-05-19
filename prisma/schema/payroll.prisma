@@ -282,9 +282,49 @@ model PFWithdrawal {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
 
+model EOBIContribution {
+  id                     String    @id @default(uuid())
+  employeeId             String
+  employeeContribution   Decimal   @db.Decimal(10, 2)
+  employerContribution   Decimal   @db.Decimal(10, 2)
+  totalContribution      Decimal   @db.Decimal(10, 2)
+  month                  String
+  year                   String
+  monthYear              String
+  payrollId              String?
+  createdById            String?
+  updatedById            String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  employee               Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
   @@index([employeeId])
-  @@index([month, year])
+  @@index([monthYear])
+}
+
+model EOBIWithdrawal {
+  id               String    @id @default(uuid())
+  employeeId       String
+  withdrawalAmount Decimal   @db.Decimal(10, 2)
+  withdrawalDate   DateTime  @default(now())
+  month            String
+  year             String
+  monthYear        String
+  reason           String?
+  approvalStatus   String    @default("pending")
+  approvedById     String?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  status           String    @default("pending")
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  @@index([employeeId])
   @@index([monthYear])
   @@index([approvalStatus])
   @@index([status])

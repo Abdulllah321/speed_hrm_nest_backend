@@ -91,6 +91,8 @@ model Employee {
   loanRequests                    LoanRequest[]
   overtimeRequests                OvertimeRequest[]                @relation("OvertimeRequestEmployee")
   pfWithdrawals                   PFWithdrawal[]
+  eobiContributions               EOBIContribution[]
+  eobiWithdrawals                 EOBIWithdrawal[]
   totalPayrollApprovalLevels      PayrollApprovalLevel[]           @relation("PayrollApprovalLevelAssignedEmployee")
   payrollApprovalRequests         PayrollApprovalRequest[]
   payrollDetails                  PayrollDetail[]
