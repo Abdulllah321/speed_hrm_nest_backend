@@ -164,11 +164,21 @@ export class PosSalesService implements OnModuleInit {
 
                 // ── Calculate line items ─────────────────────────────────
                 itemsData = dto.items.map((lineItem) => {
-                    const subtotal = lineItem.unitPrice * lineItem.quantity;
-                    const discPct = lineItem.discountPercent || 0;
-                    const discAmt = Math.round(subtotal * (discPct / 100) * 100) / 100;
-                    const afterDisc = subtotal - discAmt;
+                    const retailPrice = lineItem.unitPrice;
                     const taxPct = lineItem.taxPercent || 0;
+                    const taxDivisor = 1 + (taxPct / 100);
+                    
+                    // Calculate WOST (Value excluding tax) from Retail Price
+                    // WOST = Retail / (1 + tax%)
+                    const wostPerUnit = retailPrice / taxDivisor;
+                    const totalWost = Math.round(wostPerUnit * lineItem.quantity * 100) / 100;
+                    
+                    // Apply discount on WOST (not on Retail Price)
+                    const discPct = lineItem.discountPercent || 0;
+                    const discAmt = Math.round(totalWost * (discPct / 100) * 100) / 100;
+                    const afterDisc = totalWost - discAmt;
+                    
+                    // Calculate tax on amount after discount
                     const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
 
                     const promoDisc = (promoItemIds === null || promoItemIds.has(lineItem.itemId))
@@ -315,6 +325,15 @@ export class PosSalesService implements OnModuleInit {
                 const totalDiscount = finalLineItemDiscount + globalDiscAmt;
                 const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
+
+                // Debug logging
+                console.log('=== GRAND TOTAL CALCULATION ===');
+                console.log('Subtotal:', subtotal);
+                console.log('Total Discount:', totalDiscount);
+                console.log('Total Tax:', totalTax);
+                console.log('Grand Total:', grandTotal);
+                console.log('Formula: subtotal - totalDiscount + totalTax =', subtotal, '-', totalDiscount, '+', totalTax, '=', grandTotal);
+                console.log('===============================');
 
                 const notesParts: string[] = [];
                 if (dto.notes) notesParts.push(dto.notes);
@@ -988,10 +1007,10 @@ export class PosSalesService implements OnModuleInit {
                     const taxPercent = Number(orderItem.taxPercent) || 0;
                     const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
 
-                    // Rule: refund = min(originalPaid, currentPriceWithTax)
-                    // i.e. if price dropped/discounted → refund current (lower) price
-                    //      if price rose               → refund original (lower) price
-                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    // Rule: ALWAYS refund the original paid price (what customer actually paid)
+                    // Customer gets full cash refund regardless of current stock price
+                    // Refund voucher is generated for record keeping only
+                    const refundPerUnit = originalPaidPerUnit;
                     totalRefundAmount += refundPerUnit * returnItem.quantity;
 
                     itemRefundDetails.push({
@@ -1262,8 +1281,9 @@ export class PosSalesService implements OnModuleInit {
                     const baseCurrentPrice = Number((currentItem as any).unitPrice || 0);
                     const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
 
-                    // Refund rule: min(original, current)
-                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    // Rule: ALWAYS refund the original paid price (what customer actually paid)
+                    // Customer gets full cash refund regardless of current stock price
+                    const refundPerUnit = originalPaidPerUnit;
                     const priceAdjusted = currentPriceWithTax < originalPaidPerUnit;
 
                     return {
@@ -1605,37 +1625,98 @@ export class PosSalesService implements OnModuleInit {
     // ─── Refund only (no stock movement) ─────────────────────────────
     async refundOnly(id: string, refundAmount: number, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const order = await this.prisma.salesOrder.findUnique({ where: { id } });
+            const order = await this.prisma.salesOrder.findUnique({ 
+                where: { id },
+                include: {
+                    items: {
+                        include: {
+                            item: true
+                        }
+                    }
+                }
+            });
             if (!order) throw new Error('Order not found');
             if (order.status === 'voided') throw new Error('Order is already voided');
             if (refundAmount <= 0) throw new Error('Refund amount must be greater than 0');
             if (refundAmount > Number(order.grandTotal)) throw new Error('Refund amount exceeds order total');
 
-            // ── Generate Exchange Voucher for refund amount ──
-            let exchangeVoucher: any = null;
-            if (refundAmount > 0) {
-                const voucherResult = await this.voucherService.issueExchangeVoucher({
-                    faceValue: Math.round(refundAmount * 100) / 100,
-                    sourceOrderId: id,
-                    issuedByLocationId: order.locationId || '',
-                    issuedByUserId: ctx?.userId,
-                    customerId: order.customerId || undefined,
-                    expiresInDays: 30,
-                }, ctx);
+            // Use transaction to ensure inventory is restored atomically
+            const result = await this.prisma.$transaction(async (tx) => {
+                // Find active warehouse
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                if (!warehouse) throw new Error('No active warehouse found');
 
-                if (voucherResult.status && voucherResult.data) {
-                    exchangeVoucher = voucherResult.data;
+                const effectiveLocationId = order.locationId;
+
+                // ── Restore Inventory for ALL items ──
+                for (const orderItem of order.items) {
+                    if (!orderItem.itemId) continue;
+
+                    // Create stock ledger entry for refund
+                    await this.stockLedgerService.createEntry({
+                        itemId: orderItem.itemId,
+                        warehouseId: warehouse.id,
+                        locationId: effectiveLocationId,
+                        qty: orderItem.quantity,
+                        movementType: MovementType.INBOUND,
+                        referenceType: 'POS_REFUND',
+                        referenceId: id,
+                    }, tx);
+
+                    // Update or create inventory item
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { 
+                            itemId: orderItem.itemId, 
+                            locationId: effectiveLocationId, 
+                            status: 'AVAILABLE' 
+                        },
+                    });
+                    
+                    if (existing) {
+                        await tx.inventoryItem.update({
+                            where: { id: existing.id },
+                            data: { quantity: { increment: orderItem.quantity } },
+                        });
+                    } else {
+                        await tx.inventoryItem.create({
+                            data: {
+                                itemId: orderItem.itemId,
+                                locationId: effectiveLocationId,
+                                warehouseId: warehouse.id,
+                                quantity: orderItem.quantity,
+                                status: 'AVAILABLE',
+                            },
+                        });
+                    }
                 }
-            }
 
-            const updatedOrder = await this.prisma.salesOrder.update({
-                where: { id },
-                data: { 
-                    status: 'refunded', 
-                    notes: exchangeVoucher 
-                        ? `Exchange voucher ${exchangeVoucher.code} issued for Rs.${refundAmount}${reason ? `: ${reason}` : ''}`
-                        : (reason ? `Refund Rs.${refundAmount}: ${reason}` : `Refund Rs.${refundAmount}`)
-                },
+                // ── Generate REFUND Voucher (record-only, cash refunded to customer) ──
+                let refundVoucher: any = null;
+                if (refundAmount > 0) {
+                    const voucherResult = await this.voucherService.issueRefundVoucher({
+                        faceValue: Math.round(refundAmount * 100) / 100,
+                        sourceOrderId: id,
+                        issuedByLocationId: order.locationId || '',
+                        issuedByUserId: ctx?.userId,
+                        customerId: order.customerId || undefined,
+                    }, ctx);
+
+                    if (voucherResult.status && voucherResult.data) {
+                        refundVoucher = voucherResult.data;
+                    }
+                }
+
+                const updatedOrder = await tx.salesOrder.update({
+                    where: { id },
+                    data: { 
+                        status: 'refunded', 
+                        notes: refundVoucher 
+                            ? `Cash refunded Rs.${refundAmount} - Refund voucher ${refundVoucher.code} (Record only) - Inventory restored${reason ? `: ${reason}` : ''}`
+                            : (reason ? `Cash refund Rs.${refundAmount} - Inventory restored: ${reason}` : `Cash refund Rs.${refundAmount} - Inventory restored`)
+                    },
+                });
+
+                return { updatedOrder, refundVoucher };
             });
 
             runInBackground(
@@ -1646,10 +1727,10 @@ export class PosSalesService implements OnModuleInit {
                     module: 'pos-sales',
                     entity: 'SalesOrder',
                     entityId: id,
-                    description: exchangeVoucher 
-                        ? `Issued exchange voucher ${exchangeVoucher.code} for Rs.${refundAmount} for POS order ${id}`
-                        : `Processed refund of Rs.${refundAmount} for POS order ${id}`,
-                    newValues: JSON.stringify({ refundAmount, reason, voucherCode: exchangeVoucher?.code }),
+                    description: result.refundVoucher 
+                        ? `Cash refunded Rs.${refundAmount} - Refund voucher ${result.refundVoucher.code} issued for record - Inventory restored for POS order ${id}`
+                        : `Processed cash refund of Rs.${refundAmount} and restored inventory for POS order ${id}`,
+                    newValues: JSON.stringify({ refundAmount, reason, voucherCode: result.refundVoucher?.code }),
                     ipAddress: ctx?.ipAddress,
                     userAgent: ctx?.userAgent,
                     status: 'success',
@@ -1658,15 +1739,15 @@ export class PosSalesService implements OnModuleInit {
 
             return { 
                 status: true, 
-                data: updatedOrder, 
-                exchangeVoucher: exchangeVoucher ? {
-                    code: exchangeVoucher.code,
-                    faceValue: exchangeVoucher.faceValue,
-                    expiresAt: exchangeVoucher.expiresAt,
+                data: result.updatedOrder, 
+                refundVoucher: result.refundVoucher ? {
+                    code: result.refundVoucher.code,
+                    faceValue: result.refundVoucher.faceValue,
+                    voucherType: 'REFUND',
                 } : null,
-                message: exchangeVoucher 
-                    ? `Exchange voucher ${exchangeVoucher.code} issued for Rs.${refundAmount}`
-                    : `Refund of Rs.${refundAmount} processed`
+                message: result.refundVoucher 
+                    ? `Cash refunded Rs.${refundAmount} - Refund voucher ${result.refundVoucher.code} issued for record - Inventory restored`
+                    : `Cash refund of Rs.${refundAmount} processed and inventory restored`
             };
         } catch (error: any) {
             runInBackground(
