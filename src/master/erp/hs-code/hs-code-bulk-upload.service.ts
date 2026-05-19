@@ -13,7 +13,7 @@ export class HsCodeBulkUploadService {
     constructor(
         @InjectQueue('hscode-upload') private uploadQueue: Queue,
         private prisma: PrismaService,
-        private eventsService: UploadEventsService,
+    private eventsService: UploadEventsService,
     ) { }
 
     /**

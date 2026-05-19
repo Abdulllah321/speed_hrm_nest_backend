@@ -1,28 +1,42 @@
 model ChartOfAccount {
-  id                    String                 @id @default(uuid())
-  code                  String
-  name                  String
-  type                  AccountType
-  isGroup               Boolean                @default(false)
-  parentId              String?
-  balance               Decimal                @default(0.0) @db.Decimal(15, 2)
-  isActive              Boolean                @default(true)
-  createdById           String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  parent                ChartOfAccount?        @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
-  children              ChartOfAccount[]       @relation("ChartOfAccountHierarchy")
-  journalVoucherDetails JournalVoucherDetail[]
-  paymentVoucherCredit  PaymentVoucher[]       @relation("CreditAccountRelation")
-  paymentVoucherDebit   PaymentVoucherDetail[]
-  receiptVoucherDebit   ReceiptVoucher[]       @relation("DebitAccountRelation")
-  receiptVoucherCredit  ReceiptVoucherDetail[]
-  landedCostChargeTypes LandedCostChargeType[]
-  suppliers             Supplier[]             @relation("ChartOfAccountToSupplier")
-  transactions          AccountTransaction[]
-  financeConfigs        FinanceAccountConfig[]
+  id                       String                 @id @default(uuid())
+  code                     String
+  name                     String
+  type                     AccountType
+  isGroup                  Boolean                @default(false)
+  parentId                 String?
+  balance                  Decimal                @default(0.0) @db.Decimal(15, 2)
+  isActive                 Boolean                @default(true)
+  createdById              String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
-  // Sales Relations
+  // Hierarchy
+  parent                   ChartOfAccount?        @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
+  children                 ChartOfAccount[]       @relation("ChartOfAccountHierarchy")
+
+  // Journal Voucher
+  journalVoucherDetails    JournalVoucherDetail[] @relation("JVDetailAccount")
+  journalVoucherTagDetails JournalVoucherDetail[] @relation("JVDetailTagAccount")
+
+  // Payment Voucher
+  paymentVoucherCredit     PaymentVoucher[]       @relation("CreditAccountRelation")
+  paymentVoucherDetails    PaymentVoucherDetail[] @relation("PVDetailAccount")
+  paymentVoucherTagDetails PaymentVoucherDetail[] @relation("PVDetailTagAccount")
+
+  // Receipt Voucher
+  receiptVoucherDebit      ReceiptVoucher[]       @relation("DebitAccountRelation")
+  receiptVoucherDetails    ReceiptVoucherDetail[] @relation("RVDetailAccount")
+  receiptVoucherTagDetails ReceiptVoucherDetail[] @relation("RVDetailTagAccount")
+
+  // Account Transactions (general ledger)
+  transactions             AccountTransaction[]   @relation("ATAccount")
+  tagTransactions          AccountTransaction[]   @relation("ATTagAccount")
+
+  // Other relations
+  landedCostChargeTypes    LandedCostChargeType[]
+  suppliers                Supplier[]             @relation("ChartOfAccountToSupplier")
+  financeConfigs           FinanceAccountConfig[]
 
   @@index([parentId])
   @@index([type])

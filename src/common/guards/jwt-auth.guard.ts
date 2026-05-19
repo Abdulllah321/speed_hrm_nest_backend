@@ -81,6 +81,8 @@ export class JwtAuthGuard implements CanActivate {
         where: { id: decoded.userId },
         select: {
           status: true,
+          roleId: true,
+          roleExpiresAt: true,
           role: {
             select: {
               name: true,
@@ -95,6 +97,22 @@ export class JwtAuthGuard implements CanActivate {
               },
             },
           },
+          userPermissions: {
+            where: {
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: new Date() } }
+              ]
+            },
+            select: {
+              isAllowed: true,
+              permission: {
+                select: {
+                  name: true
+                }
+              }
+            }
+          }
         },
       });
 
@@ -102,16 +120,39 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException('User not found or inactive');
       }
 
-      const permissions =
-        user.role?.permissions.map((p) => p.permission.name) || [];
+      const permissionsSet = new Set();
       const roleName = user.role?.name?.toLowerCase();
 
-      // Super Admin and Admin bypass
-      if (roleName === 'super_admin' || roleName === 'admin') {
-        if (!permissions.includes('*')) {
-          permissions.push('*');
+      // Check if role is active and not expired
+      const isRoleActive = user.roleId && user.role && (!user.roleExpiresAt || user.roleExpiresAt > new Date());
+
+      if (isRoleActive && user.role) {
+        // Super Admin and Admin bypass
+        if (roleName === 'super_admin' || roleName === 'admin') {
+          permissionsSet.add('*');
+        } else if (user.role.permissions) {
+          user.role.permissions.forEach((p) => {
+            if (p.permission?.name) {
+              permissionsSet.add(p.permission.name);
+            }
+          });
         }
       }
+
+      // Process direct user overrides (allow/deny)
+      if (user.userPermissions) {
+        user.userPermissions.forEach((up) => {
+          if (up.permission?.name) {
+            if (up.isAllowed) {
+              permissionsSet.add(up.permission.name);
+            } else {
+              permissionsSet.delete(up.permission.name);
+            }
+          }
+        });
+      }
+
+      const permissions = Array.from(permissionsSet);
 
       req.user = {
         ...decoded,

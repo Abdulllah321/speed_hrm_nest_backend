@@ -145,7 +145,7 @@ const INVENTORY_MOVE_PATTERNS = [
   'erp.inventory.explorer.view',
   'erp.inventory.transfer.create',
   'erp.inventory.stock-transfer.*',
-  'erp.inventory.stock-received.*',
+  'erp.inventory.stock-ledger.*',
   'erp.inventory.return-transfer.*',
   'erp.inventory.delivery-note.*',
   'erp.inventory.warehouse.view',

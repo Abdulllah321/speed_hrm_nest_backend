@@ -376,6 +376,7 @@ export class PosSalesService implements OnModuleInit {
                         promoId: dto.promoId,
                         couponId: dto.couponId,
                         allianceId: dto.allianceId,
+                        merchantId: dto.merchantId || undefined,
                         tenderType: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                         cashAmount: cashAmount || undefined,
                         cardAmount: cardAmount || undefined,
@@ -390,6 +391,7 @@ export class PosSalesService implements OnModuleInit {
                         promo: { select: { name: true, code: true } },
                         coupon: { select: { code: true, description: true } },
                         alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
+                        merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
                     },
                 });
 
@@ -719,6 +721,7 @@ export class PosSalesService implements OnModuleInit {
                     promo: { select: { name: true, code: true } },
                     coupon: { select: { code: true, description: true } },
                     alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
+                    merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
                 },
             }),
             this.prisma.salesOrder.count({ where }),
@@ -858,6 +861,7 @@ export class PosSalesService implements OnModuleInit {
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
                 alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
+                merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
             },
         });
         if (!order) return { status: false, message: 'Order not found' };

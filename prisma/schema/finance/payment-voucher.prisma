@@ -40,17 +40,24 @@ model PaymentVoucherToInvoice {
 }
 
 model PaymentVoucherDetail {
-  id               String         @id @default(uuid())
+  id               String          @id @default(uuid())
   paymentVoucherId String
   accountId        String
-  debit            Decimal        @default(0.0) @db.Decimal(15, 2)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  account          ChartOfAccount @relation(fields: [accountId], references: [id])
-  paymentVoucher   PaymentVoucher @relation(fields: [paymentVoucherId], references: [id], onDelete: Cascade)
+  tagAccountId     String?         // Optional sub-ledger tag (child chart-of-account)
+  debit            Decimal         @default(0.0) @db.Decimal(15, 2)
+  credit           Decimal         @default(0.0) @db.Decimal(15, 2)  // Credit lines stored here too
+  narration        String?         // Per-line narration (overrides voucher description)
+  refBillNo        String?         // Bill/ref number for this specific line
+  isTaxApplicable  Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  account          ChartOfAccount  @relation("PVDetailAccount", fields: [accountId], references: [id])
+  tagAccount       ChartOfAccount? @relation("PVDetailTagAccount", fields: [tagAccountId], references: [id])
+  paymentVoucher   PaymentVoucher  @relation(fields: [paymentVoucherId], references: [id], onDelete: Cascade)
 
   @@index([paymentVoucherId])
   @@index([accountId])
+  @@index([tagAccountId])
 }
 
 /// Tracks how much of an advance PV has been applied to settle invoices

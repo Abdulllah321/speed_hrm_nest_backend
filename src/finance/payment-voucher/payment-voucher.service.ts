@@ -85,7 +85,13 @@ export class PaymentVoucherService {
       : null;
 
     return this.prisma.$transaction(async (prisma) => {
-      // Create the payment voucher (cash/bank portion)
+      // ── Derive creditAccountId from the first credit detail line ────────
+      // This keeps the legacy scalar for backward compat (reports, supplier ledger)
+      const firstCreditDetail = details.find(d => Number(d.credit) > 0);
+      const resolvedCreditAccountId = firstCreditDetail?.accountId ?? data.creditAccountId;
+      const resolvedCreditAmount = data.creditAmount || totalDebit || 0;
+
+      // Create the payment voucher — ALL lines (debit + credit) go into details
       const paymentVoucher = await prisma.paymentVoucher.create({
         data: {
           type: data.type,
@@ -95,9 +101,9 @@ export class PaymentVoucherService {
           billDate: data.billDate,
           chequeNo: data.chequeNo,
           chequeDate: data.chequeDate,
-          creditAccountId: data.creditAccountId,
+          creditAccountId: resolvedCreditAccountId,
           supplierId: data.supplierId || undefined,
-          creditAmount: data.creditAmount || totalDebit || 0,
+          creditAmount: resolvedCreditAmount,
           isAdvance: data.isAdvance,
           advanceApplied: totalAdvanceApplied,
           isTaxApplicable: data.isTaxApplicable,
@@ -105,11 +111,23 @@ export class PaymentVoucherService {
           status: data.status || 'approved',
           details: {
             create: details
-              .filter(d => Number(d.debit) > 0)
-              .map(d => ({ accountId: d.accountId, debit: d.debit })),
+              .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+              .map(d => ({
+                accountId:       d.accountId,
+                tagAccountId:    d.tagAccountId?.trim() || null,
+                debit:           Number(d.debit)  || 0,
+                credit:          Number(d.credit) || 0,
+                narration:       d.narration  || data.description || null,
+                refBillNo:       d.refBillNo  || data.refBillNo   || null,
+                isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+              })),
           },
         },
-        include: { details: { include: { account: true } }, creditAccount: true, supplier: true },
+        include: {
+          details: { include: { account: true, tagAccount: true } },
+          creditAccount: true,
+          supplier: true,
+        },
       });
 
       // ── Update invoice payment statuses ─────────────────────────────────
@@ -181,13 +199,20 @@ export class PaymentVoucherService {
         }
       }
 
-      // ── Post main journal lines (cash/bank payment) ──────────────────────
+      // ── Post main journal lines (all debit + credit lines) ───────────────
       if (totalDebit > 0) {
-        const debitLines = details
-          .filter(d => Number(d.debit) > 0)
-          .map(d => ({ accountId: d.accountId, debit: Number(d.debit), credit: 0 }));
-        const creditLines = [{ accountId: data.creditAccountId, debit: 0, credit: totalDebit }];
-        await this.accounting.postLines([...debitLines, ...creditLines], {
+        const allLines = details
+          .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+          .map(d => ({
+            accountId:       d.accountId,
+            tagAccountId:    d.tagAccountId?.trim() || undefined,
+            debit:           Number(d.debit)  || 0,
+            credit:          Number(d.credit) || 0,
+            narration:       d.narration  || data.description || undefined,
+            refBillNo:       d.refBillNo  || data.refBillNo   || undefined,
+            isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+          }));
+        await this.accounting.postLines(allLines, {
           sourceType: 'PAYMENT_VOUCHER',
           sourceId: paymentVoucher.id,
           sourceRef: paymentVoucher.pvNo,
@@ -316,6 +341,7 @@ export class PaymentVoucherService {
           details: {
             include: {
               account: true,
+              tagAccount: true,
             },
           },
           creditAccount: true,
@@ -348,6 +374,7 @@ export class PaymentVoucherService {
         details: {
           include: {
             account: true,
+            tagAccount: true,
           },
         },
         creditAccount: true,
@@ -398,15 +425,21 @@ export class PaymentVoucherService {
             description: data.description,
             status: data.status,
             details: {
-              create: details,
+              create: details
+                .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+                .map(d => ({
+                  accountId:       d.accountId,
+                  tagAccountId:    d.tagAccountId?.trim() || null,
+                  debit:           Number(d.debit)  || 0,
+                  credit:          Number(d.credit) || 0,
+                  narration:       d.narration  || data.description || null,
+                  refBillNo:       d.refBillNo  || data.refBillNo   || null,
+                  isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+                })),
             },
           },
           include: {
-            details: {
-              include: {
-                account: true,
-              },
-            },
+            details: { include: { account: true, tagAccount: true } },
             creditAccount: true,
             supplier: true,
           },
@@ -433,11 +466,7 @@ export class PaymentVoucherService {
         status: data.status,
       },
       include: {
-        details: {
-          include: {
-            account: true,
-          },
-        },
+        details: { include: { account: true, tagAccount: true } },
         creditAccount: true,
         supplier: true,
       },
