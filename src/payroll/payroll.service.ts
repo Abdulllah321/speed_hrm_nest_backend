@@ -4,6 +4,7 @@ import {
   Logger,
   InternalServerErrorException,
   Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -14,6 +15,7 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/client';
+import { EOBIService } from '../eobi/eobi.service';
 
 @Injectable()
 export class PayrollService {
@@ -24,9 +26,10 @@ export class PayrollService {
     private readonly prismaMaster: PrismaMasterService,
     private readonly activityLogsService: ActivityLogsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-
     private readonly notificationsService: NotificationsService,
     private activityLogs: ActivityLogsService,
+    @Inject(forwardRef(() => EOBIService))
+    private readonly eobiService: EOBIService,
   ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
@@ -724,10 +727,11 @@ export class PayrollService {
       );
 
       // Total Deductions
+      // NOTE: EOBI is NOT deducted from salary, only tracked for contribution records
       const totalDeductionsSum = attendanceDeduction
         .add(loanDeduction)
         .add(advanceSalaryDeduction)
-        .add(eobiDeduction)
+        // .add(eobiDeduction) // EOBI is NOT deducted from salary
         .add(providentFundDeduction)
         .add(taxDeduction)
         .add(totalAdHocDeductions);
@@ -907,6 +911,9 @@ export class PayrollService {
           status: 'confirmed',
         },
       });
+
+      // Add EOBI contributions for employees with EOBI enabled
+      await this.addEOBIContributionsForPayroll(payroll.id, month, year, details);
 
       // Log Component
       runInBackground(
@@ -1636,13 +1643,8 @@ export class PayrollService {
     }
 
     // Calculate EOBI deduction from master table
-    // EOBI deduction is disabled - always return 0
+    // NOTE: EOBI is NOT deducted from salary, only calculated for tracking
     if (employee.eobi) {
-      this.logger.debug(
-        `EOBI deduction is disabled for employee ${employee.id} (${employee.employeeId}). EOBI deduction will be 0.`,
-      );
-      // EOBI calculation is commented out - no deduction will be applied
-      /*
       try {
         // Format yearMonth as "MMMM yyyy" (e.g., "January 2024") to match frontend format
         const monthNames = [
@@ -1676,20 +1678,20 @@ export class PayrollService {
         });
 
         if (eobiRecord) {
-          // Use employeeContribution for deduction (employer pays their part separately)
+          // Use employeeContribution for calculation (NOT deducted from salary)
+          // This is only for tracking purposes
           eobiDeduction = new Decimal(eobiRecord.employeeContribution);
         } else {
           this.logger.warn(
-            `No active EOBI record found for employee ${employee.id} (${employee.employeeId}) for ${yearMonth} or ${yearMonthAlt}. EOBI deduction will be 0.`,
+            `No active EOBI record found for employee ${employee.id} (${employee.employeeId}) for ${yearMonth} or ${yearMonthAlt}. EOBI will be 0.`,
           );
         }
       } catch (error) {
         this.logger.error(
           `Error fetching EOBI for employee ${employee.id} (${employee.employeeId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
-        // Continue with 0 deduction if error occurs
+        // Continue with 0 if error occurs
       }
-      */
     }
 
     // Provident Fund calculation from master table
@@ -2893,5 +2895,116 @@ export class PayrollService {
     };
 
     return { taxDeduction, taxBreakup };
+  }
+
+  // Add EOBI contributions when payroll is confirmed
+  private async addEOBIContributionsForPayroll(
+    payrollId: string,
+    month: string,
+    year: string,
+    details: any[],
+  ) {
+    try {
+      this.logger.log(
+        `Adding EOBI contributions for payroll ${payrollId} (${month}/${year})`,
+      );
+
+      // Get employees with EOBI enabled from the payroll details
+      const employeeIds = details.map((d) => d.employeeId);
+      const employees = await this.prisma.employee.findMany({
+        where: {
+          id: { in: employeeIds },
+          eobi: true, // Only employees with EOBI enabled
+        },
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+        },
+      });
+
+      if (employees.length === 0) {
+        this.logger.log('No employees with EOBI enabled in this payroll');
+        return;
+      }
+
+      // For each employee with EOBI enabled, add contribution
+      for (const employee of employees) {
+        const payrollDetail = details.find(
+          (d) => d.employeeId === employee.id,
+        );
+
+        if (!payrollDetail) {
+          continue;
+        }
+
+        // Get EOBI deduction from payroll detail (employee contribution)
+        const employeeContribution = new Decimal(
+          payrollDetail.eobiDeduction || 0,
+        );
+
+        // Fetch employer contribution from Master EOBI table
+        let employerContribution = new Decimal(0);
+        
+        try {
+          // Format yearMonth to match Master EOBI table
+          const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December',
+          ];
+          const monthIndex = parseInt(month, 10) - 1;
+          const monthName = monthNames[monthIndex];
+          const yearMonth = `${monthName} ${year}`;
+          const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
+
+          // Fetch EOBI record for employer contribution
+          const eobiRecord = await this.prisma.eOBI.findFirst({
+            where: {
+              OR: [{ yearMonth: yearMonth }, { yearMonth: yearMonthAlt }],
+              status: 'active',
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+
+          if (eobiRecord) {
+            employerContribution = new Decimal(eobiRecord.employerContribution);
+          } else {
+            this.logger.warn(
+              `No EOBI record found for ${yearMonth}, using 0 for employer contribution`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `Error fetching employer contribution for EOBI: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
+        }
+
+        // Only add contribution if there's an amount
+        if (employeeContribution.gt(0)) {
+          await this.eobiService.addEOBIContribution({
+            employeeId: employee.id,
+            employeeContribution: employeeContribution,
+            employerContribution: employerContribution,
+            month: month,
+            year: year,
+            payrollId: payrollId,
+          });
+
+          this.logger.log(
+            `EOBI contribution added for employee ${employee.employeeName} (${employee.employeeId}): Employee=${employeeContribution}, Employer=${employerContribution}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `EOBI contributions added for ${employees.length} employees`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error adding EOBI contributions for payroll ${payrollId}:`,
+        error,
+      );
+      // Don't throw error - just log it so payroll confirmation can continue
+    }
   }
 }
