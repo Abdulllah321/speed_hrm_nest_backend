@@ -283,11 +283,11 @@ export class PosSalesController {
     @ApiOperation({ summary: 'Refund only — money back, no stock movement' })
     async refundOrder(
         @Param('id') id: string,
-        @Body() body: { refundAmount: number; reason?: string },
+        @Body() body: { refundAmount: number; reason?: string; managerUserId?: string },
         @Req() req: any,
     ) {
         const ctx = {
-            userId: req.user?.id,
+            userId: body.managerUserId || req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
         };
