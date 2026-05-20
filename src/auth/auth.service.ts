@@ -1739,6 +1739,65 @@ export class AuthService {
     return bcrypt.compare(password, user.password);
   }
 
+  async verifyManager(emailOrId: string, pass: string): Promise<{ status: boolean; message: string; data?: { userId: string; email: string } }> {
+    const user = await this.prismaMaster.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: emailOrId, mode: 'insensitive' } },
+          { employeeId: emailOrId },
+          { id: emailOrId },
+        ],
+      },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return { status: false, message: 'Manager account not found' };
+    }
+
+    if (user.status !== 'active') {
+      return { status: false, message: 'Manager account is not active' };
+    }
+
+    if (!user.password) {
+      return { status: false, message: 'Invalid credentials' };
+    }
+
+    const isValid = await bcrypt.compare(pass, user.password);
+    if (!isValid) {
+      return { status: false, message: 'Invalid credentials' };
+    }
+
+    const roleName = (user.role?.name || '').toLowerCase().trim();
+    const isManagerOrAdmin =
+      user.role?.isSystem ||
+      roleName.includes('manager') ||
+      roleName.includes('admin') ||
+      user.role?.permissions.some(
+        (p) => p.permission.name === 'pos.return.create',
+      );
+
+    if (!isManagerOrAdmin) {
+      return { status: false, message: 'This user is not authorized as a Manager' };
+    }
+
+    return {
+      status: true,
+      message: 'Manager verified successfully',
+      data: { userId: user.id, email: user.email },
+    };
+  }
+
   // Helper to detect device type from user agent
   private getDeviceType(userAgent?: string): string {
     if (!userAgent) return 'DESKTOP';

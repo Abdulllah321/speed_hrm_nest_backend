@@ -174,7 +174,8 @@ export class PosSalesService implements OnModuleInit {
                     const totalWost = Math.round(wostPerUnit * lineItem.quantity * 100) / 100;
                     
                     // Apply discount on WOST (not on Retail Price)
-                    const discPct = lineItem.discountPercent || 0;
+                    // Use overrideDiscountPercent if available, otherwise use discountPercent
+                    const discPct = lineItem.overrideDiscountPercent ?? lineItem.discountPercent ?? 0;
                     const discAmt = Math.round(totalWost * (discPct / 100) * 100) / 100;
                     const afterDisc = totalWost - discAmt;
                     
@@ -199,9 +200,14 @@ export class PosSalesService implements OnModuleInit {
                     };
                 });
 
-                const subtotal = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
+                // Calculate subtotal as sum of WOST (not retail price)
+                const subtotal = itemsData.reduce((acc, i) => {
+                    const taxDivisor = 1 + (i.taxPercent / 100);
+                    const wostPerUnit = i.unitPrice / taxDivisor;
+                    return acc + (wostPerUnit * i.quantity);
+                }, 0);
                 const lineItemDiscount = itemsData.reduce((acc, i) => acc + i.discountAmount, 0);
-                const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
+                const recalculatedTotalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
                 const subtotalAfterItemDiscount = subtotal - lineItemDiscount;
 
                 // ── Calculate global discount with priority logic ──
@@ -271,11 +277,20 @@ export class PosSalesService implements OnModuleInit {
                                 disc += 1;
                                 remainder -= 1;
                             }
+                            
+                            // Recalculate tax based on WOST after discount
+                            const taxDivisor = 1 + (item.taxPercent / 100);
+                            const wostPerUnit = item.unitPrice / taxDivisor;
+                            const totalWost = Math.round(wostPerUnit * item.quantity * 100) / 100;
+                            const afterDisc = totalWost - disc;
+                            const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
+                            
                             return {
                                 ...item,
                                 discountPercent: Math.round((disc / lineSubtotal) * 100 * 100) / 100,
                                 discountAmount: disc,
-                                lineTotal: Math.round((lineSubtotal + item.taxAmount - disc) * 100) / 100
+                                taxAmount: recalculatedTax,
+                                lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100
                             };
                         });
                         // Since it's distributed, we can set globalDiscAmt to 0 if we want it to ONLY show on items,
@@ -304,11 +319,20 @@ export class PosSalesService implements OnModuleInit {
                             disc += 1;
                             remainder -= 1;
                         }
+                        
+                        // Recalculate tax based on WOST after discount
+                        const taxDivisor = 1 + (item.taxPercent / 100);
+                        const wostPerUnit = item.unitPrice / taxDivisor;
+                        const totalWost = Math.round(wostPerUnit * item.quantity * 100) / 100;
+                        const afterDisc = totalWost - disc;
+                        const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
+                        
                         return {
                             ...item,
                             discountPercent: Math.round((disc / lineSubtotal) * 100 * 100) / 100,
                             discountAmount: disc,
-                            lineTotal: Math.round((lineSubtotal + item.taxAmount - disc) * 100) / 100
+                            taxAmount: recalculatedTax,
+                            lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100
                         };
                     });
                 } else if (couponDiscount > 0) {
@@ -321,18 +345,23 @@ export class PosSalesService implements OnModuleInit {
                     appliedDiscountType = 'manual';
                 }
 
+                // Recalculate totalTax after alliance discount distribution (if applied)
+                const finalTotalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
+                
                 // Recalculate total with the chosen discount
                 const totalDiscount = finalLineItemDiscount + globalDiscAmt;
-                const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
+                const fbrPosFee = 1; // FBR POS Fee
+                const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + finalTotalTax + fbrPosFee) * 100) / 100);
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
 
                 // Debug logging
                 console.log('=== GRAND TOTAL CALCULATION ===');
-                console.log('Subtotal:', subtotal);
+                console.log('Subtotal (WOST):', subtotal);
                 console.log('Total Discount:', totalDiscount);
-                console.log('Total Tax:', totalTax);
+                console.log('Total Tax (Final):', finalTotalTax);
+                console.log('FBR POS Fee:', fbrPosFee);
                 console.log('Grand Total:', grandTotal);
-                console.log('Formula: subtotal - totalDiscount + totalTax =', subtotal, '-', totalDiscount, '+', totalTax, '=', grandTotal);
+                console.log('Formula: subtotal - totalDiscount + finalTotalTax + fbrPosFee =', subtotal, '-', totalDiscount, '+', finalTotalTax, '+', fbrPosFee, '=', grandTotal);
                 console.log('===============================');
 
                 const notesParts: string[] = [];
@@ -386,7 +415,7 @@ export class PosSalesService implements OnModuleInit {
                         notes: notesParts.join(' | ') || undefined,
                         subtotal,
                         discountAmount: totalDiscount,
-                        taxAmount: totalTax,
+                        taxAmount: finalTotalTax,
                         grandTotal,
                         status: 'completed',
                         paymentStatus,
