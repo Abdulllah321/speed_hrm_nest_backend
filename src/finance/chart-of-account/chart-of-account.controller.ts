@@ -32,7 +32,19 @@ export class ChartOfAccountController {
   @ApiOperation({ summary: 'Create a new chart of account' })
   create(@Body() createDto: CreateChartOfAccountDto, @Req() req: any) {
     return this.chartOfAccountService.create(createDto, {
-      userId: req.user?.id,
+      userId: req.user?.id || req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('bulk-subaccounts')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.create')
+  @ApiOperation({ summary: 'Bulk create sub-accounts under a parent account' })
+  createBulkSubAccounts(@Body() body: any, @Req() req: any) {
+    return this.chartOfAccountService.createBulkSubAccounts(body, {
+      userId: req.user?.id || req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
