@@ -6,13 +6,24 @@ import { MovementType } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 import { StockMovementService } from '../warehouse/stock-movement.service';
+import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
+
 @Injectable()
 export class PosClaimsService {
     constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
     private stockMovementService: StockMovementService,
+    private stockLedgerService: StockLedgerService,
   ) { }
+
+    private async getCurrentItemRate(tx: any, itemId: string): Promise<number> {
+        const item = await tx.item.findUnique({
+            where: { id: itemId },
+            select: { unitCost: true },
+        });
+        return Number(item?.unitCost || 0);
+    }
 
     private async generateClaimNumber(): Promise<string> {
         const today = new Date();
@@ -294,26 +305,50 @@ export class PosClaimsService {
                     if (posLocation) {
                         console.log('✅ POS location found, proceeding with transfer...');
                         
-                        // Get warehouse ID - either from location or find the first active warehouse
-                        let warehouseId = posLocation.warehouseId;
+                        // ⚡ CLAIM SPECIFIC: Always send to PLM Warehouse (WH-PLM-002)
+                        console.log('🎯 Claim Return: Finding PLM Warehouse...');
+                        const plmWarehouse = await tx.warehouse.findFirst({
+                            where: { 
+                                code: 'WH-PLM-002',
+                                isActive: true 
+                            },
+                            select: { id: true, name: true, code: true }
+                        });
                         
-                        if (!warehouseId) {
-                            console.log('⚠️ POS location has no warehouseId, finding first active warehouse...');
-                            const warehouse = await tx.warehouse.findFirst({
+                        if (!plmWarehouse) {
+                            console.log('❌ PLM Warehouse (WH-PLM-002) not found!');
+                            throw new BadRequestException('PLM Warehouse not found for claim return. Please contact admin.');
+                        }
+                        
+                        const plmWarehouseId = plmWarehouse.id;
+                        console.log('✅ Using PLM Warehouse:', {
+                            name: plmWarehouse.name,
+                            code: plmWarehouse.code,
+                            id: plmWarehouseId
+                        });
+                        
+                        // Get POS location's original warehouse (for stock validation)
+                        let posWarehouseId = posLocation.warehouseId;
+                        if (!posWarehouseId) {
+                            console.log('⚠️ POS location has no warehouse, using first active warehouse...');
+                            const defaultWarehouse = await tx.warehouse.findFirst({
                                 where: { isActive: true },
                                 select: { id: true, name: true }
                             });
-                            
-                            if (warehouse) {
-                                warehouseId = warehouse.id;
-                                console.log('✅ Using warehouse:', warehouse.name);
+                            if (defaultWarehouse) {
+                                posWarehouseId = defaultWarehouse.id;
+                                console.log('✅ Using default warehouse:', defaultWarehouse.name);
                             } else {
-                                console.log('❌ No active warehouse found!');
-                                throw new BadRequestException('No active warehouse found for claim return');
+                                throw new BadRequestException('No warehouse found for POS location');
                             }
                         }
-                            // Create automatic transfer request from POS location to Warehouse location
-                            // Note: POS inventory will be updated when this transfer request is processed
+                        
+                        console.log('📍 Warehouse IDs:', {
+                            posWarehouse: posWarehouseId,
+                            plmWarehouse: plmWarehouseId
+                        });
+                        
+                        // Create automatic transfer request from POS location to PLM Warehouse
                         const today = new Date();
                         const prefix = `TR-CLM-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
                         const lastTR = await tx.transferRequest.findFirst({
@@ -328,8 +363,8 @@ export class PosClaimsService {
                             data: {
                                 requestNo: transferRequestNo,
                                 fromLocationId: posLocation.id,
-                                fromWarehouseId: warehouseId,
-                                toWarehouseId: warehouseId, // Same warehouse
+                                fromWarehouseId: posWarehouseId, // POS location's warehouse
+                                toWarehouseId: plmWarehouseId,   // PLM Warehouse
                                 transferType: 'OUTLET_TO_WAREHOUSE',
                                 status: 'COMPLETED', // Auto-complete for claim returns
                                 notes: `Auto-generated from approved claim ${claim.claimNumber} for order ${salesOrder.orderNumber}. Items returned to warehouse-level inventory.`,
@@ -353,25 +388,70 @@ export class PosClaimsService {
                         console.log('🔄 Executing stock movements using StockMovementService...');
                         
                         for (const item of approvedItems) {
-                            console.log('🔄 Processing item:', {
+                            console.log('🔄 Processing claim return item:', {
                                 itemId: item.itemId,
                                 sku: item.sku,
                                 approvedQty: item.approvedQty,
-                                fromLocationId: posLocation.id,
-                                toWarehouseId: warehouseId
+                                posLocationId: posLocation.id,
+                                posWarehouseId: posWarehouseId,
+                                plmWarehouseId: plmWarehouseId
                             });
 
-                            // Execute outlet-to-warehouse transfer using the same service
-                            // that handles warehouse-to-outlet transfers
+                            // Step 1: Add item back to POS inventory (customer returned it)
+                            console.log('📥 Step 1: Adding returned item to POS inventory...');
+                            const existingPosStock = await tx.inventoryItem.findFirst({
+                                where: {
+                                    itemId: item.itemId,
+                                    locationId: posLocation.id,
+                                    status: 'AVAILABLE'
+                                }
+                            });
+
+                            if (existingPosStock) {
+                                await tx.inventoryItem.update({
+                                    where: { id: existingPosStock.id },
+                                    data: { quantity: { increment: item.approvedQty } }
+                                });
+                                console.log('✅ POS inventory updated (incremented)');
+                            } else {
+                                await tx.inventoryItem.create({
+                                    data: {
+                                        itemId: item.itemId,
+                                        warehouseId: posWarehouseId,
+                                        locationId: posLocation.id,
+                                        quantity: item.approvedQty,
+                                        status: 'AVAILABLE'
+                                    }
+                                });
+                                console.log('✅ POS inventory created (new entry)');
+                            }
+
+                            // Create INBOUND ledger entry for POS (item received from customer)
+                            await this.stockLedgerService.createEntry({
+                                itemId: item.itemId,
+                                warehouseId: posWarehouseId,
+                                locationId: posLocation.id,
+                                qty: item.approvedQty,
+                                movementType: MovementType.INBOUND,
+                                referenceType: 'CLAIM_RETURN',
+                                referenceId: transferRequest.id,
+                                rate: await this.getCurrentItemRate(tx, item.itemId),
+                            }, tx);
+                            console.log('✅ POS INBOUND ledger entry created');
+
+                            // Step 2: Transfer from POS to PLM Warehouse
+                            console.log('📤 Step 2: Transferring item from POS to PLM warehouse...');
                             await this.stockMovementService.executeMovement({
                                 itemId: item.itemId,
                                 fromLocationId: posLocation.id,
-                                toWarehouseId: warehouseId,
+                                fromWarehouseId: posWarehouseId,
+                                toWarehouseId: plmWarehouseId,
                                 quantity: item.approvedQty,
                                 type: 'RETURN_TRANSFER',
-                                referenceType: 'CLAIM_RETURN',
+                                referenceType: 'CLAIM_TO_PLM',  // Different reference to avoid confusion
                                 referenceId: transferRequest.id,
                                 userId: reviewedBy || undefined,
+                                transaction: tx,  // Pass parent transaction
                             });
                             
                             console.log('✅ Stock movement completed for item:', item.sku);
@@ -412,6 +492,9 @@ export class PosClaimsService {
                         approvedItemsLength: approvedItems.length
                     });
                 }
+            }, {
+                maxWait: 10000, // 10 seconds max wait
+                timeout: 15000, // 15 seconds timeout
             });
 
             const updated = await this.findOne(id);
