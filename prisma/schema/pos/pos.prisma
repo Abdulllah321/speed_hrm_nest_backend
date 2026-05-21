@@ -279,6 +279,7 @@ model Voucher {
   locations    VoucherLocation[]
   transactions VoucherTransaction[]
   redemptions  VoucherRedemption[]
+  claims       PosClaim[] // Claims that generated this voucher
 
   @@index([code])
   @@index([customerId])
