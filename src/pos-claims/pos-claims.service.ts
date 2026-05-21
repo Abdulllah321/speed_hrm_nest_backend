@@ -144,6 +144,17 @@ export class PosClaimsService {
                         item: { select: { description: true, sku: true, barCode: true } },
                     },
                 },
+                voucher: {
+                    select: {
+                        id: true,
+                        code: true,
+                        voucherType: true,
+                        faceValue: true,
+                        expiresAt: true,
+                        isActive: true,
+                        isRedeemed: true,
+                    }
+                },
             },
         });
         if (!claim) throw new NotFoundException('Claim not found');
@@ -464,6 +475,66 @@ export class PosClaimsService {
                         });
                         
                         console.log('✅ Transfer request linked to claim');
+
+                        // ── Generate EXCHANGE voucher for approved claim ──
+                        console.log('🎫 Generating exchange voucher for approved claim...');
+                        
+                        // Calculate total approved amount
+                        const totalApprovedAmount = approvedItems.reduce((sum, item) => {
+                            return sum + (item.approvedQty * Number(claim.items.find(ci => ci.itemId === item.itemId)?.unitPaidPrice || 0));
+                        }, 0);
+                        
+                        // Generate voucher code
+                        const voucherCode = `EXC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+                        const voucherExpiresAt = new Date();
+                        voucherExpiresAt.setDate(voucherExpiresAt.getDate() + 30); // 30 days expiry
+                        
+                        const exchangeVoucher = await tx.voucher.create({
+                            data: {
+                                code: voucherCode,
+                                voucherType: 'EXCHANGE',
+                                faceValue: totalApprovedAmount,
+                                description: `Exchange voucher for approved claim ${claim.claimNumber}`,
+                                customerId: salesOrder.customerId || null,
+                                requireCustomerMatch: false,
+                                issuedByLocationId: salesOrder.locationId,
+                                issuedByUserId: reviewedBy || null,
+                                sourceOrderId: salesOrder.id,
+                                expiresAt: voucherExpiresAt,
+                                isActive: true,
+                                isRedeemed: false,
+                                locations: {
+                                    create: {
+                                        locationId: salesOrder.locationId || ''
+                                    }
+                                },
+                                transactions: {
+                                    create: {
+                                        action: 'ISSUED',
+                                        amountUsed: 0,
+                                        locationId: salesOrder.locationId,
+                                        notes: `Issued for approved claim ${claim.claimNumber}`,
+                                    }
+                                }
+                            }
+                        });
+                        
+                        console.log('✅ Exchange voucher created:', {
+                            code: voucherCode,
+                            amount: totalApprovedAmount,
+                            expiresAt: voucherExpiresAt
+                        });
+                        
+                        // Link voucher to claim
+                        await tx.posClaim.update({
+                            where: { id },
+                            data: { 
+                                transferRequestId: transferRequest.id,
+                                voucherId: exchangeVoucher.id  // Link voucher
+                            }
+                        });
+                        
+                        console.log('✅ Voucher linked to claim');
 
                         // Log transfer request creation
                         runInBackground(

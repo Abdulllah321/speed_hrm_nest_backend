@@ -11,6 +11,7 @@ model PosClaim {
   approvedAmount    Decimal   @default(0) @map("approved_amount") @db.Decimal(15, 2)
   reviewNotes       String?   @map("review_notes")
   transferRequestId String?   @map("transfer_request_id") // Link to auto-generated transfer request
+  voucherId         String?   @map("voucher_id") // Link to auto-generated exchange voucher
   submittedAt       DateTime  @default(now()) @map("submitted_at")
   reviewedAt        DateTime? @map("reviewed_at")
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -20,10 +21,12 @@ model PosClaim {
 
   salesOrder SalesOrder     @relation(fields: [salesOrderId], references: [id])
   items      PosClaimItem[]
+  voucher    Voucher?       @relation(fields: [voucherId], references: [id])
 
   @@index([salesOrderId])
   @@index([status])
   @@index([transferRequestId])
+  @@index([voucherId])
   @@map("pos_claims")
 }
 

@@ -875,6 +875,14 @@ export class AuthController {
     return { status: isValid, message: isValid ? 'Password verified' : 'Invalid password' };
   }
 
+  @Post('verify-manager')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify manager credentials' })
+  async verifyManager(@Body() body: { emailOrId: string; password: string }) {
+    return this.service.verifyManager(body.emailOrId, body.password);
+  }
+
   @Get('profiles')
   @ApiOperation({ summary: 'Get all active profiles on this browser' })
   async getProfiles(@Req() req: any) {
