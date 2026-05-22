@@ -11,10 +11,12 @@ import {
   UpdateSegmentDto,
   BulkUpdateSegmentItemDto,
 } from './dto/segment.dto';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class SegmentService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
         private prismaMaster: PrismaMasterService,
 
@@ -31,6 +33,7 @@ export class SegmentService {
 
     const segments = await this.prisma.segment.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -59,8 +62,10 @@ export class SegmentService {
   }
 
   async getById(id: string) {
-    const segment = await this.prisma.segment.findUnique({
-      where: { id },
+    const segment = await this.prisma.segment.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!segment) return { status: false, message: 'Segment not found' };
 
@@ -117,8 +122,10 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.segment.findUnique({
-        where: { id },
+      const existing = await this.prisma.segment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Segment not found' };
 
@@ -201,9 +208,15 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.segment.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'segment', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const result = await this.prisma.segment.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: result,
@@ -235,10 +248,17 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.segment.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'segment', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.segment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.segment.delete({ where: { id } });
+      const result = await this.prisma.segment.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,

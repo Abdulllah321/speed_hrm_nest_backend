@@ -54,6 +54,7 @@ export class WarehouseService {
 
   async findAllWarehouses(): Promise<Warehouse[]> {
     return this.prisma.warehouse.findMany({
+      where: { isDeleted: false },
       include: {
         _count: {
           select: { inventoryItems: true },
@@ -63,8 +64,8 @@ export class WarehouseService {
   }
 
   async findOneWarehouse(id: string): Promise<Warehouse> {
-    const warehouse = await this.prisma.warehouse.findUnique({
-      where: { id },
+    const warehouse = await this.prisma.warehouse.findFirst({
+      where: { id, isDeleted: false },
       include: {
         inventoryItems: true,
       },
@@ -121,7 +122,16 @@ export class WarehouseService {
 
   async removeWarehouse(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }): Promise<Warehouse> {
     try {
-      const removed = await this.prisma.warehouse.delete({ where: { id } });
+      const existing = await this.prisma.warehouse.findFirst({
+        where: { id, isDeleted: false },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Warehouse with ID ${id} not found`);
+      }
+      const removed = await this.prisma.warehouse.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Remove Warehouse',

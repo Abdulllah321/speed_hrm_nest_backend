@@ -1,4 +1,6 @@
 model HsCode {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                       String   @id @default(uuid())
   hsCode                   String   @unique @map("hs_code")
   customsDutyCd            Decimal  @default(0) @map("customs_duty_cd") @db.Decimal(10, 2)

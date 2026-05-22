@@ -4,10 +4,12 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class LoanTypeService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -15,12 +17,15 @@ export class LoanTypeService {
   async list() {
     const items = await this.prisma.loanType.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.loanType.findUnique({ where: { id } });
+    const item = await this.prisma.loanType.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Loan type not found' };
     return { status: true, data: item };
   }
@@ -85,8 +90,10 @@ export class LoanTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.loanType.findUnique({
-        where: { id },
+      const existing = await this.prisma.loanType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Loan type not found' };
 
@@ -146,14 +153,20 @@ export class LoanTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.loanType.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'loanType', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.loanType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Loan type not found' };
 
-      const removed = await this.prisma.loanType.delete({
+      const removed = await this.prisma.loanType.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         `Deleted loan type ${existing.name}`,
@@ -258,8 +271,10 @@ export class LoanTypeService {
     try {
       const updatedItems: any[] = [];
       for (const i of validItems) {
-        const existing = await this.prisma.loanType.findUnique({
-          where: { id: i.id },
+        const existing = await this.prisma.loanType.findFirst({
+          where: { id: i.id,
+              isDeleted: false
+        },
         });
         if (!existing) continue;
 
@@ -316,12 +331,20 @@ export class LoanTypeService {
     if (!ids?.length)
       return { status: false, message: 'No loan types to delete' };
     try {
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'loanType', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
       const existing = await this.prisma.loanType.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids },
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.loanType.deleteMany({
+      const result = await this.prisma.loanType.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         `Bulk deleted loan types (${result.count})`,

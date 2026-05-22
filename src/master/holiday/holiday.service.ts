@@ -16,6 +16,7 @@ export class HolidayService {
   async list() {
     const items = await this.prisma.holiday.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     // Convert dates to current year for display (holidays are recurring annually)
     const currentYear = new Date().getFullYear();
@@ -43,7 +44,9 @@ export class HolidayService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.holiday.findUnique({ where: { id } });
+    const item = await this.prisma.holiday.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Holiday not found' };
     // Convert dates to current year for display
     const currentYear = new Date().getFullYear();
@@ -155,8 +158,10 @@ export class HolidayService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.holiday.findUnique({
-        where: { id },
+      const existing = await this.prisma.holiday.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Holiday not found' };
@@ -275,14 +280,18 @@ export class HolidayService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.holiday.findUnique({
-        where: { id },
+      const existing = await this.prisma.holiday.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Holiday not found' };
       }
 
-      const removed = await this.prisma.holiday.delete({ where: { id } });
+      const removed = await this.prisma.holiday.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Delete Record',
@@ -336,8 +345,10 @@ export class HolidayService {
 
     try {
       for (const item of items) {
-        const existing = await this.prisma.holiday.findUnique({
-          where: { id: item.id },
+        const existing = await this.prisma.holiday.findFirst({
+          where: { id: item.id,
+              isDeleted: false
+        },
         });
         if (!existing) continue;
 
@@ -506,11 +517,14 @@ export class HolidayService {
 
     try {
       const existing = await this.prisma.holiday.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids },
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.holiday.deleteMany({
+      const result = await this.prisma.holiday.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Bulk Delete Records',

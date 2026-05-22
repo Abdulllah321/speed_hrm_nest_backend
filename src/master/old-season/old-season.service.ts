@@ -30,6 +30,7 @@ export class OldSeasonService {
 
     const oldSeasons = await this.prisma.oldSeason.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -58,8 +59,10 @@ export class OldSeasonService {
   }
 
   async getById(id: string) {
-    const season = await this.prisma.oldSeason.findUnique({
-      where: { id },
+    const season = await this.prisma.oldSeason.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!season) return { status: false, message: 'Old Season not found' };
 
@@ -116,8 +119,10 @@ export class OldSeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.oldSeason.findUnique({
-        where: { id },
+      const existing = await this.prisma.oldSeason.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Old Season not found' };
 
@@ -200,9 +205,10 @@ export class OldSeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.oldSeason.deleteMany({
+      const result = await this.prisma.oldSeason.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: result,
@@ -234,12 +240,15 @@ export class OldSeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.oldSeason.findUnique({
-        where: { id },
+      const existing = await this.prisma.oldSeason.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.oldSeason.delete({
+      const result = await this.prisma.oldSeason.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,

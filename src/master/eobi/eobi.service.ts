@@ -15,12 +15,15 @@ export class EobiService {
   async list() {
     const items = await this.prisma.eOBI.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.eOBI.findUnique({ where: { id } });
+    const item = await this.prisma.eOBI.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'EOBI not found' };
     return { status: true, data: item };
   }
@@ -170,8 +173,10 @@ export class EobiService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.eOBI.findUnique({
-        where: { id },
+      const existing = await this.prisma.eOBI.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'EOBI not found' };
       const updated = await this.prisma.eOBI.update({
@@ -243,11 +248,15 @@ export class EobiService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.eOBI.findUnique({
-        where: { id },
+      const existing = await this.prisma.eOBI.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'EOBI not found' };
-      await this.prisma.eOBI.delete({ where: { id } });
+      await this.prisma.eOBI.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
@@ -291,7 +300,9 @@ export class EobiService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.eOBI.deleteMany({ where: { id: { in: ids } } });
+      await this.prisma.eOBI.updateMany({ where: { id: { in: ids } },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({

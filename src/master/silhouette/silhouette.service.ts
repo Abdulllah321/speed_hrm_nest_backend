@@ -30,6 +30,7 @@ export class SilhouetteService {
 
     const silhouettes = await this.prisma.silhouette.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -58,8 +59,10 @@ export class SilhouetteService {
   }
 
   async getSilhouetteById(id: string) {
-    const silhouette = await this.prisma.silhouette.findUnique({
-      where: { id },
+    const silhouette = await this.prisma.silhouette.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!silhouette) return { status: false, message: 'Silhouette not found' };
 
@@ -115,8 +118,10 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.silhouette.findUnique({
-        where: { id },
+      const existing = await this.prisma.silhouette.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const silhouette = await this.prisma.silhouette.update({
         where: { id },
@@ -196,9 +201,10 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.silhouette.deleteMany({
+      const result = await this.prisma.silhouette.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk deleted silhouettes (${result.count})',
         this.activityLogs.log({
@@ -229,12 +235,15 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.silhouette.findUnique({
-        where: { id },
+      const existing = await this.prisma.silhouette.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.silhouette.delete({
+      const result = await this.prisma.silhouette.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Deleted silhouette ${existing?.name}',

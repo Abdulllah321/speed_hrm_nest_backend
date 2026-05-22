@@ -11,10 +11,12 @@ import {
   BulkUpdateDepartmentItemDto,
 } from './dto/department-dto';
 import { PrismaMasterService } from '../../database/prisma-master.service';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class DepartmentService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
 
@@ -35,6 +37,7 @@ export class DepartmentService {
         allocation: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     // Fetch Master Users and Tenant Employees manually
     const userIds = [
@@ -93,8 +96,10 @@ export class DepartmentService {
   }
 
   async getDepartmentById(id: string) {
-    const department: any = await this.prisma.department.findUnique({
-      where: { id },
+    const department: any = await this.prisma.department.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: {
         subDepartments: true,
         allocation: { select: { id: true, name: true } },
@@ -188,8 +193,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.department.findUnique({
-        where: { id },
+      const existing = await this.prisma.department.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const department = await this.prisma.department.update({
         where: { id },
@@ -264,9 +271,15 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const departments = await this.prisma.department.deleteMany({
+      for (const guardId of departmentIds) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'department', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const departments = await this.prisma.department.updateMany({
         where: { id: { in: departmentIds } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: departments, message: 'Departments deleted successfully' };
       runInBackground(
         'Delete Departments',
@@ -288,12 +301,18 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.department.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'department', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.department.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const department = await this.prisma.department.delete({
+      const department = await this.prisma.department.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: department, message: 'Department deleted successfully' };
       runInBackground(
         'Delete Department',
@@ -326,6 +345,7 @@ export class DepartmentService {
         department: true,
       },
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -373,7 +393,9 @@ export class DepartmentService {
 
   async getSubDepartmentsByDepartment(departmentId: string) {
     const subDepartments = await this.prisma.subDepartment.findMany({
-      where: { departmentId },
+      where: { departmentId,
+          isDeleted: false
+    },
       include: {
         department: true,
       },
@@ -505,8 +527,10 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.subDepartment.findUnique({
-        where: { id },
+      const existing = await this.prisma.subDepartment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const subDepartment = await this.prisma.subDepartment.update({
         where: { id },
@@ -537,9 +561,15 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const subDepartments = await this.prisma.subDepartment.deleteMany({
+      for (const guardId of subDepartmentIds) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'subDepartment', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const subDepartments = await this.prisma.subDepartment.updateMany({
         where: { id: { in: subDepartmentIds } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: subDepartments, message: 'Sub-departments deleted successfully' };
       runInBackground(
         'Delete Sub-departments',
@@ -562,12 +592,18 @@ export class DepartmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.subDepartment.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'subDepartment', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.subDepartment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const subDepartment = await this.prisma.subDepartment.delete({
+      const subDepartment = await this.prisma.subDepartment.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: subDepartment, message: 'Sub-department deleted successfully' };
       runInBackground(
         'Delete Sub-department',

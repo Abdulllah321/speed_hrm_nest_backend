@@ -31,6 +31,7 @@ export class SegmentService {
 
     const segments = await this.prisma.segment.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -59,8 +60,10 @@ export class SegmentService {
   }
 
   async getById(id: string) {
-    const segment = await this.prisma.segment.findUnique({
-      where: { id },
+    const segment = await this.prisma.segment.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!segment) return { status: false, message: 'Segment not found' };
 
@@ -116,8 +119,10 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.segment.findUnique({
-        where: { id },
+      const existing = await this.prisma.segment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Segment not found' };
 
@@ -198,9 +203,10 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.segment.deleteMany({
+      const result = await this.prisma.segment.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk deleted segments (${result.count})',
         this.activityLogs.log({
@@ -231,10 +237,14 @@ export class SegmentService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.segment.findUnique({
-        where: { id },
+      const existing = await this.prisma.segment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.segment.delete({ where: { id } });
+      const result = await this.prisma.segment.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Deleted segment ${existing?.name}',

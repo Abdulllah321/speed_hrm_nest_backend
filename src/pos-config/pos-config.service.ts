@@ -17,6 +17,7 @@ export class PosConfigService {
     async listPromos() {
         try {
             const promos = await this.prisma.promoCampaign.findMany({
+                where: { isDeleted: false },
                 include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
                 orderBy: { createdAt: 'desc' },
             });
@@ -28,8 +29,8 @@ export class PosConfigService {
 
     async getPromoById(id: string) {
         try {
-            const promo = await this.prisma.promoCampaign.findUnique({
-                where: { id },
+            const promo = await this.prisma.promoCampaign.findFirst({
+                where: { id, isDeleted: false },
                 include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
             });
             if (!promo) return { status: false, message: 'Promo campaign not found' };
@@ -120,7 +121,8 @@ export class PosConfigService {
         locationIds?: string[];
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const oldPromo = await this.prisma.promoCampaign.findUnique({ where: { id } });
+            const oldPromo = await this.prisma.promoCampaign.findFirst({ where: { id, isDeleted: false } });
+            if (!oldPromo) return { status: false, message: 'Promo campaign not found' };
             
             // If locationIds provided, replace junction records
             if (data.locationIds) {
@@ -188,8 +190,12 @@ export class PosConfigService {
 
     async deletePromo(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const promo = await this.prisma.promoCampaign.findUnique({ where: { id } });
-            await this.prisma.promoCampaign.delete({ where: { id } });
+            const promo = await this.prisma.promoCampaign.findFirst({ where: { id, isDeleted: false } });
+            if (!promo) return { status: false, message: 'Promo campaign not found' };
+            await this.prisma.promoCampaign.update({
+                where: { id },
+                data: { isDeleted: true, deletedAt: new Date() },
+            });
 
             runInBackground(
                 'Delete Promo Campaign',
@@ -235,6 +241,7 @@ export class PosConfigService {
     async listCoupons() {
         try {
             const coupons = await this.prisma.couponCode.findMany({
+                where: { isDeleted: false },
                 include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
                 orderBy: { createdAt: 'desc' },
             });
@@ -246,8 +253,8 @@ export class PosConfigService {
 
     async getCouponById(id: string) {
         try {
-            const coupon = await this.prisma.couponCode.findUnique({
-                where: { id },
+            const coupon = await this.prisma.couponCode.findFirst({
+                where: { id, isDeleted: false },
                 include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
             });
             if (!coupon) return { status: false, message: 'Coupon code not found' };
@@ -338,7 +345,8 @@ export class PosConfigService {
         locationIds?: string[];
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const oldCoupon = await this.prisma.couponCode.findUnique({ where: { id } });
+            const oldCoupon = await this.prisma.couponCode.findFirst({ where: { id, isDeleted: false } });
+            if (!oldCoupon) return { status: false, message: 'Coupon code not found' };
 
             if (data.locationIds) {
                 await this.prisma.couponCodeLocation.deleteMany({ where: { couponId: id } });
@@ -405,8 +413,12 @@ export class PosConfigService {
 
     async deleteCoupon(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const coupon = await this.prisma.couponCode.findUnique({ where: { id } });
-            await this.prisma.couponCode.delete({ where: { id } });
+            const coupon = await this.prisma.couponCode.findFirst({ where: { id, isDeleted: false } });
+            if (!coupon) return { status: false, message: 'Coupon code not found' };
+            await this.prisma.couponCode.update({
+                where: { id },
+                data: { isDeleted: true, deletedAt: new Date() },
+            });
 
             runInBackground(
                 'Delete Coupon Code',
@@ -454,7 +466,7 @@ export class PosConfigService {
     async listVouchers() {
         try {
             const vouchers = await this.prisma.couponCode.findMany({
-                where: { discountType: 'voucher' },
+                where: { discountType: 'voucher', isDeleted: false },
                 orderBy: { createdAt: 'desc' },
             });
             return { status: true, data: vouchers };
@@ -569,11 +581,14 @@ export class PosConfigService {
     async deleteVoucher(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             // Only allow deleting unused vouchers
-            const voucher = await this.prisma.couponCode.findUnique({ where: { id } });
+            const voucher = await this.prisma.couponCode.findFirst({ where: { id, isDeleted: false } });
             if (!voucher) return { status: false, message: 'Voucher not found' };
             if (voucher.usedCount > 0) return { status: false, message: 'Cannot delete a voucher that has been redeemed' };
             
-            await this.prisma.couponCode.delete({ where: { id } });
+            await this.prisma.couponCode.update({
+                where: { id },
+                data: { isDeleted: true, deletedAt: new Date() },
+            });
 
             runInBackground(
                 'Delete Voucher',
@@ -619,6 +634,7 @@ export class PosConfigService {
     async listAlliances() {
         try {
             const alliances = await this.prisma.allianceDiscount.findMany({
+                where: { isDeleted: false },
                 include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
                 orderBy: { createdAt: 'desc' },
             });
@@ -630,8 +646,8 @@ export class PosConfigService {
 
     async getAllianceById(id: string) {
         try {
-            const alliance = await this.prisma.allianceDiscount.findUnique({
-                where: { id },
+            const alliance = await this.prisma.allianceDiscount.findFirst({
+                where: { id, isDeleted: false },
                 include: { locations: { include: { location: { select: { id: true, name: true, code: true } } } } },
             });
             if (!alliance) return { status: false, message: 'Alliance discount not found' };
@@ -730,7 +746,8 @@ export class PosConfigService {
         binNumbers?: string[];
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const oldAlliance = await this.prisma.allianceDiscount.findUnique({ where: { id } });
+            const oldAlliance = await this.prisma.allianceDiscount.findFirst({ where: { id, isDeleted: false } });
+            if (!oldAlliance) return { status: false, message: 'Alliance discount not found' };
 
             // Validate BIN numbers if provided
             if (data.binNumbers !== undefined) {
@@ -808,8 +825,12 @@ export class PosConfigService {
 
     async deleteAlliance(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const alliance = await this.prisma.allianceDiscount.findUnique({ where: { id } });
-            await this.prisma.allianceDiscount.delete({ where: { id } });
+            const alliance = await this.prisma.allianceDiscount.findFirst({ where: { id, isDeleted: false } });
+            if (!alliance) return { status: false, message: 'Alliance discount not found' };
+            await this.prisma.allianceDiscount.update({
+                where: { id },
+                data: { isDeleted: true, deletedAt: new Date() },
+            });
 
             runInBackground(
                 'Delete Alliance Discount',
@@ -859,6 +880,7 @@ export class PosConfigService {
             // Active promos for this location
             const promos = await this.prisma.promoCampaign.findMany({
                 where: {
+                    isDeleted: false,
                     isActive: true,
                     startDate: { lte: now },
                     endDate: { gte: now },
@@ -870,6 +892,7 @@ export class PosConfigService {
             // Active alliance discounts for this location
             const alliances = await this.prisma.allianceDiscount.findMany({
                 where: {
+                    isDeleted: false,
                     isActive: true,
                     locations: { some: { locationId } },
                 },
@@ -887,8 +910,8 @@ export class PosConfigService {
 
     async validateCoupon(code: string, locationId: string, orderSubtotal: number) {
         try {
-            const coupon = await this.prisma.couponCode.findUnique({
-                where: { code: code.toUpperCase() },
+            const coupon = await this.prisma.couponCode.findFirst({
+                where: { code: code.toUpperCase(), isDeleted: false },
                 include: { locations: true },
             });
 

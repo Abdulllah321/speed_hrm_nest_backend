@@ -9,17 +9,22 @@ import { PrismaService } from '../../../database/prisma.service';
 
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
+
 @Injectable()
 export class CategoryService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private readonly prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
     if (createCategoryDto.parentId) {
-      const parent = await this.prisma.category.findUnique({
-        where: { id: createCategoryDto.parentId },
+      const parent = await this.prisma.category.findFirst({
+        where: { id: createCategoryDto.parentId,
+            isDeleted: false
+        },
       });
       if (!parent) {
         throw new NotFoundException('Parent category not found');
@@ -53,7 +58,9 @@ export class CategoryService {
 
   async findTree() {
     return this.prisma.category.findMany({
-      where: { parentId: null },
+      where: { parentId: null,
+          isDeleted: false
+    },
       include: {
         children: {
           include: {
@@ -66,8 +73,10 @@ export class CategoryService {
   }
 
   async findOne(id: string) {
-    const category = await this.prisma.category.findUnique({
-      where: { id },
+    const category = await this.prisma.category.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: {
         parent: true,
         children: true,
@@ -95,23 +104,19 @@ export class CategoryService {
   }
 
   async remove(id: string) {
-    const category = await this.prisma.category.findUnique({
-      where: { id },
-      include: { children: true },
+    const category = await this.prisma.category.findFirst({
+      where: { id, isDeleted: false },
     });
 
     if (!category) {
       throw new NotFoundException(`Category with ID ${id} not found`);
     }
 
-    if (category.children.length > 0) {
-      throw new BadRequestException(
-        'Cannot delete category with sub-categories',
-      );
-    }
+    await this.masterDeleteGuard.assertCanDelete(this.prisma, 'category', id);
 
-    return this.prisma.category.delete({
+    return this.prisma.category.update({
       where: { id },
+      data: { isDeleted: true, deletedAt: new Date() },
     });
   }
 }

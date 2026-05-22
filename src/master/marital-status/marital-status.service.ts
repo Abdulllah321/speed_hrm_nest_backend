@@ -7,11 +7,13 @@ import {
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 
 @Injectable()
 export class MaritalStatusService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -19,13 +21,16 @@ export class MaritalStatusService {
   async list() {
     const items = await this.prisma.maritalStatus.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.maritalStatus.findUnique({
-      where: { id },
+    const item = await this.prisma.maritalStatus.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Marital status not found' };
     return { status: true, data: item };
@@ -105,8 +110,10 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.maritalStatus.findUnique({
-        where: { id },
+      const existing = await this.prisma.maritalStatus.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
@@ -171,16 +178,22 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.maritalStatus.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'maritalStatus', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.maritalStatus.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Marital status not found' };
       }
 
-      const removed = await this.prisma.maritalStatus.delete({
+      const removed = await this.prisma.maritalStatus.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,
@@ -305,13 +318,19 @@ export class MaritalStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'maritalStatus', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
       if (!ids || ids.length === 0) {
         return { status: false, message: 'No IDs provided' };
       }
 
-      const result = await this.prisma.maritalStatus.deleteMany({
+      const result = await this.prisma.maritalStatus.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,

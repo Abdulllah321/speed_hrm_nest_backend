@@ -112,7 +112,7 @@ export class StockLedgerService {
         select: { id: true, itemId: true, sku: true, description: true },
       }),
       this.prisma.warehouse.findMany({
-        where: { id: { in: warehouseIds } },
+        where: { id: { in: warehouseIds }, isDeleted: false },
         select: { id: true, name: true, code: true },
       }),
       locationIds.length > 0

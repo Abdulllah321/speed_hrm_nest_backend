@@ -15,12 +15,15 @@ export class BankService {
   async list() {
     const items = await this.prisma.bank.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.bank.findUnique({ where: { id } });
+    const item = await this.prisma.bank.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Bank not found' };
     return { status: true, data: item };
   }
@@ -149,8 +152,10 @@ export class BankService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.bank.findUnique({
-        where: { id },
+      const existing = await this.prisma.bank.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Bank not found' };
       const updated = await this.prisma.bank.update({
@@ -210,11 +215,15 @@ export class BankService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.bank.findUnique({
-        where: { id },
+      const existing = await this.prisma.bank.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Bank not found' };
-      await this.prisma.bank.delete({ where: { id } });
+      await this.prisma.bank.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, message: 'Deleted successfully' };
       runInBackground(
         'Delete Bank',
@@ -318,7 +327,9 @@ export class BankService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.bank.deleteMany({ where: { id: { in: ids } } });
+      await this.prisma.bank.updateMany({ where: { id: { in: ids } },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, message: 'Deleted successfully' };
       runInBackground(
         'Bulk Delete Banks',

@@ -10,10 +10,12 @@ import {
   UpdateSilhouetteDto,
   BulkUpdateSilhouetteItemDto,
 } from './dto/silhouette.dto';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class SilhouetteService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
 
@@ -30,6 +32,7 @@ export class SilhouetteService {
 
     const silhouettes = await this.prisma.silhouette.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -58,8 +61,10 @@ export class SilhouetteService {
   }
 
   async getSilhouetteById(id: string) {
-    const silhouette = await this.prisma.silhouette.findUnique({
-      where: { id },
+    const silhouette = await this.prisma.silhouette.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!silhouette) return { status: false, message: 'Silhouette not found' };
 
@@ -116,8 +121,10 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.silhouette.findUnique({
-        where: { id },
+      const existing = await this.prisma.silhouette.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const silhouette = await this.prisma.silhouette.update({
         where: { id },
@@ -199,9 +206,15 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.silhouette.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'silhouette', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const result = await this.prisma.silhouette.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: result,
@@ -233,12 +246,18 @@ export class SilhouetteService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.silhouette.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'silhouette', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.silhouette.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.silhouette.delete({
+      const result = await this.prisma.silhouette.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,
