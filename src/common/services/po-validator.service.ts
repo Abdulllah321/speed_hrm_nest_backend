@@ -43,8 +43,8 @@ export class PoValidatorService {
         if (ot === 'LOCAL' && vt !== 'LOCAL') {
             return `LOCAL order requires a LOCAL vendor (vendor type is ${vt}).`;
         }
-        if (ot === 'IMPORT' && vt !== 'IMPORT') {
-            return `IMPORT order requires an IMPORT vendor (vendor type is ${vt}).`;
+        if (ot === 'IMPORT' && vt !== 'IMPORT' && vt !== 'INTERNATIONAL') {
+            return `IMPORT order requires an IMPORT or INTERNATIONAL vendor (vendor type is ${vt}).`;
         }
         return null;
     }
