@@ -3,11 +3,13 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 
 @Injectable()
 export class EmployeeStatusService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -15,13 +17,16 @@ export class EmployeeStatusService {
   async list() {
     const items = await this.prisma.employeeStatus.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.employeeStatus.findUnique({
-      where: { id },
+    const item = await this.prisma.employeeStatus.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Status not found' };
     return { status: true, data: item };
@@ -92,8 +97,10 @@ export class EmployeeStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.employeeStatus.findUnique({
-        where: { id },
+      const existing = await this.prisma.employeeStatus.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const item = await this.prisma.employeeStatus.update({
         where: { id },
@@ -151,10 +158,17 @@ export class EmployeeStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.employeeStatus.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'employeeStatus', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.employeeStatus.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      await this.prisma.employeeStatus.delete({ where: { id } });
+      await this.prisma.employeeStatus.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, message: 'Employee status deleted successfully' };
       runInBackground(
         'Delete Employee Status',

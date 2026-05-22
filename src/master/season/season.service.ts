@@ -31,6 +31,7 @@ export class SeasonService {
 
     const seasons = await this.prisma.season.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -59,8 +60,10 @@ export class SeasonService {
   }
 
   async getById(id: string) {
-    const season = await this.prisma.season.findUnique({
-      where: { id },
+    const season = await this.prisma.season.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!season) return { status: false, message: 'Season not found' };
 
@@ -116,8 +119,10 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.season.findUnique({
-        where: { id },
+      const existing = await this.prisma.season.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Season not found' };
 
@@ -198,9 +203,10 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.season.deleteMany({
+      const result = await this.prisma.season.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk deleted seasons (${result.count})',
         this.activityLogs.log({
@@ -231,10 +237,14 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.season.findUnique({
-        where: { id },
+      const existing = await this.prisma.season.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.season.delete({ where: { id } });
+      const result = await this.prisma.season.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Deleted season ${existing?.name}',

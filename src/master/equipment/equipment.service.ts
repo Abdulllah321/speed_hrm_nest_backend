@@ -3,11 +3,13 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 
 @Injectable()
 export class EquipmentService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -15,13 +17,16 @@ export class EquipmentService {
   async list() {
     const items = await this.prisma.equipment.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.equipment.findUnique({
-      where: { id },
+    const item = await this.prisma.equipment.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Equipment not found' };
     return { status: true, data: item };
@@ -82,8 +87,10 @@ export class EquipmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.equipment.findUnique({
-        where: { id },
+      const existing = await this.prisma.equipment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const updated = await this.prisma.equipment.update({
         where: { id },
@@ -136,12 +143,18 @@ export class EquipmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.equipment.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'equipment', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.equipment.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const removed = await this.prisma.equipment.delete({
+      const removed = await this.prisma.equipment.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Record',
@@ -238,8 +251,10 @@ export class EquipmentService {
       return { status: false, message: 'No equipments to update' };
     try {
       for (const i of items) {
-        const existing = await this.prisma.equipment.findUnique({
-          where: { id: i.id },
+        const existing = await this.prisma.equipment.findFirst({
+          where: { id: i.id,
+              isDeleted: false
+        },
         });
         await this.prisma.equipment.update({
           where: { id: i.id },
@@ -292,12 +307,20 @@ export class EquipmentService {
     if (!ids?.length)
       return { status: false, message: 'No equipments to delete' };
     try {
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'equipment', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
       const existing = await this.prisma.equipment.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids },
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.equipment.deleteMany({
+      const result = await this.prisma.equipment.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({

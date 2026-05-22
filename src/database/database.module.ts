@@ -10,6 +10,7 @@ import { PrismaService } from './prisma.service';
 import { TenantDatabaseService } from './tenant-database.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { EncryptionService } from '../common/utils/encryption.service';
+import { MasterDeleteGuardService } from '../common/services/master-delete-guard.service';
 
 @Global()
 @Module({
@@ -19,6 +20,7 @@ import { EncryptionService } from '../common/utils/encryption.service';
     TenantDatabaseService,
     TenantMiddleware,
     EncryptionService,
+    MasterDeleteGuardService,
   ],
   exports: [
     PrismaMasterService,
@@ -26,6 +28,7 @@ import { EncryptionService } from '../common/utils/encryption.service';
     TenantDatabaseService,
     TenantMiddleware,
     EncryptionService,
+    MasterDeleteGuardService,
   ],
 })
 export class DatabaseModule implements NestModule {

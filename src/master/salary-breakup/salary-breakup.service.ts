@@ -14,13 +14,16 @@ export class SalaryBreakupService {
   async list() {
     const items = await this.prisma.salaryBreakup.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.salaryBreakup.findUnique({
-      where: { id },
+    const item = await this.prisma.salaryBreakup.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Salary breakup not found' };
     return { status: true, data: item };
@@ -104,8 +107,10 @@ export class SalaryBreakupService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.salaryBreakup.findUnique({
-        where: { id },
+      const existing = await this.prisma.salaryBreakup.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
 
       if (!existing) {
@@ -190,15 +195,19 @@ export class SalaryBreakupService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.salaryBreakup.findUnique({
-        where: { id },
+      const existing = await this.prisma.salaryBreakup.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
 
       if (!existing) {
         return { status: false, message: 'Salary breakup not found' };
       }
 
-      await this.prisma.salaryBreakup.delete({ where: { id } });
+      await this.prisma.salaryBreakup.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Delete Record',

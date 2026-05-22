@@ -5,10 +5,12 @@ import { CreateRebateNatureDto } from './dto/create-rebate-nature.dto';
 import { UpdateRebateNatureDto } from './dto/update-rebate-nature.dto';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class RebateNatureService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private readonly prisma: PrismaService,
     private readonly activityLogs: ActivityLogsService,
   ) {}
@@ -67,6 +69,7 @@ export class RebateNatureService {
       orderBy: {
         createdAt: 'desc',
       },
+        where: { isDeleted: false }
     });
   }
 
@@ -75,7 +78,8 @@ export class RebateNatureService {
       where: {
         type: 'fixed',
         status: 'active',
-      },
+          isDeleted: false
+    },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
 
@@ -100,14 +104,17 @@ export class RebateNatureService {
       where: {
         type,
         status: 'active',
-      },
+          isDeleted: false
+    },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }
 
   async findOne(id: string) {
-    const rebateNature = await this.prisma.rebateNature.findUnique({
-      where: { id },
+    const rebateNature = await this.prisma.rebateNature.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
 
     if (!rebateNature) {
@@ -173,11 +180,15 @@ export class RebateNatureService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'rebateNature', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
       const existing = await this.findOne(id); // Ensure exists
 
-      const removed = await this.prisma.rebateNature.delete({
+      const removed = await this.prisma.rebateNature.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Rebate Nature',

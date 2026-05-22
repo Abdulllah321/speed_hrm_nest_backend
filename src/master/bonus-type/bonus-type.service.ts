@@ -4,10 +4,12 @@ import { PrismaService } from '../../database/prisma.service';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class BonusTypeService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -15,13 +17,16 @@ export class BonusTypeService {
   async list() {
     const items = await this.prisma.bonusType.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.bonusType.findUnique({
-      where: { id },
+    const item = await this.prisma.bonusType.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Bonus type not found' };
     return { status: true, data: item };
@@ -158,8 +163,10 @@ export class BonusTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.bonusType.findUnique({
-        where: { id },
+      const existing = await this.prisma.bonusType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Bonus type not found' };
       const updated = await this.prisma.bonusType.update({
@@ -227,11 +234,18 @@ export class BonusTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.bonusType.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'bonusType', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.bonusType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Bonus type not found' };
-      await this.prisma.bonusType.delete({ where: { id } });
+      await this.prisma.bonusType.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
@@ -337,9 +351,15 @@ export class BonusTypeService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.bonusType.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'bonusType', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      await this.prisma.bonusType.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({

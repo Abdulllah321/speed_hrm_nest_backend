@@ -12,10 +12,12 @@ import { generateNextPosId } from '../../common/utils/pos-id-generator';
 import * as bcrypt from 'bcrypt';
 import { EncryptionService } from '../../common/utils/encryption.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class PosService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
 
@@ -33,8 +35,10 @@ export class PosService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.pos.findUnique({
-      where: { id },
+    const item = await this.prisma.pos.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: { location: true },
     });
     if (!item) return { status: false, message: 'POS not found' };
@@ -48,7 +52,9 @@ export class PosService {
     try {
       // Get existing POS IDs for this location to generate the next sequential ID
       const existingPos = await this.prisma.pos.findMany({
-        where: { locationId: body.locationId },
+        where: { locationId: body.locationId,
+            isDeleted: false
+        },
         select: { posId: true },
       });
       const existingIds = existingPos.map((p) => p.posId);
@@ -57,8 +63,10 @@ export class PosService {
       // Generate terminalCode if not provided
       let terminalCode = body.terminalCode;
       if (!terminalCode) {
-        const location = await this.prisma.location.findUnique({
-          where: { id: body.locationId },
+        const location = await this.prisma.location.findFirst({
+          where: { id: body.locationId,
+              isDeleted: false
+        },
           select: { name: true },
         });
 
@@ -69,16 +77,20 @@ export class PosService {
         terminalCode = `${prefix}-${nextPosId}`;
 
         // Check for uniqueness and append suffix if needed
-        const existing = await this.prisma.pos.findUnique({
-          where: { terminalCode },
+        const existing = await this.prisma.pos.findFirst({
+          where: { terminalCode,
+              isDeleted: false
+        },
         });
         if (existing) {
           terminalCode = `${terminalCode}-${Math.floor(Math.random() * 900) + 100}`;
         }
       } else {
         // strict check if manually provided
-        const existing = await this.prisma.pos.findUnique({
-          where: { terminalCode },
+        const existing = await this.prisma.pos.findFirst({
+          where: { terminalCode,
+              isDeleted: false
+        },
         });
         if (existing) {
           throw new BadRequestException('Terminal Code already exists');
@@ -149,8 +161,10 @@ export class PosService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.pos.findUnique({
-        where: { id },
+      const existing = await this.prisma.pos.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'POS not found' };
 
@@ -216,14 +230,20 @@ export class PosService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.pos.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'pos', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.pos.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'POS not found' };
 
-      const removed = await this.prisma.pos.delete({
+      const removed = await this.prisma.pos.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = { status: true, data: removed };
       runInBackground(
@@ -269,8 +289,10 @@ export class PosService {
     // 1. Try to find in the current context if it exists
     const hasContext = this.prisma.getTenantId();
     if (hasContext) {
-      terminal = await this.prisma.pos.findUnique({
-        where: { terminalCode },
+      terminal = await this.prisma.pos.findFirst({
+        where: { terminalCode,
+            isDeleted: false
+        },
       });
 
       if (terminal?.companyId) {

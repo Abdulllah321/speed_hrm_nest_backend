@@ -9,10 +9,12 @@ import {
   UpdateChannelClassDto,
   BulkUpdateChannelClassItemDto,
 } from './dto/channel-class.dto';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class ChannelClassService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
 private prismaMaster: PrismaMasterService,
 
@@ -29,6 +31,7 @@ private prismaMaster: PrismaMasterService,
 
     const channelClasses = await this.prisma.channelClass.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -55,8 +58,10 @@ private prismaMaster: PrismaMasterService,
   }
 
   async getChannelClassById(id: string) {
-    const item = await this.prisma.channelClass.findUnique({
-      where: { id },
+    const item = await this.prisma.channelClass.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Channel Class not found' };
 
@@ -112,8 +117,10 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.channelClass.findUnique({
-        where: { id },
+      const existing = await this.prisma.channelClass.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const result = await this.prisma.channelClass.update({
         where: { id },
@@ -186,9 +193,15 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.channelClass.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'channelClass', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const result = await this.prisma.channelClass.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       await this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
@@ -216,12 +229,18 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.channelClass.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'channelClass', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.channelClass.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.channelClass.delete({
+      const result = await this.prisma.channelClass.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

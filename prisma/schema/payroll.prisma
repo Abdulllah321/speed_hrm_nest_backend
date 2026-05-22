@@ -52,6 +52,8 @@ model Deduction {
 }
 
 model AdvanceSalary {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                 String    @id @default(uuid())
   employeeId         String
   amount             Decimal   @db.Decimal(10, 2)

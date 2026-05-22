@@ -141,10 +141,11 @@ export class ItemController {
     return this.itemService.update(id, updateItemDto);
   }
 
-  @Delete(':id')
-  @Permissions('erp.item.delete')
-  @ApiOperation({ summary: 'Delete item' })
-  async remove(@Param('id') id: string) {
-    return this.itemService.remove(id);
-  }
+  // DISABLED: Items cannot be deleted to maintain data integrity
+  // @Delete(':id')
+  // @Permissions('erp.item.delete')
+  // @ApiOperation({ summary: 'Delete item' })
+  // async remove(@Param('id') id: string) {
+  //   return this.itemService.remove(id);
+  // }
 }

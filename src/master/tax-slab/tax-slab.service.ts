@@ -15,12 +15,15 @@ export class TaxSlabService {
   async list() {
     const items = await this.prisma.taxSlab.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.taxSlab.findUnique({ where: { id } });
+    const item = await this.prisma.taxSlab.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Tax slab not found' };
     return { status: true, data: item };
   }
@@ -161,8 +164,10 @@ export class TaxSlabService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.taxSlab.findUnique({
-        where: { id },
+      const existing = await this.prisma.taxSlab.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Tax slab not found' };
 
@@ -222,12 +227,16 @@ export class TaxSlabService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.taxSlab.findUnique({
-        where: { id },
+      const existing = await this.prisma.taxSlab.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Tax slab not found' };
 
-      await this.prisma.taxSlab.delete({ where: { id } });
+      await this.prisma.taxSlab.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         `Deleted tax slab ${existing.name}`,
@@ -277,8 +286,10 @@ export class TaxSlabService {
 
     for (const id of ids) {
       try {
-        const existing = await this.prisma.taxSlab.findUnique({
-          where: { id },
+        const existing = await this.prisma.taxSlab.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
 
         if (!existing) {
@@ -286,7 +297,9 @@ export class TaxSlabService {
           continue;
         }
 
-        await this.prisma.taxSlab.delete({ where: { id } });
+        await this.prisma.taxSlab.update({ where: { id },
+            data: { isDeleted: true, deletedAt: new Date() }
+        });
 
         runInBackground(
           `Deleted tax slab ${existing.name}`,
