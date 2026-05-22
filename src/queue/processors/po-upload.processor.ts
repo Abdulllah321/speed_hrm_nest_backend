@@ -32,7 +32,7 @@ export class PoUploadProcessor {
 
     @Process()
     async handleUpload(job: Job<any>): Promise<void> {
-        let { uploadId, fileBuffer, filename, userId, tenantId, tenantDbUrl, mode } = job.data;
+        let { uploadId, fileBuffer, filename, userId, tenantId, tenantDbUrl, mode, metadata } = job.data;
         mode = mode || 'import';
 
         if (fileBuffer && (fileBuffer as any).type === 'Buffer' && Array.isArray((fileBuffer as any).data)) {
@@ -79,12 +79,11 @@ export class PoUploadProcessor {
 
                 const allValidationErrors = (Array.isArray(uploadRecord?.errors) ? uploadRecord.errors : []) as any[];
                 const invalidRows = new Set(allValidationErrors.map((e: any) => e.row));
-                const totalToBeProcessed = (uploadRecord?.totalRecords || 0) - invalidRows.size;
 
                 progress.totalRecords = uploadRecord?.totalRecords || 0;
                 progress.failedRecords = invalidRows.size;
 
-                // Collect all valid records — single vendor per file
+                // Collect all valid records
                 const validRecords: PoParsedRecord[] = [];
 
                 await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
@@ -96,14 +95,10 @@ export class PoUploadProcessor {
                     throw new Error('No valid records to import');
                 }
 
-                // Single vendor — use the vendor code from the first valid record
-                const vendorCode = validRecords[0].data.vendorCode!.trim().toUpperCase();
-                const startTime = Date.now();
-
                 try {
-                    await this.createPoForVendor(vendorCode, validRecords, progress, prisma);
+                    await this.createPoWithMetadata(metadata, validRecords, progress, prisma);
                 } catch (err: any) {
-                    this.logger.error(`Failed to create PO for vendor ${vendorCode}: ${err.message}`);
+                    this.logger.error(`Failed to create PO: ${err.message}`);
                     progress.failedRecords += validRecords.length;
                     progress.errors.push({ row: validRecords[0].row, reason: err.message, data: {} });
                 }
@@ -119,49 +114,46 @@ export class PoUploadProcessor {
                 // Validation mode
                 this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Streaming PO validation...' } });
 
-                let validationBatch: PoParsedRecord[] = [];
+                const allParsedRecords: PoParsedRecord[] = [];
                 const allValidationErrors: any[] = [];
 
                 await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
                     totalRecordsCount++;
-                    validationBatch.push(record);
+                    allParsedRecords.push(record);
 
-                    if (validationBatch.length >= 500) {
-                        // Per-row validation only in batches
-                        const batchErrors = validationBatch.flatMap(r => this.validator.validateRecord(r));
-                        allValidationErrors.push(...batchErrors);
-                        successRecordsCount += validationBatch.length - new Set(batchErrors.map(e => e.row)).size;
-                        validationBatch = [];
-
-                        const now = Date.now();
-                        if (now - lastEmitTime > 2000) {
-                            lastEmitTime = now;
-                            await job.progress(10);
-                            this.eventsService.emit({ uploadId, type: 'progress', data: { progress: 10, status: 'validating', message: `Validating: ${totalRecordsCount} rows scanned...` } });
-                        }
+                    const now = Date.now();
+                    if (now - lastEmitTime > 2000) {
+                        lastEmitTime = now;
+                        await job.progress(10);
+                        this.eventsService.emit({ uploadId, type: 'progress', data: { progress: 10, status: 'validating', message: `Scanning PO records: ${totalRecordsCount} rows...` } });
                     }
                 });
 
-                // Final batch + cross-row validation on all records
-                const allRecords = validationBatch; // remaining
-                if (allRecords.length > 0) {
-                    const batchErrors = allRecords.flatMap(r => this.validator.validateRecord(r));
-                    allValidationErrors.push(...batchErrors);
-                    successRecordsCount += allRecords.length - new Set(batchErrors.map(e => e.row)).size;
-                }
+                // 1. Basic field-level validations
+                const basicErrors = allParsedRecords.flatMap(r => this.validator.validateRecord(r));
+                allValidationErrors.push(...basicErrors);
 
-                // Cross-row rules (single vendor, consistent orderType/goodsType)
-                // Re-parse all records for cross-row check (they're already in memory via validationBatch accumulation)
-                // We need all records — re-collect from the full parse above
-                // Since we cleared batches, we need to re-parse for cross-row. Use a lightweight second pass.
-                const allParsedRecords: PoParsedRecord[] = [];
-                await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
-                    allParsedRecords.push(record);
-                });
-                const crossErrors = this.validator.validateRecords(allParsedRecords).filter(
-                    e => !allValidationErrors.some(ex => ex.row === e.row && ex.field === e.field)
-                );
-                allValidationErrors.push(...crossErrors);
+                // 2. Barcode existence checks against DB
+                const barcodes = [...new Set(allParsedRecords.map(r => r.data.barCode?.trim()).filter(Boolean) as string[])];
+                const items = barcodes.length > 0
+                    ? await (prisma as any).item.findMany({
+                        where: { barCode: { in: barcodes } },
+                        select: { id: true, barCode: true },
+                    })
+                    : [];
+                const foundBarcodes = new Set(items.map((i: any) => i.barCode?.trim()));
+
+                for (const record of allParsedRecords) {
+                    const barCode = record.data.barCode?.trim();
+                    if (barCode && !foundBarcodes.has(barCode)) {
+                        allValidationErrors.push({
+                            row: record.row,
+                            field: 'barCode',
+                            value: barCode,
+                            reason: `BarCode "${barCode}" not found in item master.`,
+                        });
+                    }
+                }
 
                 const uniqueFailedRows = new Set(allValidationErrors.map(e => e.row)).size;
                 successRecordsCount = totalRecordsCount - uniqueFailedRows;
@@ -222,7 +214,7 @@ export class PoUploadProcessor {
                     category: 'system', priority: 'urgent', channels: ['inApp'],
                 });
                 this.eventsService.emit({ uploadId, type: 'failed', data: { message: error.message } });
-            } catch (e) {
+            } catch (e: any) {
                 this.logger.error(`Failed to update failure status: ${e.message}`);
             }
         } finally {
@@ -230,47 +222,64 @@ export class PoUploadProcessor {
         }
     }
 
-    private async createPoForVendor(vendorCode: string, records: PoParsedRecord[], progress: PoUploadProgress, prisma: PrismaService): Promise<void> {
-        // Resolve vendor by code
-        const vendor = await (prisma as any).supplier.findFirst({ where: { code: vendorCode } });
-        if (!vendor) throw new Error(`Vendor with code "${vendorCode}" not found`);
+    private async createPoWithMetadata(metadata: any, records: PoParsedRecord[], progress: PoUploadProgress, prisma: PrismaService): Promise<void> {
+        const vendorId = metadata?.vendorId;
+        if (!vendorId) throw new Error('Vendor is required for PO import but none was provided.');
 
-        const orderType = records[0].data.orderType!.toUpperCase();
-        const goodsType = records[0].data.goodsType!.toUpperCase();
+        const vendor = await (prisma as any).supplier.findUnique({ where: { id: vendorId } });
+        if (!vendor) throw new Error(`Supplier with ID "${vendorId}" not found`);
+
+        const orderType = metadata?.orderType?.toUpperCase() || 'LOCAL';
+        const goodsType = metadata?.goodsType?.toUpperCase() || 'CONSUMABLE';
 
         // Enforce vendor type matches order type
         const mismatch = this.validator.validateVendorOrderTypeMatch(vendor.type || 'LOCAL', orderType);
         if (mismatch) throw new Error(mismatch);
 
-        // Resolve all items by unique itemId in one query
-        const itemIds = [...new Set(records.map(r => r.data.itemId!.trim()))];
-        const items = await (prisma as any).item.findMany({
-            where: { itemId: { in: itemIds } },
-            select: { id: true, itemId: true },
-        });
-        const itemMap = new Map(items.map((i: any) => [i.itemId.trim(), i.id]));
+        // Resolve all items by unique barCode in one query
+        const barcodes = [...new Set(records.map(r => r.data.barCode?.trim()).filter(Boolean) as string[])];
+        const items = barcodes.length > 0
+            ? await (prisma as any).item.findMany({
+                where: { barCode: { in: barcodes } },
+                select: { id: true, barCode: true, description: true, unitCost: true, unitPrice: true },
+            })
+            : [];
+        const itemMap = new Map<string, any>(items.map((i: any) => [i.barCode?.trim(), i]));
 
-        const expectedDeliveryDate = records[0].data.expectedDeliveryDate ? new Date(records[0].data.expectedDeliveryDate) : null;
-        const notes = records[0].data.notes || null;
+        const expectedDeliveryDate = metadata?.expectedDeliveryDate ? new Date(metadata.expectedDeliveryDate) : null;
+        const notes = metadata?.notes || null;
 
         let subtotal = new Decimal(0);
         const itemsData: any[] = [];
 
         for (const record of records) {
-            const itemId = record.data.itemId!.trim();
-            const dbItemId = itemMap.get(itemId);
-            if (!dbItemId) {
+            const barCode = record.data.barCode?.trim();
+            const item = barCode ? itemMap.get(barCode) : undefined;
+            if (!item) {
                 progress.failedRecords++;
-                progress.errors.push({ row: record.row, reason: `Item ID "${itemId}" not found in item master`, data: { field: 'itemId', value: itemId } });
+                progress.errors.push({ row: record.row, reason: `BarCode "${barCode}" not found in item master`, data: { field: 'barCode', value: barCode } });
                 continue;
             }
 
             const qty = new Decimal(record.data.quantity!);
-            const price = new Decimal(record.data.unitPrice!);
+            // Price resolution: unitCost > 0 ? unitCost : unitPrice
+            const unitCost = Number(item.unitCost ?? 0);
+            const unitPriceVal = Number(item.unitPrice ?? 0);
+            const resolvedPriceVal = unitCost > 0 ? unitCost : unitPriceVal;
+            const price = new Decimal(resolvedPriceVal);
+
             const lineTotal = qty.mul(price);
             subtotal = subtotal.add(lineTotal);
 
-            itemsData.push({ itemId: dbItemId, description: record.data.description || null, quantity: qty, unitPrice: price, taxPercent: new Decimal(0), discountPercent: new Decimal(0), lineTotal });
+            itemsData.push({
+                itemId: item.id,
+                description: item.description || null,
+                quantity: qty,
+                unitPrice: price,
+                taxPercent: new Decimal(0),
+                discountPercent: new Decimal(0),
+                lineTotal,
+            });
         }
 
         if (itemsData.length === 0) return;

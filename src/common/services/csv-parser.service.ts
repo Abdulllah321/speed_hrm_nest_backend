@@ -25,7 +25,7 @@ export class CsvParserService {
         const strValue = String(value).trim();
 
         // Check for various N/A patterns
-        const naPatterns = ['n/a', 'n / a', 'null', 'none', '-', 'na'];
+        const naPatterns = ['n/a', 'n / a', 'null', 'none', '-', 'na', "NA"];
         if (naPatterns.includes(strValue.toLowerCase()) || strValue === '') {
             return null;
         }

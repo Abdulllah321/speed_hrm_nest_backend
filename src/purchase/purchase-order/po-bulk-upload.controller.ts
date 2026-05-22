@@ -28,14 +28,16 @@ export class PoBulkUploadController {
         const buffer = await file.toBuffer();
         if (buffer.length > 50 * 1024 * 1024) throw new BadRequestException('File size exceeds 50MB limit');
 
-        const result = await this.bulkUploadService.initiateValidation(buffer, file.filename, userId);
+        const { vendorId, orderType, goodsType, expectedDeliveryDate, notes } = (req.query || {}) as any;
+        const result = await this.bulkUploadService.initiateValidation(buffer, file.filename, userId, { vendorId, orderType, goodsType, expectedDeliveryDate, notes });
         return { status: true, message: 'PO validation initiated', data: result };
     }
 
     @Post(':uploadId/confirm')
     @ApiOperation({ summary: 'Confirm and start PO import' })
-    async confirmUpload(@Param('uploadId') uploadId: string, @GetUser('id') userId: string) {
-        const result = await this.bulkUploadService.confirmUpload(uploadId, userId);
+    async confirmUpload(@Param('uploadId') uploadId: string, @GetUser('id') userId: string, @Req() req: any) {
+        const { vendorId, orderType, goodsType, expectedDeliveryDate, notes } = (req.query || {}) as any;
+        const result = await this.bulkUploadService.confirmUpload(uploadId, userId, { vendorId, orderType, goodsType, expectedDeliveryDate, notes });
         return { status: true, message: 'PO import confirmed and started', data: result };
     }
 
@@ -72,11 +74,9 @@ export class PoBulkUploadController {
     @ApiOperation({ summary: 'Download PO CSV template' })
     async downloadTemplate(@Res() res: any) {
         const template = [
-            'Vendor Code,Item ID,Description,Quantity,Unit Price,Order Type,Goods Type,Expected Delivery Date,Notes',
-            '// Rules: One vendor per file | Order Type must be same for all rows | Goods Type must be same for all rows',
-            '// LOCAL vendor → ORDER TYPE must be LOCAL | IMPORT vendor → ORDER TYPE must be IMPORT',
-            'IMP001,00001,Nike Air Max 90,10,5000,IMPORT,FRESH,2026-05-01,Spring collection',
-            'IMP001,00002,Nike Air Force 1,5,4500,IMPORT,FRESH,2026-05-01,',
+            'BarCode,Quantity',
+            '889362319896,80',
+            '198634299720,48',
         ].join('\n');
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="po-upload-template.csv"');
