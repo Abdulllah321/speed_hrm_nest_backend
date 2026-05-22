@@ -2,24 +2,23 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import * as Papa from 'papaparse';
 
-export interface AllianceParsedRecord {
+export interface MerchantParsedRecord {
     row: number;
     data: {
-        seqNo?: string;
-        accountCode?: string;
+        costCentre?: string;
+        tagId?: string;
+        description?: string;
         bank?: string;
-        allianceName?: string;
-        expiry?: string;
-        binNumber?: string;
-        cardName?: string;
-        cardType?: string;
-        discountCapping?: string;
+        merchantCode?: string;
+        commissionRateDecimal?: string;
+        commissionRatePercent?: string;
+        bankGlCode?: string;
     };
 }
 
 @Injectable()
-export class AllianceCsvParserService {
-    private readonly logger = new Logger(AllianceCsvParserService.name);
+export class MerchantCsvParserService {
+    private readonly logger = new Logger(MerchantCsvParserService.name);
 
     private normalizeValue(value: any): string | null {
         if (value === null || value === undefined) return null;
@@ -42,10 +41,11 @@ export class AllianceCsvParserService {
             }
             return null;
         };
-        // A row is empty if both bank and allianceName are missing
-        const bank = getValue(['bank']);
-        const name = getValue(['discountallianceoption', 'discountallianceoptionname', 'alliancename', 'alliancediscountoptionname']);
-        return !bank && !name;
+        // A row is empty if all essential fields like Tag ID, Bank and Merchant Code are missing
+        const tagId = getValue(['tagid', 'tag id', 'locationcode', 'location code']);
+        const bank = getValue(['bank', 'bankname', 'bank name']);
+        const merchantCode = getValue(['merchantcode', 'merchant code', 'code']);
+        return !tagId && !bank && !merchantCode;
     }
 
     private getValue(row: any, keys: string[]): any {
@@ -61,37 +61,23 @@ export class AllianceCsvParserService {
         return null;
     }
 
-    private mapColumns(row: any): AllianceParsedRecord['data'] {
+    private mapColumns(row: any): MerchantParsedRecord['data'] {
         return {
-            seqNo: this.normalizeValue(this.getValue(row, ['S.No', 'SNo', 'S No', 'Seq', 'SeqNo', 'Sequence'])) ?? undefined,
-            accountCode: this.normalizeValue(this.getValue(row, [
-                'Account Sequential Code', 'AccountSequentialCode', 'AccountCode', 'Account Code', 'Code'
+            costCentre: this.normalizeValue(this.getValue(row, ['CostCentre', 'Cost Centre', 'CostCenter', 'Cost Center Tag'])) ?? undefined,
+            tagId: this.normalizeValue(this.getValue(row, ['Tag ID', 'TagID', 'Tag Id', 'Location Code', 'LocationCode'])) ?? undefined,
+            description: this.normalizeValue(this.getValue(row, ['Description', 'description', 'Desc'])) ?? undefined,
+            bank: this.normalizeValue(this.getValue(row, ['Bank', 'BANK', 'Bank Name', 'BankName'])) ?? undefined,
+            merchantCode: this.normalizeValue(this.getValue(row, ['Merchant code', 'MerchantCode', 'Merchant Code', 'Code'])) ?? undefined,
+            commissionRateDecimal: this.normalizeValue(this.getValue(row, [
+                'Commission Rate Decimal', 'CommissionRateDecimal', 'Commission Rate (Decimal)', 'Rate Decimal',
+                'CommissionRate', 'Commission Rate', 'RATE', 'Rate'
             ])) ?? undefined,
-            bank: this.normalizeValue(this.getValue(row, ['BANK', 'Bank', 'bank', 'BankName', 'Bank Name'])) ?? undefined,
-            allianceName: this.normalizeValue(this.getValue(row, [
-                'Discount Alliance Option Name', 'DiscountAllianceOptionName', 'Alliance Name', 'AllianceName',
-                'Discount Alliance Option', 'Alliance Option Name', 'Name'
-            ])) ?? undefined,
-            expiry: this.normalizeValue(this.getValue(row, [
-                'Expiry', 'expiry', 'ExpiryDate', 'Expiry Date', 'End Date', 'EndDate', 'Valid Till'
-            ])) ?? undefined,
-            binNumber: this.normalizeValue(this.getValue(row, [
-                'Card BIN Numbers', 'CardBINNumbers', 'BIN Numbers', 'BINNumbers', 'BIN', 'Bin Number',
-                'BinNumber', 'Card BIN', 'CardBIN'
-            ])) ?? undefined,
-            cardName: this.normalizeValue(this.getValue(row, [
-                'Bank Card Name', 'BankCardName', 'Card Name', 'CardName'
-            ])) ?? undefined,
-            cardType: this.normalizeValue(this.getValue(row, [
-                'Debit/Credit Cards', 'DebitCreditCards', 'Card Type', 'CardType', 'Type'
-            ])) ?? undefined,
-            discountCapping: this.normalizeValue(this.getValue(row, [
-                'Discount Capping', 'DiscountCapping', 'Max Discount', 'MaxDiscount', 'Capping', 'Cap'
-            ])) ?? undefined,
+            commissionRatePercent: this.normalizeValue(this.getValue(row, ['Commission Rate %', 'Commission Rate Percent', 'CommissionRate%', 'Rate Percent', 'Rate %'])) ?? undefined,
+            bankGlCode: this.normalizeValue(this.getValue(row, ['Bank GL Code', 'BankGLCode', 'Bank GL', 'BankGL', 'GL Code', 'GLCode'])) ?? undefined,
         };
     }
 
-    async parseCSVStreaming(fileBuffer: Buffer, onRecord: (record: AllianceParsedRecord) => Promise<void>): Promise<void> {
+    async parseCSVStreaming(fileBuffer: Buffer, onRecord: (record: MerchantParsedRecord) => Promise<void>): Promise<void> {
         return new Promise((resolve, reject) => {
             const csvString = fileBuffer.toString('utf-8');
             let rowCount = 0;
@@ -113,7 +99,7 @@ export class AllianceCsvParserService {
                     parser.resume();
                 },
                 complete: () => {
-                    this.logger.log(`Streamed ${rowCount} Alliance records from CSV`);
+                    this.logger.log(`Streamed ${rowCount} Merchant records from CSV`);
                     resolve();
                 },
                 error: (error) => {
@@ -124,7 +110,7 @@ export class AllianceCsvParserService {
         });
     }
 
-    async parseExcelStreaming(fileBuffer: Buffer, onRecord: (record: AllianceParsedRecord) => Promise<void>): Promise<void> {
+    async parseExcelStreaming(fileBuffer: Buffer, onRecord: (record: MerchantParsedRecord) => Promise<void>): Promise<void> {
         try {
             const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
             const sheetName = workbook.SheetNames[0];
@@ -194,7 +180,7 @@ export class AllianceCsvParserService {
                     rowCount++;
                 }
             }
-            this.logger.log(`Processed ${rowCount} Alliance records from Excel`);
+            this.logger.log(`Processed ${rowCount} Merchant records from Excel`);
         } catch (error) {
             this.logger.error(`Excel processing error: ${error.message}`);
             throw new Error(`Failed to process Excel: ${error.message}`);
@@ -204,7 +190,7 @@ export class AllianceCsvParserService {
     async parseFileStreaming(
         fileBuffer: Buffer,
         filename: string,
-        onRecord: (record: AllianceParsedRecord) => Promise<void>,
+        onRecord: (record: MerchantParsedRecord) => Promise<void>,
     ): Promise<void> {
         const ext = filename.toLowerCase().split('.').pop();
         if (ext === 'csv') {
