@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Re
 import { PayeeService } from './payee.service';
 import { CreatePayeeDto, UpdatePayeeDto } from './dto/payee.dto';
 
-@Controller('payees')
+@Controller('api/payees')
 export class PayeeController {
   constructor(private readonly payeeService: PayeeService) {}
 
