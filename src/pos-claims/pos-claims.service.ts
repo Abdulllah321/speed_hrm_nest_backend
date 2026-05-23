@@ -7,6 +7,8 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 import { StockMovementService } from '../warehouse/stock-movement.service';
 import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class PosClaimsService {
@@ -15,6 +17,8 @@ export class PosClaimsService {
     private activityLogs: ActivityLogsService,
     private stockMovementService: StockMovementService,
     private stockLedgerService: StockLedgerService,
+    private notifications: NotificationsService,
+    private prismaMaster: PrismaMasterService,
   ) { }
 
     private async getCurrentItemRate(tx: any, itemId: string): Promise<number> {
@@ -89,6 +93,21 @@ export class PosClaimsService {
                     userAgent: ctx?.userAgent,
                     status: 'success',
                 }),
+            );
+
+            // 🔔 Notify PLM users about new claim submission
+            runInBackground(
+                'Notify PLM - New Claim',
+                this.notifyPLMUsers({
+                    title: 'New Claim Submitted',
+                    message: `Claim ${claim.claimNumber} submitted for order ${order.orderNumber}. Amount: Rs. ${claimedAmount.toLocaleString()}`,
+                    category: 'claims',
+                    priority: 'normal',
+                    actionType: 'view_claim',
+                    actionPayload: { claimId: claim.id, claimNumber: claim.claimNumber },
+                    entityType: 'PosClaim',
+                    entityId: claim.id,
+                })
             );
 
             return { status: true, data: claim, message: `Claim ${claimNumber} submitted successfully` };
@@ -376,9 +395,9 @@ export class PosClaimsService {
                                 fromLocationId: posLocation.id,
                                 fromWarehouseId: posWarehouseId, // POS location's warehouse
                                 toWarehouseId: plmWarehouseId,   // PLM Warehouse
-                                transferType: 'OUTLET_TO_WAREHOUSE',
-                                status: 'COMPLETED', // Auto-complete for claim returns
-                                notes: `Auto-generated from approved claim ${claim.claimNumber} for order ${salesOrder.orderNumber}. Items returned to warehouse-level inventory.`,
+                                transferType: 'CLAIM_TO_PLM',    // Special type for claims
+                                status: 'PENDING', // ⚡ Changed to PENDING (requires PLM acknowledgment)
+                                notes: `Auto-generated from approved claim ${claim.claimNumber} for order ${salesOrder.orderNumber}. Awaiting PLM acknowledgment before inventory update.`,
                                 createdById: reviewedBy || null,
                                 items: {
                                     create: approvedItems.map(item => ({
@@ -391,82 +410,15 @@ export class PosClaimsService {
                         
                         console.log('✅ Transfer request created:', {
                             id: transferRequest.id,
-                            requestNo: transferRequest.requestNo
+                            requestNo: transferRequest.requestNo,
+                            status: 'PENDING - Awaiting PLM acknowledgment'
                         });
 
-                        // Use the same stock movement service that handles warehouse-to-outlet transfers
-                        // This ensures consistency with existing transfer logic
-                        console.log('🔄 Executing stock movements using StockMovementService...');
+                        // ⚡ DO NOT update inventory yet - wait for PLM acknowledgment
+                        console.log('⏳ Inventory update deferred until PLM acknowledges receipt');
                         
-                        for (const item of approvedItems) {
-                            console.log('🔄 Processing claim return item:', {
-                                itemId: item.itemId,
-                                sku: item.sku,
-                                approvedQty: item.approvedQty,
-                                posLocationId: posLocation.id,
-                                posWarehouseId: posWarehouseId,
-                                plmWarehouseId: plmWarehouseId
-                            });
-
-                            // Step 1: Add item back to POS inventory (customer returned it)
-                            console.log('📥 Step 1: Adding returned item to POS inventory...');
-                            const existingPosStock = await tx.inventoryItem.findFirst({
-                                where: {
-                                    itemId: item.itemId,
-                                    locationId: posLocation.id,
-                                    status: 'AVAILABLE'
-                                }
-                            });
-
-                            if (existingPosStock) {
-                                await tx.inventoryItem.update({
-                                    where: { id: existingPosStock.id },
-                                    data: { quantity: { increment: item.approvedQty } }
-                                });
-                                console.log('✅ POS inventory updated (incremented)');
-                            } else {
-                                await tx.inventoryItem.create({
-                                    data: {
-                                        itemId: item.itemId,
-                                        warehouseId: posWarehouseId,
-                                        locationId: posLocation.id,
-                                        quantity: item.approvedQty,
-                                        status: 'AVAILABLE'
-                                    }
-                                });
-                                console.log('✅ POS inventory created (new entry)');
-                            }
-
-                            // Create INBOUND ledger entry for POS (item received from customer)
-                            await this.stockLedgerService.createEntry({
-                                itemId: item.itemId,
-                                warehouseId: posWarehouseId,
-                                locationId: posLocation.id,
-                                qty: item.approvedQty,
-                                movementType: MovementType.INBOUND,
-                                referenceType: 'CLAIM_RETURN',
-                                referenceId: transferRequest.id,
-                                rate: await this.getCurrentItemRate(tx, item.itemId),
-                            }, tx);
-                            console.log('✅ POS INBOUND ledger entry created');
-
-                            // Step 2: Transfer from POS to PLM Warehouse
-                            console.log('📤 Step 2: Transferring item from POS to PLM warehouse...');
-                            await this.stockMovementService.executeMovement({
-                                itemId: item.itemId,
-                                fromLocationId: posLocation.id,
-                                fromWarehouseId: posWarehouseId,
-                                toWarehouseId: plmWarehouseId,
-                                quantity: item.approvedQty,
-                                type: 'RETURN_TRANSFER',
-                                referenceType: 'CLAIM_TO_PLM',  // Different reference to avoid confusion
-                                referenceId: transferRequest.id,
-                                userId: reviewedBy || undefined,
-                                transaction: tx,  // Pass parent transaction
-                            });
-                            
-                            console.log('✅ Stock movement completed for item:', item.sku);
-                        }
+                        // Note: Inventory will be updated when PLM acknowledges the transfer
+                        // via the acknowledgeClaim endpoint
 
                         // Link transfer request to claim
                         await tx.posClaim.update({
@@ -586,6 +538,41 @@ export class PosClaimsService {
                 }),
             );
 
+            // 🔔 Notify POS location about claim decision
+            if (anyApproved) {
+                if (claim.salesOrder.locationId) {
+                    runInBackground(
+                        'Notify POS - Claim Approved',
+                        this.notifyLocationUsers(claim.salesOrder.locationId, {
+                            title: '✅ Claim Approved',
+                            message: `Claim ${claim.claimNumber} has been approved. Amount: Rs. ${totalApproved.toLocaleString()}. Exchange voucher generated.`,
+                            category: 'claims',
+                            priority: 'high',
+                            actionType: 'view_claim',
+                            actionPayload: { claimId: claim.id, claimNumber: claim.claimNumber },
+                            entityType: 'PosClaim',
+                            entityId: claim.id,
+                        })
+                    );
+                }
+            } else {
+                if (claim.salesOrder.locationId) {
+                    runInBackground(
+                        'Notify POS - Claim Rejected',
+                        this.notifyLocationUsers(claim.salesOrder.locationId, {
+                            title: '❌ Claim Rejected',
+                            message: `Claim ${claim.claimNumber} has been rejected. No amount approved.`,
+                            category: 'claims',
+                            priority: 'high',
+                            actionType: 'view_claim',
+                            actionPayload: { claimId: claim.id, claimNumber: claim.claimNumber },
+                            entityType: 'PosClaim',
+                            entityId: claim.id,
+                        })
+                    );
+                }
+            }
+
             return { status: true, data: updated.data, message: `Claim decision submitted${anyApproved ? '. Transfer completed automatically - inventory updated.' : ''}` };
         } catch (error: any) {
             runInBackground(
@@ -653,6 +640,177 @@ export class PosClaimsService {
                 }),
             );
             throw error;
+        }
+    }
+
+    async rejectClaim(id: string, dto: { rejectionReason: string; notes?: string }, rejectedBy?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
+            const claim = await this.prisma.posClaim.findUnique({
+                where: { id },
+                include: { items: true, salesOrder: true }
+            });
+            
+            if (!claim) throw new NotFoundException('Claim not found');
+            
+            if (!['SUBMITTED', 'UNDER_REVIEW'].includes(claim.status)) {
+                throw new BadRequestException(`Cannot reject claim in status: ${claim.status}`);
+            }
+
+            // Update claim and all items to REJECTED
+            await this.prisma.$transaction(async (tx) => {
+                // Update all claim items to REJECTED
+                await tx.posClaimItem.updateMany({
+                    where: { claimId: id },
+                    data: {
+                        itemStatus: 'REJECTED',
+                        approvedQty: 0,
+                        approvedAmount: 0,
+                        reviewNotes: dto.rejectionReason
+                    }
+                });
+
+                // Update claim to REJECTED
+                await tx.posClaim.update({
+                    where: { id },
+                    data: {
+                        status: 'REJECTED',
+                        approvedAmount: 0,
+                        reviewNotes: dto.notes || dto.rejectionReason,
+                        reviewedAt: new Date(),
+                        reviewedBy: rejectedBy || null,
+                    }
+                });
+            });
+
+            const updated = await this.findOne(id);
+
+            runInBackground(
+                'Reject POS Claim',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-claims',
+                    entity: 'PosClaim',
+                    entityId: id,
+                    description: `Rejected POS claim ${claim.claimNumber}. Reason: ${dto.rejectionReason}`,
+                    newValues: JSON.stringify(dto),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            // 🔔 Notify POS location about rejection
+            if (claim.salesOrder.locationId) {
+                runInBackground(
+                    'Notify POS - Claim Rejected',
+                    this.notifyLocationUsers(claim.salesOrder.locationId, {
+                        title: '❌ Claim Rejected',
+                        message: `Claim ${claim.claimNumber} has been rejected. Reason: ${dto.rejectionReason}. Product ready for pickup.`,
+                        category: 'claims',
+                        priority: 'high',
+                        actionType: 'view_claim',
+                        actionPayload: { claimId: claim.id, claimNumber: claim.claimNumber },
+                        entityType: 'PosClaim',
+                        entityId: claim.id,
+                    })
+                );
+            }
+
+            return { 
+                status: true, 
+                data: updated.data, 
+                message: 'Claim rejected successfully. No inventory changes made.' 
+            };
+        } catch (error: any) {
+            runInBackground(
+                'Reject POS Claim (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-claims',
+                    entity: 'PosClaim',
+                    entityId: id,
+                    description: `Failed to reject POS claim`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(dto),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
+            throw error;
+        }
+    }
+
+    // 🔔 Helper: Notify all PLM users (ERP users with claims permission)
+    private async notifyPLMUsers(notificationData: {
+        title: string;
+        message: string;
+        category: string;
+        priority: 'low' | 'normal' | 'high' | 'urgent';
+        actionType?: string;
+        actionPayload?: any;
+        entityType?: string;
+        entityId?: string;
+    }) {
+        try {
+            // Get all users with ERP claims permission
+            const plmUsers = await this.prismaMaster.user.findMany({
+                where: {
+                    role: {
+                        permissions: {
+                            some: {
+                                permission: {
+                                    name: 'erp.claims.read'
+                                }
+                            }
+                        }
+                    }
+                },
+                select: { id: true }
+            });
+
+            // Send notification to each PLM user
+            for (const user of plmUsers) {
+                await this.notifications.create({
+                    userId: user.id,
+                    ...notificationData,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to notify PLM users:', error);
+        }
+    }
+
+    // 🔔 Helper: Notify users at specific location (POS users)
+    private async notifyLocationUsers(locationId: string, notificationData: {
+        title: string;
+        message: string;
+        category: string;
+        priority: 'low' | 'normal' | 'high' | 'urgent';
+        actionType?: string;
+        actionPayload?: any;
+        entityType?: string;
+        entityId?: string;
+    }) {
+        try {
+            // Get all users assigned to this location
+            const locationUsers = await this.prismaMaster.user.findMany({
+                // @ts-ignore
+                where: { terminal: { locationId: locationId } },
+                select: { id: true }
+            });
+
+            // Send notification to each location user
+            for (const user of locationUsers) {
+                await this.notifications.create({
+                    userId: user.id,
+                    ...notificationData,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to notify location users:', error);
         }
     }
 }

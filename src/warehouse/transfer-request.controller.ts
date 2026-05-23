@@ -107,4 +107,16 @@ export class TransferRequestController {
         });
         return { status: true, data, message: 'Source approval completed. Awaiting destination acceptance.' };
     }
+
+    @Post(':id/acknowledge-claim')
+    @Permissions('erp.inventory.claims.acknowledge', 'erp.inventory.transfer.approve')
+    @ApiOperation({ summary: 'PLM acknowledges receipt of claim items and updates inventory' })
+    async acknowledgeClaim(@Param('id') id: string, @Body() dto: { userId?: string }, @Req() req: any) {
+        const data = await this.transferRequestService.acknowledgeClaim(id, dto.userId, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+        return { status: true, data, message: 'Claim acknowledged successfully. PLM inventory updated.' };
+    }
 }
