@@ -69,4 +69,14 @@ export class PosClaimsController {
             userAgent: req.headers['user-agent'],
         });
     }
+
+    @Post(':id/reject')
+    @ApiOperation({ summary: 'Reject a claim completely' })
+    rejectClaim(@Param('id') id: string, @Body() dto: any, @Req() req: any) {
+        return this.service.rejectClaim(id, dto, req.user?.id, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
 }
