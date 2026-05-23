@@ -4,9 +4,12 @@ import { CreateHsCodeDto, UpdateHsCodeDto } from './hs-code.dto';
 
 import { ActivityLogsService } from '../../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
+
 @Injectable()
 export class HsCodeService {
     constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private readonly prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) { }
@@ -30,12 +33,15 @@ export class HsCodeService {
     async list() {
         const items = await this.prisma.hsCode.findMany({
             orderBy: [{ hsCode: 'asc' }],
+            where: { isDeleted: false }
         });
         return { status: true, data: items };
     }
 
     async get(id: string) {
-        const item = await this.prisma.hsCode.findUnique({ where: { id } });
+        const item = await this.prisma.hsCode.findFirst({ where: { id,
+            isDeleted: false
+        } });
         if (!item) {
             throw new NotFoundException('HS Code not found');
         }
@@ -61,8 +67,13 @@ export class HsCodeService {
     }
 
     async remove(id: string) {
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'hsCode', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
         await this.get(id);
-        await this.prisma.hsCode.delete({ where: { id } });
+        await this.prisma.hsCode.update({ where: { id },
+            data: { isDeleted: true, deletedAt: new Date() }
+        });
         return { status: true };
     }
 }

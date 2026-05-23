@@ -59,8 +59,10 @@ export class AdvanceSalaryService {
           ? level.departmentId
           : employee.departmentId;
       if (!departmentId) return null;
-      const department = await this.prisma.department.findUnique({
-        where: { id: departmentId },
+      const department = await this.prisma.department.findFirst({
+        where: { id: departmentId,
+            isDeleted: false
+        },
         select: { headId: true },
       });
       if (!department?.headId) return null;
@@ -77,8 +79,10 @@ export class AdvanceSalaryService {
           ? level.subDepartmentId
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
-      const subDepartment = await this.prisma.subDepartment.findUnique({
-        where: { id: subDepartmentId },
+      const subDepartment = await this.prisma.subDepartment.findFirst({
+        where: { id: subDepartmentId,
+            isDeleted: false
+        },
         select: { headId: true },
       });
       if (!subDepartment?.headId) return null;
@@ -206,11 +210,15 @@ export class AdvanceSalaryService {
           select: { id: true, firstName: true, lastName: true, email: true },
         }),
         this.prisma.department.findMany({
-          where: { id: { in: Array.from(deptIds) } },
+          where: { id: { in: Array.from(deptIds) },
+              isDeleted: false
+        },
           select: { id: true, name: true },
         }),
         this.prisma.subDepartment.findMany({
-          where: { id: { in: Array.from(subDeptIds) } },
+          where: { id: { in: Array.from(subDeptIds) },
+              isDeleted: false
+        },
           select: { id: true, name: true },
         }),
       ]);
@@ -284,14 +292,18 @@ export class AdvanceSalaryService {
           select: { id: true, firstName: true, lastName: true, email: true },
         }),
         advanceSalary.employee?.departmentId
-          ? this.prisma.department.findUnique({
-              where: { id: advanceSalary.employee.departmentId },
+          ? this.prisma.department.findFirst({
+              where: { id: advanceSalary.employee.departmentId,
+                  isDeleted: false
+            },
               select: { id: true, name: true },
             })
           : null,
         advanceSalary.employee?.subDepartmentId
-          ? this.prisma.subDepartment.findUnique({
-              where: { id: advanceSalary.employee.subDepartmentId },
+          ? this.prisma.subDepartment.findFirst({
+              where: { id: advanceSalary.employee.subDepartmentId,
+                  isDeleted: false
+            },
               select: { id: true, name: true },
             })
           : null,
@@ -1084,16 +1096,17 @@ export class AdvanceSalaryService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.advanceSalary.findUnique({
-        where: { id },
+      const existing = await this.prisma.advanceSalary.findFirst({
+        where: { id, isDeleted: false },
       });
 
       if (!existing) {
         return { status: false, message: 'Advance salary not found' };
       }
 
-      await this.prisma.advanceSalary.delete({
+      await this.prisma.advanceSalary.update({
         where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
       });
 
       // Log activity

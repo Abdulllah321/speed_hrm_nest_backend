@@ -3,17 +3,21 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class LocationService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
   async listActive() {
     return this.prisma.location.findMany({
-      where: { status: 'active' },
+      where: { status: 'active',
+          isDeleted: false
+    },
       select: {
         id: true,
         name: true,
@@ -35,12 +39,15 @@ export class LocationService {
         }
       },
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     if (items?.length > 0) {
       for (const item of items) {
         if (item?.cityId) {
-          const updatedItem = await this.prisma.city.findUnique({
-            where: { id: item.cityId },
+          const updatedItem = await this.prisma.city.findFirst({
+            where: { id: item.cityId,
+                isDeleted: false
+            },
           });
           item.city = updatedItem;
         }
@@ -50,12 +57,16 @@ export class LocationService {
   }
 
   async get(id: string) {
-    const item: any = await this.prisma.location.findUnique({
-      where: { id },
+    const item: any = await this.prisma.location.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (item?.cityId) {
-      const updatedItem = await this.prisma.city.findUnique({
-        where: { id: item.cityId },
+      const updatedItem = await this.prisma.city.findFirst({
+        where: { id: item.cityId,
+            isDeleted: false
+        },
       });
       item.city = updatedItem;
     }
@@ -122,8 +133,10 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.location.findUnique({
-        where: { id },
+      const existing = await this.prisma.location.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const updated = await this.prisma.location.update({
         where: { id },
@@ -191,12 +204,18 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.location.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'location', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.location.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const removed = await this.prisma.location.delete({
+      const removed = await this.prisma.location.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Location',
@@ -309,8 +328,10 @@ export class LocationService {
       return { status: false, message: 'No locations to update' };
     try {
       for (const i of items) {
-        const existing = await this.prisma.location.findUnique({
-          where: { id: i.id },
+        const existing = await this.prisma.location.findFirst({
+          where: { id: i.id,
+              isDeleted: false
+        },
         });
         await this.prisma.location.update({
           where: { id: i.id },
@@ -372,12 +393,20 @@ export class LocationService {
     if (!ids?.length)
       return { status: false, message: 'No locations to delete' };
     try {
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'location', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
       const existing = await this.prisma.location.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids },
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.location.deleteMany({
+      const result = await this.prisma.location.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, message: 'Locations deleted', data: result };
       runInBackground(
         'Bulk Delete Locations',
@@ -423,6 +452,7 @@ export class LocationService {
           status: 'active',
           latitude: { not: null },
           longitude: { not: null },
+            isDeleted: false
         },
         select: {
           id: true,

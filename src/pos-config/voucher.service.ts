@@ -41,7 +41,7 @@ export class VoucherService {
         search?: string;
     }) {
         try {
-            const where: any = {};
+            const where: any = { isDeleted: false };
             if (filters?.voucherType) where.voucherType = filters.voucherType;
             if (filters?.isActive !== undefined) where.isActive = filters.isActive;
             if (filters?.search) {
@@ -277,8 +277,8 @@ export class VoucherService {
         customerId?: string,
     ) {
         try {
-            const voucher = await this.prisma.voucher.findUnique({
-                where: { code: code.toUpperCase() },
+            const voucher = await this.prisma.voucher.findFirst({
+                where: { code: code.toUpperCase(), isDeleted: false },
                 include: {
                     locations: true,
                     redemptions: { select: { amountUsed: true } },
@@ -481,13 +481,13 @@ export class VoucherService {
     // ── Void a voucher ────────────────────────────────────────────
     async voidVoucher(id: string, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const voucher = await this.prisma.voucher.findUnique({ where: { id } });
+            const voucher = await this.prisma.voucher.findFirst({ where: { id, isDeleted: false } });
             if (!voucher) return { status: false, message: 'Voucher not found' };
             if (voucher.isRedeemed) return { status: false, message: 'Cannot void a redeemed voucher' };
 
             await this.prisma.voucher.update({
                 where: { id },
-                data: { isActive: false },
+                data: { isActive: false, isDeleted: true, deletedAt: new Date() },
             });
 
             await this.prisma.voucherTransaction.create({
@@ -557,8 +557,8 @@ export class VoucherService {
     // ── Get voucher detail ────────────────────────────────────────
     async getVoucher(id: string) {
         try {
-            const voucher = await this.prisma.voucher.findUnique({
-                where: { id },
+            const voucher = await this.prisma.voucher.findFirst({
+                where: { id, isDeleted: false },
                 include: {
                     locations: { include: { location: { select: { id: true, name: true, code: true } } } },
                     transactions: { orderBy: { createdAt: 'desc' } },

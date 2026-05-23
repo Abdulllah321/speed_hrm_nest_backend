@@ -354,14 +354,23 @@ export class PurchaseInvoiceService {
     }
   }
 
+  /**
+   * Delete a purchase invoice (soft delete for DRAFT invoices only)
+   * Business Rules:
+   * - Only DRAFT invoices can be deleted
+   * - Invoices with payments cannot be deleted
+   * - APPROVED invoices are protected from deletion
+   */
   async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
       const invoice = await this.findOne(id);
 
+      // Prevent deletion of approved invoices
       if (invoice.status === 'APPROVED') {
         throw new BadRequestException('Cannot delete approved invoice');
       }
 
+      // Prevent deletion of invoices with payments
       if (Number(invoice.paidAmount) > 0) {
         throw new BadRequestException('Cannot delete invoice with payments');
       }

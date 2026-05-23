@@ -3,11 +3,13 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 
 @Injectable()
 export class LeavesPolicyService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -17,11 +19,13 @@ export class LeavesPolicyService {
       orderBy: { createdAt: 'desc' },
       include: {
         leaveTypes: {
+          where: { isDeleted: false },
           include: {
             leaveType: true,
           },
         },
       },
+        where: { isDeleted: false }
     });
     // Transform the data to include leaveTypeName
     const transformedItems = items.map((item) => ({
@@ -36,10 +40,13 @@ export class LeavesPolicyService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.leavesPolicy.findUnique({
-      where: { id },
+    const item = await this.prisma.leavesPolicy.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: {
         leaveTypes: {
+          where: { isDeleted: false },
           include: {
             leaveType: true,
           },
@@ -78,7 +85,7 @@ export class LeavesPolicyService {
       // If setting as default, unset all other policies first
       if (body.isDefault) {
         await this.prisma.leavesPolicy.updateMany({
-          where: { isDefault: true },
+          where: { isDefault: true, isDeleted: false },
           data: { isDefault: false },
         });
       }
@@ -114,10 +121,13 @@ export class LeavesPolicyService {
       }
 
       // Fetch the created record with leaveTypes included
-      const createdWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
-        where: { id: created.id },
+      const createdWithLeaveTypes = await this.prisma.leavesPolicy.findFirst({
+        where: { id: created.id,
+            isDeleted: false
+        },
         include: {
           leaveTypes: {
+            where: { isDeleted: false },
             include: {
               leaveType: true,
             },
@@ -239,13 +249,20 @@ export class LeavesPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'leavesPolicy', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.leavesPolicy.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing)
         return { status: false, message: 'Leaves policy not found' };
 
-      await this.prisma.leavesPolicy.delete({ where: { id } });
+      await this.prisma.leavesPolicy.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Delete Record',
@@ -305,8 +322,10 @@ export class LeavesPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
-        where: { id },
+      const existing = await this.prisma.leavesPolicy.findFirst({
+        where: { id,
+            isDeleted: false
+        },
         include: { leaveTypes: true },
       });
       if (!existing)
@@ -315,7 +334,7 @@ export class LeavesPolicyService {
       // If setting as default, unset all other policies first
       if (body.isDefault === true && !existing.isDefault) {
         await this.prisma.leavesPolicy.updateMany({
-          where: { isDefault: true },
+          where: { isDefault: true, isDeleted: false },
           data: { isDefault: false },
         });
       }
@@ -344,8 +363,9 @@ export class LeavesPolicyService {
       });
 
       if (body.leaveTypes) {
-        await this.prisma.leavesPolicyLeaveType.deleteMany({
+        await this.prisma.leavesPolicyLeaveType.updateMany({
           where: { leavesPolicyId: id },
+            data: { isDeleted: true, deletedAt: new Date() }
         });
         if (body.leaveTypes.length) {
           await this.prisma.leavesPolicyLeaveType.createMany({
@@ -360,10 +380,13 @@ export class LeavesPolicyService {
       }
 
       // Fetch the updated record with leaveTypes included
-      const updatedWithLeaveTypes = await this.prisma.leavesPolicy.findUnique({
-        where: { id },
+      const updatedWithLeaveTypes = await this.prisma.leavesPolicy.findFirst({
+        where: { id,
+            isDeleted: false
+        },
         include: {
           leaveTypes: {
+            where: { isDeleted: false },
             include: {
               leaveType: true,
             },
@@ -432,9 +455,15 @@ export class LeavesPolicyService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.leavesPolicy.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'leavesPolicy', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      await this.prisma.leavesPolicy.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Bulk Delete Records',
@@ -529,8 +558,10 @@ export class LeavesPolicyService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leavesPolicy.findUnique({
-        where: { id },
+      const existing = await this.prisma.leavesPolicy.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Leaves policy not found' };
@@ -538,7 +569,7 @@ export class LeavesPolicyService {
 
       // Unset all other policies as default
       await this.prisma.leavesPolicy.updateMany({
-        where: { isDefault: true },
+        where: { isDefault: true, isDeleted: false },
         data: { isDefault: false },
       });
 

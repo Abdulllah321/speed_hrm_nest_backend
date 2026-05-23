@@ -14,12 +14,15 @@ export class ProvidentFundService {
   async list() {
     const items = await this.prisma.providentFund.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.providentFund.findUnique({ where: { id } });
+    const item = await this.prisma.providentFund.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Provident fund not found' };
     return { status: true, data: item };
   }
@@ -131,8 +134,10 @@ export class ProvidentFundService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.providentFund.findUnique({
-        where: { id },
+      const existing = await this.prisma.providentFund.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing)
         return { status: false, message: 'Provident fund not found' };
@@ -189,12 +194,16 @@ export class ProvidentFundService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.providentFund.findUnique({
-        where: { id },
+      const existing = await this.prisma.providentFund.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing)
         return { status: false, message: 'Provident fund not found' };
-      await this.prisma.providentFund.delete({ where: { id } });
+      await this.prisma.providentFund.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({

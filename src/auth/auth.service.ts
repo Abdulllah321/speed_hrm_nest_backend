@@ -36,7 +36,7 @@ function parseExpiryToMs(expiry: string) {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
+  private readonly logger: Logger;
 
   constructor(
     private prismaMaster: PrismaMasterService,
@@ -45,7 +45,9 @@ export class AuthService {
     @Optional() private prisma: PrismaService,
     private encryptionService: EncryptionService,
     private posSessionService: PosSessionService,
-  ) {}
+  ) {
+    this.logger = new Logger(AuthService.name);
+  }
 
   async login(
     email: string,

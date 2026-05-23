@@ -1,4 +1,6 @@
 model Warehouse {
+  isDeleted            Boolean             @default(false)
+  deletedAt            DateTime?
   id                   String              @id @default(uuid())
   code                 String              @unique
   name                 String
@@ -31,6 +33,8 @@ model Warehouse {
 }
 
 model Location {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                        String                     @id @default(uuid())
   name                      String                     @unique
   code                      String                     @unique @default(cuid())

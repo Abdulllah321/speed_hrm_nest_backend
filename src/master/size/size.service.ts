@@ -30,6 +30,7 @@ export class SizeService {
 
     const sizes = await this.prisma.size.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -56,8 +57,10 @@ export class SizeService {
   }
 
   async getSizeById(id: string) {
-    const size = await this.prisma.size.findUnique({
-      where: { id },
+    const size = await this.prisma.size.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!size) return { status: false, message: 'Size not found' };
 
@@ -113,8 +116,10 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.size.findUnique({
-        where: { id },
+      const existing = await this.prisma.size.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const size = await this.prisma.size.update({
         where: { id },
@@ -190,9 +195,10 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.size.deleteMany({
+      const result = await this.prisma.size.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk deleted sizes (${result.count})',
         this.activityLogs.log({
@@ -223,10 +229,14 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.size.findUnique({
-        where: { id },
+      const existing = await this.prisma.size.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.size.delete({ where: { id } });
+      const result = await this.prisma.size.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Deleted size ${existing?.name}',

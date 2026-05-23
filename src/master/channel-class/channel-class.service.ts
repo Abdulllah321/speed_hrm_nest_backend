@@ -30,6 +30,7 @@ private prismaMaster: PrismaMasterService,
 
     const channelClasses = await this.prisma.channelClass.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -56,8 +57,10 @@ private prismaMaster: PrismaMasterService,
   }
 
   async getChannelClassById(id: string) {
-    const item = await this.prisma.channelClass.findUnique({
-      where: { id },
+    const item = await this.prisma.channelClass.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Channel Class not found' };
 
@@ -116,8 +119,10 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.channelClass.findUnique({
-        where: { id },
+      const existing = await this.prisma.channelClass.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const result = await this.prisma.channelClass.update({
         where: { id },
@@ -196,9 +201,10 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.channelClass.deleteMany({
+      const result = await this.prisma.channelClass.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk deleted channel classes (${result.count})',
         this.activityLogs.log({
@@ -229,12 +235,15 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.channelClass.findUnique({
-        where: { id },
+      const existing = await this.prisma.channelClass.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.channelClass.delete({
+      const result = await this.prisma.channelClass.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Deleted channel class ${existing?.name}',

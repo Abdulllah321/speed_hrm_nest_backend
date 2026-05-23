@@ -1,4 +1,6 @@
 model Designation {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                     @id @default(uuid())
   name                   String                     @unique
   status                 String                     @default("active")
@@ -11,6 +13,8 @@ model Designation {
 }
 
 model Category {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id               String     @id @default(uuid())
   name             String
   parentId         String?
@@ -26,6 +30,8 @@ model Category {
 }
 
 model Allocation {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String       @id @default(uuid())
   name        String       @unique
   status      String       @default("active")
@@ -37,6 +43,8 @@ model Allocation {
 }
 
 model JobType {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -46,6 +54,8 @@ model JobType {
 }
 
 model Institute {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                  @id @default(uuid())
   name                   String                  @unique
   status                 String                  @default("active")
@@ -56,6 +66,8 @@ model Institute {
 }
 
 model Qualification {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                  @id @default(uuid())
   name                   String                  @unique
   status                 String                  @default("active")
@@ -66,6 +78,8 @@ model Qualification {
 }
 
 model MaritalStatus {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String     @id @default(uuid())
   name        String     @unique
   status      String     @default("active")
@@ -100,6 +114,8 @@ model Country {
 }
 
 model City {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                    @id @default(uuid())
   name                   String
   countryId              String
@@ -135,6 +151,8 @@ model State {
 }
 
 model AllowanceHead {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id              String   @id @default(uuid())
   name            String   @unique
   calculationType String   @default("Amount")
@@ -147,6 +165,8 @@ model AllowanceHead {
 }
 
 model DeductionHead {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -156,6 +176,8 @@ model DeductionHead {
 }
 
 model LoanType {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -165,6 +187,8 @@ model LoanType {
 }
 
 model LeaveType {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id             String                  @id @default(uuid())
   name           String                  @unique
   status         String                  @default("active")
@@ -175,6 +199,8 @@ model LeaveType {
 }
 
 model LeavesPolicy {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                      String                  @id @default(uuid())
   name                    String                  @unique
   details                 String?
@@ -193,6 +219,8 @@ model LeavesPolicy {
 }
 
 model LeavesPolicyLeaveType {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id             String       @id @default(uuid())
   leavesPolicyId String
   leaveTypeId    String
@@ -206,6 +234,8 @@ model LeavesPolicyLeaveType {
 }
 
 model Equipment {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                 String              @id @default(uuid())
   name               String              @unique
   equipmentType      String              @default("other")
@@ -218,6 +248,8 @@ model Equipment {
 }
 
 model SalaryBreakup {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   details     String?
@@ -229,6 +261,8 @@ model SalaryBreakup {
 }
 
 model TaxSlab {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String
   minAmount   Decimal
@@ -242,6 +276,8 @@ model TaxSlab {
 }
 
 model BonusType {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id              String   @id @default(uuid())
   name            String   @unique
   calculationType String   @default("Amount")
@@ -265,6 +301,8 @@ model ApprovalSetting {
 }
 
 model Department {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                     @id @default(uuid())
   name                   String                     @unique
   allocationId           String?
@@ -281,6 +319,8 @@ model Department {
 }
 
 model SubDepartment {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id           String     @id @default(uuid())
   name         String
   departmentId String
@@ -296,6 +336,8 @@ model SubDepartment {
 }
 
 model EOBI {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                   String   @id @default(uuid())
   name                 String
   eobiId               String?
@@ -311,6 +353,8 @@ model EOBI {
 }
 
 model EmployeeGrade {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String     @id @default(uuid())
   grade       String     @unique
   status      String     @default("active")
@@ -321,6 +365,8 @@ model EmployeeGrade {
 }
 
 model EmployeeStatus {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String     @id @default(uuid())
   status      String     @unique
   statusType  String     @default("active")
@@ -331,6 +377,8 @@ model EmployeeStatus {
 }
 
 model ProvidentFund {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   percentage  Decimal
@@ -341,6 +389,8 @@ model ProvidentFund {
 }
 
 model WorkingHoursPolicy {
+  isDeleted                    Boolean    @default(false)
+  deletedAt                    DateTime?
   id                           String     @id @default(uuid())
   name                         String     @unique
   startWorkingHours            String
@@ -382,6 +432,8 @@ model FileUpload {
 }
 
 model Holiday {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   dateFrom    DateTime
@@ -393,6 +445,8 @@ model Holiday {
 }
 
 model Bank {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                  String   @id @default(uuid())
   name                String   @unique
   code                String?  @unique
@@ -405,6 +459,8 @@ model Bank {
 }
 
 model TaxRate1 {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id        String   @id @default(uuid())
   taxRate1  Float    @default(0)
   createdAt DateTime @default(now())
@@ -412,6 +468,8 @@ model TaxRate1 {
 }
 
 model RebateNature {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                      String   @id @default(uuid())
   name                    String   @unique
   type                    String   @default("other")
@@ -428,6 +486,8 @@ model RebateNature {
 }
 
 model SocialSecurityInstitution {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                    String                               @id @default(uuid())
   code                  String                               @unique
   name                  String                               @unique
@@ -452,6 +512,8 @@ model SocialSecurityInstitution {
 }
 
 model SocialSecurityEmployerRegistration {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                    String                               @id @default(uuid())
   companyId             String
   institutionId         String
@@ -488,6 +550,8 @@ model SocialSecurityEmployerRegistration {
 }
 
 model SocialSecurityEmployeeRegistration {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                             @id @default(uuid())
   companyId              String
   institutionId          String
@@ -529,6 +593,8 @@ model SocialSecurityEmployeeRegistration {
 }
 
 model SocialSecurityContribution {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id                     String                             @id @default(uuid())
   companyId              String
   institutionId          String
@@ -572,6 +638,8 @@ model SocialSecurityContribution {
 }
 
 model Brand {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String     @id @default(uuid())
   name        String     @unique
   status      String     @default("active")
@@ -583,6 +651,8 @@ model Brand {
 }
 
 model Division {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String
   brandId     String
@@ -597,6 +667,8 @@ model Division {
 }
 
 model UnitOfMeasurement {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id           String   @id @default(uuid())
   name         String   @unique
   abbreviation String   @unique
@@ -607,6 +679,8 @@ model UnitOfMeasurement {
 }
 
 model Gender {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -617,6 +691,8 @@ model Gender {
 }
 
 model Size {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -627,6 +703,8 @@ model Size {
 }
 
 model Silhouette {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -637,6 +715,8 @@ model Silhouette {
 }
 
 model ChannelClass {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -647,6 +727,8 @@ model ChannelClass {
 }
 
 model Color {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -657,6 +739,8 @@ model Color {
 }
 
 model Segment {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -667,6 +751,8 @@ model Segment {
 }
 
 model ItemClass {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String         @id @default(uuid())
   name        String         @unique
   status      String         @default("active")
@@ -678,6 +764,8 @@ model ItemClass {
 }
 
 model ItemSubclass {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String    @id @default(uuid())
   name        String
   itemClassId String
@@ -692,6 +780,8 @@ model ItemSubclass {
 }
 
 model Season {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -702,6 +792,8 @@ model Season {
 }
 
 model OldSeason {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id          String   @id @default(uuid())
   name        String   @unique
   status      String   @default("active")
@@ -711,6 +803,8 @@ model OldSeason {
 }
 
 model Pos {
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
   id           String       @id @default(uuid())
   posId        String
   terminalCode String       @unique

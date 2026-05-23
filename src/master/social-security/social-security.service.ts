@@ -13,10 +13,12 @@ import {
 } from './dto/social-security.dto';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class SocialSecurityService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
@@ -34,14 +36,17 @@ export class SocialSecurityService {
           },
         },
       },
+        where: { isDeleted: false }
     });
 
     return { status: true, data: items };
   }
 
   async getInstitution(id: string) {
-    const item = await this.prisma.socialSecurityInstitution.findUnique({
-      where: { id },
+    const item = await this.prisma.socialSecurityInstitution.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: {
         employerRegistrations: true,
         employeeRegistrations: true,
@@ -114,8 +119,10 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prisma.socialSecurityInstitution.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityInstitution.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing) return { status: false, message: 'Institution not found' };
       const updated = await this.prisma.socialSecurityInstitution.update({
@@ -179,14 +186,20 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'socialSecurityInstitution', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
       const existing =
-        await this.prisma.socialSecurityInstitution.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityInstitution.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing) return { status: false, message: 'Institution not found' };
-      await this.prisma.socialSecurityInstitution.delete({
+      await this.prisma.socialSecurityInstitution.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
@@ -247,8 +260,10 @@ export class SocialSecurityService {
 
   async getEmployerRegistration(id: string) {
     const item =
-      await this.prisma.socialSecurityEmployerRegistration.findUnique({
-        where: { id },
+      await this.prisma.socialSecurityEmployerRegistration.findFirst({
+        where: { id,
+            isDeleted: false
+        },
         include: {
           institution: true,
           employeeRegistrations: true,
@@ -341,8 +356,10 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prisma.socialSecurityEmployerRegistration.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityEmployerRegistration.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing)
         return { status: false, message: 'Employer registration not found' };
@@ -426,15 +443,21 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'socialSecurityEmployerRegistration', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
       const existing =
-        await this.prisma.socialSecurityEmployerRegistration.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityEmployerRegistration.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing)
         return { status: false, message: 'Employer registration not found' };
-      await this.prisma.socialSecurityEmployerRegistration.delete({
+      await this.prisma.socialSecurityEmployerRegistration.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
@@ -522,7 +545,9 @@ export class SocialSecurityService {
     // Fetch departments from Master DB for these employees
     const deptIds = employees.map((e) => e.departmentId).filter(Boolean);
     const departments = await this.prisma.department.findMany({
-      where: { id: { in: deptIds } },
+      where: { id: { in: deptIds },
+          isDeleted: false
+    },
     });
     const deptMap = departments.reduce(
       (acc, dept) => {
@@ -545,8 +570,10 @@ export class SocialSecurityService {
 
   async getEmployeeRegistration(id: string) {
     const item =
-      await this.prisma.socialSecurityEmployeeRegistration.findUnique({
-        where: { id },
+      await this.prisma.socialSecurityEmployeeRegistration.findFirst({
+        where: { id,
+            isDeleted: false
+        },
         include: {
           institution: true,
           employerRegistration: true,
@@ -613,8 +640,10 @@ export class SocialSecurityService {
         body.contributionRate === null
       ) {
         const inst =
-          await this.prisma.socialSecurityInstitution.findUnique({
-            where: { id: body.institutionId },
+          await this.prisma.socialSecurityInstitution.findFirst({
+            where: { id: body.institutionId,
+                isDeleted: false
+            },
           });
         if (inst) {
           await this.prisma.socialSecurityEmployeeRegistration.update({
@@ -676,8 +705,10 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prisma.socialSecurityEmployeeRegistration.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityEmployeeRegistration.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing)
         return { status: false, message: 'Employee registration not found' };
@@ -773,15 +804,21 @@ export class SocialSecurityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'socialSecurityEmployeeRegistration', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
       const existing =
-        await this.prisma.socialSecurityEmployeeRegistration.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityEmployeeRegistration.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing)
         return { status: false, message: 'Employee registration not found' };
-      await this.prisma.socialSecurityEmployeeRegistration.delete({
+      await this.prisma.socialSecurityEmployeeRegistration.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
@@ -875,8 +912,10 @@ export class SocialSecurityService {
   }
 
   async getContribution(id: string) {
-    const item = await this.prisma.socialSecurityContribution.findUnique({
-      where: { id },
+    const item = await this.prisma.socialSecurityContribution.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: {
         institution: true,
         employerRegistration: true,
@@ -980,8 +1019,10 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prisma.socialSecurityContribution.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityContribution.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing)
         return { status: false, message: 'Contribution not found' };
@@ -1065,14 +1106,17 @@ export class SocialSecurityService {
   ) {
     try {
       const existing =
-        await this.prisma.socialSecurityContribution.findUnique({
-          where: { id },
+        await this.prisma.socialSecurityContribution.findFirst({
+          where: { id,
+              isDeleted: false
+        },
         });
       if (!existing)
         return { status: false, message: 'Contribution not found' };
-      await this.prisma.socialSecurityContribution.delete({
+      await this.prisma.socialSecurityContribution.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
