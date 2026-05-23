@@ -1819,6 +1819,9 @@ export const PERMISSIONS = [
   { name: 'erp.inventory.warehouse.delete', description: 'Delete Warehouse' },
   { name: 'erp.inventory.warehouse.inventory.view', description: 'View Warehouse Inventory Levels' },
 
+  { name: 'erp.inventory.claims.acknowledge', description: 'Acknowledge Inventory Claim' },
+  { name: 'erp.inventory.claims.reject', description: 'Reject Inventory Claim' },
+
   // ── ERP Items ───────────────────────────────────────────────────────────────
   { name: 'erp.item.read', description: 'View Items Catalog' },
   { name: 'erp.item.create', description: 'Create Item' },
