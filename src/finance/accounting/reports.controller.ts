@@ -40,14 +40,16 @@ export class ReportsController {
   @ApiQuery({ name: 'to',    required: false, type: String })
   @ApiQuery({ name: 'page',  required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'sourceType', required: false, type: String })
   async generalLedger(
     @Param('accountId') accountId: string,
     @Query('from')  from?: string,
     @Query('to')    to?: string,
     @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page  = 1,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
+    @Query('sourceType') sourceType?: string,
   ) {
-    return { status: true, data: await this.reports.getGeneralLedger(accountId, from, to, page, limit) };
+    return { status: true, data: await this.reports.getGeneralLedger(accountId, from, to, page, limit, sourceType) };
   }
 
   /**

@@ -238,14 +238,13 @@ export class ReportsService {
       to 
     };
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
   async getGeneralLedger(
     accountId: string,
     from?: string,
     to?: string,
     page = 1,
     limit = 50,
+    sourceType?: string,
   ) {
     const account = await this.prisma.chartOfAccount.findUnique({
       where: { id: accountId },
@@ -253,14 +252,23 @@ export class ReportsService {
     });
     if (!account) throw new NotFoundException('Account not found');
 
-    // Opening balance = sum of all transactions BEFORE `from`
-    let openingBalance = 0;
+    const isDebitNormal = account.type === AccountType.ASSET || account.type === AccountType.EXPENSE;
+
+    // Opening balance = sum of all transactions BEFORE `from` matching optional filters
+    const openingWhere: any = { accountId };
     if (from) {
+      openingWhere.transactionDate = { lt: new Date(from) };
+    }
+    if (sourceType) {
+      openingWhere.sourceType = sourceType;
+    }
+
+    let openingBalance = 0;
+    if (from || sourceType) {
       const before = await this.prisma.accountTransaction.aggregate({
-        where: { accountId, transactionDate: { lt: new Date(from) } },
+        where: openingWhere,
         _sum: { debit: true, credit: true },
       });
-      const isDebitNormal = account.type === AccountType.ASSET || account.type === AccountType.EXPENSE;
       const d = Number(before._sum.debit ?? 0);
       const c = Number(before._sum.credit ?? 0);
       openingBalance = isDebitNormal ? d - c : c - d;
@@ -273,31 +281,74 @@ export class ReportsService {
         ...(to   && { lte: new Date(to) }),
       };
     }
+    if (sourceType) {
+      where.sourceType = sourceType;
+    }
 
-    const [transactions, total] = await Promise.all([
+    // Stable sort order: transactionDate, then createdAt, then id to prevent row shifting
+    const orderBy = [
+      { transactionDate: 'asc' as const },
+      { createdAt: 'asc' as const },
+      { id: 'asc' as const }
+    ];
+
+    const [transactions, total, totalAgg] = await Promise.all([
       this.prisma.accountTransaction.findMany({
         where,
-        orderBy: { transactionDate: 'asc' },
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),
       this.prisma.accountTransaction.count({ where }),
+      this.prisma.accountTransaction.aggregate({
+        where,
+        _sum: { debit: true, credit: true },
+      }),
     ]);
 
-    // Compute running balance per row
-    const isDebitNormal = account.type === AccountType.ASSET || account.type === AccountType.EXPENSE;
-    let running = openingBalance;
+    // Calculate starting balance for this specific page by summing transactions skipped
+    let pageStartingBalance = openingBalance;
+    if (page > 1) {
+      const skippedTx = await this.prisma.accountTransaction.findMany({
+        where,
+        orderBy,
+        skip: 0,
+        take: (page - 1) * limit,
+        select: { debit: true, credit: true },
+      });
+      for (const tx of skippedTx) {
+        const d = Number(tx.debit), c = Number(tx.credit);
+        pageStartingBalance += isDebitNormal ? d - c : c - d;
+      }
+    }
+
+    // Compute running balance per row on current page
+    let running = pageStartingBalance;
     const rows = transactions.map(tx => {
       const d = Number(tx.debit), c = Number(tx.credit);
       running += isDebitNormal ? d - c : c - d;
-      return { ...tx, debit: d, credit: c, runningBalance: running };
+      return {
+        ...tx,
+        debit: d,
+        credit: c,
+        runningBalance: running,
+      };
     });
+
+    const rangeTotalDebit = Number(totalAgg._sum.debit ?? 0);
+    const rangeTotalCredit = Number(totalAgg._sum.credit ?? 0);
+    const rangeClosingBalance = isDebitNormal
+      ? openingBalance + rangeTotalDebit - rangeTotalCredit
+      : openingBalance + rangeTotalCredit - rangeTotalDebit;
 
     return {
       account: { ...account, balance: Number(account.balance) },
       openingBalance,
       rows,
       closingBalance: running,
+      rangeTotalDebit,
+      rangeTotalCredit,
+      rangeClosingBalance,
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }

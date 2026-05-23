@@ -9,26 +9,38 @@ import { NotificationsModule } from '../../notifications/notifications.module';
 import { TrialBalanceExportController } from './trial-balance-export.controller';
 import { TrialBalanceExportService } from './trial-balance-export.service';
 import { TrialBalanceExportProcessor } from './trial-balance-export.processor';
+import { GeneralLedgerExportController } from './general-ledger-export.controller';
+import { GeneralLedgerExportService } from './general-ledger-export.service';
+import { GeneralLedgerExportProcessor } from './general-ledger-export.processor';
 
 @Module({
     imports: [
         PrismaModule,
         NotificationsModule,
-        BullModule.registerQueue({
-            name: 'trial-balance-export',
-        }),
+        BullModule.registerQueue(
+            { name: 'trial-balance-export' },
+            { name: 'general-ledger-export' }
+        ),
     ],
     controllers: [
         AccountLedgerController, 
         ReportsController, 
         TrialBalanceExportController,
+        GeneralLedgerExportController,
     ],
     providers: [
         AccountingService, 
         ReportsService,
         TrialBalanceExportService,
         TrialBalanceExportProcessor,
+        GeneralLedgerExportService,
+        GeneralLedgerExportProcessor,
     ],
-    exports: [AccountingService, ReportsService, TrialBalanceExportService],
+    exports: [
+        AccountingService, 
+        ReportsService, 
+        TrialBalanceExportService,
+        GeneralLedgerExportService,
+    ],
 })
 export class AccountingModule {}
