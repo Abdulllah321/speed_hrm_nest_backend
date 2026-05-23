@@ -300,3 +300,11 @@ export class BulkSalePriceDto {
   @IsOptional()
   appliedById?: string;
 }
+
+// ─── Bulk Search ──────────────────────────────────────────────────────────────
+
+export class BulkSearchIdsDto {
+  @IsArray()
+  @IsString({ each: true })
+  barcodes: string[];
+}

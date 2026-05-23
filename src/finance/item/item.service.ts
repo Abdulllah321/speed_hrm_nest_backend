@@ -501,6 +501,27 @@ export class ItemService {
     }
   }
 
+  async bulkSearchByBarcodes(barcodes: string[]) {
+    try {
+      if (!barcodes || barcodes.length === 0) {
+        return { status: true, data: [] };
+      }
+      const items = await this.prisma.item.findMany({
+        where: {
+          OR: [
+            { barCode: { in: barcodes } },
+            { sku: { in: barcodes } },
+            { itemId: { in: barcodes } }
+          ],
+        },
+        include: includeMasterData,
+      });
+      return { status: true, data: items };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
+
   private async enrichItems(items: any[]) {
     if (!items.length) return [];
 
