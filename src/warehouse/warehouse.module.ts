@@ -9,9 +9,10 @@ import { StockOperationController } from './stock-operation.controller';
 import { TransferRequestController } from './transfer-request.controller';
 import { TransferRequestService } from './transfer-request.service';
 import { StockLedgerModule } from './stock-ledger/stock-ledger.module';
+import { StockUploadModule } from './stock-upload/stock-upload.module';
 
 @Module({
-  imports: [DatabaseModule, StockLedgerModule],
+  imports: [DatabaseModule, StockLedgerModule, StockUploadModule],
   controllers: [
     WarehouseController,
     InventoryController,

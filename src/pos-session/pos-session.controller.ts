@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body, Req, Query, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Req, Query, Param, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSessionService } from './pos-session.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -85,5 +85,15 @@ export class PosSessionController {
             page ? parseInt(page, 10) : 1,
             limit ? parseInt(limit, 10) : 20,
         );
+    }
+
+    @Get(':id/reconciliation')
+    @ApiOperation({ summary: 'Get detailed reconciliation report metrics for a POS shift' })
+    async getReconciliationDetails(
+        @Req() req: any,
+        @Param('id') sessionId: string,
+    ) {
+        this.extractTerminalContext(req);
+        return this.sessionService.getReconciliationDetails(sessionId);
     }
 }

@@ -5,15 +5,13 @@ import * as Papa from 'papaparse';
 export interface PoParsedRecord {
     row: number;
     data: {
-        vendorCode?: string;
-        itemId?: string;      // unique itemId field from Item model
-        description?: string;
+        barCode?: string;
         quantity?: number;
+        // Resolved from DB in processor
+        itemId?: string;
+        sku?: string;
+        description?: string;
         unitPrice?: number;
-        orderType?: string;   // LOCAL | IMPORT (required, must be same for all rows)
-        goodsType?: string;   // CONSUMABLE | FRESH (required, must be same for all rows)
-        expectedDeliveryDate?: string;
-        notes?: string;
     };
 }
 
@@ -29,9 +27,9 @@ export class PoCsvParserService {
     }
 
     private isEmptyRow(row: any): boolean {
-        const vc = this.getValue(row, ['Vendor Code', 'VendorCode', 'vendor_code', 'vendorCode']);
-        const itemId = this.getValue(row, ['Item ID', 'ItemID', 'item_id', 'itemId', 'Item Code', 'ItemCode']);
-        return !this.normalizeValue(vc) && !this.normalizeValue(itemId);
+        const barCode = this.getValue(row, ['BarCode', 'Barcode', 'bar_code', 'barCode', 'Code']);
+        const quantity = this.getValue(row, ['Quantity', 'Qty', 'quantity', 'qty']);
+        return !this.normalizeValue(barCode) && !this.normalizeValue(quantity);
     }
 
     private getValue(row: any, keys: string[]): any {
@@ -53,15 +51,8 @@ export class PoCsvParserService {
 
     private mapColumns(row: any): PoParsedRecord['data'] {
         return {
-            vendorCode: this.normalizeValue(this.getValue(row, ['Vendor Code', 'VendorCode', 'vendor_code', 'vendorCode', 'Vendor'])) ?? undefined,
-            itemId: this.normalizeValue(this.getValue(row, ['Item ID', 'ItemID', 'item_id', 'itemId', 'Item Code', 'ItemCode'])) ?? undefined,
-            description: this.normalizeValue(this.getValue(row, ['Description', 'description', 'Item Description'])) ?? undefined,
+            barCode: this.normalizeValue(this.getValue(row, ['BarCode', 'Barcode', 'bar_code', 'barCode', 'Code'])) ?? undefined,
             quantity: this.parseNumber(this.getValue(row, ['Quantity', 'Qty', 'quantity', 'qty'])) ?? undefined,
-            unitPrice: this.parseNumber(this.getValue(row, ['Unit Price', 'UnitPrice', 'unit_price', 'Price', 'price'])) ?? undefined,
-            orderType: this.normalizeValue(this.getValue(row, ['Order Type', 'OrderType', 'order_type', 'orderType']))?.toUpperCase() ?? undefined,
-            goodsType: this.normalizeValue(this.getValue(row, ['Goods Type', 'GoodsType', 'goods_type', 'goodsType']))?.toUpperCase() ?? undefined,
-            expectedDeliveryDate: this.normalizeValue(this.getValue(row, ['Expected Delivery Date', 'DeliveryDate', 'delivery_date', 'Expected Date'])) ?? undefined,
-            notes: this.normalizeValue(this.getValue(row, ['Notes', 'notes', 'Remarks', 'remarks'])) ?? undefined,
         };
     }
 

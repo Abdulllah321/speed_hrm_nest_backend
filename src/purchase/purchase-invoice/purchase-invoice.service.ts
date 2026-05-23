@@ -407,155 +407,37 @@ export class PurchaseInvoiceService {
     }
   }
 
-  // Get VALUED GRNs for invoice creation (excluding those that went through Landed Cost)
+  // Get VALUED GRNs for invoice creation (direct flow: no Landed Cost attached)
   async getValuedGrns() {
-    console.log('Fetching valued GRNs...');
-    
-    // First, let's check what GRNs exist in the database
-    const allGrns = await this.prisma.goodsReceiptNote.findMany({
-      select: {
-        id: true,
-        grnNumber: true,
-        status: true,
-        landedCosts: {
-          select: {
-            id: true,
-            landedCostNumber: true,
-          },
-        },
-      },
-    });
-    
-    console.log(`Total GRNs in database: ${allGrns.length}`);
-    console.log('All GRNs:', allGrns.map(grn => ({
-      number: grn.grnNumber,
-      status: grn.status,
-      hasLandedCosts: grn.landedCosts.length > 0,
-    })));
-    
-    // Get GRNs that are VALUED and don't have Landed Cost (direct flows: RFQ→VQ→PO→GRN or PR→Direct PO→GRN)
-    let grns = await this.prisma.goodsReceiptNote.findMany({
+    // Direct flow GRNs: VALUED/RECEIVED status, no Landed Cost attached
+    const grns = await this.prisma.goodsReceiptNote.findMany({
       where: {
-        status: 'VALUED',
-        // Only include GRNs that were directly valued (not through Landed Cost)
-        // This means GRNs from RFQ→VQ→PO→GRN or PR→Direct PO→GRN flows
+        status: {
+          in: ['VALUED', 'RECEIVED', 'APPROVED'],
+        },
         landedCosts: {
-          none: {}, // GRNs that don't have any Landed Cost records
+          none: {},
         },
       },
       include: {
         items: {
           include: {
-            purchaseInvoiceItems: true, // Include existing invoice items to calculate available qty
+            purchaseInvoiceItems: true,
           },
         },
         purchaseOrder: {
           include: {
-            vendor: true, // Include vendor through purchase order
-            items: true, // Include PO items to get unit prices
+            vendor: true,
+            items: {
+              include: {
+                item: true,
+              },
+            },
           },
         },
       },
     });
 
-    console.log(`Found ${grns.length} valued GRNs (without Landed Cost) - These are from direct flows`);
-
-    // If no VALUED GRNs found, let's also check for RECEIVED status
-    // Sometimes GRNs might be in RECEIVED status but still need to be invoiced
-    if (grns.length === 0) {
-      console.log('No VALUED GRNs found, checking RECEIVED GRNs as well...');
-      
-      grns = await this.prisma.goodsReceiptNote.findMany({
-        where: {
-          status: 'RECEIVED',
-          landedCosts: {
-            none: {}, // GRNs that don't have any Landed Cost records
-          },
-        },
-        include: {
-          items: {
-            include: {
-              purchaseInvoiceItems: true,
-            },
-          },
-          purchaseOrder: {
-            include: {
-              vendor: true,
-              items: {
-          include: {
-            item: true,
-          },
-        },
-            },
-          },
-        },
-      });
-      
-      console.log(`Found ${grns.length} RECEIVED GRNs (without Landed Cost) - These are also from direct flows`);
-    }
-
-    // If still no GRNs found, let's be more flexible and show all GRNs without Landed Cost
-    if (grns.length === 0) {
-      console.log('No VALUED or RECEIVED GRNs found, checking all GRNs without Landed Cost...');
-      
-      grns = await this.prisma.goodsReceiptNote.findMany({
-        where: {
-          status: {
-            in: ['RECEIVED', 'VALUED', 'APPROVED'], // Include multiple statuses
-          },
-          landedCosts: {
-            none: {}, // GRNs that don't have any Landed Cost records
-          },
-        },
-        include: {
-          items: {
-            include: {
-              purchaseInvoiceItems: true,
-            },
-          },
-          purchaseOrder: {
-            include: {
-              vendor: true,
-              items: {
-          include: {
-            item: true,
-          },
-        },
-            },
-          },
-        },
-      });
-      
-      console.log(`Found ${grns.length} GRNs with flexible status (without Landed Cost)`);
-    }
-
-    // Debug: Log GRN details
-    if (grns.length > 0) {
-      const grnSummary = grns.map(grn => ({
-        number: grn.grnNumber,
-        status: grn.status,
-        itemsCount: grn.items?.length || 0,
-        vendor: grn.purchaseOrder?.vendor?.name || 'Unknown',
-      }));
-      console.log('Direct flow GRNs found:', grnSummary);
-    } else {
-      console.log('No direct flow GRNs found, checking all VALUED GRNs...');
-      
-      const allValuedGrns = await this.prisma.goodsReceiptNote.findMany({
-        where: { status: 'VALUED' },
-        select: {
-          grnNumber: true,
-          status: true,
-          landedCosts: {
-            select: {
-              landedCostNumber: true,
-            },
-          },
-        },
-      });
-      
-      console.log('All VALUED GRNs (including those with Landed Cost):', allValuedGrns);
-    }
     const processedGrns = grns.map(grn => ({
       ...grn,
       items: grn.items.map(item => {
@@ -578,94 +460,40 @@ export class PurchaseInvoiceService {
       }).filter(item => item.availableQty > 0), // Only return items with available quantity
     })).filter(grn => grn.items.length > 0); // Only return GRNs with available items
 
-    console.log(`Processed GRNs with available items: ${processedGrns.length}`);
-    
     return processedGrns;
   }
 
   // Get available Landed Costs for invoice creation
   async getAvailableLandedCosts() {
-    console.log('Fetching available landed costs...');
-    
-    // First, let's check what Landed Costs exist in the database
-    const allLandedCosts = await this.prisma.landedCost.findMany({
-      select: {
-        id: true,
-        landedCostNumber: true,
-        status: true,
-        items: {
-          select: {
-            id: true,
-            qty: true,
-          },
-        },
-      },
-    });
-    
-    console.log(`Total Landed Costs in database: ${allLandedCosts.length}`);
-    console.log('All Landed Costs:', allLandedCosts.map(lc => ({
-      number: lc.landedCostNumber,
-      status: lc.status,
-      itemsCount: lc.items.length,
-    })));
-    
     const landedCosts = await this.prisma.landedCost.findMany({
       where: {
         status: {
-          in: ['APPROVED', 'POSTED', 'SUBMITTED', 'DRAFT'], // Allow all statuses for now
+          in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED', 'VALUED'],
         },
       },
       include: {
-        items: true, // Simplified include
+        items: true,
         supplier: true,
-      },
-    });
-
-    console.log(`Found ${landedCosts.length} landed costs`);
-
-    // Debug: Log all landed costs with their statuses
-    if (landedCosts.length > 0) {
-      const lcSummary = landedCosts.map(lc => ({
-        number: lc.landedCostNumber,
-        status: lc.status,
-        itemsCount: lc.items?.length || 0,
-      }));
-      console.log('Landed costs found:', lcSummary);
-    } else {
-      console.log('No landed costs found, checking database...');
-      
-      const allLandedCosts = await this.prisma.landedCost.findMany({
-        select: {
-          id: true,
-          landedCostNumber: true,
-          status: true,
-          grn: {
-            select: {
-              status: true,
-              grnNumber: true,
+        grn: {
+          include: {
+            purchaseOrder: {
+              include: {
+                vendor: true,
+              },
             },
           },
         },
-      });
-      
-      console.log('All landed costs in database:', allLandedCosts);
-    }
+      },
+    });
 
-    // Calculate available quantities for each Landed Cost item (simplified)
+    // Calculate available quantities for each Landed Cost item
     const processedLandedCosts = landedCosts.map(lc => ({
       ...lc,
       items: lc.items.map(item => ({
         ...item,
-        availableQty: Number(item.qty), // Use full quantity for now
+        availableQty: Number(item.qty),
       })),
     }));
-
-    console.log(`Final processed landed costs: ${processedLandedCosts.length}`);
-    console.log('Returning landed costs:', processedLandedCosts.map(lc => ({ 
-      id: lc.id, 
-      number: lc.landedCostNumber, 
-      itemsCount: lc.items.length 
-    })));
 
     return processedLandedCosts;
   }

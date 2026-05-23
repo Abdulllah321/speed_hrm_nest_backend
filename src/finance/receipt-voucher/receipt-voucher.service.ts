@@ -17,13 +17,14 @@ export class ReceiptVoucherService {
   async create(dto: CreateReceiptVoucherDto) {
     const { details, invoices, ...data } = dto;
 
-    const totalCredit = details.reduce((s, d) => s + Number(d.credit), 0);
-    const debitAmount = Number(data.debitAmount);
+    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
+    const totalCredit = details.reduce((sum, item) => sum + Number(item.credit || 0), 0);
 
-    if (Math.abs(totalCredit - debitAmount) > 0.01) {
-      throw new BadRequestException('Total Credit must equal Debit Amount');
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      throw new BadRequestException('Total Debit must equal Total Credit');
     }
-    if (debitAmount === 0) {
+
+    if (totalDebit === 0) {
       throw new BadRequestException('Transaction amount must be greater than 0');
     }
 
@@ -43,14 +44,19 @@ export class ReceiptVoucherService {
         }
         totalInvoiceAmount += Number(inv.receivedAmount);
       }
-      if (totalInvoiceAmount > debitAmount + 0.01) {
+      if (totalInvoiceAmount > totalDebit + 0.01) {
         throw new BadRequestException(
-          `Invoice receipts total (${totalInvoiceAmount}) cannot exceed voucher debit amount (${debitAmount})`
+          `Invoice receipts total (${totalInvoiceAmount}) cannot exceed voucher debit amount (${totalDebit})`
         );
       }
     }
 
     return this.prisma.$transaction(async (prisma) => {
+      // Derive debitAccountId from the first debit detail line
+      const firstDebitDetail = details.find(d => Number(d.debit) > 0);
+      const resolvedDebitAccountId = firstDebitDetail?.accountId ?? data.debitAccountId;
+      const resolvedDebitAmount = data.debitAmount || totalDebit || 0;
+
       // Create the receipt voucher
       const rv = await prisma.receiptVoucher.create({
         data: {
@@ -61,21 +67,31 @@ export class ReceiptVoucherService {
           billDate: data.billDate,
           chequeNo: data.chequeNo,
           chequeDate: data.chequeDate,
-          debitAccountId: data.debitAccountId,
-          debitAmount: data.debitAmount,
+          debitAccountId: resolvedDebitAccountId,
+          debitAmount: resolvedDebitAmount,
           customerId: data.customerId || undefined,
+          isAdvance: data.isAdvance ?? false,
+          isTaxApplicable: data.isTaxApplicable ?? false,
           description: data.description,
           status: data.status || 'approved',
           details: { 
-            create: details.map(d => ({
-              accountId: d.accountId,
-              credit: Number(d.credit)
-            }))
+            create: details
+              .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+              .map(d => ({
+                accountId:       d.accountId,
+                tagAccountId:    d.tagAccountId?.trim() || null,
+                debit:           Number(d.debit) || 0,
+                credit:          Number(d.credit) || 0,
+                narration:       d.narration || data.description || null,
+                refBillNo:       d.refBillNo || data.refBillNo || null,
+                isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+              }))
           },
         },
         include: {
-          details: { include: { account: true } },
+          details: { include: { account: true, tagAccount: true } },
           debitAccount: true,
+          customer: true,
         },
       });
 
@@ -114,22 +130,27 @@ export class ReceiptVoucherService {
       }
 
       // ── Post journal lines ───────────────────────────────────────────────
-      // Debit: bank/cash account (money coming in)
-      // Credit: A/R or customer account (reduces receivable)
-      const creditLines = details.map(d => ({
-        accountId: d.accountId,
-        debit: 0,
-        credit: Number(d.credit),
-      }));
-      const debitLines = [{ accountId: data.debitAccountId, debit: debitAmount, credit: 0 }];
+      if (totalDebit > 0) {
+        const allLines = details
+          .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+          .map(d => ({
+            accountId:       d.accountId,
+            tagAccountId:    d.tagAccountId?.trim() || undefined,
+            debit:           Number(d.debit) || 0,
+            credit:          Number(d.credit) || 0,
+            narration:       d.narration || data.description || undefined,
+            refBillNo:       d.refBillNo || data.refBillNo || undefined,
+            isTaxApplicable: d.isTaxApplicable ?? false,
+          }));
 
-      await this.accounting.postLines([...debitLines, ...creditLines], {
-        sourceType: 'RECEIPT_VOUCHER',
-        sourceId: rv.id,
-        sourceRef: rv.rvNo,
-        description: data.description || `Receipt Voucher: ${rv.rvNo}`,
-        transactionDate: new Date(data.rvDate),
-      }, prisma);
+        await this.accounting.postLines(allLines, {
+          sourceType: 'RECEIPT_VOUCHER',
+          sourceId: rv.id,
+          sourceRef: rv.rvNo,
+          description: data.description || `Receipt Voucher: ${rv.rvNo}`,
+          transactionDate: new Date(data.rvDate),
+        }, prisma);
+      }
 
       return rv;
     });
@@ -140,8 +161,9 @@ export class ReceiptVoucherService {
     return this.prisma.receiptVoucher.findMany({
       where,
       include: {
-        details: { include: { account: true } },
+        details: { include: { account: true, tagAccount: true } },
         debitAccount: true,
+        customer: true,
         invoices: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -152,8 +174,9 @@ export class ReceiptVoucherService {
     const rv = await this.prisma.receiptVoucher.findUnique({
       where: { id },
       include: {
-        details: { include: { account: true } },
+        details: { include: { account: true, tagAccount: true } },
         debitAccount: true,
+        customer: true,
         invoices: true,
       },
     });
@@ -179,6 +202,8 @@ export class ReceiptVoucherService {
       ...(data.customerId !== undefined && { customerId: data.customerId }),
       ...(data.description !== undefined && { description: data.description }),
       ...(data.status !== undefined && { status: data.status }),
+      ...(data.isAdvance !== undefined && { isAdvance: data.isAdvance }),
+      ...(data.isTaxApplicable !== undefined && { isTaxApplicable: data.isTaxApplicable }),
     };
 
     if (details) {
@@ -186,8 +211,23 @@ export class ReceiptVoucherService {
         await prisma.receiptVoucherDetail.deleteMany({ where: { receiptVoucherId: id } });
         return prisma.receiptVoucher.update({
           where: { id },
-          data: { ...scalarData, details: { create: details } },
-          include: { details: { include: { account: true } }, debitAccount: true },
+          data: {
+            ...scalarData,
+            details: {
+              create: details
+                .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+                .map(d => ({
+                  accountId:       d.accountId,
+                  tagAccountId:    d.tagAccountId?.trim() || null,
+                  debit:           Number(d.debit) || 0,
+                  credit:          Number(d.credit) || 0,
+                  narration:       d.narration || data.description || null,
+                  refBillNo:       d.refBillNo || data.refBillNo || null,
+                  isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+                })),
+            },
+          },
+          include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
         });
       });
     }
@@ -195,7 +235,7 @@ export class ReceiptVoucherService {
     return this.prisma.receiptVoucher.update({
       where: { id },
       data: scalarData,
-      include: { details: { include: { account: true } }, debitAccount: true },
+      include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
     });
   }
 

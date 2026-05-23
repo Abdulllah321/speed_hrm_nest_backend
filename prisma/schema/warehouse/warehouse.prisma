@@ -70,6 +70,7 @@ model Location {
 
   voucherLocations          VoucherLocation[]
   discountCampaignLocations DiscountCampaignLocation[]
+  merchantConfigLocations   MerchantConfigLocation[]
 
   @@index([warehouseId])
 }

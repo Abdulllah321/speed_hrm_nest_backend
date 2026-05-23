@@ -42,9 +42,6 @@ export class ChartOfAccountService {
         if (!parent) {
           throw new NotFoundException('Parent account not found');
         }
-        if (!parent.isGroup) {
-          throw new BadRequestException('Parent account must be a group account');
-        }
       }
 
       const account = await this.prisma.chartOfAccount.create({
@@ -150,6 +147,57 @@ export class ChartOfAccountService {
     return [...map.values()];
   }
 
+  async findTree() {    // Fetch all accounts flat, ordered by code so parents always precede children
+    const accounts = await this.prisma.chartOfAccount.findMany({
+      orderBy: { code: 'asc' },
+    });
+
+    // Build id → node map with an empty children array
+    type TreeNode = (typeof accounts)[0] & { children: TreeNode[] };
+    const map = new Map<string, TreeNode>();
+    for (const acc of accounts) {
+      map.set(acc.id, { ...acc, children: [] });
+    }
+
+    // Wire up parent → children relationships
+    const roots: TreeNode[] = [];
+    for (const node of map.values()) {
+      if (node.parentId && map.has(node.parentId)) {
+        map.get(node.parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    return roots;
+  }
+
+  /** Returns direct children of an account (for tag-account selection). */
+  async findChildAccounts(accountId: string) {
+    const account = await this.prisma.chartOfAccount.findUnique({
+      where: { id: accountId },
+      include: {
+        children: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+            isGroup: true,
+            isActive: true,
+          },
+          orderBy: { code: 'asc' },
+        },
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Chart of account not found');
+    }
+
+    return account.children;
+  }
+
   async findOne(id: string) {
     const account = await this.prisma.chartOfAccount.findUnique({
       where: { id },
@@ -228,8 +276,6 @@ export class ChartOfAccountService {
           where: { id: updateDto.parentId },
         });
         if (!parent) throw new NotFoundException('Parent account not found');
-        if (!parent.isGroup)
-          throw new BadRequestException('Parent account must be a group');
         
         // Store parent's type to inherit
         newParentType = parent.type as AccountType;
@@ -344,6 +390,110 @@ export class ChartOfAccountService {
           entityId: id,
           description: `Failed to delete account ${id}`,
           errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async createBulkSubAccounts(
+    body: {
+      parentId: string;
+      items: {
+        name: string;
+        code: string;
+        type: 'SUPPLIER' | 'CUSTOMER' | 'LOCATION';
+        referenceId: string;
+      }[];
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const { parentId, items } = body;
+
+      const parent = await this.prisma.chartOfAccount.findUnique({
+        where: { id: parentId },
+      });
+      if (!parent) {
+        throw new NotFoundException('Parent account not found');
+      }
+
+      const created: any[] = [];
+      const skipped: any[] = [];
+
+      for (const item of items) {
+        const existing = await this.prisma.chartOfAccount.findFirst({
+          where: { code: item.code },
+        });
+
+        if (existing) {
+          skipped.push({
+            name: item.name,
+            code: item.code,
+            reason: 'Account code already exists',
+          });
+          continue;
+        }
+
+        const data: any = {
+          code: item.code,
+          name: item.name,
+          type: parent.type,
+          parentId: parent.id,
+          isGroup: false,
+          isActive: true,
+          ...(ctx?.userId ? { createdById: ctx.userId } : {}),
+        };
+
+        if (item.type === 'SUPPLIER') {
+          data.suppliers = {
+            connect: [{ id: item.referenceId }],
+          };
+        }
+
+        const account = await this.prisma.chartOfAccount.create({
+          data,
+        });
+        created.push(account);
+      }
+
+      runInBackground(
+        'Bulk Create Sub-accounts',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'finance',
+          entity: 'ChartOfAccount',
+          description: `Bulk created ${created.length} sub-accounts under ${parent.name} (${parent.code}). Skipped ${skipped.length}.`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return {
+        status: true,
+        message: `Successfully created ${created.length} sub-accounts.`,
+        createdCount: created.length,
+        skippedCount: skipped.length,
+        created,
+        skipped,
+      };
+    } catch (error: any) {
+      runInBackground(
+        'Bulk Create Sub-accounts (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'finance',
+          entity: 'ChartOfAccount',
+          description: `Failed bulk sub-accounts creation under parent ${body.parentId}`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
