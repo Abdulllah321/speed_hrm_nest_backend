@@ -6,6 +6,9 @@ import { StockLedgerService } from './stock-ledger/stock-ledger.service';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
+import { NotificationsService } from '../notifications/notifications.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
+
 @Injectable()
 export class TransferRequestService {
     constructor(
@@ -13,6 +16,8 @@ export class TransferRequestService {
         private stockMovementService: StockMovementService,
         private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
+    private notifications: NotificationsService,
+    private prismaMaster: PrismaMasterService,
   ) { }
 
     private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
@@ -174,9 +179,10 @@ export class TransferRequestService {
                         item: true
                     }
                 },
-                fromWarehouse: { select: { name: true } },
-                fromLocation: { select: { name: true } },
-                toLocation: { select: { name: true } },
+                fromWarehouse: { select: { name: true, code: true } },
+                toWarehouse: { select: { name: true, code: true } },
+                fromLocation: { select: { name: true, code: true } },
+                toLocation: { select: { name: true, code: true } },
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -269,7 +275,7 @@ export class TransferRequestService {
     }
 
     /**
-     * Helper to manually enrichment location data
+     * Helper to manually enrichment location data and claim data
      */
     private async enrichRequest(req: any) {
         if (req.toLocationId) {
@@ -277,6 +283,20 @@ export class TransferRequestService {
                 where: { id: req.toLocationId }
             });
             if (masterLoc) req.toLocation = masterLoc;
+        }
+
+        // Fetch claim data if this is a claim transfer
+        if (req.transferType === 'CLAIM_TO_PLM') {
+            const claim = await this.prisma.posClaim.findFirst({
+                where: { transferRequestId: req.id },
+                select: { claimNumber: true, claimType: true }
+            });
+            if (claim) {
+                req.claim = {
+                    claimNo: claim.claimNumber,
+                    claimType: claim.claimType
+                };
+            }
         }
 
         return req;
@@ -694,6 +714,188 @@ export class TransferRequestService {
                 }),
             );
             throw error;
+        }
+    }
+
+    /**
+     * PLM Acknowledgment: Manually acknowledge receipt of claim items
+     * This updates inventory only after PLM physically receives the product
+     */
+    async acknowledgeClaim(id: string, userId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
+            const request = await this.prisma.transferRequest.findUnique({
+                where: { id },
+                include: { items: true }
+            });
+
+            if (!request) {
+                throw new NotFoundException(`Transfer request ${id} not found`);
+            }
+
+            if (request.transferType !== 'CLAIM_TO_PLM') {
+                throw new BadRequestException('This endpoint is only for claim-based transfers');
+            }
+
+            if (request.status !== 'PENDING') {
+                throw new BadRequestException(`Request is not in PENDING status (Current: ${request.status})`);
+            }
+
+            console.log('🔄 [PLM Acknowledgment] Starting claim acknowledgment:', {
+                transferRequestId: id,
+                requestNo: request.requestNo,
+                itemCount: request.items.length
+            });
+
+            return this.prisma.$transaction(async (tx) => {
+                const plmWarehouseId = request.toWarehouseId!;
+
+                // Process each item: Add to PLM warehouse inventory
+                for (const item of request.items) {
+                    console.log('📦 [PLM Acknowledgment] Processing item:', {
+                        itemId: item.itemId,
+                        quantity: item.quantity
+                    });
+
+                    const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+
+                    // 1. Create stock ledger entry: Customer → PLM (direct transfer)
+                    await this.stockLedgerService.createEntry({
+                        itemId: item.itemId,
+                        warehouseId: plmWarehouseId,
+                        locationId: null, // Warehouse-level
+                        qty: Number(item.quantity),
+                        movementType: 'INBOUND' as any,
+                        referenceType: 'CLAIM_ACKNOWLEDGED',
+                        referenceId: request.id,
+                        rate: itemRate,
+                    }, tx);
+
+                    console.log('✅ [PLM Acknowledgment] Stock ledger entry created');
+
+                    // 2. Add item to PLM warehouse inventory
+                    const plmStock = await tx.inventoryItem.findFirst({
+                        where: {
+                            itemId: item.itemId,
+                            warehouseId: plmWarehouseId,
+                            locationId: null, // Warehouse-level
+                            status: 'AVAILABLE'
+                        }
+                    });
+
+                    if (plmStock) {
+                        await tx.inventoryItem.update({
+                            where: { id: plmStock.id },
+                            data: { quantity: { increment: Number(item.quantity) } }
+                        });
+                        console.log('✅ [PLM Acknowledgment] PLM inventory updated (incremented)');
+                    } else {
+                        await tx.inventoryItem.create({
+                            data: {
+                                itemId: item.itemId,
+                                warehouseId: plmWarehouseId,
+                                locationId: null, // Warehouse-level
+                                quantity: Number(item.quantity),
+                                status: 'AVAILABLE'
+                            }
+                        });
+                        console.log('✅ [PLM Acknowledgment] PLM inventory created (new entry)');
+                    }
+                }
+
+                // 3. Update transfer request status to COMPLETED
+                const updated = await tx.transferRequest.update({
+                    where: { id },
+                    data: {
+                        status: 'COMPLETED',
+                        approvedById: userId,
+                        notes: `${request.notes || ''}\n\nPLM acknowledged receipt and inventory updated on ${new Date().toISOString()}`
+                    },
+                });
+
+                console.log('✅ [PLM Acknowledgment] Transfer request completed');
+
+                runInBackground(
+                    'Acknowledge Claim Transfer',
+                    this.activityLogs.log({
+                        userId: ctx?.userId,
+                        action: 'update',
+                        module: 'transfer-request',
+                        entity: 'TransferRequest',
+                        entityId: updated.id,
+                        description: `PLM acknowledged claim transfer ${updated.requestNo} and inventory updated`,
+                        newValues: JSON.stringify({ status: 'COMPLETED', acknowledgedBy: userId }),
+                        ipAddress: ctx?.ipAddress,
+                        userAgent: ctx?.userAgent,
+                        status: 'success',
+                    }),
+                );
+
+                // 🔔 Notify POS location about PLM acknowledgment
+                if (request.fromLocationId) {
+                    runInBackground(
+                        'Notify POS - Transfer Acknowledged',
+                        this.notifyLocationUsers(request.fromLocationId, {
+                            title: '📦 Transfer Acknowledged',
+                            message: `PLM has acknowledged receipt of transfer ${updated.requestNo}. Inventory updated.`,
+                            category: 'inventory',
+                            priority: 'normal',
+                            actionType: 'view_transfer',
+                            actionPayload: { transferId: updated.id, requestNo: updated.requestNo },
+                            entityType: 'TransferRequest',
+                            entityId: updated.id,
+                        })
+                    );
+                }
+
+                return updated;
+            });
+        } catch (error: any) {
+            runInBackground(
+                'Acknowledge Claim Transfer (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'transfer-request',
+                    entity: 'TransferRequest',
+                    entityId: id,
+                    description: `Failed to acknowledge claim transfer`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
+            throw error;
+        }
+    }
+
+    // 🔔 Helper: Notify users at specific location
+    private async notifyLocationUsers(locationId: string, notificationData: {
+        title: string;
+        message: string;
+        category: string;
+        priority: 'low' | 'normal' | 'high' | 'urgent';
+        actionType?: string;
+        actionPayload?: any;
+        entityType?: string;
+        entityId?: string;
+    }) {
+        try {
+            // For now, get all users and let notification system handle filtering
+            // In future, can add location-based filtering when user-location relationship is clarified
+            const allUsers = await this.prismaMaster.user.findMany({
+                select: { id: true }
+            });
+
+            // Send notification to each user (notification system will handle user preferences)
+            for (const user of allUsers) {
+                await this.notifications.create({
+                    userId: user.id,
+                    ...notificationData,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to notify location users:', error);
         }
     }
 }
