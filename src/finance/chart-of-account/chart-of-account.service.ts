@@ -405,7 +405,7 @@ export class ChartOfAccountService {
       items: {
         name: string;
         code: string;
-        type: 'SUPPLIER' | 'CUSTOMER' | 'LOCATION';
+        type: 'SUPPLIER' | 'CUSTOMER' | 'LOCATION' | 'DIRECTOR' | 'EMPLOYEE' | 'MERCHANDISE' | 'SALARY' | 'TAX';
         referenceId: string;
       }[];
     },
@@ -448,7 +448,7 @@ export class ChartOfAccountService {
           ...(ctx?.userId ? { createdById: ctx.userId } : {}),
         };
 
-        if (item.type === 'SUPPLIER') {
+        if (item.type === 'SUPPLIER' || item.type === 'MERCHANDISE') {
           data.suppliers = {
             connect: [{ id: item.referenceId }],
           };

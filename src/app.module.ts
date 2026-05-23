@@ -115,6 +115,7 @@ import { TaskProjectModule } from './task-project/task-project.module';
 import { TaskListModule } from './task-list/task-list.module';
 import { TaskModule } from './task/task.module';
 import { TaskReportsModule } from './task-reports/task-reports.module';
+import { PayeeModule } from './master/payee/payee.module';
 
 @Module({
   imports: [
@@ -254,6 +255,7 @@ import { TaskReportsModule } from './task-reports/task-reports.module';
     TaskListModule,
     TaskModule,
     TaskReportsModule,
+    PayeeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

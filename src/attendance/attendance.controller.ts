@@ -135,6 +135,28 @@ export class AttendanceController {
     });
   }
 
+  @Post('attendances/check-in')
+  @Permissions('hr.attendance.create')
+  @ApiOperation({ summary: 'Check in attendance' })
+  async checkIn(@Body() body: any, @Req() req: any) {
+    return this.service.checkIn(body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('attendances/check-out')
+  @Permissions('hr.attendance.update')
+  @ApiOperation({ summary: 'Check out attendance' })
+  async checkOut(@Body() body: any, @Req() req: any) {
+    return this.service.checkOut(body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Put('attendances/:id')
   @Permissions('hr.attendance.update')
   @ApiOperation({ summary: 'Update attendance' })

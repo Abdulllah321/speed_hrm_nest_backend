@@ -1,0 +1,29 @@
+model PayeeDirector {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PayeeSalary {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PayeeTax {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
