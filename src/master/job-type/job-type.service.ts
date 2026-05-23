@@ -15,12 +15,15 @@ export class JobTypeService {
   async list() {
     const items = await this.prisma.jobType.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.jobType.findUnique({ where: { id } });
+    const item = await this.prisma.jobType.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Job type not found' };
     return { status: true, data: item };
   }
@@ -142,8 +145,10 @@ export class JobTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.jobType.findUnique({
-        where: { id },
+      const existing = await this.prisma.jobType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const updated = await this.prisma.jobType.update({
         where: { id },
@@ -257,10 +262,14 @@ export class JobTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.jobType.findUnique({
-        where: { id },
+      const existing = await this.prisma.jobType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const removed = await this.prisma.jobType.delete({ where: { id } });
+      const removed = await this.prisma.jobType.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: removed,
@@ -312,9 +321,10 @@ export class JobTypeService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      const removed = await this.prisma.jobType.deleteMany({
+      const removed = await this.prisma.jobType.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: ids,

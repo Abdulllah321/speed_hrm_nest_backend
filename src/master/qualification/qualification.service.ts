@@ -3,10 +3,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class QualificationService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -14,12 +16,15 @@ export class QualificationService {
   async list() {
     const items = await this.prisma.qualification.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.qualification.findUnique({ where: { id } });
+    const item = await this.prisma.qualification.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) return { status: false, message: 'Qualification not found' };
     return { status: true, data: item };
   }
@@ -139,8 +144,10 @@ export class QualificationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.qualification.findUnique({
-        where: { id },
+      const existing = await this.prisma.qualification.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Qualification not found' };
@@ -206,14 +213,21 @@ export class QualificationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.qualification.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'qualification', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.qualification.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) {
         return { status: false, message: 'Qualification not found' };
       }
 
-      const removed = await this.prisma.qualification.delete({ where: { id } });
+      const removed = await this.prisma.qualification.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Record',
@@ -259,12 +273,20 @@ export class QualificationService {
     if (!ids?.length)
       return { status: false, message: 'No qualifications to delete' };
     try {
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'qualification', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
       const existing = await this.prisma.qualification.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids },
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.qualification.deleteMany({
+      const result = await this.prisma.qualification.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({

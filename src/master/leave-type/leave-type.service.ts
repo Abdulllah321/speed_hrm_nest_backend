@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 
 @Injectable()
 export class LeaveTypeService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -14,13 +16,16 @@ export class LeaveTypeService {
   async list() {
     const items = await this.prisma.leaveType.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.leaveType.findUnique({
-      where: { id },
+    const item = await this.prisma.leaveType.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!item) return { status: false, message: 'Leave type not found' };
     return { status: true, data: item };
@@ -82,8 +87,10 @@ export class LeaveTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leaveType.findUnique({
-        where: { id },
+      const existing = await this.prisma.leaveType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const updated = await this.prisma.leaveType.update({
         where: { id },
@@ -137,12 +144,18 @@ export class LeaveTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.leaveType.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'leaveType', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.leaveType.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const removed = await this.prisma.leaveType.delete({
+      const removed = await this.prisma.leaveType.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       
       const response = { status: true, data: removed };
       runInBackground(
@@ -240,8 +253,10 @@ export class LeaveTypeService {
       return { status: false, message: 'No leave types to update' };
     try {
       for (const i of items) {
-        const existing = await this.prisma.leaveType.findUnique({
-          where: { id: i.id },
+        const existing = await this.prisma.leaveType.findFirst({
+          where: { id: i.id,
+              isDeleted: false
+        },
         });
         await this.prisma.leaveType.update({
           where: { id: i.id },
@@ -295,12 +310,20 @@ export class LeaveTypeService {
     if (!ids?.length)
       return { status: false, message: 'No leave types to delete' };
     try {
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'leaveType', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
       const existing = await this.prisma.leaveType.findMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids },
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.leaveType.deleteMany({
+      const result = await this.prisma.leaveType.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = { status: true, message: 'Leave types deleted', data: result };
       runInBackground(
         'Bulk Delete Leave Types',

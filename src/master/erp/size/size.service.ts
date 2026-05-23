@@ -10,10 +10,12 @@ import {
   UpdateSizeDto,
   BulkUpdateSizeItemDto,
 } from './dto/size.dto';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class SizeService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
 
@@ -30,6 +32,7 @@ export class SizeService {
 
     const sizes = await this.prisma.size.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -56,8 +59,10 @@ export class SizeService {
   }
 
   async getSizeById(id: string) {
-    const size = await this.prisma.size.findUnique({
-      where: { id },
+    const size = await this.prisma.size.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!size) return { status: false, message: 'Size not found' };
 
@@ -114,8 +119,10 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.size.findUnique({
-        where: { id },
+      const existing = await this.prisma.size.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const size = await this.prisma.size.update({
         where: { id },
@@ -193,9 +200,15 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.size.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'size', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const result = await this.prisma.size.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: result,
@@ -227,10 +240,17 @@ export class SizeService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.size.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'size', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.size.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.size.delete({ where: { id } });
+      const result = await this.prisma.size.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,

@@ -11,10 +11,12 @@ import {
   UpdateItemClassDto,
   BulkUpdateItemClassItemDto,
 } from './dto/item-class.dto';
+import { MasterDeleteGuardService } from '../../../common/services/master-delete-guard.service';
 
 @Injectable()
 export class ItemClassService {
   constructor(
+    private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,    private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
@@ -33,6 +35,7 @@ export class ItemClassService {
         subclasses: true,
       },
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -62,8 +65,10 @@ export class ItemClassService {
   }
 
   async getById(id: string) {
-    const itemClass = await this.prisma.itemClass.findUnique({
-      where: { id },
+    const itemClass = await this.prisma.itemClass.findFirst({
+      where: { id,
+          isDeleted: false
+    },
       include: { subclasses: true },
     });
     if (!itemClass) return { status: false, message: 'Item Class not found' };
@@ -121,8 +126,10 @@ export class ItemClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.itemClass.findUnique({
-        where: { id },
+      const existing = await this.prisma.itemClass.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Item Class not found' };
 
@@ -205,9 +212,15 @@ export class ItemClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.itemClass.deleteMany({
+      for (const guardId of ids) {
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'itemClass', guardId);
+        if (deleteBlocked) return { status: false, message: deleteBlocked };
+      }
+
+      const result = await this.prisma.itemClass.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       const response = {
         status: true,
         data: result,
@@ -239,12 +252,18 @@ export class ItemClassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.itemClass.findUnique({
-        where: { id },
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'itemClass', id);
+      if (deleteBlocked) return { status: false, message: deleteBlocked };
+
+      const existing = await this.prisma.itemClass.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.itemClass.delete({
+      const result = await this.prisma.itemClass.update({
         where: { id },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       const response = {
         status: true,

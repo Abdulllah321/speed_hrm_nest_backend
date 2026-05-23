@@ -29,6 +29,7 @@ export class UnitOfMeasurementService {
 
     const units = await this.prisma.unitOfMeasurement.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -55,8 +56,10 @@ export class UnitOfMeasurementService {
   }
 
   async getById(id: string) {
-    const unit = await this.prisma.unitOfMeasurement.findUnique({
-      where: { id },
+    const unit = await this.prisma.unitOfMeasurement.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!unit) return { status: false, message: 'Unit of measurement not found' };
 
@@ -113,8 +116,10 @@ export class UnitOfMeasurementService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.unitOfMeasurement.findUnique({
-        where: { id },
+      const existing = await this.prisma.unitOfMeasurement.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Unit of measurement not found' };
 
@@ -204,9 +209,10 @@ export class UnitOfMeasurementService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.unitOfMeasurement.deleteMany({
+      const result = await this.prisma.unitOfMeasurement.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         `Bulk deleted units of measurement (${result.count})`,
         this.activityLogs.log({
@@ -237,12 +243,16 @@ export class UnitOfMeasurementService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.unitOfMeasurement.findUnique({
-        where: { id },
+      const existing = await this.prisma.unitOfMeasurement.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       if (!existing) return { status: false, message: 'Unit of measurement not found' };
 
-      const result = await this.prisma.unitOfMeasurement.delete({ where: { id } });
+      const result = await this.prisma.unitOfMeasurement.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         `Deleted unit of measurement ${existing.name}`,

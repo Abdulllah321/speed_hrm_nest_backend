@@ -30,6 +30,7 @@ export class GenderService {
 
     const genders = await this.prisma.gender.findMany({
       orderBy: { createdAt: 'desc' },
+        where: { isDeleted: false }
     });
 
     const userIds = [
@@ -58,8 +59,10 @@ export class GenderService {
   }
 
   async getGenderById(id: string) {
-    const gender = await this.prisma.gender.findUnique({
-      where: { id },
+    const gender = await this.prisma.gender.findFirst({
+      where: { id,
+          isDeleted: false
+    },
     });
     if (!gender) return { status: false, message: 'Gender not found' };
 
@@ -115,8 +118,10 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.gender.findUnique({
-        where: { id },
+      const existing = await this.prisma.gender.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
       const gender = await this.prisma.gender.update({
         where: { id },
@@ -196,9 +201,10 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const result = await this.prisma.gender.deleteMany({
+      const result = await this.prisma.gender.updateMany({
         where: { id: { in: ids } },
-      });
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
       runInBackground(
         'Bulk deleted genders (${result.count})',
         this.activityLogs.log({
@@ -229,10 +235,14 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const existing = await this.prisma.gender.findUnique({
-        where: { id },
+      const existing = await this.prisma.gender.findFirst({
+        where: { id,
+            isDeleted: false
+        },
       });
-      const result = await this.prisma.gender.delete({ where: { id } });
+      const result = await this.prisma.gender.update({ where: { id },
+          data: { isDeleted: true, deletedAt: new Date() }
+    });
 
       runInBackground(
         'Deleted gender ${existing?.name}',

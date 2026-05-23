@@ -19,12 +19,15 @@ export class TaxRateService {
   async list() {
     const items = await this.prisma.taxRate1.findMany({
       orderBy: [{ createdAt: 'desc' }],
+        where: { isDeleted: false }
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.taxRate1.findUnique({ where: { id } });
+    const item = await this.prisma.taxRate1.findFirst({ where: { id,
+        isDeleted: false
+    } });
     if (!item) {
       throw new NotFoundException('Tax Rate not found');
     }
@@ -44,7 +47,9 @@ export class TaxRateService {
 
   async remove(id: string) {
     await this.get(id);
-    await this.prisma.taxRate1.delete({ where: { id } });
+    await this.prisma.taxRate1.update({ where: { id },
+        data: { isDeleted: true, deletedAt: new Date() }
+    });
     return { status: true };
   }
 }

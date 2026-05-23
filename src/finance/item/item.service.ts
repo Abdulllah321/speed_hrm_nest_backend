@@ -193,20 +193,21 @@ export class ItemService {
     }
   }
 
-  async remove(id: string) {
-    try {
-      const findResult = await this.prisma.item.findUnique({ where: { id } });
-      if (!findResult)
-        return { status: false, message: `Item with ID ${id} not found` };
+  // DISABLED: Items cannot be deleted to maintain data integrity
+  // async remove(id: string) {
+  //   try {
+  //     const findResult = await this.prisma.item.findUnique({ where: { id } });
+  //     if (!findResult)
+  //       return { status: false, message: `Item with ID ${id} not found` };
 
-      await this.prisma.item.delete({
-        where: { id },
-      });
-      return { status: true, message: 'Item deleted successfully' };
-    } catch (error: any) {
-      return { status: false, message: error.message };
-    }
-  }
+  //     await this.prisma.item.delete({
+  //       where: { id },
+  //     });
+  //     return { status: true, message: 'Item deleted successfully' };
+  //   } catch (error: any) {
+  //     return { status: false, message: error.message };
+  //   }
+  // }
 
   async getUniqueHsCodes() {
     try {

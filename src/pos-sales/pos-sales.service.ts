@@ -136,7 +136,7 @@ export class PosSalesService implements OnModuleInit {
 
                 // ── Resolve default warehouse ───────────────────────────
                 const warehouse = await tx.warehouse.findFirst({
-                    where: { isActive: true },
+                    where: { isActive: true, isDeleted: false },
                 });
                 if (!warehouse) throw new Error('No active warehouse found');
 
@@ -229,7 +229,7 @@ export class PosSalesService implements OnModuleInit {
                 
                 // 2. Alliance discount (calculated on subtotal BEFORE item discounts)
                 if (dto.allianceId) {
-                    const alliance = await tx.allianceDiscount.findUnique({ where: { id: dto.allianceId } });
+                    const alliance = await tx.allianceDiscount.findFirst({ where: { id: dto.allianceId, isDeleted: false } });
                     if (alliance) {
                         if (alliance.maxDiscount) {
                             allianceDiscount = Number(alliance.maxDiscount);
@@ -241,7 +241,7 @@ export class PosSalesService implements OnModuleInit {
                 
                 // 3. Coupon discount
                 if (dto.couponId) {
-                    const coupon = await tx.couponCode.findUnique({ where: { id: dto.couponId } });
+                    const coupon = await tx.couponCode.findFirst({ where: { id: dto.couponId, isDeleted: false } });
                     if (coupon) {
                         if (coupon.discountType === 'percent') {
                             const disc = Math.round(subtotalAfterItemDiscount * (Number(coupon.discountValue) / 100) * 100) / 100;
@@ -958,7 +958,7 @@ export class PosSalesService implements OnModuleInit {
                 if (!order) throw new Error('Order not found');
                 if (order.status === 'voided') throw new Error('Order is already voided');
 
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
                 if (!warehouse) throw new Error('No active warehouse found');
 
                 // Determine effective location for return (where stock goes back)
@@ -1382,7 +1382,7 @@ export class PosSalesService implements OnModuleInit {
 
                 // Resolve default warehouse
                 const warehouse = await tx.warehouse.findFirst({
-                    where: { isActive: true },
+                    where: { isActive: true, isDeleted: false },
                 });
                 if (!warehouse) throw new Error('No active warehouse found');
 
@@ -1512,7 +1512,7 @@ export class PosSalesService implements OnModuleInit {
                 if (!order) throw new Error('Order not found');
                 if (order.status === 'voided') throw new Error('Order is already voided');
 
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
                 if (!warehouse) throw new Error('No active warehouse found');
 
                 // ── Restore returned items ──────────────────────────────
@@ -1672,7 +1672,7 @@ export class PosSalesService implements OnModuleInit {
             // Use transaction to ensure inventory is restored atomically
             const result = await this.prisma.$transaction(async (tx) => {
                 // Find active warehouse
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
                 if (!warehouse) throw new Error('No active warehouse found');
 
                 const effectiveLocationId = order.locationId;
@@ -1862,7 +1862,7 @@ export class PosSalesService implements OnModuleInit {
                 });
 
                 // ── Deduct stock immediately on hold ────────────────────
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
                 if (warehouse) {
                     for (const item of itemsData) {
                         await this.stockLedgerService.createEntry({
@@ -1993,7 +1993,7 @@ export class PosSalesService implements OnModuleInit {
                 if (order.status !== 'hold') throw new Error('Order is not on hold');
 
                 // Restore stock for each item
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true } });
+                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
                 if (warehouse) {
                     for (const item of order.items) {
                         await this.stockLedgerService.createEntry({
@@ -2078,7 +2078,7 @@ export class PosSalesService implements OnModuleInit {
 
         if (expiredOrders.length === 0) return { status: true, cleared: 0 };
 
-        const warehouse = await this.prisma.warehouse.findFirst({ where: { isActive: true } });
+        const warehouse = await this.prisma.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
 
         for (const order of expiredOrders) {
             await this.prisma.$transaction(async (tx) => {
