@@ -1,21 +1,46 @@
 model AccountTransaction {
-  id              String         @id @default(uuid())
-  accountId       String
-  debit           Decimal        @default(0.0) @db.Decimal(15, 2)
-  credit          Decimal        @default(0.0) @db.Decimal(15, 2)
-  balanceAfter    Decimal        @default(0.0) @db.Decimal(15, 2)
-  /// Source document type: PURCHASE_INVOICE | PAYMENT_VOUCHER | JOURNAL_VOUCHER | RECEIPT_VOUCHER
-  sourceType      String
-  /// ID of the source document
-  sourceId        String
-  /// Human-readable reference e.g. PI-2026-0001, BPV-2026-0001
-  sourceRef       String
-  description     String?
-  transactionDate DateTime
-  createdAt       DateTime       @default(now())
-  account         ChartOfAccount @relation(fields: [accountId], references: [id])
+  id              String          @id @default(uuid())
 
+  // ── Account ──────────────────────────────────────────────────────────────
+  accountId       String
+  tagAccountId    String?         // Optional sub-ledger tag (child chart-of-account) for drill-down analysis
+
+  // ── Amounts ──────────────────────────────────────────────────────────────
+  debit           Decimal         @default(0.0) @db.Decimal(15, 2)
+  credit          Decimal         @default(0.0) @db.Decimal(15, 2)
+  balanceAfter    Decimal         @default(0.0) @db.Decimal(15, 2)
+
+  // ── Source document ───────────────────────────────────────────────────────
+  /// Source document type: PURCHASE_INVOICE | PAYMENT_VOUCHER | JOURNAL_VOUCHER | RECEIPT_VOUCHER | ADVANCE_APPLICATION
+  sourceType      String
+  /// UUID of the source document
+  sourceId        String
+  /// Human-readable reference e.g. BP/2026/5/4069, JV-2026-0001
+  sourceRef       String
+
+  // ── Per-line details ──────────────────────────────────────────────────────
+  /// Per-line narration (overrides voucher-level description for this line)
+  narration       String?
+  /// Bill / reference number tied to this specific line (e.g. CW-M076-2026-05)
+  refBillNo       String?
+  /// Whether this line is subject to withholding tax
+  isTaxApplicable Boolean         @default(false)
+
+  // ── Legacy / fallback description ────────────────────────────────────────
+  description     String?
+
+  // ── Date & audit ─────────────────────────────────────────────────────────
+  transactionDate DateTime
+  createdAt       DateTime        @default(now())
+
+  // ── Relations ────────────────────────────────────────────────────────────
+  account         ChartOfAccount  @relation("ATAccount",    fields: [accountId],    references: [id])
+  tagAccount      ChartOfAccount? @relation("ATTagAccount", fields: [tagAccountId], references: [id])
+
+  // ── Indexes ───────────────────────────────────────────────────────────────
   @@index([accountId])
-  @@index([sourceType, sourceId])
+  @@index([tagAccountId])
+  @@index([sourceType, sourceId])       // Fetch all lines for a voucher
   @@index([transactionDate])
+  @@index([accountId, transactionDate]) // Account ledger range queries
 }

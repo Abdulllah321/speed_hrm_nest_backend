@@ -16,7 +16,12 @@ export class PoBulkUploadService {
         private eventsService: UploadEventsService,
     ) { }
 
-    async initiateValidation(fileBuffer: Buffer, filename: string, userId: string): Promise<{ uploadId: string; jobId: string }> {
+    async initiateValidation(
+        fileBuffer: Buffer,
+        filename: string,
+        userId: string,
+        metadata?: { vendorId?: string; orderType?: string; goodsType?: string; expectedDeliveryDate?: string; notes?: string }
+    ): Promise<{ uploadId: string; jobId: string }> {
         const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const upload = await this.prisma.bulkUpload.create({
             data: { jobId: tempJobId, filename, totalRecords: 0, uploadedBy: userId, status: 'validating' },
@@ -33,13 +38,18 @@ export class PoBulkUploadService {
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'validate',
+            metadata,
         } as any, { removeOnComplete: false, removeOnFail: false });
 
         await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: String(job.id) } });
         return { uploadId: upload.id, jobId: String(job.id) };
     }
 
-    async confirmUpload(uploadId: string, userId: string): Promise<{ uploadId: string; jobId: string }> {
+    async confirmUpload(
+        uploadId: string,
+        userId: string,
+        metadata?: { vendorId?: string; orderType?: string; goodsType?: string; expectedDeliveryDate?: string; notes?: string }
+    ): Promise<{ uploadId: string; jobId: string }> {
         const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
         if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
         if (['processing', 'pending', 'completed'].includes(upload.status)) return { uploadId: upload.id, jobId: upload.jobId };
@@ -53,6 +63,7 @@ export class PoBulkUploadService {
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'import',
+            metadata,
         } as any, { removeOnComplete: false, removeOnFail: false });
 
         await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: String(job.id) } });

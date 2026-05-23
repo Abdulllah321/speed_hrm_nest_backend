@@ -41,10 +41,8 @@ export class ItemValidatorService {
             errors.push(err('SKU', data.sku, 'SKU is a required field and cannot be empty.'));
         }
 
-        // "Unique No." / "Item ID" both map to itemId
-        if (!data.itemId || String(data.itemId).trim() === '') {
-            errors.push(err('Item ID / Unique No.', data.itemId, 'Item ID (Unique No.) is a required unique identifier.'));
-        }
+        // "Unique No." / "Item ID" both map to itemId — optional, auto-generated if absent
+        // No validation error here; the processor will assign a sequential ID when missing.
 
         if (data.unitPrice === null || data.unitPrice === undefined) {
             errors.push(err('Unit Price', data.unitPrice, 'Unit Price is required for catalog items.'));

@@ -12,10 +12,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../common/guards/permission.guard';
-import { PrismaMasterService } from '../database/prisma-master.service';
 import { PrismaService } from '../database/prisma.service';
 
-import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { SetMetadata } from '@nestjs/common';
 
 export const OptionalJwtAuth = () => SetMetadata('isOptional', true);
 import {
@@ -817,6 +816,30 @@ export class AuthController {
   })
   async updateUser(@Body() body: any) {
     return this.service.updateUser(body.id, body.data);
+  }
+
+  @Post('users/reset-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin reset of a user password — sets isFirstPassword to true' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        userId: { type: 'string', example: 'uuid' },
+        newPassword: { type: 'string', example: 'NewPass@123' },
+      },
+    },
+  })
+  async adminResetPassword(
+    @Req() req: any,
+    @Body() body: { userId: string; newPassword: string },
+  ) {
+    return this.service.adminResetPassword(
+      req.user.userId,
+      body.userId,
+      body.newPassword,
+    );
   }
 
   @Get('roles')

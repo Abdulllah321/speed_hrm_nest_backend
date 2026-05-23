@@ -239,6 +239,7 @@ export class UploadProcessor {
                             itemIdSet.add(normalized);
                         }
                     }
+                    // rows without itemId are fine — processor will auto-assign a sequential ID
 
                     if (record.data.hsCode) {
                         const hsCode = String(record.data.hsCode).trim();
@@ -398,6 +399,28 @@ export class UploadProcessor {
      * Process a batch of records with individual error isolation and bulk operations
      */
     private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
+        // ── Auto-generate itemIds for rows that don't have one ────────────────
+        // Count how many rows need a generated ID
+        const rowsNeedingId = batch.filter(r => !r.data.itemId || String(r.data.itemId).trim() === '');
+
+        if (rowsNeedingId.length > 0) {
+            // Find the current highest numeric itemId in one query, then assign a
+            // contiguous block — avoids N round-trips and is race-condition safe
+            // because createMany with skipDuplicates handles any collision.
+            const last = await prisma.item.findFirst({
+                orderBy: { itemId: 'desc' },
+                select: { itemId: true },
+            });
+            const lastNum = last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+
+            let counter = lastNum;
+            for (const record of rowsNeedingId) {
+                counter++;
+                if (counter > 9999999) throw new Error('Item ID sequence exceeded maximum 9999999');
+                record.data.itemId = String(counter).padStart(6, '0');
+            }
+        }
+
         // Bulk existence check
         const itemIds = batch.map(r => String(r.data.itemId)).filter(Boolean);
         const existingItems = await prisma.item.findMany({

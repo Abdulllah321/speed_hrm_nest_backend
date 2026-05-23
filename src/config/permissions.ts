@@ -1807,8 +1807,8 @@ export const PERMISSIONS = [
   { name: 'erp.inventory.stock-transfer.read', description: 'View Stock Transfer History' },
   { name: 'erp.inventory.delivery-note.read', description: 'View Delivery Notes' },
   { name: 'erp.inventory.delivery-note.create', description: 'Create Delivery Note' },
-  { name: 'erp.inventory.stock-received.read', description: 'View Stock Received' },
-  { name: 'erp.inventory.stock-received.update', description: 'Update Stock Received Status' },
+  { name: 'erp.inventory.stock-ledger.read', description: 'View Stock Ledger' },
+  { name: 'erp.inventory.stock-ledger.update', description: 'Update Stock Ledger Status' },
   { name: 'erp.inventory.return-transfer.read', description: 'View Return Transfers' },
   { name: 'erp.inventory.return-transfer.create', description: 'Create Return Transfer' },
 

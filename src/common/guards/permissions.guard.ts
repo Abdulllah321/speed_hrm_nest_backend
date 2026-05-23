@@ -39,12 +39,17 @@ export class PermissionsGuard implements CanActivate {
       return requiredPermissions.some((p) => user.permissions.includes(p));
     }
 
-    // Fallback: resolve from DB via roleId (legacy path)
-    if (!user.roleId) {
+    // Fallback: resolve from DB via userId or roleId (legacy path)
+    const userId = user.id || user.userId;
+    let userPermissions: string[] = [];
+
+    if (userId) {
+      userPermissions = await this.resolveUserPermissions(userId);
+    } else if (user.roleId) {
+      userPermissions = await this.getUserPermissions(user.roleId);
+    } else {
       return false;
     }
-
-    const userPermissions = await this.getUserPermissions(user.roleId);
 
     if (userPermissions.includes('*')) {
       return true;
@@ -53,6 +58,73 @@ export class PermissionsGuard implements CanActivate {
     return requiredPermissions.some((permission) =>
       userPermissions.includes(permission),
     );
+  }
+
+  private async resolveUserPermissions(userId: string): Promise<string[]> {
+    const user = await this.prismaMaster.user.findUnique({
+      where: { id: userId },
+      select: {
+        roleId: true,
+        roleExpiresAt: true,
+        role: {
+          select: {
+            name: true,
+            permissions: {
+              select: {
+                permission: { select: { name: true } },
+              },
+            },
+          },
+        },
+        userPermissions: {
+          where: {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: new Date() } }
+            ]
+          },
+          select: {
+            isAllowed: true,
+            permission: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (!user) return [];
+
+    const permissionsSet = new Set<string>();
+    const roleName = user.role?.name?.toLowerCase();
+
+    // Check if role is active and not expired
+    const isRoleActive = user.roleId && user.role && (!user.roleExpiresAt || user.roleExpiresAt > new Date());
+
+    if (isRoleActive && user.role) {
+      if (roleName === 'super_admin' || roleName === 'admin') {
+        permissionsSet.add('*');
+      } else {
+        user.role.permissions.forEach((rp) => {
+          if (rp.permission?.name) {
+            permissionsSet.add(rp.permission.name);
+          }
+        });
+      }
+    }
+
+    // Process direct user overrides (allow/deny)
+    if (user.userPermissions) {
+      user.userPermissions.forEach((up) => {
+        if (up.permission?.name) {
+          if (up.isAllowed) {
+            permissionsSet.add(up.permission.name);
+          } else {
+            permissionsSet.delete(up.permission.name);
+          }
+        }
+      });
+    }
+
+    return Array.from(permissionsSet);
   }
 
   private async getUserPermissions(roleId: string): Promise<string[]> {

@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsDate,
   IsNotEmpty,
   IsNumber,
@@ -15,6 +16,10 @@ export class CreateJournalVoucherDetailDto {
   @IsNotEmpty()
   accountId: string;
 
+  @IsString()
+  @IsOptional()
+  tagAccountId?: string;
+
   @IsNumber()
   @Min(0)
   debit: number;
@@ -22,6 +27,18 @@ export class CreateJournalVoucherDetailDto {
   @IsNumber()
   @Min(0)
   credit: number;
+
+  @IsString()
+  @IsOptional()
+  narration?: string;       // Per-line narration
+
+  @IsString()
+  @IsOptional()
+  refBillNo?: string;       // Bill/ref number for this line
+
+  @IsBoolean()
+  @IsOptional()
+  isTaxApplicable?: boolean;
 }
 
 export class CreateJournalVoucherDto {

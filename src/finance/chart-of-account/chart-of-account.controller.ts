@@ -32,7 +32,19 @@ export class ChartOfAccountController {
   @ApiOperation({ summary: 'Create a new chart of account' })
   create(@Body() createDto: CreateChartOfAccountDto, @Req() req: any) {
     return this.chartOfAccountService.create(createDto, {
-      userId: req.user?.id,
+      userId: req.user?.id || req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('bulk-subaccounts')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.create')
+  @ApiOperation({ summary: 'Bulk create sub-accounts under a parent account' })
+  createBulkSubAccounts(@Body() body: any, @Req() req: any) {
+    return this.chartOfAccountService.createBulkSubAccounts(body, {
+      userId: req.user?.id || req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
@@ -44,6 +56,22 @@ export class ChartOfAccountController {
   @ApiOperation({ summary: 'Get all chart of accounts' })
   findAll() {
     return this.chartOfAccountService.findAll();
+  }
+
+  @Get('tree')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.read')
+  @ApiOperation({ summary: 'Get all chart of accounts as a nested tree' })
+  findTree() {
+    return this.chartOfAccountService.findTree();
+  }
+
+  @Get(':id/children')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.read')
+  @ApiOperation({ summary: 'Get direct child accounts (for tag-account selection)' })
+  findChildAccounts(@Param('id') id: string) {
+    return this.chartOfAccountService.findChildAccounts(id);
   }
 
   @Get(':id')
