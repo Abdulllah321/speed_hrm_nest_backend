@@ -64,13 +64,14 @@ export class LocationService {
   }
 
   async create(
-    body: { name: string; address?: string; cityId?: string; status?: string; companyId?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const created = await this.prisma.location.create({
         data: {
           name: body.name,
+          code: body.code?.trim() || undefined,
           address: body.address || null,
           cityId: body.cityId?.trim() || null,
           companyId: body.companyId,
@@ -117,7 +118,7 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; address?: string; cityId?: string; status?: string; companyId?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -128,6 +129,10 @@ export class LocationService {
         where: { id },
         data: {
           name: body.name ?? existing?.name,
+          code:
+            body.code !== undefined && body.code?.trim()
+              ? body.code.trim()
+              : existing?.code,
           address:
             body.address !== undefined ? body.address : existing?.address,
           cityId:
@@ -232,6 +237,7 @@ export class LocationService {
   async createBulk(
     items: {
       name: string;
+      code?: string;
       address?: string;
       cityId?: string;
       status?: string;
@@ -244,6 +250,7 @@ export class LocationService {
       const result = await this.prisma.location.createMany({
         data: items.map((i) => ({
           name: i.name,
+          code: i.code?.trim() || undefined,
           address: i.address || null,
           cityId: i.cityId?.trim() || null,
           status: i.status ?? 'active',
@@ -291,6 +298,7 @@ export class LocationService {
     items: {
       id: string;
       name: string;
+      code?: string;
       address?: string;
       cityId?: string;
       status?: string;
@@ -308,6 +316,10 @@ export class LocationService {
           where: { id: i.id },
           data: {
             name: i.name ?? existing?.name,
+            code:
+              i.code !== undefined && i.code?.trim()
+                ? i.code.trim()
+                : existing?.code,
             address: i.address !== undefined ? i.address : existing?.address,
             cityId:
               i.cityId !== undefined

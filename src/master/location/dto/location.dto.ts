@@ -7,6 +7,11 @@ export class CreateLocationDto {
   @IsString()
   name: string;
 
+  @ApiPropertyOptional({ example: 'LOC01' })
+  @IsOptional()
+  @IsString()
+  code?: string;
+
   @ApiPropertyOptional({ example: '123 Main St' })
   @IsOptional()
   @IsString()
@@ -33,6 +38,11 @@ export class UpdateLocationDto {
   @IsNotEmpty()
   @IsString()
   name: string;
+
+  @ApiPropertyOptional({ example: 'LOC01' })
+  @IsOptional()
+  @IsString()
+  code?: string;
 
   @ApiPropertyOptional({ example: '456 Market St' })
   @IsOptional()
