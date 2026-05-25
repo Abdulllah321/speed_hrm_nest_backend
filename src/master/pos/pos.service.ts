@@ -99,6 +99,9 @@ export class PosService {
 
       let hashedPin = null;
       if (body.terminalPin) {
+        if (!/^\d{4,6}$/.test(body.terminalPin)) {
+          throw new BadRequestException('Terminal PIN must be numeric and between 4 and 6 digits.');
+        }
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
 
@@ -170,6 +173,9 @@ export class PosService {
 
       let hashedPin = existing.terminalPin;
       if (body.terminalPin) {
+        if (!/^\d{4,6}$/.test(body.terminalPin)) {
+          throw new BadRequestException('Terminal PIN must be numeric and between 4 and 6 digits.');
+        }
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
 
