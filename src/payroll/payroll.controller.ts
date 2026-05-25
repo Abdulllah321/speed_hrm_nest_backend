@@ -60,24 +60,67 @@ export class PayrollController {
     });
   }
 
+  @Get('payroll/list')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get list of available payrolls with basic info' })
+  @ApiResponse({ status: 200, description: 'Returns list of payrolls with IDs' })
+  async getPayrollList(
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.payrollService.getPayrollList({ year, month });
+  }
+
   @Get('payroll')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('hr.payroll.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all payrolls' })
   @ApiResponse({ status: 200, description: 'Returns list of payrolls' })
-  async getAllPayrolls(@Query('year') year?: string) {
-    return { message: 'Use /generate to create payroll' };
+  async getAllPayrolls(
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('subDepartmentId') subDepartmentId?: string,
+    @Query('employeeId') employeeId?: string,
+  ) {
+    return this.payrollService.getPayrollReport({
+      month,
+      year,
+      departmentId,
+      subDepartmentId,
+      employeeId,
+    });
   }
 
   @Get('payroll/:id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('hr.payroll.read')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get payroll by id' })
+  @ApiOperation({ summary: 'Get payroll by employee ID or payroll ID' })
   @ApiResponse({ status: 200, description: 'Returns payroll details' })
-  async getPayrollDetails(@Param('id') id: string) {
-    return this.payrollService.getPayrollById(id);
+  async getPayrollDetails(
+    @Param('id') id: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.payrollService.getPayrollByIdOrEmployeeId(id, { year, month });
+  }
+
+  @Get('payroll/employee/:employeeId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get payroll by employee ID' })
+  @ApiResponse({ status: 200, description: 'Returns employee payroll details' })
+  async getEmployeePayroll(
+    @Param('employeeId') employeeId: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.payrollService.getEmployeePayroll(employeeId, { year, month });
   }
 
   @Get('payroll/report')
