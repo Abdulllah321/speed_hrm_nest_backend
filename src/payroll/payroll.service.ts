@@ -962,10 +962,184 @@ export class PayrollService {
   }
 
   async getPayrollById(id: string) {
-    return this.prisma.payroll.findUnique({
+    const payroll = await this.prisma.payroll.findUnique({
       where: { id },
-      include: { details: { include: { employee: true } } },
+      include: { 
+        details: { 
+          include: { 
+            employee: {
+              include: {
+                department: true,
+                subDepartment: true,
+                designation: true,
+                location: true,
+              }
+            } 
+          } 
+        } 
+      },
     });
+
+    if (!payroll) {
+      throw new BadRequestException(`Payroll with ID ${id} not found`);
+    }
+
+    return payroll;
+  }
+
+  async getPayrollByIdOrEmployeeId(id: string, filters: { year?: string; month?: string }) {
+    // First try to find as payroll ID
+    try {
+      const payroll = await this.prisma.payroll.findUnique({
+        where: { id },
+        include: { 
+          details: { 
+            include: { 
+              employee: {
+                include: {
+                  department: true,
+                  subDepartment: true,
+                  designation: true,
+                  location: true,
+                }
+              } 
+            } 
+          } 
+        },
+      });
+
+      if (payroll) {
+        return {
+          type: 'payroll',
+          data: payroll,
+        };
+      }
+    } catch (error) {
+      // If not found as payroll ID, continue to check as employee ID
+    }
+
+    // If not found as payroll ID, try as employee ID
+    const where: Prisma.PayrollDetailWhereInput = {
+      employeeId: id,
+    };
+
+    if (filters.year || filters.month) {
+      where.payroll = {
+        ...(filters.month && filters.month !== 'all' && { month: filters.month }),
+        ...(filters.year && filters.year !== 'all' && { year: filters.year }),
+      };
+    }
+
+    const payrollDetails = await this.prisma.payrollDetail.findMany({
+      where,
+      include: {
+        employee: {
+          include: {
+            department: true,
+            subDepartment: true,
+            designation: true,
+            location: true,
+          }
+        },
+        payroll: true,
+      },
+      orderBy: [
+        { payroll: { year: 'desc' } },
+        { payroll: { month: 'desc' } },
+      ],
+    });
+
+    if (payrollDetails.length === 0) {
+      throw new BadRequestException(`No payroll found for ID ${id}. Please check if the ID is correct or if payroll has been generated.`);
+    }
+
+    return {
+      type: 'employee',
+      employee: payrollDetails[0].employee,
+      payrollHistory: payrollDetails,
+      total: payrollDetails.length,
+    };
+  }
+
+  async getPayrollList(filters: { year?: string; month?: string }) {
+    const where: Prisma.PayrollWhereInput = {};
+
+    if (filters.year && filters.year !== 'all') {
+      where.year = filters.year;
+    }
+
+    if (filters.month && filters.month !== 'all') {
+      where.month = filters.month;
+    }
+
+    const payrolls = await this.prisma.payroll.findMany({
+      where,
+      select: {
+        id: true,
+        month: true,
+        year: true,
+        status: true,
+        generatedBy: true,
+        generatedAt: true,
+        _count: {
+          select: {
+            details: true,
+          },
+        },
+      },
+      orderBy: [
+        { year: 'desc' },
+        { month: 'desc' },
+      ],
+    });
+
+    return {
+      payrolls,
+      total: payrolls.length,
+      message: payrolls.length === 0 ? 'No payrolls found. Use /api/payroll/preview and /api/payroll/confirm to create payroll.' : undefined,
+    };
+  }
+
+  async getEmployeePayroll(employeeId: string, filters: { year?: string; month?: string }) {
+    const where: Prisma.PayrollDetailWhereInput = {
+      employeeId: employeeId,
+    };
+
+    if (filters.year || filters.month) {
+      where.payroll = {
+        ...(filters.month && filters.month !== 'all' && { month: filters.month }),
+        ...(filters.year && filters.year !== 'all' && { year: filters.year }),
+      };
+    }
+
+    const payrollDetails = await this.prisma.payrollDetail.findMany({
+      where,
+      include: {
+        employee: {
+          include: {
+            department: true,
+            subDepartment: true,
+            designation: true,
+            location: true,
+          }
+        },
+        payroll: true,
+      },
+      orderBy: [
+        { payroll: { year: 'desc' } },
+        { payroll: { month: 'desc' } },
+      ],
+    });
+
+    if (payrollDetails.length === 0) {
+      throw new BadRequestException(`No payroll found for employee ID ${employeeId}`);
+    }
+
+    return {
+      employee: payrollDetails[0].employee,
+      payrollHistory: payrollDetails,
+      total: payrollDetails.length,
+    };
   }
 
   private async sendPayslipEmails(payrollId: string) {
