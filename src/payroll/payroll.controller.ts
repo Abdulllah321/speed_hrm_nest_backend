@@ -17,6 +17,7 @@ import {
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { PreviewPayrollDto, ConfirmPayrollDto } from './dto/payroll.dto';
 
 @ApiTags('Payroll')
 @Controller('api')
@@ -32,12 +33,12 @@ export class PayrollController {
     status: 200,
     description: 'Payroll preview generated successfully',
   })
-  async previewPayroll(
-    @Body('month') month: string,
-    @Body('year') year: string,
-    @Body('employeeIds') employeeIds?: string[],
-  ) {
-    return this.payrollService.previewPayroll(month, year, employeeIds);
+  async previewPayroll(@Body() body: PreviewPayrollDto) {
+    return this.payrollService.previewPayroll(
+      body.month,
+      body.year,
+      body.employeeIds,
+    );
   }
 
   @Post('payroll/confirm')
@@ -46,17 +47,12 @@ export class PayrollController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Confirm payroll' })
   @ApiResponse({ status: 200, description: 'Payroll confirmed successfully' })
-  async confirmPayroll(
-    @Body('month') month: string,
-    @Body('year') year: string,
-    @Body('generatedBy') generatedBy: string,
-    @Body('details') details: any[],
-  ) {
+  async confirmPayroll(@Body() body: ConfirmPayrollDto) {
     return this.payrollService.confirmPayroll({
-      month,
-      year,
-      generatedBy,
-      details,
+      month: body.month,
+      year: body.year,
+      generatedBy: body.generatedBy,
+      details: body.details,
     });
   }
 
