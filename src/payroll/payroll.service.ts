@@ -1079,7 +1079,7 @@ export class PayrollService {
         month: true,
         year: true,
         status: true,
-        generatedBy: true,
+        generatedById: true,
         generatedAt: true,
         _count: {
           select: {
