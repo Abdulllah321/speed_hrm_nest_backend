@@ -53,7 +53,14 @@ export class TenantMiddleware implements NestMiddleware {
 
       if (cached && cached.expiresAt > Date.now()) {
         this.attachTenantContext(req, cached);
-        return next();
+        return PrismaService.asyncLocalStorage.run(
+          {
+            tenantId: cached.tenantId,
+            companyId: cached.companyId,
+            dbUrl: cached.dbUrl,
+          },
+          () => next(),
+        );
       }
 
       // Fetch company with tenant from database
@@ -116,8 +123,8 @@ export class TenantMiddleware implements NestMiddleware {
             const encodedHost = company.dbHost; // Host usually doesn't need encoding unless it's a domain with special chars
             const encodedDbName = encodeURIComponent(company.dbName);
 
-            dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
-
+            // Add connection pool restrictions directly to the dynamically generated URL
+            dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public&connection_limit=3&pool_timeout=15`;
             // Mask password in debug log
             const maskedUrl = `postgresql://${encodedUser}:****@${encodedHost}:${port}/${encodedDbName}`;
             this.logger.debug(`Constructed DB URL for company ${company.id}: ${maskedUrl}`);
@@ -149,7 +156,14 @@ export class TenantMiddleware implements NestMiddleware {
         `Tenant context set: Tenant=${company.tenant.id}, Company=${company.id} -> ${company.dbName}`,
       );
 
-      next();
+      return PrismaService.asyncLocalStorage.run(
+        {
+          tenantId: cacheEntry.tenantId,
+          companyId: cacheEntry.companyId,
+          dbUrl: cacheEntry.dbUrl,
+        },
+        () => next(),
+      );
     } catch (error) {
       this.logger.error(`Error in TenantMiddleware: ${error}`);
       // Don't throw - send error response instead to prevent server crash
