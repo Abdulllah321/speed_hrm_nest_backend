@@ -733,12 +733,6 @@ export class PurchaseInvoiceService {
         include: { chartOfAccounts: { select: { id: true } } },
       });
 
-      if (!supplier?.chartOfAccounts?.length) {
-        throw new BadRequestException(
-          'Supplier has no linked chart of accounts. Please link accounts to the supplier before approving.',
-        );
-      }
-
       return this.prisma.$transaction(async (tx) => {
         const updated = await tx.purchaseInvoice.update({
           where: { id },
@@ -748,30 +742,37 @@ export class PurchaseInvoiceService {
 
         const totalAmount = Number(invoice.totalAmount);
 
-        // Build journal lines
-        // Credit side — vendor payable accounts (split equally if multiple)
-        const payableAccounts = supplier.chartOfAccounts;
-        const creditPerAccount = totalAmount / payableAccounts.length;
-        const creditLines = payableAccounts.map(acc => ({
-          accountId: acc.id,
-          debit: 0,
-          credit: creditPerAccount,
-        }));
+        // Resolve local purchases account if configured
+        let purchasesAccountId: string | null = null;
+        try {
+          purchasesAccountId = await this.financeConfig.resolveAccount(
+            AccountRoleKey.PURCHASES_LOCAL,
+          );
+        } catch (error) {
+          // Gracefully ignore if not configured
+        }
 
-        // Debit side — purchases/expense account resolved from finance configuration
-        const purchasesAccountId = await this.financeConfig.resolveAccount(
-          AccountRoleKey.PURCHASES_LOCAL,
-        );
+        const payableAccounts = supplier?.chartOfAccounts || [];
 
-        const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
+        // Build and post journal lines only if finance configuration is present
+        if (purchasesAccountId && payableAccounts.length > 0) {
+          const creditPerAccount = totalAmount / payableAccounts.length;
+          const creditLines = payableAccounts.map(acc => ({
+            accountId: acc.id,
+            debit: 0,
+            credit: creditPerAccount,
+          }));
 
-        await this.accounting.postLines([...debitLines, ...creditLines], {
-          sourceType: 'PURCHASE_INVOICE',
-          sourceId: id,
-          sourceRef: invoice.invoiceNumber,
-          description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
-          transactionDate: new Date(),
-        }, tx);
+          const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
+
+          await this.accounting.postLines([...debitLines, ...creditLines], {
+            sourceType: 'PURCHASE_INVOICE',
+            sourceId: id,
+            sourceRef: invoice.invoiceNumber,
+            description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
+            transactionDate: new Date(),
+          }, tx);
+        }
 
         // ── Write supplier ledger credit entry ───────────────────────────────
         const supplierForLedger = await tx.supplier.findUnique({
@@ -899,11 +900,16 @@ export class PurchaseInvoiceService {
             include: { chartOfAccounts: { select: { id: true } } },
           });
 
-          const purchasesAccount = await this.financeConfig.resolveAccount(
-            AccountRoleKey.PURCHASES_LOCAL,
-          );
+          let purchasesAccount: string | null = null;
+          try {
+            purchasesAccount = await this.financeConfig.resolveAccount(
+              AccountRoleKey.PURCHASES_LOCAL,
+            );
+          } catch (error) {
+            // Gracefully ignore if not configured
+          }
 
-          if (supplier?.chartOfAccounts?.length) {
+          if (purchasesAccount && supplier?.chartOfAccounts?.length) {
             const totalAmount = Number(invoice.totalAmount);
             const creditPerAccount = totalAmount / supplier.chartOfAccounts.length;
 
