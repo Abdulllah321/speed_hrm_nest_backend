@@ -1,196 +1,253 @@
 import {
   Injectable,
-  Inject,
   Logger,
   OnModuleDestroy,
-  Scope,
+  Optional,
+  Inject,
 } from '@nestjs/common';
-import { REQUEST } from '@nestjs/core';
 import { PrismaClient } from '@prisma/client';
+import { AsyncLocalStorage } from 'async_hooks';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-interface TenantRequest extends Request {
-  tenantId?: string;
-  tenantDbName?: string;
-  tenantDbUrl?: string;
+export interface PrismaServiceContext {
+  tenantId: string;
+  companyId: string;
+  dbUrl: string;
 }
 
-const poolCache = new Map<string, Pool>();
-const adapterCache = new Map<string, PrismaPg>();
-let noop: PrismaPg | null = null; // Reusable no-op adapter
-const logger = new Logger('PrismaPoolCache');
-
-/**
- * Create a no-op adapter that will error if actually used
- * This allows PrismaClient to initialize without throwing during construction
- */
-function createNoOpAdapter(): PrismaPg {
-  // Create a pool that cannot actually connect
-  // We'll only use this for initialization, not for actual queries
-  const noOpPool = new Pool({
-    max: 0, // No connections allowed
-  });
-
-  return new PrismaPg(noOpPool);
-}
-
-@Injectable({ scope: Scope.REQUEST })
+@Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
-  private readonly tenantId: string | null = null;
-  private readonly isInitialized: boolean = false;
 
-  constructor(@Inject(REQUEST) private readonly request: TenantRequest,) {
-    // In Fastify, the middleware might set properties on the raw node request (req.raw)
-    // while the REQUEST provider gives us the Fastify Request object.
-    const rawReq = (request as any)?.raw || {};
-    const tenantDbUrl = request?.tenantDbUrl || rawReq.tenantDbUrl;
-    const tenantId = request?.tenantId || rawReq.tenantId;
+  // Instance variables to support manual instantiation (backward compatibility for background jobs)
+  private readonly manualTenantId: string | null = null;
+  private readonly manualDbUrl: string | null = null;
 
-    // If no tenant context, create with a no-op adapter
-    // Any attempt to query will fail with a clear error message
-    if (!tenantDbUrl || !tenantId) {
-      if (!noop) {
-        noop = createNoOpAdapter();
-      }
+  // A static map to cache the actual PrismaClient instances
+  private static readonly clientsPool = new Map<string, PrismaClient>();
 
-      super({ adapter: noop } as any);
-      this.isInitialized = false;
-      this.logger.debug(
-        'PrismaService created without tenant context - calls will fail with ensureTenantContext() check',
-      );
+  // AsyncLocalStorage to maintain active tenant context per asynchronous execution branch
+  public static readonly asyncLocalStorage = new AsyncLocalStorage<PrismaServiceContext>();
+
+  constructor(
+    @Optional()
+    @Inject('PRISMA_SERVICE_OPTIONS')
+    options?: { tenantId?: string; tenantDbUrl?: string },
+  ) {
+    if (options && options.tenantDbUrl) {
+      // 1. Manual instantiation for background/export jobs
+      // Return a normal, standalone PrismaClient instance connected to that URL.
+      const pool = new Pool({
+        connectionString: options.tenantDbUrl,
+        max: 5, // smaller pool for single job processors
+        idleTimeoutMillis: 15000,
+        connectionTimeoutMillis: 5000,
+      });
+
+      pool.on('error', (err) => {
+        console.error(`Manual pool error:`, err);
+      });
+
+      const adapter = new PrismaPg(pool);
+
+      super({
+        adapter: adapter as any,
+      });
+
+      this.manualTenantId = options.tenantId || null;
+      this.manualDbUrl = options.tenantDbUrl || null;
+      (this as any)._pgPool = pool;
       return;
     }
 
-    // Normal tenant initialization
-    let pool = poolCache.get(tenantId);
+    // 2. Singleton / Proxy behavior for standard Dependency Injection
+    // Run the base PrismaClient constructor once with a no-op adapter
+    // to satisfy the requirement that a valid driver adapter is always provided.
+    const noOpPool = new Pool({ max: 0 });
+    const noOpAdapter = new PrismaPg(noOpPool);
 
-    if (!pool) {
-      logger.log(`Creating new connection pool for tenant: ${tenantId}`);
-      pool = new Pool({
-        connectionString: tenantDbUrl,
-        max: 20, // Increased from 10
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000, // Increased from 2000 to handle heavier queries
-      });
+    super({
+      adapter: noOpAdapter as any,
+    });
 
-      // Increase listener limit to accommodate multiple Prisma clients
-      // although caching should keep this is check
-      pool.setMaxListeners(100);
+    (this as any)._noOpPool = noOpPool;
 
-      pool.on('error', (err) => {
-        logger.error(`Pool error for tenant ${tenantId}:`, err);
-      });
+    // Return a Proxy to delegate all dynamic model and query property accesses
+    // transparently to the active tenant's PrismaClient instance.
+    return new Proxy(this, {
+      get(target, prop, receiver) {
+        // A. Delegate helper methods and NestJS provider lifecycle methods to the target
+        const ownMethods = [
+          'getTenantClient',
+          'onModuleInit',
+          'onModuleDestroy',
+          'beforeApplicationShutdown',
+          'onApplicationShutdown',
+          'onApplicationBootstrap',
+          'ensureTenantContext',
+          'getTenantId',
+          'getTenantDbUrl',
+          'logger',
+          'manualTenantId',
+          'manualDbUrl',
+          '$disconnect',
+        ];
+        if (ownMethods.includes(prop as string)) {
+          return Reflect.get(target, prop, receiver);
+        }
 
-      poolCache.set(tenantId, pool);
-    } else {
-      logger.debug(`Reusing existing pool for tenant: ${tenantId}`);
-    }
+        // B. Delegate JavaScript/TypeScript inspects, private properties, and Promise properties
+        if (
+          typeof prop === 'symbol' ||
+          prop.startsWith('_') ||
+          prop === 'constructor' ||
+          prop === 'then'
+        ) {
+          return Reflect.get(target, prop, receiver);
+        }
 
-    // Use cached adapter to prevent MaxListenersExceededWarning
-    let adapter = adapterCache.get(tenantId);
-    if (!adapter) {
-      adapter = new PrismaPg(pool);
-      adapterCache.set(tenantId, adapter);
-    }
+        // C. Retrieve context and delegate other model / query properties to the tenant client
+        const context = PrismaService.asyncLocalStorage.getStore();
+        if (!context) {
+          throw new Error(
+            `PrismaService context is missing. Ensure the user is authenticated and the TenantMiddleware has set the context before calling database operations (Accessed property: ${String(prop)}).`
+          );
+        }
 
-    super({ adapter: adapter as any });
-
-    this.tenantId = tenantId;
-    this.isInitialized = true;
-
-    this.logger.debug(`PrismaService initialized for tenant: ${tenantId}`);
+        const client = target.getTenantClient(context.companyId, context.dbUrl);
+        const value = Reflect.get(client, prop);
+        if (typeof value === 'function') {
+          return value.bind(client);
+        }
+        return value;
+      },
+    });
   }
 
-  // Helper method to check if tenant DB is available
+  /**
+   * Retrieves or instantiates a unique Prisma Client for a given tenant company
+   */
+  getTenantClient(companyId: string, dbUrl: string): PrismaClient {
+    let client = PrismaService.clientsPool.get(companyId);
+
+    if (!client) {
+      this.logger.log(
+        `Creating new connection pool and PrismaClient for tenant company: ${companyId}`,
+      );
+
+      const pool = new Pool({
+        connectionString: dbUrl,
+        max: 10, // Max 10 connections per tenant pool (highly efficient and lightweight)
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      });
+
+      pool.on('error', (err) => {
+        this.logger.error(`Pool error for tenant company ${companyId}:`, err);
+      });
+
+      const adapter = new PrismaPg(pool);
+
+      // Create instance ONCE per company context.
+      client = new PrismaClient({
+        adapter: adapter as any,
+      });
+
+      // Track pool on the client for safe teardown
+      (client as any)._pgPool = pool;
+
+      PrismaService.clientsPool.set(companyId, client);
+    }
+
+    return client;
+  }
+
+  /**
+   * Helper method to verify if a tenant database context is active
+   */
   ensureTenantContext(): void {
-    if (!this.isInitialized) {
+    if (this.manualTenantId) return;
+    const context = PrismaService.asyncLocalStorage.getStore();
+    if (!context || !context.companyId) {
       throw new Error(
         'Tenant database context is required for this operation. Ensure user is authenticated and has a valid company.',
       );
     }
   }
 
+  /**
+   * Retrieves active tenant ID (represents tenant/company identity)
+   */
   getTenantId(): string | null {
-    return this.tenantId;
+    if (this.manualTenantId) return this.manualTenantId;
+    const context = PrismaService.asyncLocalStorage.getStore();
+    return context ? context.tenantId : null;
   }
 
+  /**
+   * Retrieves active tenant database connection URL
+   */
   getTenantDbUrl(): string | null {
-    // We need to re-extract it from the request if possible, or store it
-    const rawReq = (this.request as any)?.raw || {};
-    return this.request?.tenantDbUrl || rawReq.tenantDbUrl || null;
+    if (this.manualDbUrl) return this.manualDbUrl;
+    const context = PrismaService.asyncLocalStorage.getStore();
+    return context ? context.dbUrl : null;
   }
 
-  async onModuleDestroy() {
-    // Only disconnect the PrismaClient instance.
-    // Pools are shared and should be closed via static cleanupAllPools or when process exits.
-    if (this.isInitialized) {
-      this.logger.debug(
-        `Disconnecting PrismaClient instance for tenant: ${this.tenantId}`,
-      );
-      await this.$disconnect();
-    }
-  }
-
-  static async cleanupTenantPool(tenantId: string): Promise<void> {
-    const pool = poolCache.get(tenantId);
-    if (pool) {
-      logger.log(`Closing pool and clearing adapter for tenant: ${tenantId}`);
-      adapterCache.delete(tenantId);
-      await pool.end();
-      poolCache.delete(tenantId);
+  /**
+   * Called by TenantMiddleware's clearCache method or dynamic actions
+   */
+  static async cleanupTenantPool(companyId: string): Promise<void> {
+    const client = PrismaService.clientsPool.get(companyId);
+    if (client) {
+      await client.$disconnect();
+      const pool = (client as any)._pgPool;
+      if (pool) {
+        try {
+          await pool.end();
+        } catch (error) {
+          console.error(`Error closing pool for company ${companyId}:`, error);
+        }
+      }
+      PrismaService.clientsPool.delete(companyId);
     }
   }
 
   static async cleanupAllPools(): Promise<void> {
-    logger.log(`Cleaning up ${poolCache.size} tenant connection pools...`);
-
-    // Cleanup adapters first
-    adapterCache.clear();
-
-    const cleanupPromises = Array.from(poolCache.entries()).map(
-      async ([tenantId, pool]) => {
-        try {
+    for (const [companyId, client] of PrismaService.clientsPool.entries()) {
+      try {
+        await client.$disconnect();
+        const pool = (client as any)._pgPool;
+        if (pool) {
           await pool.end();
-          logger.debug(`Closed pool for tenant: ${tenantId}`);
-        } catch (error) {
-          logger.error(`Error closing pool for tenant ${tenantId}:`, error);
         }
-      },
-    );
-
-    // Cleanup no-op pool if it exists
-    if (noop) {
-      cleanupPromises.push(
-        (async () => {
-          try {
-            // The no-op pool has max: 0, so there's nothing to clean
-            noop = null;
-            logger.debug('Cleaned up no-op adapter');
-          } catch (error) {
-            logger.error('Error cleaning no-op adapter:', error);
-          }
-        })(),
-      );
+      } catch (error) {
+        console.error(`Error disconnecting client for company ${companyId}:`, error);
+      }
     }
-
-    await Promise.all(cleanupPromises);
-    poolCache.clear();
-    logger.log('All tenant pools and adapters cleaned up');
+    PrismaService.clientsPool.clear();
   }
 
-  static getPoolStats(): {
-    tenantId: string;
-    totalCount: number;
-    idleCount: number;
-    waitingCount: number;
-  }[] {
-    return Array.from(poolCache.entries()).map(([tenantId, pool]) => ({
-      tenantId,
-      totalCount: pool.totalCount,
-      idleCount: pool.idleCount,
-      waitingCount: pool.waitingCount,
-    }));
+  async $disconnect() {
+    await super.$disconnect();
+    if (this.manualDbUrl && (this as any)._pgPool) {
+      try {
+        await (this as any)._pgPool.end();
+      } catch (err) {
+        this.logger.error(`Error closing manual pool:`, err);
+      }
+    }
+  }
+
+  async onModuleDestroy() {
+    this.logger.log('Destroying PrismaService singleton - cleaning up all tenant connection pools...');
+    await PrismaService.cleanupAllPools();
+    if ((this as any)._noOpPool) {
+      try {
+        await (this as any)._noOpPool.end();
+      } catch (error) {
+        // Safe cleanup logging fallback
+      }
+    }
   }
 }
