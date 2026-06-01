@@ -19,16 +19,16 @@ export interface CustomerExportJobData {
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const SUBHEADER_BG = '1E3A5F';
 const SUBHEADER_FG = 'F1F5F9';
-const ALT_ROW_BG   = 'F0F4F8';
+const ALT_ROW_BG = 'F0F4F8';
 const BORDER_COLOR = 'CBD5E1';
-const BALANCE_FG   = 'B91C1C';
-const CURRENCY_FG  = '0F766E';
+const BALANCE_FG = 'B91C1C';
+const CURRENCY_FG = '0F766E';
 
 const GROUP_COLORS: Record<string, string> = {
-  Identity:    '1E3A5F',
-  Contact:     '1E4D2B',
-  Financial:   '4A1942',
-  Audit:       '3D2B00',
+  Identity: '1E3A5F',
+  Contact: '1E4D2B',
+  Financial: '4A1942',
+  Audit: '3D2B00',
 };
 
 const COLUMNS: {
@@ -39,20 +39,20 @@ const COLUMNS: {
   numFmt?: string;
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
-  // Identity
-  { header: 'Customer Code',  key: 'code',         width: 14, group: 'Identity',   align: 'center' },
-  { header: 'Customer Name',  key: 'name',         width: 32, group: 'Identity' },
-  { header: 'Customer Type',  key: 'customerType', width: 14, group: 'Identity',   align: 'center' },
-  // Contact
-  { header: 'Contact Number', key: 'contactNo',    width: 18, group: 'Contact' },
-  { header: 'Email',          key: 'email',        width: 28, group: 'Contact' },
-  { header: 'Address',        key: 'address',      width: 40, group: 'Contact' },
-  // Financial
-  { header: 'Balance',        key: 'balance',      width: 16, group: 'Financial',  numFmt: '#,##0.00', align: 'right' },
-  // Audit
-  { header: 'Created At',     key: 'createdAt',    width: 18, group: 'Audit',      numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-  { header: 'Updated At',     key: 'updatedAt',    width: 18, group: 'Audit',      numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-];
+    // Identity
+    { header: 'Customer Code', key: 'code', width: 14, group: 'Identity', align: 'center' },
+    { header: 'Customer Name', key: 'name', width: 32, group: 'Identity' },
+    { header: 'Customer Type', key: 'customerType', width: 14, group: 'Identity', align: 'center' },
+    // Contact
+    { header: 'Contact Number', key: 'contactNo', width: 18, group: 'Contact' },
+    { header: 'Email', key: 'email', width: 28, group: 'Contact' },
+    { header: 'Address', key: 'address', width: 40, group: 'Contact' },
+    // Financial
+    { header: 'Balance', key: 'balance', width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
+    // Audit
+    { header: 'Created At', key: 'createdAt', width: 18, group: 'Audit', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+    { header: 'Updated At', key: 'updatedAt', width: 18, group: 'Audit', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  ];
 
 @Processor('customer-export')
 export class CustomerExportProcessor {
@@ -60,7 +60,7 @@ export class CustomerExportProcessor {
 
   constructor(
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) { }
 
   @Process()
   async handleExport(job: Job<CustomerExportJobData>): Promise<void> {
@@ -81,10 +81,10 @@ export class CustomerExportProcessor {
         const t = search.trim();
         andClauses.push({
           OR: [
-            { name:      { contains: t, mode: 'insensitive' } },
-            { code:      { contains: t, mode: 'insensitive' } },
+            { name: { contains: t, mode: 'insensitive' } },
+            { code: { contains: t, mode: 'insensitive' } },
             { contactNo: { contains: t, mode: 'insensitive' } },
-            { email:     { contains: t, mode: 'insensitive' } },
+            { email: { contains: t, mode: 'insensitive' } },
           ],
         });
       }
@@ -121,14 +121,14 @@ export class CustomerExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       groupRow.height = 22;
@@ -138,15 +138,15 @@ export class CustomerExportProcessor {
       const headerRow = ws.getRow(2);
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
-        cell.value     = col.header;
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
+        cell.value = col.header;
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
+        cell.font = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
         cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       headerRow.height = 20;
@@ -173,24 +173,24 @@ export class CustomerExportProcessor {
           const hasBalance = Number(customer.balance ?? 0) > 0;
 
           const rowData: Record<string, any> = {
-            code:         customer.code,
-            name:         customer.name,
+            code: customer.code,
+            name: customer.name,
             customerType: customer.customerType,
-            contactNo:    customer.contactNo ?? '',
-            email:        customer.email ?? '',
-            address:      customer.address ?? '',
-            balance:      Number(customer.balance ?? 0),
-            createdAt:    new Date(customer.createdAt),
-            updatedAt:    new Date(customer.updatedAt),
+            contactNo: customer.contactNo ?? '',
+            email: customer.email ?? '',
+            address: customer.address ?? '',
+            balance: Number(customer.balance ?? 0),
+            createdAt: new Date(customer.createdAt),
+            updatedAt: new Date(customer.updatedAt),
           };
 
           const dataRow = ws.getRow(rowIdx + 3);
           COLUMNS.forEach((col, colIdx) => {
             const cell = dataRow.getCell(colIdx + 1);
-            cell.value     = rowData[col.key] ?? null;
+            cell.value = rowData[col.key] ?? null;
             if (col.numFmt) cell.numFmt = col.numFmt;
             cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
 
             if (col.key === 'balance') {
               cell.font = { bold: hasBalance, size: 9, color: { argb: hasBalance ? `FF${BALANCE_FG}` : `FF${CURRENCY_FG}` } };
@@ -199,10 +199,10 @@ export class CustomerExportProcessor {
             }
 
             cell.border = {
-              top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
           dataRow.height = 16;
@@ -225,27 +225,27 @@ export class CustomerExportProcessor {
       summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 22 }];
 
       const titleRow = summary.getRow(1);
-      titleRow.getCell(1).value     = 'Customer Export Summary';
-      titleRow.getCell(1).font      = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      titleRow.getCell(1).value = 'Customer Export Summary';
+      titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+      titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
       titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
       titleRow.height = 28;
       titleRow.commit();
 
       const summaryRows = [
-        ['Export Date',       new Date().toLocaleString('en-PK')],
-        ['Total Customers',   rowIdx],
-        ['Search Filter',     search ?? '(none)'],
-        ['Type Filter',       customerType ?? '(all)'],
+        ['Export Date', new Date().toLocaleString('en-PK')],
+        ['Total Customers', rowIdx],
+        ['Search Filter', search ?? '(none)'],
+        ['Type Filter', customerType ?? '(all)'],
       ];
       summaryRows.forEach(([label, value], idx) => {
         const r = summary.getRow(idx + 2);
         r.getCell(1).value = label;
-        r.getCell(1).font  = { bold: true, size: 10 };
-        r.getCell(1).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(1).font = { bold: true, size: 10 };
+        r.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
         r.getCell(2).value = value;
-        r.getCell(2).font  = { size: 10 };
-        r.getCell(2).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(2).font = { size: 10 };
+        r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
         r.height = 18;
         r.commit();
       });

@@ -96,6 +96,24 @@ export class AttendanceController {
     });
   }
 
+  @Get('attendances/monthly-summary')
+  @Permissions('hr.attendance.summary')
+  @ApiOperation({ summary: 'Get monthly attendance summary for an employee' })
+  @ApiQuery({ name: 'employeeId', required: true })
+  @ApiQuery({ name: 'dateFrom', required: false })
+  @ApiQuery({ name: 'dateTo', required: false })
+  async getMonthlySummary(
+    @Query('employeeId') employeeId: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.service.getMonthlySummary({
+      employeeId,
+      dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+      dateTo: dateTo ? new Date(dateTo) : undefined,
+    });
+  }
+
   @Get('attendances/import-template')
   @Permissions('hr.attendance.view')
   @ApiOperation({ summary: 'Download attendance import template' })
