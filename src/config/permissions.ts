@@ -1735,6 +1735,31 @@ export const PERMISSIONS = [
     action: 'delete',
     description: 'Delete Alliance',
   },
+  // POS Master - Merchants
+  {
+    name: 'master.merchant.create',
+    module: 'master.merchant',
+    action: 'create',
+    description: 'Create Merchant',
+  },
+  {
+    name: 'master.merchant.read',
+    module: 'master.merchant',
+    action: 'read',
+    description: 'Read Merchant',
+  },
+  {
+    name: 'master.merchant.update',
+    module: 'master.merchant',
+    action: 'update',
+    description: 'Update Merchant',
+  },
+  {
+    name: 'master.merchant.delete',
+    module: 'master.merchant',
+    action: 'delete',
+    description: 'Delete Merchant',
+  },
   // KPI
   {
     name: 'hr.kpi.read',
