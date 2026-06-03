@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -11,6 +11,8 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 @Injectable()
 export class PosSalesService implements OnModuleInit {
+    private readonly logger = new Logger(PosSalesService.name);
+
     constructor(
         private prisma: PrismaService,
         private prismaMaster: PrismaMasterService,
@@ -593,15 +595,25 @@ export class PosSalesService implements OnModuleInit {
             itemId: string;
             quantity: number;
             unitPrice: number;
+            discountAmount: number;
+            taxPercent: number;
             taxAmount: number;
             lineTotal: number;
         }>,
-    ) {
+    ): Promise<{
+        success: boolean;
+        fbrInvoiceNumber?: string;
+        fbrQrCode?: string;
+        fbrStatus: 'SYNCED' | 'PENDING' | 'SKIPPED';
+        error?: string;
+        responsePayload?: any;
+    }> {
+        this.logger.log(`[FBR Sync] 🚀 Starting FBR sync for order: ${order.orderNumber || order.id}`);
         try {
             // ── Load location FBR config ───────────────────────────────
             if (!order.locationId) {
-                console.warn(`[FBR] Order ${order.orderNumber} has no locationId — skipping FBR sync`);
-                return;
+                this.logger.warn(`[FBR Sync] [WARN] Order ${order.orderNumber} has no locationId — skipping FBR sync`);
+                return { success: false, fbrStatus: 'SKIPPED', error: 'Order has no locationId' };
             }
 
             const location = await this.prisma.location.findUnique({
@@ -609,25 +621,27 @@ export class PosSalesService implements OnModuleInit {
                 select: {
                     fbrEnabled: true,
                     fbrBposId: true,
-                    fbrBearerToken: true,
                     fbrNtn: true,
                     fbrSellerName: true,
                     address: true,
                 },
             });
 
+            this.logger.log(`[FBR Sync] [CONFIG] Location ID: ${order.locationId}, FBR Enabled: ${location?.fbrEnabled}`);
+
             if (!location?.fbrEnabled) {
-                // FBR not configured / enabled for this location — skip silently
-                return;
+                this.logger.log(`[FBR Sync] [INFO] FBR not configured or enabled for location ${order.locationId} — skipping`);
+                return { success: false, fbrStatus: 'SKIPPED', error: 'FBR disabled or not configured' };
             }
 
-            if (!location.fbrBposId || !location.fbrBearerToken) {
-                console.warn(`[FBR] Location ${order.locationId} is FBR-enabled but missing bposId or token — skipping`);
+            if (!location.fbrBposId) {
+                this.logger.warn(`[FBR Sync] [WARN] Location ${order.locationId} is FBR-enabled but missing bposId or token — setting status to PENDING`);
                 await this.prisma.salesOrder.update({
                     where: { id: order.id },
                     data: { fbrStatus: 'PENDING' },
                 });
-                return;
+                order.fbrStatus = 'PENDING';
+                return { success: false, fbrStatus: 'PENDING', error: 'Missing FBR BPOS ID or Bearer Token' };
             }
 
             // ── Fetch item details (sku, description, hsCode) ──────────
@@ -652,6 +666,8 @@ export class PosSalesService implements OnModuleInit {
                     hsCode: rec?.hsCodeStr ?? null,
                     quantity: line.quantity,
                     unitPrice: line.unitPrice,
+                    taxPercent: line.taxPercent,
+                    discountAmount: line.discountAmount,
                     taxAmount: line.taxAmount,
                     lineTotal: line.lineTotal,
                 };
@@ -659,19 +675,25 @@ export class PosSalesService implements OnModuleInit {
 
             const payload = this.fbrService.buildPayload({
                 bposId: location.fbrBposId,
+                usin: order.orderNumber || order.id,
                 orderDate: new Date(order.createdAt),
                 buyerNtn,
                 buyerName,
                 buyerAddress,
-                sellerNtn: location.fbrNtn || '',
-                sellerName: location.fbrSellerName || '',
+                sellerNtn: location.fbrNtn || '6386420',
+                sellerName: location.fbrSellerName || 'Hydra Foods',
                 items: fbrItems,
             });
 
+            this.logger.debug(`[FBR Sync] [PAYLOAD] Generated FBR payload for order ${order.orderNumber}:\n${JSON.stringify(payload, null, 2)}`);
+
             // Override the bearer token with the per-location token
-            const fbrResponse = await this.fbrService.postInvoice(payload, location.fbrBearerToken);
+            this.logger.log(`[FBR Sync] [HTTP] Sending request to FBR gateway...`);
+            const fbrResponse = await this.fbrService.postInvoice(payload);
+            this.logger.log(`[FBR Sync] [RESPONSE] Received response from FBR gateway. Code: ${fbrResponse.Code}`);
 
             if (fbrResponse.Code === 100) {
+                this.logger.log(`[FBR Sync] [SUCCESS] Order ${order.orderNumber} successfully synced with FBR. Invoice Number: ${fbrResponse.InvoiceNumber}`);
                 await this.prisma.salesOrder.update({
                     where: { id: order.id },
                     data: {
@@ -683,17 +705,41 @@ export class PosSalesService implements OnModuleInit {
                 order.fbrInvoiceNumber = fbrResponse.InvoiceNumber;
                 order.fbrQrCode = fbrResponse.QRCode;
                 order.fbrStatus = 'SYNCED';
+                
+                return {
+                    success: true,
+                    fbrInvoiceNumber: fbrResponse.InvoiceNumber,
+                    fbrQrCode: fbrResponse.QRCode,
+                    fbrStatus: 'SYNCED',
+                    responsePayload: fbrResponse,
+                };
             } else {
                 const errMsg = `FBR non-success code ${fbrResponse.Code}: ${fbrResponse.Errors ?? ''}`;
-                console.error(`[FBR] Order ${order.orderNumber} — ${errMsg}`);
+                this.logger.error(`[FBR Sync] [FAIL] Order ${order.orderNumber} sync failed. ${errMsg}`);
                 await this.prisma.salesOrder.update({
                     where: { id: order.id },
                     data: { fbrStatus: 'PENDING' },
                 });
+                order.fbrStatus = 'PENDING';
+                return {
+                    success: false,
+                    fbrStatus: 'PENDING',
+                    error: errMsg,
+                    responsePayload: fbrResponse,
+                };
             }
         } catch (err: any) {
-            // Never throw — log and leave fbrStatus as PENDING
-            console.error(`[FBR] Sync failed for order ${order?.orderNumber}: ${err.message}`);
+            this.logger.error(`[FBR Sync] [EXCEPTION] FBR Sync failed for order ${order?.orderNumber}: ${err.message}`, err.stack);
+            await this.prisma.salesOrder.update({
+                where: { id: order.id },
+                data: { fbrStatus: 'PENDING' },
+            });
+            order.fbrStatus = 'PENDING';
+            return {
+                success: false,
+                fbrStatus: 'PENDING',
+                error: err.message || 'Unknown integration error',
+            };
         }
     }
 
