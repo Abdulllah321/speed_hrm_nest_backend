@@ -199,6 +199,92 @@ export class LocationService {
     }
   }
 
+  async updateOtherInfo(
+    id: string,
+    body: {
+      phone?: string;
+      latitude?: number;
+      longitude?: number;
+      geoFenceEnabled?: boolean;
+      geoFenceRadius?: number;
+      ipWhitelist?: string;
+      ipWhitelistEnabled?: boolean;
+      fbrBposId?: string;
+      fbrBearerToken?: string;
+      fbrNtn?: string;
+      fbrSellerName?: string;
+      fbrEnabled?: boolean;
+    },
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prisma.location.findFirst({
+        where: { id, isDeleted: false },
+      });
+      if (!existing) {
+        return { status: false, message: 'Location not found' };
+      }
+      
+      const updated = await this.prisma.location.update({
+        where: { id },
+        data: {
+          phone: body.phone !== undefined ? body.phone : existing.phone,
+          latitude: body.latitude !== undefined ? body.latitude : existing.latitude,
+          longitude: body.longitude !== undefined ? body.longitude : existing.longitude,
+          geoFenceEnabled: body.geoFenceEnabled !== undefined ? body.geoFenceEnabled : existing.geoFenceEnabled,
+          geoFenceRadius: body.geoFenceRadius !== undefined ? body.geoFenceRadius : existing.geoFenceRadius,
+          ipWhitelist: body.ipWhitelist !== undefined ? body.ipWhitelist : existing.ipWhitelist,
+          ipWhitelistEnabled: body.ipWhitelistEnabled !== undefined ? body.ipWhitelistEnabled : existing.ipWhitelistEnabled,
+          fbrBposId: body.fbrBposId !== undefined ? body.fbrBposId : existing.fbrBposId,
+          fbrBearerToken: body.fbrBearerToken !== undefined ? body.fbrBearerToken : existing.fbrBearerToken,
+          fbrNtn: body.fbrNtn !== undefined ? body.fbrNtn : existing.fbrNtn,
+          fbrSellerName: body.fbrSellerName !== undefined ? body.fbrSellerName : existing.fbrSellerName,
+          fbrEnabled: body.fbrEnabled !== undefined ? body.fbrEnabled : existing.fbrEnabled,
+        },
+      });
+
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Location Other Info',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: `Updated other info for location ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
+    } catch (error: any) {
+      runInBackground(
+        'Update Location Other Info (Failure Log)',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: 'Failed to update other info for location',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
+      );
+      return {
+        status: false,
+        message: error instanceof Error ? error.message : 'Failed to update location other info',
+      };
+    }
+  }
+
   async remove(
     id: string,
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
