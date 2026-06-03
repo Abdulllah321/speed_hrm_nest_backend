@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateLocationDto {
@@ -59,3 +59,66 @@ export class UpdateLocationDto {
   @IsString()
   status?: string;
 }
+
+export class UpdateLocationOtherInfoDto {
+  @ApiPropertyOptional({ example: '123456789' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 34.0151 })
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 71.5249 })
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  geoFenceEnabled?: boolean;
+
+  @ApiPropertyOptional({ example: 100 })
+  @IsOptional()
+  @IsNumber()
+  geoFenceRadius?: number;
+
+  @ApiPropertyOptional({ example: '192.168.1.1,192.168.1.2' })
+  @IsOptional()
+  @IsString()
+  ipWhitelist?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  ipWhitelistEnabled?: boolean;
+
+  @ApiPropertyOptional({ example: 'BPOS-001' })
+  @IsOptional()
+  @IsString()
+  fbrBposId?: string;
+
+  @ApiPropertyOptional({ example: 'bearer-token-xyz' })
+  @IsOptional()
+  @IsString()
+  fbrBearerToken?: string;
+
+  @ApiPropertyOptional({ example: '1234567-8' })
+  @IsOptional()
+  @IsString()
+  fbrNtn?: string;
+
+  @ApiPropertyOptional({ example: 'Seller Name' })
+  @IsOptional()
+  @IsString()
+  fbrSellerName?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  fbrEnabled?: boolean;
+}
+

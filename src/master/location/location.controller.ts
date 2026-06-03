@@ -21,7 +21,7 @@ import {
   ApiBearerAuth,
   ApiBody,
 } from '@nestjs/swagger';
-import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
+import { CreateLocationDto, UpdateLocationDto, UpdateLocationOtherInfoDto } from './dto/location.dto';
 
 @ApiTags('Location')
 @Controller('api')
@@ -88,6 +88,20 @@ export class LocationController {
     @Req() req,
   ) {
     return this.service.update(id, body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Put('locations/:id/other-info')
+  @ApiOperation({ summary: 'Update other location details' })
+  async updateOtherInfo(
+    @Param('id') id: string,
+    @Body() body: UpdateLocationOtherInfoDto,
+    @Req() req,
+  ) {
+    return this.service.updateOtherInfo(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
