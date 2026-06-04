@@ -87,8 +87,18 @@ export class EmployeeController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('search') search?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('subDepartmentId') subDepartmentId?: string,
+    @Query('providentFund') providentFund?: string,
   ) {
-    return this.service.listForDropdown({ page, limit, search });
+    return this.service.listForDropdown({
+      page,
+      limit,
+      search,
+      departmentId,
+      subDepartmentId,
+      providentFund,
+    });
   }
 
   @Get('employees/rejoin/search')

@@ -176,13 +176,35 @@ export class EmployeeService {
 
 
   // Minimal fields for dropdowns/selects
-  async listForDropdown(query?: { page?: number; limit?: number; search?: string }) {
+  async listForDropdown(query?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    departmentId?: string;
+    subDepartmentId?: string;
+    providentFund?: string;
+  }) {
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 100; // Dropdowns might want more by default
     const search = query?.search || '';
     const skip = (page - 1) * limit;
 
-    const where: Prisma.EmployeeWhereInput = {};
+    const where: Prisma.EmployeeWhereInput = {
+      status: 'active',
+    };
+
+    if (query?.departmentId) {
+      where.departmentId = query.departmentId;
+    }
+
+    if (query?.subDepartmentId) {
+      where.subDepartmentId = query.subDepartmentId;
+    }
+
+    if (query?.providentFund === 'true') {
+      where.providentFund = true;
+    }
+
     if (search) {
       where.OR = [
         { employeeName: { contains: search, mode: 'insensitive' } },
