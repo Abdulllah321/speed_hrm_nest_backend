@@ -44,25 +44,30 @@ export class PosSalesService implements OnModuleInit {
     private async generateOrderNumber(): Promise<string> {
         const today = new Date();
         const year = today.getFullYear();
-        const month = today.getMonth() + 1; // 1-12
-        // Fiscal year starts July 1st.
-        const fiscalYear = month >= 7 ? year + 1 : year;
-        const fyStr = fiscalYear.toString().slice(-2);
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const prefix = `${year}${month}${day}-`;
 
-        const prefix = `SO-${fyStr}-`;
-
-        const last = await this.prisma.salesOrder.findFirst({
-            where: { orderNumber: { startsWith: prefix } },
-            orderBy: { orderNumber: 'desc' },
+        // Fetch the last 50 sales orders to find the latest valid sequence number
+        const lastOrders = await this.prisma.salesOrder.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 50,
             select: { orderNumber: true },
         });
 
         let seq = 1;
-        if (last && last.orderNumber) {
-            const parts = last.orderNumber.split('-');
-            const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
-            if (!isNaN(lastSeq)) {
-                seq = lastSeq + 1;
+        for (const order of lastOrders) {
+            if (order.orderNumber) {
+                const parts = order.orderNumber.split('-');
+                const lastPart = parts[parts.length - 1] || '';
+                // Ensure the last part consists entirely of digits
+                if (/^\d+$/.test(lastPart)) {
+                    const lastSeq = parseInt(lastPart, 10);
+                    if (!isNaN(lastSeq)) {
+                        seq = lastSeq + 1;
+                        break;
+                    }
+                }
             }
         }
 
