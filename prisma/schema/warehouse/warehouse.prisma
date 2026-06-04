@@ -19,6 +19,7 @@ model Warehouse {
   stockLedgerEntries   StockLedger[]
   inventoryItems       InventoryItem[]
   purchaseReturns      PurchaseReturn[]
+  stockAdjustments     StockAdjustment[]
   fromTransferRequests TransferRequest[]   @relation("TransferRequest_fromWarehouse")
   toTransferRequests   TransferRequest[]   @relation("TransferRequest_toWarehouse")
 
@@ -71,6 +72,7 @@ model Location {
   fromStockMovements        StockMovement[]            @relation("StockMovement_fromLocation")
   toStockMovements          StockMovement[]            @relation("StockMovement_toLocation")
   inventoryItems            InventoryItem[]
+  stockAdjustmentItems      StockAdjustmentItem[]
 
   voucherLocations          VoucherLocation[]
   discountCampaignLocations DiscountCampaignLocation[]
