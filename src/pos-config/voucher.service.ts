@@ -571,4 +571,53 @@ export class VoucherService {
             return { status: false, message: error.message };
         }
     }
+
+    // ── Update voucher expiry ──────────────────────────────────────
+    async updateVoucherExpiry(
+        id: string,
+        expiresAt: string | null,
+        ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
+    ) {
+        try {
+            const voucher = await this.prisma.voucher.findFirst({ where: { id, isDeleted: false } });
+            if (!voucher) return { status: false, message: 'Voucher not found' };
+            if (voucher.isRedeemed) return { status: false, message: 'Cannot edit expiry of a redeemed voucher' };
+            if (!voucher.isActive) return { status: false, message: 'Cannot edit expiry of an inactive/voided voucher' };
+
+            const updatedExpiresAt = expiresAt ? new Date(expiresAt) : null;
+
+            await this.prisma.voucher.update({
+                where: { id },
+                data: { expiresAt: updatedExpiresAt },
+            });
+
+            await this.prisma.voucherTransaction.create({
+                data: {
+                    voucherId: id,
+                    action: 'EXPIRY_UPDATED',
+                    amountUsed: 0,
+                    notes: `Expiry updated to ${updatedExpiresAt ? updatedExpiresAt.toLocaleString() : 'No expiry'}`,
+                },
+            });
+
+            runInBackground(
+                'Update Voucher Expiry',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    entityId: id,
+                    description: `Updated voucher ${voucher.code} expiry to ${updatedExpiresAt ? updatedExpiresAt.toISOString() : 'No expiry'}`,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return { status: true, message: 'Voucher expiry updated' };
+        } catch (error: any) {
+            return { status: false, message: error.message };
+        }
+    }
 }
