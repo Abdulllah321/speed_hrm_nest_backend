@@ -1018,7 +1018,7 @@ export class PosSalesService implements OnModuleInit {
         const order = await this.prisma.salesOrder.findUnique({
             where: { id },
             include: {
-                items: { include: { item: true } },
+                items: { include: { item: { include: { size: true } } } },
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
                 alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
