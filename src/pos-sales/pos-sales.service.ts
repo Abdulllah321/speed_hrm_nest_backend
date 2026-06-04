@@ -255,14 +255,15 @@ export class PosSalesService implements OnModuleInit {
                     manualDiscount = Math.min(dto.globalDiscountAmount, subtotalAfterItemDiscount);
                 }
                 
-                // 2. Alliance discount (calculated on subtotal BEFORE item discounts)
+                // 2. Alliance discount (calculated on subtotal AFTER item discounts)
                 if (dto.allianceId) {
                     const alliance = await tx.allianceDiscount.findFirst({ where: { id: dto.allianceId, isDeleted: false } });
                     if (alliance) {
+                        const calculatedDiscount = Math.round(subtotalAfterItemDiscount * (Number(alliance.discountPercent) / 100) * 100) / 100;
                         if (alliance.maxDiscount) {
-                            allianceDiscount = Number(alliance.maxDiscount);
+                            allianceDiscount = Math.min(calculatedDiscount, Number(alliance.maxDiscount));
                         } else {
-                            allianceDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
+                            allianceDiscount = calculatedDiscount;
                         }
                     }
                 }
@@ -293,18 +294,35 @@ export class PosSalesService implements OnModuleInit {
                         finalLineItemDiscount = 0; // Remove item discount
                         appliedDiscountType = 'alliance';
 
-                        // IMPORTANT: Distribute alliance discount across itemsData
-                        const count = itemsData.length;
-                        const baseDisc = Math.floor(globalDiscAmt / count);
-                        let remainder = Math.round((globalDiscAmt - (baseDisc * count)) * 100) / 100;
+                        // IMPORTANT: Distribute alliance discount across itemsData proportionally to WOST
+                        const baseSubtotal = subtotal > 0 ? subtotal : 1;
+                        let distributedDisc = 0;
+                        const rawShares = itemsData.map(item => {
+                            const taxDivisor = 1 + (item.taxPercent / 100);
+                            const wostPerUnit = item.unitPrice / taxDivisor;
+                            const itemWost = wostPerUnit * item.quantity;
+                            const share = Math.floor((globalDiscAmt * itemWost) / baseSubtotal);
+                            distributedDisc += share;
+                            return share;
+                        });
+                        
+                        let remainder = Math.round(globalDiscAmt - distributedDisc);
+                        const sortedIdx = itemsData
+                            .map((item, i) => {
+                                const taxDivisor = 1 + (item.taxPercent / 100);
+                                const wostPerUnit = item.unitPrice / taxDivisor;
+                                return { i, v: wostPerUnit * item.quantity };
+                            })
+                            .sort((a, b) => b.v - a.v)
+                            .map(x => x.i);
+                            
+                        for (let k = 0; k < remainder; k++) {
+                            rawShares[sortedIdx[k % sortedIdx.length]]++;
+                        }
 
                         itemsData = itemsData.map((item, idx) => {
                             const lineSubtotal = item.unitPrice * item.quantity;
-                            let disc = baseDisc;
-                            if (remainder > 0) {
-                                disc += 1;
-                                remainder -= 1;
-                            }
+                            const disc = rawShares[idx];
                             
                             // Recalculate tax based on WOST after discount
                             const taxDivisor = 1 + (item.taxPercent / 100);
@@ -336,17 +354,35 @@ export class PosSalesService implements OnModuleInit {
                     globalDiscAmt = allianceDiscount;
                     appliedDiscountType = 'alliance';
                     
-                    const count = itemsData.length;
-                    const baseDisc = Math.floor(globalDiscAmt / count);
-                    let remainder = Math.round((globalDiscAmt - (baseDisc * count)) * 100) / 100;
+                    // IMPORTANT: Distribute alliance discount across itemsData proportionally to WOST
+                    const baseSubtotal = subtotal > 0 ? subtotal : 1;
+                    let distributedDisc = 0;
+                    const rawShares = itemsData.map(item => {
+                        const taxDivisor = 1 + (item.taxPercent / 100);
+                        const wostPerUnit = item.unitPrice / taxDivisor;
+                        const itemWost = wostPerUnit * item.quantity;
+                        const share = Math.floor((globalDiscAmt * itemWost) / baseSubtotal);
+                        distributedDisc += share;
+                        return share;
+                    });
+                    
+                    let remainder = Math.round(globalDiscAmt - distributedDisc);
+                    const sortedIdx = itemsData
+                        .map((item, i) => {
+                            const taxDivisor = 1 + (item.taxPercent / 100);
+                            const wostPerUnit = item.unitPrice / taxDivisor;
+                            return { i, v: wostPerUnit * item.quantity };
+                        })
+                        .sort((a, b) => b.v - a.v)
+                        .map(x => x.i);
+                        
+                    for (let k = 0; k < remainder; k++) {
+                        rawShares[sortedIdx[k % sortedIdx.length]]++;
+                    }
 
                     itemsData = itemsData.map((item, idx) => {
                         const lineSubtotal = item.unitPrice * item.quantity;
-                        let disc = baseDisc;
-                        if (remainder > 0) {
-                            disc += 1;
-                            remainder -= 1;
-                        }
+                        const disc = rawShares[idx];
                         
                         // Recalculate tax based on WOST after discount
                         const taxDivisor = 1 + (item.taxPercent / 100);
