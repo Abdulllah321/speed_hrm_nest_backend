@@ -823,6 +823,65 @@ export class PosConfigService {
         }
     }
 
+    async bulkUpdateAllianceLocations(data: {
+        allianceIds: string[];
+        locationIds: string[];
+    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
+            if (!data.allianceIds || data.allianceIds.length === 0) {
+                return { status: false, message: 'No alliances selected' };
+            }
+
+            await this.prisma.$transaction(async (tx) => {
+                for (const allianceId of data.allianceIds) {
+                    await tx.allianceDiscountLocation.deleteMany({ where: { allianceId } });
+                    if (data.locationIds && data.locationIds.length > 0) {
+                        await tx.allianceDiscountLocation.createMany({
+                            data: data.locationIds.map((locId) => ({
+                                allianceId,
+                                locationId: locId,
+                            })),
+                        });
+                    }
+                }
+            });
+
+            runInBackground(
+                'Bulk Update Alliance Locations',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    description: `Bulk updated locations for ${data.allianceIds.length} alliances`,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return { status: true, message: `Locations updated for ${data.allianceIds.length} alliances` };
+        } catch (error: any) {
+            runInBackground(
+                'Bulk Update Alliance Locations (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'AllianceDiscount',
+                    description: `Failed to bulk update alliance locations`,
+                    errorMessage: error?.message,
+                    newValues: JSON.stringify(data),
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
+            return { status: false, message: error.message };
+        }
+    }
+
     async deleteAlliance(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const alliance = await this.prisma.allianceDiscount.findFirst({ where: { id, isDeleted: false } });

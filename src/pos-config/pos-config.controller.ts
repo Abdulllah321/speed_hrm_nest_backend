@@ -139,6 +139,17 @@ export class PosConfigController {
         });
     }
 
+    @Put('alliances/bulk-locations')
+    @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.update'))
+    @ApiOperation({ summary: 'Bulk update alliance locations' })
+    async bulkUpdateAllianceLocations(@Body() body: { allianceIds: string[]; locationIds: string[] }, @Req() req: any) {
+        return this.service.bulkUpdateAllianceLocations(body, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
     @Put('alliances/:id')
     @UseGuards(JwtAuthGuard, PermissionGuard('master.alliance.update'))
     @ApiOperation({ summary: 'Update an alliance discount (also used for soft-deactivation)' })
@@ -289,6 +300,23 @@ export class PosConfigController {
             userAgent: req.headers['user-agent'],
         });
     }
+
+    @Put('vouchers/:id/expiry')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.create', 'pos.voucher.void')
+    @ApiOperation({ summary: 'Update voucher expiry date/time' })
+    async updateExpiry(
+        @Param('id') id: string,
+        @Body() body: { expiresAt: string | null },
+        @Req() req: any,
+    ) {
+        return this.voucherService.updateVoucherExpiry(id, body.expiresAt, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
 
     // ══════════════════════════════════════════════════════════════
     //  MERCHANT / BANK COMMISSION CONFIGS
