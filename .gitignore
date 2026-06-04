@@ -19,3 +19,4 @@ src/generated
 backup_*.sql
 backup/
 backup_modules/
+bun.lock
