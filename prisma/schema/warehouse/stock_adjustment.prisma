@@ -1,0 +1,39 @@
+model StockAdjustment {
+  id             String                @id @default(uuid())
+  adjustmentNo   String                @unique @map("adjustment_no")
+  warehouseId    String                @map("warehouse_id")
+  adjustmentDate DateTime              @default(now()) @map("adjustment_date")
+  status         String                @default("DRAFT") // DRAFT, SUBMITTED, CANCELLED
+  reason         String?               @map("reason")
+  notes          String?               @map("notes")
+  createdById    String?               @map("created_by_id")
+  approvedById   String?               @map("approved_by_id")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  warehouse      Warehouse             @relation(fields: [warehouseId], references: [id])
+  items          StockAdjustmentItem[]
+
+  @@map("stock_adjustments")
+  @@index([warehouseId])
+  @@index([status])
+}
+
+model StockAdjustmentItem {
+  id                String          @id @default(uuid())
+  stockAdjustmentId String          @map("stock_adjustment_id")
+  itemId            String          @map("item_id")
+  locationId        String?         @map("location_id")
+  currentQty        Decimal         @map("current_qty") @db.Decimal(15, 4)
+  physicalQty       Decimal         @map("physical_qty") @db.Decimal(15, 4)
+  adjustedQty       Decimal         @map("adjusted_qty") @db.Decimal(15, 4)
+  rate              Decimal         @map("rate") @db.Decimal(15, 4)
+  
+  stockAdjustment   StockAdjustment @relation(fields: [stockAdjustmentId], references: [id], onDelete: Cascade)
+  item              Item            @relation(fields: [itemId], references: [id])
+  location          Location?       @relation(fields: [locationId], references: [id])
+
+  @@map("stock_adjustment_items")
+  @@index([stockAdjustmentId])
+  @@index([itemId])
+}
