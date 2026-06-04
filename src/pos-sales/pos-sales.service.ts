@@ -1016,7 +1016,13 @@ export class PosSalesService implements OnModuleInit {
             tenders.push({ method: order.paymentMethod, amount });
         }
 
-        return { status: true, data: { ...order, items: enrichedItems, tenders } };
+        // Fetch any credit vouchers issued from this order
+        const creditVouchers = await this.prisma.voucher.findMany({
+            where: { sourceOrderId: id, isDeleted: false },
+            select: { code: true, faceValue: true, expiresAt: true },
+        });
+
+        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers } };
     }
 
     // ─── Partial return ───────────────────────────────────────────────
