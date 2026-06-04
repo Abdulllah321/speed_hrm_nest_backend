@@ -25,6 +25,7 @@ export interface FbrInvoiceItem {
 
 export interface FbrInvoicePayload {
     bposId: string;
+    usin: string;              // Unique Sales Invoice Number (order ID)
     invoiceType: string;       // '1' = sale
     invoiceDate: string;       // YYYY-MM-DD
     ntN_CNIC: string;          // buyer NTN/CNIC; '9999999-9' for walk-in
@@ -54,35 +55,71 @@ export interface FbrApiResponse {
 export class FbrService {
     private readonly logger = new Logger(FbrService.name);
 
+    // Sandbox: https://esp.fbr.gov.pk:8244/DigitalInvoicing/v1/PostInvoiceData_v1
+    // Production: https://gw.fbr.gov.pk/pdi/v1/api/DigitalInvoicing/PostInvoiceData_v1
     private readonly sandboxUrl =
         process.env.FBR_API_URL ||
-        'https://esp.fbr.gov.pk/DigitalInvoicing/v1/PostInvoiceData_v1';
+        'https://esp.fbr.gov.pk:8244/DigitalInvoicing/v1/PostInvoiceData_v1';
 
     private readonly bearerToken = process.env.FBR_BEARER_TOKEN || '';
 
     async postInvoice(payload: FbrInvoicePayload, bearerToken?: string): Promise<FbrApiResponse> {
         const token = bearerToken || this.bearerToken;
-        const response = await fetch(this.sandboxUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payload),
-        });
+        const url = this.sandboxUrl;
 
-        if (!response.ok) {
-            throw new Error(`FBR HTTP ${response.status}: ${await response.text()}`);
+        this.logger.log(`[FBR API] Posting invoice payload for USIN ${payload.usin} to ${url}`);
+        this.logger.debug(`[FBR API] Request Payload:\n${JSON.stringify(payload, null, 2)}`);
+
+        const isSandbox = url.includes('esp.fbr.gov.pk');
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(payload),
+                // Bun-specific native TLS bypass for self-signed certificates
+                ...(isSandbox ? { tls: { rejectUnauthorized: false } } : {}),
+            } as any);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                this.logger.error(`[FBR API] HTTP Error ${response.status}: ${errorText}`);
+                throw new Error(`FBR HTTP ${response.status}: ${errorText}`);
+            }
+
+            const jsonResponse = await response.json() as FbrApiResponse;
+            this.logger.log(`[FBR API] Response received. Code: ${jsonResponse.Code}`);
+            this.logger.debug(`[FBR API] Response Payload:\n${JSON.stringify(jsonResponse, null, 2)}`);
+            
+            return jsonResponse;
+        } catch (error: any) {
+            this.logger.error(`[FBR API] Request failed for USIN ${payload.usin}: ${error.message}`);
+            throw error;
         }
-
-        return response.json() as Promise<FbrApiResponse>;
     }
 
     /**
      * Build the FBR payload from a completed sales order + computed line items.
+     *
+     * Receipt logic reference (print-receipt.tsx):
+     *   WOST (Value Excl. Tax) = retailPrice / (1 + taxPercent/100)
+     *   Discount applied on WOST → Amount after Discount
+     *   Tax = Amount after Discount × taxPercent/100
+     *   Value Including Sales Tax = Amount after Discount + Tax
+     *
+     * FBR field mapping:
+     *   rate                  = WOST per unit (tax-exclusive)
+     *   valueSalesExcludingST = WOST after discount (Amount after Discount)
+     *   salesTaxApplicable    = Tax on amount after discount
+     *   retailPrice           = Value Including Sales Tax
+     *   totalValues           = Value Including Sales Tax
      */
     buildPayload(params: {
         bposId: string;
+        usin: string;
         orderDate: Date;
         buyerNtn: string;
         buyerName: string;
@@ -95,25 +132,37 @@ export class FbrService {
             description: string | null;
             hsCode: string | null;
             quantity: number;
-            unitPrice: number;
-            taxAmount: number;
-            lineTotal: number;
+            unitPrice: number;       // retail price (tax-inclusive)
+            taxPercent: number;      // e.g. 18
+            discountAmount: number;  // discount applied on WOST
+            taxAmount: number;       // tax on amount after discount
+            lineTotal: number;       // Value Including Sales Tax
         }>;
     }): FbrInvoicePayload {
         const invoiceDate = params.orderDate.toISOString().split('T')[0];
 
         const invoiceItemDetails: FbrInvoiceItem[] = params.items.map((item) => {
-            const valueSalesExcludingST = Math.round(item.unitPrice * item.quantity * 100) / 100;
+            // WOST = Retail Price / (1 + tax%)
+            const taxDivisor = 1 + (item.taxPercent / 100);
+            const wostPerUnit = Math.round((item.unitPrice / taxDivisor) * 100) / 100;
+            const totalWost = Math.round(wostPerUnit * item.quantity * 100) / 100;
+
+            // Amount after discount (value excl. tax, after discount)
+            const valueSalesExcludingST = Math.round((totalWost - item.discountAmount) * 100) / 100;
+
+            // Value Including Sales Tax = valueSalesExcludingST + salesTaxApplicable
+            const valueIncludingST = Math.round((valueSalesExcludingST + item.taxAmount) * 100) / 100;
+
             return {
                 hsCode: item.hsCode || '0000.0000',
                 productCode: item.sku,
                 productDescription: item.description || item.sku,
-                rate: item.unitPrice,
+                rate: wostPerUnit,           // tax-exclusive unit price
                 uoM: 1,
                 quantity: item.quantity,
-                valueSalesExcludingST,
+                valueSalesExcludingST,        // post-discount, pre-tax
                 salesTaxApplicable: item.taxAmount,
-                retailPrice: item.lineTotal,
+                retailPrice: valueIncludingST, // Value Including Sales Tax
                 stWithheldAtSource: 0,
                 extraTax: 0,
                 furtherTax: 0,
@@ -124,7 +173,7 @@ export class FbrService {
                 whiT_2: 0,
                 whiT_Section_1: '',
                 whiT_Section_2: '',
-                totalValues: item.lineTotal,
+                totalValues: valueIncludingST, // = retailPrice
             };
         });
 
@@ -139,6 +188,7 @@ export class FbrService {
 
         return {
             bposId: params.bposId,
+            usin: params.usin,
             invoiceType: '1',
             invoiceDate,
             ntN_CNIC: params.buyerNtn,

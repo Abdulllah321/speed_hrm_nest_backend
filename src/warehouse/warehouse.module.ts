@@ -10,9 +10,10 @@ import { TransferRequestController } from './transfer-request.controller';
 import { TransferRequestService } from './transfer-request.service';
 import { StockLedgerModule } from './stock-ledger/stock-ledger.module';
 import { StockUploadModule } from './stock-upload/stock-upload.module';
+import { StockAdjustmentModule } from './stock-adjustment/stock-adjustment.module';
 
 @Module({
-  imports: [DatabaseModule, StockLedgerModule, StockUploadModule],
+  imports: [DatabaseModule, StockLedgerModule, StockUploadModule, StockAdjustmentModule],
   controllers: [
     WarehouseController,
     InventoryController,
@@ -20,6 +21,6 @@ import { StockUploadModule } from './stock-upload/stock-upload.module';
     TransferRequestController,
   ],
   providers: [WarehouseService, InventoryService, StockMovementService, TransferRequestService],
-  exports: [WarehouseService, InventoryService, StockMovementService, TransferRequestService],
+  exports: [WarehouseService, InventoryService, StockMovementService, TransferRequestService, StockAdjustmentModule],
 })
 export class WarehouseModule { }
