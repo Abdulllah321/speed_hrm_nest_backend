@@ -43,7 +43,13 @@ export class PosSalesService implements OnModuleInit {
     // ─── Generate next SO number ──────────────────────────────────────
     private async generateOrderNumber(): Promise<string> {
         const today = new Date();
-        const prefix = `SO-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+        const year = today.getFullYear();
+        const month = today.getMonth() + 1; // 1-12
+        // Fiscal year starts July 1st.
+        const fiscalYear = month >= 7 ? year + 1 : year;
+        const fyStr = fiscalYear.toString().slice(-2);
+
+        const prefix = `SO-${fyStr}-`;
 
         const last = await this.prisma.salesOrder.findFirst({
             where: { orderNumber: { startsWith: prefix } },
@@ -51,11 +57,31 @@ export class PosSalesService implements OnModuleInit {
             select: { orderNumber: true },
         });
 
-        const seq = last
-            ? parseInt(last.orderNumber.split('-').pop() || '0', 10) + 1
-            : 1;
+        let seq = 1;
+        if (last && last.orderNumber) {
+            const parts = last.orderNumber.split('-');
+            const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
+            if (!isNaN(lastSeq)) {
+                seq = lastSeq + 1;
+            }
+        }
 
-        return `${prefix}-${String(seq).padStart(4, '0')}`;
+        let nextOrderNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+        let exists = await this.prisma.salesOrder.findUnique({
+            where: { orderNumber: nextOrderNumber },
+            select: { id: true }
+        });
+        
+        while (exists) {
+            seq++;
+            nextOrderNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+            exists = await this.prisma.salesOrder.findUnique({
+                where: { orderNumber: nextOrderNumber },
+                select: { id: true }
+            });
+        }
+
+        return nextOrderNumber;
     }
 
     // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
@@ -825,7 +851,7 @@ export class PosSalesService implements OnModuleInit {
         const orderIds = rawOrders.map(o => o.id);
         const returnEntries = await this.prisma.stockLedger.findMany({
             where: {
-                referenceType: 'POS_RETURN',
+                referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
                 referenceId: { in: orderIds },
             },
             select: { referenceId: true, itemId: true, qty: true },
@@ -963,7 +989,7 @@ export class PosSalesService implements OnModuleInit {
         // Fetch returned quantities for this order
         const returnEntries = await this.prisma.stockLedger.findMany({
             where: {
-                referenceType: 'POS_RETURN',
+                referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
                 referenceId: id,
             },
             select: { itemId: true, qty: true },
@@ -1292,7 +1318,7 @@ export class PosSalesService implements OnModuleInit {
             // Fetch ALREADY-RETURNED quantities from stock ledger
             const returnEntries = await this.prisma.stockLedger.findMany({
                 where: {
-                    referenceType: 'POS_RETURN',
+                    referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
                     referenceId: orderId,
                 },
                 select: { itemId: true, qty: true },
@@ -1698,7 +1724,7 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Refund only (no stock movement) ─────────────────────────────
-    async refundOnly(id: string, refundAmount: number, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    async refundOnly(id: string, refundAmount: number, items?: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const order = await this.prisma.salesOrder.findUnique({ 
                 where: { id },
@@ -1723,9 +1749,34 @@ export class PosSalesService implements OnModuleInit {
 
                 const effectiveLocationId = order.locationId;
 
-                // ── Restore Inventory for ALL items ──
-                for (const orderItem of order.items) {
+                // Fetch ALREADY-RETURNED quantities from stock ledger (to determine status later)
+                const previousReturns = await tx.stockLedger.findMany({
+                    where: { referenceType: { in: ['POS_RETURN', 'POS_REFUND'] }, referenceId: id },
+                    select: { itemId: true, qty: true },
+                });
+                const alreadyReturnedMap = new Map<string, number>();
+                for (const pr of previousReturns) {
+                    const current = alreadyReturnedMap.get(pr.itemId) || 0;
+                    alreadyReturnedMap.set(pr.itemId, current + Math.abs(Number(pr.qty)));
+                }
+
+                // ── Restore Inventory for specified items (or all items) ──
+                let processingItems = items;
+                if (!processingItems || processingItems.length === 0) {
+                    // Fallback to all items (though not recommended)
+                    processingItems = order.items.map(oi => ({
+                        orderItemId: oi.id,
+                        itemId: oi.itemId,
+                        quantity: oi.quantity
+                    }));
+                }
+
+                for (const orderItem of processingItems) {
                     if (!orderItem.itemId) continue;
+
+                    // Update returned qty map
+                    const current = alreadyReturnedMap.get(orderItem.itemId) || 0;
+                    alreadyReturnedMap.set(orderItem.itemId, current + orderItem.quantity);
 
                     // Create stock ledger entry for refund
                     await this.stockLedgerService.createEntry({
@@ -1765,6 +1816,13 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
+                // ── Determine if ALL items are now fully returned/refunded ──
+                const allItemsReturned = order.items.every(oi => {
+                    const totalReturned = alreadyReturnedMap.get(oi.itemId) || 0;
+                    return totalReturned >= Number(oi.quantity);
+                });
+                const newStatus = allItemsReturned ? 'refunded' : 'partially_returned';
+
                 // ── Generate REFUND Voucher (record-only, cash refunded to customer) ──
                 let refundVoucher: any = null;
                 if (refundAmount > 0) {
@@ -1784,10 +1842,10 @@ export class PosSalesService implements OnModuleInit {
                 const updatedOrder = await tx.salesOrder.update({
                     where: { id },
                     data: { 
-                        status: 'refunded', 
+                        status: newStatus, 
                         notes: refundVoucher 
-                            ? `Cash refunded Rs.${refundAmount} - Refund voucher ${refundVoucher.code} (Record only) - Inventory restored${reason ? `: ${reason}` : ''}`
-                            : (reason ? `Cash refund Rs.${refundAmount} - Inventory restored: ${reason}` : `Cash refund Rs.${refundAmount} - Inventory restored`)
+                            ? `Cash refunded Rs.${refundAmount} (${newStatus}) - Refund voucher ${refundVoucher.code} (Record only) - Inventory restored${reason ? `: ${reason}` : ''}`
+                            : (reason ? `Cash refund Rs.${refundAmount} (${newStatus}) - Inventory restored: ${reason}` : `Cash refund Rs.${refundAmount} (${newStatus}) - Inventory restored`)
                     },
                 });
 
