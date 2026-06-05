@@ -77,6 +77,7 @@ export class VoucherService {
     async issueVoucher(data: {
         voucherType: VoucherType;
         faceValue: number;
+        discount?: number;
         description?: string;
         customerId?: string;
         companyName?: string;
@@ -105,6 +106,7 @@ export class VoucherService {
                     code,
                     voucherType: data.voucherType,
                     faceValue: data.faceValue,
+                    discount: data.discount ?? 0,
                     description: data.description,
                     customerId: data.customerId,
                     companyName: data.companyName,
@@ -176,6 +178,7 @@ export class VoucherService {
         voucherType: VoucherType;
         faceValue: number;
         quantity: number; // max 500 per batch
+        discount?: number;
         description?: string;
         companyName?: string;
         expiresAt?: string;
@@ -205,6 +208,7 @@ export class VoucherService {
                             code,
                             voucherType: data.voucherType,
                             faceValue: data.faceValue,
+                            discount: data.discount ?? 0,
                             description: data.description,
                             companyName: data.companyName,
                             issuedByLocationId: data.issuedByLocationId,
@@ -317,6 +321,7 @@ export class VoucherService {
                     code: voucher.code,
                     voucherType: voucher.voucherType,
                     faceValue: Number(voucher.faceValue),
+                    discount: Number(voucher.discount),
                     description: voucher.description,
                     customerId: voucher.customerId,
                     requireCustomerMatch: voucher.requireCustomerMatch,
