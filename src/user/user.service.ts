@@ -55,7 +55,7 @@ export class UserService {
     let employeeData: any = null;
     if (user.employeeId) {
       const employee = await this.prisma.employee.findUnique({
-        where: { id: user.employeeId },
+        where: { employeeId: user.employeeId },
         select: {
           id: true,
           employeeName: true,
@@ -92,7 +92,7 @@ export class UserService {
         module: 'user-management',
         entity: 'User',
         entityId: user.id,
-        description: `Created user ${user.email}`,
+        description: `Created user ${user.email || user.employeeId}`,
         newValues: JSON.stringify(createUserDto),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
@@ -184,7 +184,7 @@ export class UserService {
     let employeeData: any = null;
     if (user.employeeId) {
       const employee = await this.prisma.employee.findUnique({
-        where: { id: user.employeeId },
+        where: { employeeId: user.employeeId },
         select: {
           id: true,
           employeeName: true,
@@ -247,7 +247,7 @@ export class UserService {
         module: 'user-management',
         entity: 'User',
         entityId: updated.id,
-        description: `Updated user ${updated.email}`,
+        description: `Updated user ${updated.email || updated.employeeId}`,
         newValues: JSON.stringify(updateUserDto),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,

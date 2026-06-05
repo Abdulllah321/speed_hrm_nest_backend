@@ -318,12 +318,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (user) {
-        recipientEmail = user.email;
+        recipientEmail = user.email || undefined;
 
         // Note: If you need to fallback to Employee email (Tenant DB), use:
         if (!recipientEmail && user.employeeId) {
           const emp = await this.prisma.employee.findUnique({
-            where: { id: user.employeeId },
+            where: { employeeId: user.employeeId },
           });
           if (emp)
             recipientEmail =

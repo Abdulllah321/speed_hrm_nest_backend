@@ -727,23 +727,35 @@ export class EmployeeService {
       const resolvedState = stateId;
       const resolvedCity = cityId;
 
-      // Create or find user if officialEmail is provided
+      // Create or find user if officialEmail is provided OR employeeId is provided
       let userId: string | null = null;
       const officialEmailValue = getBodyString('officialEmail');
-      if (officialEmailValue) {
-        let user = await this.prismaMaster.user.findUnique({
-          where: { email: officialEmailValue },
-        });
+      const employeeIdValue = getBodyString('employeeId');
+
+      if (officialEmailValue || employeeIdValue) {
+        let user: any = null;
+        if (officialEmailValue) {
+          user = await this.prismaMaster.user.findUnique({
+            where: { email: officialEmailValue },
+          });
+        } else if (employeeIdValue) {
+          user = await this.prismaMaster.user.findUnique({
+            where: { employeeId: employeeIdValue },
+          });
+        }
 
         if (user) {
           userId = user.id;
 
-          // Update user avatar if provided
+          // Update user avatar and employeeId if provided
           const avatarUrlValue = getBodyString('avatarUrl');
-          if (avatarUrlValue) {
+          const updateData: any = {};
+          if (avatarUrlValue) updateData.avatar = avatarUrlValue;
+          if (employeeIdValue) updateData.employeeId = employeeIdValue;
+          if (Object.keys(updateData).length > 0) {
             await this.prismaMaster.user.update({
-              where: { id: userId },
-              data: { avatar: avatarUrlValue },
+              where: { id: user.id },
+              data: updateData,
             });
           }
         } else {
@@ -761,17 +773,16 @@ export class EmployeeService {
 
           const contactNumberValue = getBodyString('contactNumber');
           const avatarUrlValue = getBodyString('avatarUrl');
-          const employeeIdValue = getBodyString('employeeId');
 
           user = await this.prismaMaster.user.create({
             data: {
-              email: officialEmailValue,
+              email: officialEmailValue || null,
               password: hashedPassword,
               firstName: firstName,
               lastName: lastName,
               phone: contactNumberValue || null,
               avatar: avatarUrlValue || null,
-              employeeId: employeeIdValue,
+              employeeId: employeeIdValue || null,
               mustChangePassword: true,
               status: 'active',
             },
@@ -781,7 +792,7 @@ export class EmployeeService {
       }
 
       // Extract all body values safely
-      const employeeIdValue = getBodyString('employeeId');
+      // employeeIdValue is already extracted
       const employeeNameValue = getBodyString('employeeName');
       const fatherHusbandNameValue = getBodyString('fatherHusbandName');
       const attendanceIdValue = getBodyString('attendanceId');
@@ -1672,20 +1683,33 @@ export class EmployeeService {
         | string
         | undefined;
 
-      if (officialEmailValue) {
+      // If we have an email OR an employeeId, manage the user account
+      const currentEmployeeId = employeeIdValue || existing?.employeeId;
+      if (officialEmailValue || currentEmployeeId) {
         if (updated.userId) {
-          // Employee already has a user, update avatar
-          if (avatarUrlValue !== undefined) {
+          // Employee already has a user, update details
+          const updateData: any = {};
+          if (avatarUrlValue !== undefined) updateData.avatar = avatarUrlValue;
+          if (employeeIdValue !== undefined) updateData.employeeId = employeeIdValue;
+          if (officialEmailValue !== undefined) updateData.email = officialEmailValue || null;
+          if (Object.keys(updateData).length > 0) {
             await this.prismaMaster.user.update({
               where: { id: updated.userId },
-              data: { avatar: avatarUrlValue },
+              data: updateData,
             });
           }
         } else {
           // Employee doesn't have a user yet, create or link one
-          let user = await this.prismaMaster.user.findUnique({
-            where: { email: officialEmailValue },
-          });
+          let user: any = null;
+          if (officialEmailValue) {
+            user = await this.prismaMaster.user.findUnique({
+              where: { email: officialEmailValue },
+            });
+          } else if (currentEmployeeId) {
+            user = await this.prismaMaster.user.findUnique({
+              where: { employeeId: currentEmployeeId },
+            });
+          }
 
           if (user) {
             // User exists, link to employee
@@ -1694,10 +1718,14 @@ export class EmployeeService {
               data: { userId: user.id },
             });
 
-            if (avatarUrlValue !== undefined) {
+            const updateData: any = {};
+            if (avatarUrlValue !== undefined) updateData.avatar = avatarUrlValue;
+            if (employeeIdValue !== undefined) updateData.employeeId = employeeIdValue;
+            if (officialEmailValue !== undefined) updateData.email = officialEmailValue || null;
+            if (Object.keys(updateData).length > 0) {
               await this.prismaMaster.user.update({
                 where: { id: user.id },
-                data: { avatar: avatarUrlValue },
+                data: updateData,
               });
             }
           } else {
@@ -1718,13 +1746,13 @@ export class EmployeeService {
 
             user = await this.prismaMaster.user.create({
               data: {
-                email: officialEmailValue,
+                email: officialEmailValue || null,
                 password: hashedPassword,
                 firstName: firstName,
                 lastName: lastName,
                 phone: contactNumberValue || existing?.contactNumber || null,
                 avatar: avatarUrlValue || null,
-                employeeId: employeeIdValue || existing?.employeeId || null,
+                employeeId: currentEmployeeId || null,
                 mustChangePassword: true,
                 status: 'active',
               },
