@@ -204,17 +204,17 @@ export class PosSalesService implements OnModuleInit {
                     // Apply discount on WOST (not on Retail Price)
                     // Use overrideDiscountPercent if available, otherwise use discountPercent
                     const discPct = lineItem.overrideDiscountPercent ?? lineItem.discountPercent ?? 0;
-                    const discAmt = Math.round(totalWost * (discPct / 100) * 100) / 100;
+                    const discAmt = Math.round(totalWost * (discPct / 100));
                     const afterDisc = totalWost - discAmt;
                     
                     // Calculate tax on amount after discount
-                    const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
+                    const taxAmt = Math.round(afterDisc * (taxPct / 100));
 
                     const promoDisc = (promoItemIds === null || promoItemIds.has(lineItem.itemId))
                         ? (lineItem.promoDiscountAmount || 0)
                         : 0;
 
-                    const lineTotal = Math.round((afterDisc + taxAmt - promoDisc) * 100) / 100;
+                    const lineTotal = Math.round(afterDisc + taxAmt - promoDisc);
 
                     return {
                         itemId: lineItem.itemId,
@@ -254,12 +254,11 @@ export class PosSalesService implements OnModuleInit {
                 } else if (dto.globalDiscountAmount) {
                     manualDiscount = Math.min(dto.globalDiscountAmount, subtotalAfterItemDiscount);
                 }
-                
                 // 2. Alliance discount (calculated on subtotal AFTER item discounts)
                 if (dto.allianceId) {
                     const alliance = await tx.allianceDiscount.findFirst({ where: { id: dto.allianceId, isDeleted: false } });
                     if (alliance) {
-                        const calculatedDiscount = Math.round(subtotalAfterItemDiscount * (Number(alliance.discountPercent) / 100) * 100) / 100;
+                        const calculatedDiscount = Math.round(subtotalAfterItemDiscount * (Number(alliance.discountPercent) / 100));
                         if (alliance.maxDiscount) {
                             allianceDiscount = Math.min(calculatedDiscount, Number(alliance.maxDiscount));
                         } else {
@@ -327,16 +326,16 @@ export class PosSalesService implements OnModuleInit {
                             // Recalculate tax based on WOST after discount
                             const taxDivisor = 1 + (item.taxPercent / 100);
                             const wostPerUnit = item.unitPrice / taxDivisor;
-                            const totalWost = Math.round(wostPerUnit * item.quantity * 100) / 100;
+                            const totalWost = wostPerUnit * item.quantity;
                             const afterDisc = totalWost - disc;
-                            const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
+                            const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100));
                             
                             return {
                                 ...item,
-                                discountPercent: Math.round((disc / lineSubtotal) * 100 * 100) / 100,
+                                discountPercent: Math.round((disc / totalWost) * 100 * 100) / 100,
                                 discountAmount: disc,
                                 taxAmount: recalculatedTax,
-                                lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100
+                                lineTotal: Math.round(afterDisc + recalculatedTax)
                             };
                         });
                         // Since it's distributed, we can set globalDiscAmt to 0 if we want it to ONLY show on items,
@@ -387,16 +386,16 @@ export class PosSalesService implements OnModuleInit {
                         // Recalculate tax based on WOST after discount
                         const taxDivisor = 1 + (item.taxPercent / 100);
                         const wostPerUnit = item.unitPrice / taxDivisor;
-                        const totalWost = Math.round(wostPerUnit * item.quantity * 100) / 100;
+                        const totalWost = wostPerUnit * item.quantity;
                         const afterDisc = totalWost - disc;
-                        const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
+                        const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100));
                         
                         return {
                             ...item,
-                            discountPercent: Math.round((disc / lineSubtotal) * 100 * 100) / 100,
+                            discountPercent: Math.round((disc / totalWost) * 100 * 100) / 100,
                             discountAmount: disc,
                             taxAmount: recalculatedTax,
-                            lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100
+                            lineTotal: Math.round(afterDisc + recalculatedTax)
                         };
                     });
                 } else if (couponDiscount > 0) {
@@ -415,7 +414,7 @@ export class PosSalesService implements OnModuleInit {
                 // Recalculate total with the chosen discount
                 const totalDiscount = finalLineItemDiscount + globalDiscAmt;
                 const fbrPosFee = 1; // FBR POS Fee
-                const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + finalTotalTax + fbrPosFee) * 100) / 100);
+                const grandTotal = Math.max(0, Math.round(subtotal - totalDiscount + finalTotalTax + fbrPosFee));
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
 
                 // Debug logging
@@ -1122,14 +1121,18 @@ export class PosSalesService implements OnModuleInit {
                     const qty = Number(orderItem.quantity);
                     const lineTotal = Number(orderItem.lineTotal);
 
-                    // ── Refund price rule ─────────────────────────────────
-                    // Proportionally distribute grandTotal across items so order-level
-                    // coupon/voucher discounts are correctly reflected in the refund.
-                    const itemCouponDeduction = lineTotalsSum > 0
-                        ? (lineTotal / lineTotalsSum) * orderLevelDiscount
-                        : 0;
+                    const isAllianceOrNoGlobalDisc = Math.abs(lineTotalsSum - Number(order.grandTotal)) <= 5;
+                    const itemCouponDeduction = (isAllianceOrNoGlobalDisc || lineTotalsSum <= 0)
+                        ? 0
+                        : (lineTotal / lineTotalsSum) * orderLevelDiscount;
                     const itemShare = lineTotal - itemCouponDeduction;
-                    const originalPaidPerUnit = itemShare / qty;
+                    
+                    let originalPaidPerUnit = 0;
+                    if (isAllianceOrNoGlobalDisc) {
+                        originalPaidPerUnit = lineTotal / qty;
+                    } else {
+                        originalPaidPerUnit = itemShare / qty;
+                    }
 
                     // Current item price — POS uses unitPrice from item setup
                     const currentItem = await tx.item.findUnique({
@@ -1140,14 +1143,12 @@ export class PosSalesService implements OnModuleInit {
                         ? Number(currentItem.unitPrice)
                         : originalPaidPerUnit;
 
-                    // Apply the same tax rate that was charged at sale time
-                    const taxPercent = Number(orderItem.taxPercent) || 0;
-                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+                    // Current price is already tax-inclusive (retail price)
+                    const currentPriceWithTax = baseCurrentPrice;
 
-                    // Rule: ALWAYS refund the original paid price (what customer actually paid)
-                    // Customer gets full cash refund regardless of current stock price
+                    // Rule: Refund should be the minimum of original paid price and current stock price
                     // Refund voucher is generated for record keeping only
-                    const refundPerUnit = originalPaidPerUnit;
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
                     totalRefundAmount += refundPerUnit * returnItem.quantity;
 
                     itemRefundDetails.push({
@@ -1340,12 +1341,14 @@ export class PosSalesService implements OnModuleInit {
                                     description: true,
                                     sku: true,
                                     barCode: true,
+                                    unitPrice: true,
                                     brand: { select: { name: true } },
                                 },
                             },
                         },
                     },
                     coupon: true,
+                    alliance: { select: { partnerName: true, code: true } },
                 },
             });
 
@@ -1404,23 +1407,28 @@ export class PosSalesService implements OnModuleInit {
                     const lineTotal = Number(oi.lineTotal) * scaleFactor;
 
                     // Proportional coupon deduction
-                    const couponDeduction = lineTotalsSum > 0
-                        ? (lineTotal / lineTotalsSum) * globalDiscAmt
-                        : 0;
+                    const isAllianceOrNoGlobalDisc = Math.abs(lineTotalsSum - grandTotal) <= 5;
+                    const couponDeduction = (isAllianceOrNoGlobalDisc || lineTotalsSum <= 0)
+                        ? 0
+                        : (lineTotal / lineTotalsSum) * globalDiscAmt;
 
                     // Original paid per unit (after all discounts including coupon)
-                    const originalPaidPerUnit = lineTotalsSum > 0
-                        ? (lineTotal / lineTotalsSum) * grandTotal / returnedQty
-                        : lineTotal / returnedQty;
+                    let originalPaidPerUnit = 0;
+                    if (isAllianceOrNoGlobalDisc) {
+                        originalPaidPerUnit = lineTotal / returnedQty;
+                    } else {
+                        originalPaidPerUnit = lineTotalsSum > 0
+                            ? (lineTotal / lineTotalsSum) * grandTotal / returnedQty
+                            : lineTotal / returnedQty;
+                    }
 
-                    // Current price logic (use unitPrice from item setup)
+                    // Current price is already tax-inclusive (retail price)
                     const currentItem = oi.item;
                     const baseCurrentPrice = Number((currentItem as any).unitPrice || 0);
-                    const currentPriceWithTax = baseCurrentPrice * (1 + taxPercent / 100);
+                    const currentPriceWithTax = baseCurrentPrice > 0 ? baseCurrentPrice : originalPaidPerUnit;
 
-                    // Rule: ALWAYS refund the original paid price (what customer actually paid)
-                    // Customer gets full cash refund regardless of current stock price
-                    const refundPerUnit = originalPaidPerUnit;
+                    // Rule: Refund should be the minimum of original paid price and current stock price
+                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
                     const priceAdjusted = currentPriceWithTax < originalPaidPerUnit;
 
                     return {
@@ -1447,6 +1455,15 @@ export class PosSalesService implements OnModuleInit {
             if (order.coupon && (order.coupon.discountType === 'voucher' || order.coupon.discountType === 'fixed')) {
                 discountNotes.push(`${order.coupon.code} - ${order.coupon.description || 'Voucher'}`);
             }
+            if ((order as any).alliance) {
+                discountNotes.push(`Alliance: ${(order as any).alliance.partnerName || (order as any).alliance.code}`);
+            }
+
+            const exchangeVoucher = await this.prisma.voucher.findFirst({
+                where: { sourceOrderId: order.id, voucherType: 'EXCHANGE', isDeleted: false },
+                select: { code: true, faceValue: true, expiresAt: true },
+                orderBy: { createdAt: 'desc' }
+            });
 
             return {
                 status: true,
@@ -1456,6 +1473,7 @@ export class PosSalesService implements OnModuleInit {
                     items: enrichedItems,
                     reason: order.notes,
                     discountNotes,
+                    exchangeVoucher: exchangeVoucher || undefined,
                     returnedAt: new Date().toISOString(),
                 },
             };
@@ -1953,11 +1971,11 @@ export class PosSalesService implements OnModuleInit {
             const itemsData = dto.items.map((lineItem) => {
                 const subtotal = lineItem.unitPrice * lineItem.quantity;
                 const discPct = lineItem.discountPercent || 0;
-                const discAmt = Math.round(subtotal * (discPct / 100) * 100) / 100;
+                const discAmt = Math.round(subtotal * (discPct / 100));
                 const afterDisc = subtotal - discAmt;
                 const taxPct = lineItem.taxPercent || 0;
-                const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
-                const lineTotal = Math.round((afterDisc + taxAmt) * 100) / 100;
+                const taxAmt = Math.round(afterDisc * (taxPct / 100));
+                const lineTotal = Math.round(afterDisc + taxAmt);
                 return {
                     itemId: lineItem.itemId,
                     quantity: lineItem.quantity,
@@ -1974,7 +1992,7 @@ export class PosSalesService implements OnModuleInit {
             const subtotal = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
             const totalDiscount = itemsData.reduce((acc, i) => acc + i.discountAmount, 0);
             const totalTax = itemsData.reduce((acc, i) => acc + i.taxAmount, 0);
-            const grandTotal = Math.max(0, Math.round((subtotal - totalDiscount + totalTax) * 100) / 100);
+            const grandTotal = Math.max(0, Math.round(subtotal - totalDiscount + totalTax));
 
             const result = await this.prisma.$transaction(async (tx) => {
                 const order = await tx.salesOrder.create({
