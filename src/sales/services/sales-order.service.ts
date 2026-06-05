@@ -109,13 +109,32 @@ export class SalesOrderService {
 
   async create(createSalesOrderDto: CreateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      // Generate order number
+      // Generate order number with proper fiscal year (July - June)
+      const now = new Date();
+      const month = now.getMonth(); // 0-based, June is 5, July is 6
+      const year = now.getFullYear();
+      const startYear = month >= 6 ? year % 100 : (year - 1) % 100;
+      const endYear = month >= 6 ? (year + 1) % 100 : year % 100;
+      const fy = `${String(startYear).padStart(2, '0')}-${String(endYear).padStart(2, '0')}`;
+
       const lastOrder = await this.prisma.eRPSalesOrder.findFirst({
+        where: {
+          orderNo: {
+            startsWith: `SI-${fy}-`,
+          },
+        },
         orderBy: { orderNo: 'desc' },
       });
       
-      const lastNumber = lastOrder?.orderNo ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
-      const orderNo = `SO-${String(lastNumber + 1).padStart(3, '0')}`;
+      let nextNumber = 1;
+      if (lastOrder?.orderNo) {
+        const parts = lastOrder.orderNo.split('-');
+        const lastSeq = parseInt(parts[parts.length - 1]);
+        if (!isNaN(lastSeq)) {
+          nextNumber = lastSeq + 1;
+        }
+      }
+      const orderNo = `SI-${fy}-${String(nextNumber).padStart(3, '0')}`;
 
       // Calculate totals
       let subtotal = 0;

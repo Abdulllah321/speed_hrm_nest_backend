@@ -44,25 +44,30 @@ export class PosSalesService implements OnModuleInit {
     private async generateOrderNumber(): Promise<string> {
         const today = new Date();
         const year = today.getFullYear();
-        const month = today.getMonth() + 1; // 1-12
-        // Fiscal year starts July 1st.
-        const fiscalYear = month >= 7 ? year + 1 : year;
-        const fyStr = fiscalYear.toString().slice(-2);
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const prefix = `${year}${month}${day}-`;
 
-        const prefix = `SO-${fyStr}-`;
-
-        const last = await this.prisma.salesOrder.findFirst({
-            where: { orderNumber: { startsWith: prefix } },
-            orderBy: { orderNumber: 'desc' },
+        // Fetch the last 50 sales orders to find the latest valid sequence number
+        const lastOrders = await this.prisma.salesOrder.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 50,
             select: { orderNumber: true },
         });
 
         let seq = 1;
-        if (last && last.orderNumber) {
-            const parts = last.orderNumber.split('-');
-            const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
-            if (!isNaN(lastSeq)) {
-                seq = lastSeq + 1;
+        for (const order of lastOrders) {
+            if (order.orderNumber) {
+                const parts = order.orderNumber.split('-');
+                const lastPart = parts[parts.length - 1] || '';
+                // Ensure the last part consists entirely of digits
+                if (/^\d+$/.test(lastPart)) {
+                    const lastSeq = parseInt(lastPart, 10);
+                    if (!isNaN(lastSeq)) {
+                        seq = lastSeq + 1;
+                        break;
+                    }
+                }
             }
         }
 
@@ -1012,7 +1017,7 @@ export class PosSalesService implements OnModuleInit {
         const order = await this.prisma.salesOrder.findUnique({
             where: { id },
             include: {
-                items: { include: { item: true } },
+                items: { include: { item: { include: { size: true } } } },
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
                 alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
@@ -1051,7 +1056,13 @@ export class PosSalesService implements OnModuleInit {
             tenders.push({ method: order.paymentMethod, amount });
         }
 
-        return { status: true, data: { ...order, items: enrichedItems, tenders } };
+        // Fetch any credit vouchers issued from this order
+        const creditVouchers = await this.prisma.voucher.findMany({
+            where: { sourceOrderId: id, isDeleted: false },
+            select: { code: true, faceValue: true, expiresAt: true },
+        });
+
+        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers } };
     }
 
     // ─── Partial return ───────────────────────────────────────────────
