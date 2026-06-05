@@ -64,8 +64,13 @@ export class AuthService {
     try {
       // Step 1: Find user
       this.logger.debug(`[LOGIN] Step 1: Looking up user: ${email}`);
-      const user = await this.prismaMaster.user.findUnique({
-        where: { email },
+      const user = await this.prismaMaster.user.findFirst({
+        where: {
+          OR: [
+            { email },
+            { employeeId: email }
+          ]
+        },
         include: { role: true },
       });
 
@@ -1919,7 +1924,7 @@ export class AuthService {
     return {
       status: true,
       message: 'Manager verified successfully',
-      data: { userId: user.id, email: user.email },
+      data: { userId: user.id, email: user.email || '' },
     };
   }
 
