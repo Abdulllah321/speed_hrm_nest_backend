@@ -87,6 +87,11 @@ export class VoucherService {
         sourceOrderId?: string;
         expiresAt?: string;
         locationIds?: string[]; // empty = all locations
+        paymentMode?: string;
+        cardholderName?: string;
+        cardLast4?: string;
+        slipNo?: string;
+        merchantId?: string;
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const code = generateCode(data.voucherType);
@@ -117,6 +122,11 @@ export class VoucherService {
                     expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
                     isActive: !isRefundVoucher, // REFUND vouchers are inactive (not redeemable)
                     isRedeemed: isRefundVoucher, // REFUND vouchers are marked as redeemed
+                    paymentMode: data.paymentMode,
+                    cardholderName: data.cardholderName,
+                    cardLast4: data.cardLast4,
+                    slipNo: data.slipNo,
+                    merchantId: data.merchantId,
                     locations: {
                         create: locationIds.map((locId) => ({ locationId: locId })),
                     },
@@ -127,7 +137,9 @@ export class VoucherService {
                             locationId: data.issuedByLocationId,
                             notes: isRefundVoucher 
                                 ? `Refund voucher issued - Cash refunded to customer (Record only)`
-                                : `Issued as ${data.voucherType}`,
+                                : data.paymentMode === 'CARD'
+                                    ? `Issued as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
+                                    : `Issued as ${data.voucherType} (Paid via Cash)`,
                         },
                     },
                 },
@@ -185,6 +197,11 @@ export class VoucherService {
         locationIds?: string[];
         issuedByLocationId?: string;
         issuedByUserId?: string;
+        paymentMode?: string;
+        cardholderName?: string;
+        cardLast4?: string;
+        slipNo?: string;
+        merchantId?: string;
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const qty = Math.min(data.quantity, 500);
@@ -214,6 +231,11 @@ export class VoucherService {
                             issuedByLocationId: data.issuedByLocationId,
                             issuedByUserId: data.issuedByUserId,
                             expiresAt,
+                            paymentMode: data.paymentMode,
+                            cardholderName: data.cardholderName,
+                            cardLast4: data.cardLast4,
+                            slipNo: data.slipNo,
+                            merchantId: data.merchantId,
                             locations: {
                                 create: locationIds.map((locId) => ({ locationId: locId })),
                             },
@@ -222,7 +244,9 @@ export class VoucherService {
                                     action: 'ISSUED',
                                     amountUsed: 0,
                                     locationId: data.issuedByLocationId,
-                                    notes: `Bulk issued (${qty}) as ${data.voucherType}`,
+                                    notes: data.paymentMode === 'CARD'
+                                        ? `Bulk issued (${qty}) as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
+                                        : `Bulk issued (${qty}) as ${data.voucherType} (Paid via Cash)`,
                                 },
                             },
                         },
