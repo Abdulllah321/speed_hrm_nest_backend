@@ -51,7 +51,7 @@ export class LocationController {
   }
 
   @Get('locations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.read'))
+  @UseGuards(JwtAuthGuardٖ)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all locations' })
   async list() {

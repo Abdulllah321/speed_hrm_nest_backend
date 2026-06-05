@@ -35,6 +35,7 @@ model MerchantConfig {
 
   locations    MerchantConfigLocation[]
   salesOrders  SalesOrder[]
+  vouchers     Voucher[]
 
   @@index([tagId])
   @@index([bankName])
@@ -285,6 +286,14 @@ model Voucher {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // Payment tracking for GIFT vouchers
+  paymentMode    String?         @map("payment_mode") // CASH | CARD
+  cardholderName String?         @map("cardholder_name")
+  cardLast4      String?         @map("card_last_4")
+  slipNo         String?         @map("slip_no")
+  merchantId     String?         @map("merchant_id")
+  merchant       MerchantConfig? @relation(fields: [merchantId], references: [id])
+
   locations    VoucherLocation[]
   transactions VoucherTransaction[]
   redemptions  VoucherRedemption[]
@@ -294,6 +303,7 @@ model Voucher {
   @@index([customerId])
   @@index([issuedByLocationId])
   @@index([voucherType])
+  @@index([merchantId])
   @@map("pos_vouchers")
 }
 
