@@ -209,17 +209,17 @@ export class PosSalesService implements OnModuleInit {
                     // Apply discount on WOST (not on Retail Price)
                     // Use overrideDiscountPercent if available, otherwise use discountPercent
                     const discPct = lineItem.overrideDiscountPercent ?? lineItem.discountPercent ?? 0;
-                    const discAmt = Math.round(totalWost * (discPct / 100));
+                    const discAmt = Math.round(totalWost * (discPct / 100) * 100) / 100;
                     const afterDisc = totalWost - discAmt;
                     
                     // Calculate tax on amount after discount
-                    const taxAmt = Math.round(afterDisc * (taxPct / 100));
+                    const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
 
                     const promoDisc = (promoItemIds === null || promoItemIds.has(lineItem.itemId))
                         ? (lineItem.promoDiscountAmount || 0)
                         : 0;
 
-                    const lineTotal = Math.round(afterDisc + taxAmt - promoDisc);
+                    const lineTotal = Math.round((afterDisc + taxAmt - promoDisc) * 100) / 100;
 
                     return {
                         itemId: lineItem.itemId,
@@ -263,12 +263,13 @@ export class PosSalesService implements OnModuleInit {
                 if (dto.allianceId) {
                     const alliance = await tx.allianceDiscount.findFirst({ where: { id: dto.allianceId, isDeleted: false } });
                     if (alliance) {
-                        const calculatedDiscount = Math.round(subtotalAfterItemDiscount * (Number(alliance.discountPercent) / 100));
+                        const calculatedDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
                         if (alliance.maxDiscount) {
                             allianceDiscount = Math.min(calculatedDiscount, Number(alliance.maxDiscount));
                         } else {
                             allianceDiscount = calculatedDiscount;
                         }
+                        allianceDiscount = Math.round(allianceDiscount * 100) / 100;
                     }
                 }
                 
@@ -325,7 +326,6 @@ export class PosSalesService implements OnModuleInit {
                         }
 
                         itemsData = itemsData.map((item, idx) => {
-                            const lineSubtotal = item.unitPrice * item.quantity;
                             const disc = rawShares[idx];
                             
                             // Recalculate tax based on WOST after discount
@@ -333,7 +333,7 @@ export class PosSalesService implements OnModuleInit {
                             const wostPerUnit = item.unitPrice / taxDivisor;
                             const totalWost = wostPerUnit * item.quantity;
                             const afterDisc = totalWost - disc;
-                            const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100));
+                            const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
                             
                             return {
                                 ...item,
@@ -385,7 +385,6 @@ export class PosSalesService implements OnModuleInit {
                     }
 
                     itemsData = itemsData.map((item, idx) => {
-                        const lineSubtotal = item.unitPrice * item.quantity;
                         const disc = rawShares[idx];
                         
                         // Recalculate tax based on WOST after discount
@@ -393,14 +392,14 @@ export class PosSalesService implements OnModuleInit {
                         const wostPerUnit = item.unitPrice / taxDivisor;
                         const totalWost = wostPerUnit * item.quantity;
                         const afterDisc = totalWost - disc;
-                        const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100));
+                        const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
                         
                         return {
                             ...item,
                             discountPercent: Math.round((disc / totalWost) * 100 * 100) / 100,
                             discountAmount: disc,
                             taxAmount: recalculatedTax,
-                            lineTotal: Math.round(afterDisc + recalculatedTax)
+                            lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100
                         };
                     });
                 } else if (couponDiscount > 0) {
@@ -1148,33 +1147,64 @@ export class PosSalesService implements OnModuleInit {
                     // Current item price — POS uses unitPrice from item setup
                     const currentItem = await tx.item.findUnique({
                         where: { id: returnItem.itemId },
-                        select: { unitPrice: true },
+                        select: {
+                            unitPrice: true,
+                            discountRate: true,
+                            discountAmount: true,
+                            discountStartDate: true,
+                            discountEndDate: true,
+                        },
                     });
-                    const baseCurrentPrice = currentItem
+                    const latestPrice = currentItem
                         ? Number(currentItem.unitPrice)
                         : originalPaidPerUnit;
 
-                    // Current price is already tax-inclusive (retail price)
-                    const currentPriceWithTax = baseCurrentPrice;
+                    const now = new Date();
+                    const startDate = currentItem?.discountStartDate ? new Date(currentItem.discountStartDate) : null;
+                    const endDate = currentItem?.discountEndDate ? new Date(currentItem.discountEndDate) : null;
+                    const discountActive = currentItem && (
+                        (!startDate || startDate <= now) &&
+                        (!endDate || endDate >= now)
+                    );
 
-                    // Rule: Refund should be the minimum of original paid price and current stock price
-                    // Refund voucher is generated for record keeping only
+                    const discountRate = discountActive ? Number(currentItem.discountRate || 0) : 0;
+                    const discountAmount = discountActive ? Number(currentItem.discountAmount || 0) : 0;
+
+                    let effectiveDiscountPercent = 0;
+                    if (discountRate > 0) {
+                        effectiveDiscountPercent = discountRate;
+                    } else if (discountAmount > 0 && latestPrice > 0) {
+                        effectiveDiscountPercent = Math.min(100, (discountAmount / latestPrice) * 100);
+                    }
+
+                    // Current price is already tax-inclusive (retail price)
+                    const currentPriceWithTax = latestPrice - (latestPrice * (effectiveDiscountPercent / 100));
+
+                    const priceAdjusted = currentPriceWithTax < originalPaidPerUnit;
                     const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
                     totalRefundAmount += refundPerUnit * returnItem.quantity;
+                    
+                    const taxPct = Number(orderItem.taxPercent || 0);
+                    const taxDivisor = 1 + (taxPct / 100);
+                    const wostRefund = (Number(orderItem.unitPrice) * returnItem.quantity) / taxDivisor;
+
+                    const finalDiscountPercent = priceAdjusted ? effectiveDiscountPercent : Number(orderItem.discountPercent ?? 0);
+                    const finalDiscountAmount = priceAdjusted ? wostRefund * (effectiveDiscountPercent / 100) : Number(orderItem.discountAmount ?? 0) * (returnItem.quantity / qty);
+                    const finalTaxAmount = priceAdjusted ? (wostRefund - finalDiscountAmount) * (taxPct / 100) : Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty);
 
                     itemRefundDetails.push({
                         orderItemId: returnItem.orderItemId,
                         itemId: returnItem.itemId,
                         quantity: returnItem.quantity,
                         unitPrice: Math.round(Number(orderItem.unitPrice) * 100) / 100,
-                        discountAmount: Math.round(Number(orderItem.discountAmount ?? 0) * (returnItem.quantity / qty) * 100) / 100,
-                        discountPercent: Number(orderItem.discountPercent ?? 0),
-                        taxAmount: Math.round(Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty) * 100) / 100,
-                        taxPercent: Number(orderItem.taxPercent ?? 0),
+                        discountAmount: Math.round(finalDiscountAmount * 100) / 100,
+                        discountPercent: finalDiscountPercent,
+                        taxAmount: Math.round(finalTaxAmount * 100) / 100,
+                        taxPercent: taxPct,
                         couponDeduction: Math.round(itemCouponDeduction * (returnItem.quantity / qty) * 100) / 100,
                         originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
                         refundPerUnit: Math.round(refundPerUnit * 100) / 100,
-                        priceAdjusted: currentPriceWithTax < originalPaidPerUnit,
+                        priceAdjusted,
                     });
 
                     await this.stockLedgerService.createEntry({
@@ -1353,6 +1383,10 @@ export class PosSalesService implements OnModuleInit {
                                     sku: true,
                                     barCode: true,
                                     unitPrice: true,
+                                    discountRate: true,
+                                    discountAmount: true,
+                                    discountStartDate: true,
+                                    discountEndDate: true,
                                     brand: { select: { name: true } },
                                 },
                             },
@@ -1371,13 +1405,17 @@ export class PosSalesService implements OnModuleInit {
                     referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
                     referenceId: orderId,
                 },
-                select: { itemId: true, qty: true },
+                select: { itemId: true, qty: true, referenceType: true },
             });
 
             const returnedQtyMap = new Map<string, number>();
+            const isRefundMap = new Map<string, boolean>();
             for (const entry of returnEntries) {
                 const current = returnedQtyMap.get(entry.itemId) || 0;
                 returnedQtyMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+                if (entry.referenceType === 'POS_REFUND') {
+                    isRefundMap.set(entry.itemId, true);
+                }
             }
 
             // If no returns found, return empty
@@ -1435,12 +1473,38 @@ export class PosSalesService implements OnModuleInit {
 
                     // Current price is already tax-inclusive (retail price)
                     const currentItem = oi.item;
-                    const baseCurrentPrice = Number((currentItem as any).unitPrice || 0);
-                    const currentPriceWithTax = baseCurrentPrice > 0 ? baseCurrentPrice : originalPaidPerUnit;
+                    const latestPrice = currentItem ? Number((currentItem as any).unitPrice || 0) : originalPaidPerUnit;
 
-                    // Rule: Refund should be the minimum of original paid price and current stock price
-                    const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
-                    const priceAdjusted = currentPriceWithTax < originalPaidPerUnit;
+                    const now = new Date();
+                    const startDate = (currentItem as any)?.discountStartDate ? new Date((currentItem as any).discountStartDate) : null;
+                    const endDate = (currentItem as any)?.discountEndDate ? new Date((currentItem as any).discountEndDate) : null;
+                    const discountActive = currentItem && (
+                        (!startDate || startDate <= now) &&
+                        (!endDate || endDate >= now)
+                    );
+
+                    const discountRate = discountActive ? Number((currentItem as any).discountRate || 0) : 0;
+                    const activeDiscountAmount = discountActive ? Number((currentItem as any).discountAmount || 0) : 0;
+
+                    let effectiveDiscountPercent = 0;
+                    if (discountRate > 0) {
+                        effectiveDiscountPercent = discountRate;
+                    } else if (activeDiscountAmount > 0 && latestPrice > 0) {
+                        effectiveDiscountPercent = Math.min(100, (activeDiscountAmount / latestPrice) * 100);
+                    }
+
+                    // Current price is already tax-inclusive (retail price)
+                    const currentPriceWithTax = latestPrice - (latestPrice * (effectiveDiscountPercent / 100));
+
+                    const isRefund = isRefundMap.get(oi.itemId) === true;
+                    // Rule: Refund should be same as paid for POS_REFUND, otherwise minimum of original paid price and current price
+                    const refundPerUnit = isRefund ? originalPaidPerUnit : Math.min(originalPaidPerUnit, currentPriceWithTax);
+                    const priceAdjusted = isRefund ? false : currentPriceWithTax < originalPaidPerUnit;
+
+                    const wostRefund = (unitPrice * returnedQty) / (1 + taxPercent/100);
+                    const finalDiscountPercent = priceAdjusted ? effectiveDiscountPercent : discountPercent;
+                    const finalDiscountAmount = priceAdjusted ? wostRefund * (effectiveDiscountPercent / 100) : discountAmount;
+                    const finalTaxAmount = priceAdjusted ? (wostRefund - finalDiscountAmount) * (taxPercent / 100) : taxAmount;
 
                     return {
                         orderItemId: oi.id,
@@ -1449,9 +1513,9 @@ export class PosSalesService implements OnModuleInit {
                         quantity: orderedQty,
                         returnableQty: returnedQty, // This is the RETURNED qty for history
                         unitPrice,
-                        discountAmount,
-                        discountPercent,
-                        taxAmount,
+                        discountAmount: finalDiscountAmount,
+                        discountPercent: finalDiscountPercent,
+                        taxAmount: finalTaxAmount,
                         taxPercent,
                         lineTotal,
                         couponDeduction,
