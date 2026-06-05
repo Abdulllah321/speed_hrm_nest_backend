@@ -1539,9 +1539,24 @@ export class AuthService {
   }
 
   async createUser(data: any) {
-    const existingUser = await this.prismaMaster.user.findUnique({
-      where: { email: data.email },
-    });
+    // Only look up by email if one was provided — passing undefined to a unique-field
+    // where clause throws PrismaClientValidationError.
+    let existingUser: any = null;
+    if (data.email) {
+      existingUser = await this.prismaMaster.user.findUnique({
+        where: { email: data.email },
+      });
+    }
+
+    // Also check if a user already exists for this employeeId code to avoid duplicates
+    if (!existingUser && data.employeeId) {
+      existingUser = await this.prismaMaster.user.findUnique({
+        where: { employeeId: data.employeeId },
+      });
+      if (existingUser) {
+        return { status: false, message: 'User account already exists for this employee' };
+      }
+    }
 
     if (existingUser) {
       if (data.password) {
@@ -1551,7 +1566,7 @@ export class AuthService {
         );
 
         const updatedUser = await this.prismaMaster.user.update({
-          where: { email: data.email },
+          where: { id: existingUser.id },
           data: {
             password: hashedPassword,
             ...(data.employeeId ? { employeeId: data.employeeId } : {}),
@@ -1562,10 +1577,11 @@ export class AuthService {
         });
 
         // Sync to employee record in tenant DB if present
+        // data.employeeId is the alphanumeric code (e.g. EMP-001) — query by employeeId, not id
         if (data.employeeId && this.prisma) {
           try {
             await this.prisma.employee.update({
-              where: { id: data.employeeId },
+              where: { employeeId: data.employeeId },
               data: { userId: updatedUser.id },
             });
           } catch (e) {
@@ -1599,10 +1615,11 @@ export class AuthService {
     });
 
     // Sync to employee record in tenant DB if present
+    // data.employeeId is the alphanumeric code (e.g. EMP-001) — query by employeeId, not id
     if (data.employeeId && this.prisma) {
       try {
         await this.prisma.employee.update({
-          where: { id: data.employeeId },
+          where: { employeeId: data.employeeId },
           data: { userId: user.id },
         });
       } catch (e) {
@@ -1614,6 +1631,7 @@ export class AuthService {
 
     return { status: true, data: user, message: 'User created successfully' };
   }
+
 
   async updateUser(id: string, data: any) {
     const { userPermissions, ...userData } = data;
@@ -1648,10 +1666,11 @@ export class AuthService {
     }
 
     // Sync to employee record in tenant DB if employee link is being established/changed
+    // data.employeeId is the alphanumeric code (e.g. EMP-001) — query by employeeId, not id
     if (data.employeeId && this.prisma) {
       try {
         await this.prisma.employee.update({
-          where: { id: data.employeeId },
+          where: { employeeId: data.employeeId },
           data: { userId: user.id },
         });
       } catch (e) {
