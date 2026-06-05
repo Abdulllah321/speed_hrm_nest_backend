@@ -28,7 +28,16 @@ export class PosSessionService {
         });
 
         if (!activeSession) {
-            return null;
+            return {
+                session: null,
+                metrics: {
+                    openingFloat: 0,
+                    cashSales: 0,
+                    expectedCash: 0,
+                },
+                isDrawerOpen: false,
+                terminalContext: { terminalId, posId, locationId }
+            } as any;
         }
 
         // Now query the Tenant DB for SalesOrders made within this session's timeframe
@@ -68,16 +77,26 @@ export class PosSessionService {
    */
     async openDrawer(terminalId: string, amount: number, note?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const activeSession = await this.prisma.posSession.findFirst({
+            let activeSession = await this.prisma.posSession.findFirst({
                 where: { posId: terminalId, status: 'open' },
                 orderBy: { openedAt: 'desc' },
             });
 
             if (!activeSession) {
-                throw new NotFoundException('No active POS session found.');
-            }
+                const lastSession = await this.prisma.posSession.findFirst({
+                    where: { posId: terminalId },
+                    orderBy: { openedAt: 'desc' },
+                });
 
-            if (activeSession.openingFloat && Number(activeSession.openingFloat) > 0) {
+                activeSession = await this.prisma.posSession.create({
+                    data: {
+                        posId: terminalId,
+                        status: 'open',
+                        token: lastSession?.token || null,
+                        userId: ctx?.userId || null,
+                    },
+                });
+            } else if (activeSession.openingFloat && Number(activeSession.openingFloat) > 0) {
                 throw new BadRequestException('Drawer is already open with a float.');
             }
 
@@ -86,6 +105,7 @@ export class PosSessionService {
                 data: {
                     openingFloat: amount,
                     openingNote: note,
+                    userId: ctx?.userId || undefined,
                 },
             });
 

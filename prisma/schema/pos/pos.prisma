@@ -280,6 +280,7 @@ model Voucher {
   isActive   Boolean   @default(true) @map("is_active")
   isRedeemed Boolean   @default(false) @map("is_redeemed")
   expiresAt  DateTime? @map("expires_at")
+  discount   Decimal   @default(0) @map("discount") @db.Decimal(15, 2)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

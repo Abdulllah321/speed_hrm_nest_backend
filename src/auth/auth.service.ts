@@ -2174,6 +2174,16 @@ export class AuthService {
 
     // ── 3. Link to POS session if one is active ───────────────────────────────
     if (context.posSessionId) {
+      const activeSession = await this.prisma.posSession.findUnique({
+        where: { id: context.posSessionId },
+      });
+      if (activeSession && activeSession.userId && activeSession.userId !== user.id) {
+        return {
+          status: false,
+          message: 'Cannot switch cashier profiles while a POS session is active. Please close the active shift first.',
+        };
+      }
+
       await this.prisma.posSession.update({
         where: { id: context.posSessionId },
         data: { userId: user.id },
@@ -2358,6 +2368,12 @@ export class AuthService {
           },
         });
       } else {
+        if (posSession.userId && posSession.userId !== user.id) {
+          return {
+            status: false,
+            message: 'Cannot switch cashier profiles while a POS session is active. Please close the active shift first.',
+          };
+        }
         await this.prisma.posSession.update({
           where: { id: posSession.id },
           data: { userId: user.id },
