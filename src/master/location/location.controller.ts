@@ -21,12 +21,16 @@ import {
   ApiBearerAuth,
   ApiBody,
 } from '@nestjs/swagger';
-import { CreateLocationDto, UpdateLocationDto, UpdateLocationOtherInfoDto } from './dto/location.dto';
+import {
+  CreateLocationDto,
+  UpdateLocationDto,
+  UpdateLocationOtherInfoDto,
+} from './dto/location.dto';
 
 @ApiTags('Location')
 @Controller('api')
 export class LocationController {
-  constructor(private service: LocationService,) {}
+  constructor(private service: LocationService) {}
 
   @Get('public/locations')
   @ApiOperation({ summary: 'List all active locations (Public)' })
@@ -51,7 +55,7 @@ export class LocationController {
   }
 
   @Get('locations')
-  @UseGuards(JwtAuthGuardٖ)
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all locations' })
   async list() {
