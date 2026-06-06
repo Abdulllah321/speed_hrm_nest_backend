@@ -60,6 +60,10 @@ model Location {
   fbrNtn                    String?                    @map("fbr_ntn")
   fbrSellerName             String?                    @map("fbr_seller_name")
   fbrEnabled                Boolean                    @default(false) @map("fbr_enabled")
+  /// Whether this outlet is currently marked as online.
+  isOnline                  Boolean                    @default(false) @map("is_online")
+  /// Timestamp of the last time this outlet was marked online.
+  lastOnlineAt              DateTime?                  @map("last_online_at")
   employees                 Employee[]
   transferHistoriesNew      EmployeeTransferHistory[]  @relation("TransferNewLoc")
   transferHistoriesPrev     EmployeeTransferHistory[]  @relation("TransferPrevLoc")

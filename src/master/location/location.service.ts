@@ -602,4 +602,50 @@ export class LocationService {
       };
     }
   }
+
+  /// Toggle the online/offline status for an outlet.
+  async updateOnlineStatus(
+    id: string,
+    isOnline: boolean,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const existing = await this.prisma.location.findFirst({
+        where: { id, isDeleted: false },
+      });
+      if (!existing) return { status: false, message: 'Location not found' };
+
+      const updated = await this.prisma.location.update({
+        where: { id },
+        data: {
+          isOnline,
+          lastOnlineAt: isOnline ? new Date() : existing.lastOnlineAt,
+        },
+      });
+
+      const response = { status: true, data: updated };
+      runInBackground(
+        'Update Location Online Status',
+        this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'update',
+          module: 'locations',
+          entity: 'Location',
+          entityId: id,
+          description: `Marked location ${existing.name} as ${isOnline ? 'online' : 'offline'}`,
+          oldValues: JSON.stringify({ isOnline: existing.isOnline }),
+          newValues: JSON.stringify({ isOnline }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
+      );
+      return response;
+    } catch (error: any) {
+      return {
+        status: false,
+        message: error?.message || 'Failed to update online status',
+      };
+    }
+  }
 }

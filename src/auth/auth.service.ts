@@ -1187,6 +1187,7 @@ export class AuthService {
             id: terminal.id,
             code: terminal.terminalCode,
             name: terminal.name,
+            isParent: terminal.isParent,
             location: terminal.location
               ? {
                   id: terminal.location.id,

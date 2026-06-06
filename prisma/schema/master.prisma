@@ -803,8 +803,8 @@ model OldSeason {
 }
 
 model Pos {
-  isDeleted Boolean   @default(false)
-  deletedAt DateTime?
+  isDeleted    Boolean      @default(false)
+  deletedAt    DateTime?
   id           String       @id @default(uuid())
   posId        String
   terminalCode String       @unique
@@ -812,6 +812,9 @@ model Pos {
   locationId   String
   companyId    String?
   terminalPin  String?
+  /// When true this is the parent (master) terminal for the outlet.
+  /// Only the parent terminal can open/close shifts and print reconciliation reports.
+  isParent     Boolean      @default(false)
   status       String       @default("active")
   createdById  String?
   createdAt    DateTime     @default(now())
@@ -820,6 +823,8 @@ model Pos {
   sessions     PosSession[]
 
   @@unique([locationId, posId])
+  /// Enforces at most one parent terminal per location at the DB level.
+  @@unique([locationId, isParent], name: "one_parent_per_location", map: "one_parent_per_location")
 }
 
 model PosSession {
