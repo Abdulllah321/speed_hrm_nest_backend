@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreatePosDto {
@@ -12,23 +12,32 @@ export class CreatePosDto {
   @IsNotEmpty()
   locationId: string;
 
-    @ApiProperty({ description: 'Company ID' })
-    @IsString()
-    @IsOptional()
-    companyId?: string;
+  @ApiProperty({ description: 'Company ID' })
+  @IsString()
+  @IsOptional()
+  companyId?: string;
 
-    @ApiProperty({ description: 'Terminal PIN (4-6 digits)' })
-    @IsString()
-    @IsOptional()
-    terminalPin?: string;
+  @ApiProperty({ description: 'Terminal PIN (4-6 digits)' })
+  @IsString()
+  @IsOptional()
+  terminalPin?: string;
 
-    @ApiProperty({ description: 'Unique Terminal Code (e.g. MAIN-01)', required: false })
-    @IsString()
-    @IsOptional()
-    terminalCode?: string;
+  @ApiProperty({ description: 'Unique Terminal Code (e.g. MAIN-01)', required: false })
+  @IsString()
+  @IsOptional()
+  terminalCode?: string;
 
-    @ApiProperty({ description: 'Status of the POS', default: 'active' })
-    @IsString()
-    @IsOptional()
-    status?: string;
+  @ApiProperty({ description: 'Status of the POS', default: 'active' })
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @ApiProperty({
+    description: 'Whether this is the parent (master) terminal for the outlet. Parent terminals can open/close shifts and print reports.',
+    default: false,
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isParent?: boolean;
 }

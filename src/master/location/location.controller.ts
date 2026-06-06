@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Req,
@@ -118,6 +119,22 @@ export class LocationController {
   @ApiOperation({ summary: 'Delete location' })
   async remove(@Param('id') id: string, @Req() req) {
     return this.service.remove(id, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Patch('locations/:id/online-status')
+  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.update'))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Set outlet online / offline status' })
+  async setOnlineStatus(
+    @Param('id') id: string,
+    @Body() body: { isOnline: boolean },
+    @Req() req,
+  ) {
+    return this.service.updateOnlineStatus(id, body.isOnline, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

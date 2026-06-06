@@ -105,18 +105,46 @@ export class PosService {
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
 
-      const created = await this.prisma.pos.create({
-        data: {
-          name: body.name,
-          locationId: body.locationId,
-          companyId: body.companyId,
-          posId: nextPosId,
-          terminalCode,
-          terminalPin: hashedPin,
-          status: body.status ?? 'active',
-          createdById: ctx.userId,
-        },
-      });
+      // ── Parent terminal logic ─────────────────────────────────────────
+      // If this terminal is being created as parent, demote any existing parent
+      // for this location first (within a transaction).
+      let created: any;
+      if (body.isParent) {
+        created = await this.prisma.$transaction(async (tx) => {
+          // Demote existing parent (if any)
+          await tx.pos.updateMany({
+            where: { locationId: body.locationId, isParent: true, isDeleted: false },
+            data: { isParent: false },
+          });
+          return tx.pos.create({
+            data: {
+              name: body.name,
+              locationId: body.locationId,
+              companyId: body.companyId,
+              posId: nextPosId,
+              terminalCode,
+              terminalPin: hashedPin,
+              isParent: true,
+              status: body.status ?? 'active',
+              createdById: ctx.userId,
+            },
+          });
+        });
+      } else {
+        created = await this.prisma.pos.create({
+          data: {
+            name: body.name,
+            locationId: body.locationId,
+            companyId: body.companyId,
+            posId: nextPosId,
+            terminalCode,
+            terminalPin: hashedPin,
+            isParent: false,
+            status: body.status ?? 'active',
+            createdById: ctx.userId,
+          },
+        });
+      }
 
       const response = { status: true, data: created };
       runInBackground(
@@ -179,15 +207,40 @@ export class PosService {
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
 
-      const updated = await this.prisma.pos.update({
-        where: { id },
-        data: {
-          name: body.name ?? existing.name,
-          companyId: body.companyId ?? existing.companyId,
-          terminalPin: hashedPin,
-          status: body.status ?? existing.status,
-        },
-      });
+      // ── Parent terminal swap logic ────────────────────────────────────
+      // If promoting this terminal to parent, demote any existing parent first.
+      let updated: any;
+      if (body.isParent === true && !existing.isParent) {
+        updated = await this.prisma.$transaction(async (tx) => {
+          // Demote old parent (if any, and different terminal)
+          await tx.pos.updateMany({
+            where: { locationId: existing.locationId, isParent: true, isDeleted: false, id: { not: id } },
+            data: { isParent: false },
+          });
+          return tx.pos.update({
+            where: { id },
+            data: {
+              name: body.name ?? existing.name,
+              companyId: body.companyId ?? existing.companyId,
+              terminalPin: hashedPin,
+              isParent: true,
+              status: body.status ?? existing.status,
+            },
+          });
+        });
+      } else {
+        updated = await this.prisma.pos.update({
+          where: { id },
+          data: {
+            name: body.name ?? existing.name,
+            companyId: body.companyId ?? existing.companyId,
+            terminalPin: hashedPin,
+            // Allow explicit demotion to false; keep current value if undefined
+            isParent: body.isParent !== undefined ? body.isParent : existing.isParent,
+            status: body.status ?? existing.status,
+          },
+        });
+      }
 
       const response = { status: true, data: updated };
       runInBackground(
@@ -389,7 +442,19 @@ export class PosService {
         posId: terminal.posId,
         terminalCode: terminal.terminalCode,
         locationId: terminal.locationId,
+        /// Whether this is a parent terminal (can manage shifts/reports)
+        isParent: terminal.isParent ?? false,
       },
     };
+  }
+
+  /// Returns the parent terminal for a given location, or null if none is set.
+  async getParentTerminal(locationId: string) {
+    const parent = await this.prisma.pos.findFirst({
+      where: { locationId, isParent: true, isDeleted: false, status: 'active' },
+      include: { location: true },
+    });
+    if (!parent) return { status: false, message: 'No parent terminal found for this location' };
+    return { status: true, data: parent };
   }
 }

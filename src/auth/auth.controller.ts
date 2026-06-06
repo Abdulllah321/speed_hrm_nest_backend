@@ -657,6 +657,7 @@ export class AuthController {
                 id: terminalRaw.id,
                 code: terminalRaw.terminalCode,
                 name: terminalRaw.name,
+                isParent: terminalRaw.isParent,
                 location: terminalRaw.location ? {
                   id: terminalRaw.location.id,
                   code: terminalRaw.location.code,

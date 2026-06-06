@@ -27,11 +27,17 @@ export class PosController {
     return this.posService.list(locationId);
   }
 
-    @Get('location/:locationId')
-    @ApiOperation({ summary: 'List POS by location' })
-    async listByLocation(@Param('locationId') locationId: string) {
-        return this.posService.list(locationId);
-    }
+  @Get('location/:locationId')
+  @ApiOperation({ summary: 'List POS by location' })
+  async listByLocation(@Param('locationId') locationId: string) {
+      return this.posService.list(locationId);
+  }
+
+  @Get('location/:locationId/parent')
+  @ApiOperation({ summary: 'Get the parent (master) terminal for a location' })
+  async getParentTerminal(@Param('locationId') locationId: string) {
+    return this.posService.getParentTerminal(locationId);
+  }
 
     @Get(':id')
     @ApiOperation({ summary: 'Get POS by ID' })
