@@ -381,6 +381,7 @@ export class PosSessionService {
             },
             include: {
                 claims: true,
+                merchant: true,
             },
         });
 
@@ -502,7 +503,7 @@ export class PosSessionService {
         // Vouchers Issued Grouping
         const exchangeAndClaims: Array<{ type: string; amount: number; from: string }> = [];
         const creditVouchers: Array<{ type: string; amount: number; from: string; to: string }> = [];
-        const giftVouchers: Array<{ type: string; amount: number; from: string }> = [];
+        const giftVouchers: Array<{ type: string; amount: number; from: string; to: string }> = [];
 
         // Track how much of cash/card was for gift vouchers issued
         let cashGiftVouchersAmt = 0;
@@ -533,25 +534,75 @@ export class PosSessionService {
                 });
             } else if (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE') {
                 const type = v.voucherType === 'CORPORATE' ? 'Gift Vouchers Corporate' : 'Gift Vouchers';
-                giftVouchers.push({
-                    type,
-                    amount: faceValue,
-                    from: v.code,
-                });
 
-                // Attribute to Cash vs Card based on the purchase order payment
-                if (v.sourceOrderId) {
+                // Attribute to Cash vs Card based on paymentMode or purchase order
+                let isCard = false;
+                let isCash = false;
+                let fromDetail = '-';
+
+                if (v.paymentMode === 'CARD') {
+                    isCard = true;
+                    const bank = v.merchant?.bankName || 'Card';
+                    const last4 = v.cardLast4 ? ` - ****${v.cardLast4}` : '';
+                    fromDetail = `${bank}${last4}`;
+                } else if (v.paymentMode === 'CASH') {
+                    isCash = true;
+                    fromDetail = 'Cash';
+                }
+
+                // If not determined yet, try sourceOrderId
+                if (!isCard && !isCash && v.sourceOrderId) {
                     const purchaseOrder = orders.find(o => o.id === v.sourceOrderId);
                     if (purchaseOrder) {
                         const cashPay = Number(purchaseOrder.cashAmount ?? 0);
                         const cardPay = Number(purchaseOrder.cardAmount ?? 0);
                         if (cardPay > 0) {
-                            cardGiftVouchersAmt += faceValue;
+                            isCard = true;
+                            const bank = purchaseOrder.merchant?.bankName || 'Card';
+                            fromDetail = bank;
                         } else if (cashPay > 0) {
-                            cashGiftVouchersAmt += faceValue;
+                            isCash = true;
+                            fromDetail = 'Cash';
                         }
                     }
                 }
+
+                if (isCard) {
+                    cardGiftVouchersAmt += faceValue;
+                    
+                    // If this voucher is NOT linked to an order already counted in the order loop,
+                    // we must add its card payment/commission to cardGiftVouchers/totalCardReceived
+                    const isLinkedToOrder = v.sourceOrderId && orders.some(o => o.id === v.sourceOrderId);
+                    if (!isLinkedToOrder) {
+                        totalCardReceived += faceValue;
+                        cardSalesCount++;
+
+                        const bankName = v.merchant?.bankName || 'Unknown Bank';
+                        const rateDecimal = Number(v.merchant?.commissionRate ?? 0);
+                        const ratePct = rateDecimal * 100;
+
+                        if (!cardVoucherGroup[bankName]) {
+                            cardVoucherGroup[bankName] = { bank: bankName, amount: 0, rate: ratePct, commission: 0 };
+                        }
+                        cardVoucherGroup[bankName].amount += faceValue;
+                        cardVoucherGroup[bankName].commission += faceValue * rateDecimal;
+                    }
+                } else if (isCash) {
+                    cashGiftVouchersAmt += faceValue;
+                    
+                    const isLinkedToOrder = v.sourceOrderId && orders.some(o => o.id === v.sourceOrderId);
+                    if (!isLinkedToOrder) {
+                        totalCashReceived += faceValue;
+                        cashSalesCount++;
+                    }
+                }
+
+                giftVouchers.push({
+                    type,
+                    amount: faceValue,
+                    from: fromDetail,
+                    to: v.code,
+                });
             }
         }
 
