@@ -91,10 +91,10 @@ export class VoucherService {
         try {
             const code = generateCode(data.voucherType);
 
-            // EXCHANGE vouchers are locked to issuing location
+            // EXCHANGE vouchers are usable everywhere by default (empty location restriction)
             // REFUND vouchers are also locked to issuing location (record-only)
             const locationIds =
-                (data.voucherType === 'EXCHANGE' || data.voucherType === 'REFUND') && data.issuedByLocationId
+                (data.voucherType === 'REFUND') && data.issuedByLocationId
                     ? [data.issuedByLocationId]
                     : (data.locationIds ?? []);
 
@@ -297,7 +297,9 @@ export class VoucherService {
             }
 
             // Location check — if locations list is non-empty, must match
-            if (voucher.locations.length > 0) {
+            // Bypass location check for EXCHANGE and CREDIT vouchers (they can be used everywhere by default)
+            const bypassLocationCheck = voucher.voucherType === 'EXCHANGE' || voucher.voucherType === 'CREDIT';
+            if (voucher.locations.length > 0 && !bypassLocationCheck) {
                 const allowed = voucher.locations.some((l) => l.locationId === locationId);
                 if (!allowed) {
                     return { status: false, message: 'Voucher is not valid at this location' };
@@ -397,10 +399,13 @@ export class VoucherService {
                 });
 
                 // Add location restriction (same as original voucher)
-                const originalLocations = await tx.voucherLocation.findMany({
-                    where: { voucherId: voucher.id },
-                    select: { locationId: true },
-                });
+                // Bypass for CREDIT vouchers as they are usable everywhere by default
+                const originalLocations = voucher.voucherType === 'EXCHANGE' || voucher.voucherType === 'CREDIT'
+                    ? []
+                    : await tx.voucherLocation.findMany({
+                        where: { voucherId: voucher.id },
+                        select: { locationId: true },
+                    });
 
                 if (originalLocations.length > 0) {
                     await tx.voucherLocation.createMany({
