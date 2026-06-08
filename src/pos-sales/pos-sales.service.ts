@@ -502,7 +502,7 @@ export class PosSalesService implements OnModuleInit {
                         },
                     },
                     include: {
-                        items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                        items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } } } } } },
                         promo: { select: { name: true, code: true } },
                         coupon: { select: { code: true, description: true } },
                         alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
@@ -2090,7 +2090,7 @@ export class PosSalesService implements OnModuleInit {
                         items: { create: itemsData },
                     },
                     include: {
-                        items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                        items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } } } } } },
                     },
                 });
 
@@ -2207,7 +2207,7 @@ export class PosSalesService implements OnModuleInit {
             where,
             orderBy: { createdAt: 'desc' },
             include: {
-                items: { include: { item: { select: { description: true, sku: true, barCode: true } } } },
+                items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } } } } } },
             },
         });
         return { status: true, data: orders };
@@ -2660,7 +2660,7 @@ export class PosSalesService implements OnModuleInit {
             include: {
                 items: {
                     include: {
-                        item: { select: { description: true, sku: true, barCode: true } },
+                        item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } } } },
                     },
                 },
                 promo: { select: { name: true, code: true } },
