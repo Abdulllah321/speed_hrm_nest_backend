@@ -6,6 +6,7 @@ export interface ItemUpdateParsedRecord {
     row: number;
     data: {
         barCode?: string;
+        sku?: string;
         salePrice?: number | null;
         fob?: number | null;
         taxRate1?: number | null;
@@ -35,9 +36,10 @@ export class ItemUpdateCsvParserService {
     private isEmptyRow(row: any): boolean {
         if (!row) return true;
         const barCode = this.getValue(row, ['Barcode', 'Bar Code', 'barCode', 'Code']);
+        const sku = this.getValue(row, ['SKU', 'sku', 'ItemCode', 'Item Code', 'Item_Code']);
         const salePrice = this.getValue(row, ['Sale Price', 'SalePrice', 'UnitPrice', 'Unit Price', 'Price']);
         const fob = this.getValue(row, ['FOB', 'fob']);
-        return !barCode && !salePrice && !fob;
+        return !barCode && !sku && !salePrice && !fob;
     }
 
     private getValue(row: any, keys: string[]): any {
@@ -61,6 +63,7 @@ export class ItemUpdateCsvParserService {
 
         return {
             barCode: this.normalizeValue(this.getValue(row, ['Barcode', 'Bar Code', 'barCode', 'Bar_Code', 'Code'])) ?? undefined,
+            sku: this.normalizeValue(this.getValue(row, ['SKU', 'sku', 'ItemCode', 'Item Code', 'Item_Code'])) ?? undefined,
             salePrice: rawSalePrice !== null && rawSalePrice !== undefined && String(rawSalePrice).trim() !== '' ? this.parseNumber(rawSalePrice) : undefined,
             fob: rawFob !== null && rawFob !== undefined && String(rawFob).trim() !== '' ? this.parseNumber(rawFob) : undefined,
             taxRate1: rawTaxRate1 !== null && rawTaxRate1 !== undefined && String(rawTaxRate1).trim() !== '' ? this.parseNumber(rawTaxRate1) : undefined,
