@@ -20,6 +20,7 @@ export class StockLedgerService {
   ) { }
 
   async findAll(options?: {
+    locationId?: string;
     warehouseId?: string;
     movementType?: MovementType;
     itemId?: string;
@@ -28,11 +29,12 @@ export class StockLedgerService {
     limit?: number;
     search?: string;
   }) {
-    const { warehouseId, movementType, itemId, referenceType, page = 1, limit = 50, search } = options || {};
+    const { warehouseId, locationId, movementType, itemId, referenceType, page = 1, limit = 50, search } = options || {};
     const skip = (page - 1) * limit;
 
     const where: any = {
       ...(warehouseId && { warehouseId }),
+      ...(locationId && { locationId }),
       ...(movementType && { movementType }),
       ...(itemId && { itemId }),
       ...(referenceType && { referenceType }),
@@ -352,6 +354,7 @@ export class StockLedgerService {
   }
 
   async queueExport(opts: {
+    locationId?: string;
     userId: string;
     warehouseId?: string;
     movementType?: MovementType;
@@ -372,6 +375,7 @@ export class StockLedgerService {
         tenantId,
         tenantDbUrl,
         warehouseId: opts.warehouseId,
+        locationId: opts.locationId,
         movementType: opts.movementType,
         itemId: opts.itemId,
         referenceType: opts.referenceType,
