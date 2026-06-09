@@ -14,6 +14,7 @@ export interface StockLedgerExportJobData {
   tenantId: string;
   tenantDbUrl: string;
   warehouseId?: string;
+  locationId?: string;
   movementType?: MovementType;
   itemId?: string;
   referenceType?: string;
@@ -73,7 +74,7 @@ export class StockLedgerExportProcessor {
 
   @Process()
   async handleExport(job: Job<StockLedgerExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, warehouseId, movementType, itemId, referenceType, search } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, warehouseId, locationId, movementType, itemId, referenceType, search } = job.data;
 
     this.logger.log(`[StockLedgerExport ${jobId}] Starting for user ${userId}`);
 
@@ -87,6 +88,7 @@ export class StockLedgerExportProcessor {
       // ── Build WHERE ──────────────────────────────────────────────────────
       const where: any = {
         ...(warehouseId && { warehouseId }),
+        ...(locationId && { locationId }),
         ...(movementType && { movementType }),
         ...(itemId && { itemId }),
         ...(referenceType && { referenceType }),

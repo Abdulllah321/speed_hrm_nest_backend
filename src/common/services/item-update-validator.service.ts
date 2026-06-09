@@ -21,25 +21,45 @@ export class ItemUpdateValidatorService {
         const errors: ItemUpdateValidationError[] = [];
         const { row, data } = record;
 
-        // 1. Barcode Validation
-        if (!data.barCode || data.barCode.trim() === '') {
+        // 1. Identifier Validation (Barcode or SKU is required)
+        const hasBarcode = data.barCode && data.barCode.trim() !== '';
+        const hasSku = data.sku && data.sku.trim() !== '';
+
+        if (!hasBarcode && !hasSku) {
             errors.push({
                 row,
-                field: 'barCode',
-                value: data.barCode,
-                reason: 'Barcode is required.',
+                field: 'identifier',
+                value: null,
+                reason: 'Either Barcode or SKU is required to identify the item.',
             });
         } else {
-            const trimmedBarcode = data.barCode.trim();
-            if (seenBarcodes.has(trimmedBarcode)) {
-                errors.push({
-                    row,
-                    field: 'barCode',
-                    value: data.barCode,
-                    reason: `Duplicate Barcode "${data.barCode}" in upload file.`,
-                });
-            } else {
-                seenBarcodes.add(trimmedBarcode);
+            if (hasBarcode) {
+                const trimmedBarcode = data.barCode!.trim();
+                const key = `barcode:${trimmedBarcode}`;
+                if (seenBarcodes.has(key)) {
+                    errors.push({
+                        row,
+                        field: 'barCode',
+                        value: data.barCode,
+                        reason: `Duplicate Barcode "${data.barCode}" in upload file.`,
+                    });
+                } else {
+                    seenBarcodes.add(key);
+                }
+            }
+            if (hasSku) {
+                const trimmedSku = data.sku!.trim();
+                const key = `sku:${trimmedSku}`;
+                if (seenBarcodes.has(key)) {
+                    errors.push({
+                        row,
+                        field: 'sku',
+                        value: data.sku,
+                        reason: `Duplicate SKU "${data.sku}" in upload file.`,
+                    });
+                } else {
+                    seenBarcodes.add(key);
+                }
             }
         }
 
