@@ -38,14 +38,7 @@ export class PoValidatorService {
      * Called during import after vendor is resolved from DB.
      */
     validateVendorOrderTypeMatch(vendorType: string, orderType: string): string | null {
-        const vt = vendorType.toUpperCase();
-        const ot = orderType.toUpperCase();
-        if (ot === 'LOCAL' && vt !== 'LOCAL') {
-            return `LOCAL order requires a LOCAL vendor (vendor type is ${vt}).`;
-        }
-        if (ot === 'IMPORT' && vt !== 'IMPORT' && vt !== 'INTERNATIONAL') {
-            return `IMPORT order requires an IMPORT or INTERNATIONAL vendor (vendor type is ${vt}).`;
-        }
+        // Disabled validation to allow any vendor type for local/import POs
         return null;
     }
 }

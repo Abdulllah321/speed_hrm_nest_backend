@@ -190,6 +190,25 @@ export class PosSalesService implements OnModuleInit {
                 const cashAmount = tenders.filter(t => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
                 const cardAmount = tenders.filter(t => t.method !== 'cash').reduce((a, t) => a + Number(t.amount), 0);
 
+                if (dto.allianceId) {
+                    const hasCashTender = tenders.some(t => t.method === 'cash');
+                    if (hasCashTender) {
+                        throw new Error('Alliance discount cannot be applied when cash payment is selected.');
+                    }
+                    if (!dto.allianceMeta || !dto.allianceMeta.cardLast4 || dto.allianceMeta.cardLast4.trim().length !== 4) {
+                        throw new Error('Card number (last 4 digits) is mandatory when Alliance is selected.');
+                    }
+                    const hasCardTender = tenders.some(t => t.method === 'card');
+                    if (!hasCardTender) {
+                        throw new Error('A card payment is required when Alliance is selected.');
+                    }
+                    for (const t of tenders) {
+                        if (t.method === 'card' && (!t.cardLast4 || t.cardLast4.trim().length !== 4)) {
+                            throw new Error('Card number (last 4 digits) is mandatory for card payments when Alliance is selected.');
+                        }
+                    }
+                }
+
                 // ── Resolve promo scope ──────────────────────────────────
                 const promoItemIds = dto.promoScope?.type === 'items' && dto.promoScope.itemIds?.length
                     ? new Set(dto.promoScope.itemIds)
@@ -298,55 +317,6 @@ export class PosSalesService implements OnModuleInit {
                         globalDiscAmt = allianceDiscount;
                         finalLineItemDiscount = 0; // Remove item discount
                         appliedDiscountType = 'alliance';
-
-                        // IMPORTANT: Distribute alliance discount across itemsData proportionally to WOST
-                        const baseSubtotal = subtotal > 0 ? subtotal : 1;
-                        let distributedDisc = 0;
-                        const rawShares = itemsData.map(item => {
-                            const taxDivisor = 1 + (item.taxPercent / 100);
-                            const wostPerUnit = item.unitPrice / taxDivisor;
-                            const itemWost = wostPerUnit * item.quantity;
-                            const share = Math.floor((globalDiscAmt * itemWost) / baseSubtotal);
-                            distributedDisc += share;
-                            return share;
-                        });
-                        
-                        let remainder = Math.round(globalDiscAmt - distributedDisc);
-                        const sortedIdx = itemsData
-                            .map((item, i) => {
-                                const taxDivisor = 1 + (item.taxPercent / 100);
-                                const wostPerUnit = item.unitPrice / taxDivisor;
-                                return { i, v: wostPerUnit * item.quantity };
-                            })
-                            .sort((a, b) => b.v - a.v)
-                            .map(x => x.i);
-                            
-                        for (let k = 0; k < remainder; k++) {
-                            rawShares[sortedIdx[k % sortedIdx.length]]++;
-                        }
-
-                        itemsData = itemsData.map((item, idx) => {
-                            const disc = rawShares[idx];
-                            
-                            // Recalculate tax based on WOST after discount
-                            const taxDivisor = 1 + (item.taxPercent / 100);
-                            const wostPerUnit = item.unitPrice / taxDivisor;
-                            const totalWost = wostPerUnit * item.quantity;
-                            const afterDisc = totalWost - disc;
-                            const recalculatedTax = Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
-                            
-                            return {
-                                ...item,
-                                discountPercent: Math.round((disc / totalWost) * 100 * 100) / 100,
-                                discountAmount: disc,
-                                taxAmount: recalculatedTax,
-                                lineTotal: Math.round(afterDisc + recalculatedTax)
-                            };
-                        });
-                        // Since it's distributed, we can set globalDiscAmt to 0 if we want it to ONLY show on items,
-                        // but usually it's better to keep it and hide it in the UI if needed.
-                        // The user said "Alliance: UBL-SIGNATURE -3000 isko items ke sath show karo", 
-                        // so I will keep globalDiscAmt for the label but ensure receipt summary doesn't double count.
                     } else {
                         // Item discount is greater - keep item discount, no alliance
                         globalDiscAmt = 0;
@@ -354,11 +324,22 @@ export class PosSalesService implements OnModuleInit {
                         appliedDiscountType = 'item';
                     }
                 } else if (allianceDiscount > 0) {
-                    // Only alliance discount - distribute across items
+                    // Only alliance discount
                     globalDiscAmt = allianceDiscount;
                     appliedDiscountType = 'alliance';
-                    
-                    // IMPORTANT: Distribute alliance discount across itemsData proportionally to WOST
+                } else if (couponDiscount > 0) {
+                    // Coupon discount
+                    globalDiscAmt = couponDiscount;
+                    appliedDiscountType = 'coupon';
+                } else if (manualDiscount > 0) {
+                    // Manual discount
+                    globalDiscAmt = manualDiscount;
+                    appliedDiscountType = 'manual';
+                }
+
+                // If any global/order-level discount (Alliance, Coupon, Manual) is applied,
+                // distribute it across itemsData proportionally to WOST (Value excluding tax)
+                if (globalDiscAmt > 0) {
                     const baseSubtotal = subtotal > 0 ? subtotal : 1;
                     let distributedDisc = 0;
                     const rawShares = itemsData.map(item => {
@@ -402,14 +383,6 @@ export class PosSalesService implements OnModuleInit {
                             lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100
                         };
                     });
-                } else if (couponDiscount > 0) {
-                    // Coupon discount
-                    globalDiscAmt = couponDiscount;
-                    appliedDiscountType = 'coupon';
-                } else if (manualDiscount > 0) {
-                    // Manual discount
-                    globalDiscAmt = manualDiscount;
-                    appliedDiscountType = 'manual';
                 }
 
                 // Recalculate totalTax after alliance discount distribution (if applied)
@@ -502,7 +475,7 @@ export class PosSalesService implements OnModuleInit {
                         },
                     },
                     include: {
-                        items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } } } } } },
+                        items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } }, color: { select: { name: true } } } } } },
                         promo: { select: { name: true, code: true } },
                         coupon: { select: { code: true, description: true } },
                         alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
@@ -876,11 +849,12 @@ export class PosSalesService implements OnModuleInit {
                 take: limit,
                 orderBy: { createdAt: 'desc' },
                 include: {
-                    items: { include: { item: { select: { description: true, sku: true, barCode: true ,size: true } } } },
+                    items: { include: { item: { select: { description: true, sku: true, barCode: true, size: true, color: true } } } },
                     promo: { select: { name: true, code: true } },
                     coupon: { select: { code: true, description: true } },
                     alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                     merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
+                    voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true } } } },
                 },
             }),
             this.prisma.salesOrder.count({ where }),
@@ -952,13 +926,32 @@ export class PosSalesService implements OnModuleInit {
 
         // Reconstruct tenders and attach returnedQty and claimedQty to each order item
         const orders = rawOrders.map(order => {
-            const tenders: { method: string; amount: number }[] = [];
+            const tenders: { method: string; amount: number; slipNo?: string }[] = [];
+
+            // Extract voucher redemptions first
+            const voucherTotalFromRedemptions = (order.voucherRedemptions || []).reduce(
+                (sum: number, r: any) => sum + Number(r.amountUsed), 0
+            );
+            for (const r of (order.voucherRedemptions || []) as any[]) {
+                tenders.push({ method: 'voucher', amount: Number(r.amountUsed), slipNo: r.voucher?.code || undefined });
+            }
+
             if (order.tenderType === 'split') {
                 if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
-                if (Number(order.cardAmount) > 0) tenders.push({ method: 'card', amount: Number(order.cardAmount) });
+                // cardAmount includes voucher amounts (they were lumped together at creation),
+                // so subtract voucher total to get the real card amount
+                const realCardAmount = Number(order.cardAmount) - voucherTotalFromRedemptions;
+                if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
             } else if (order.paymentMethod) {
-                const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
-                tenders.push({ method: order.paymentMethod, amount });
+                if (voucherTotalFromRedemptions > 0) {
+                    // Voucher was used alongside another method; compute remaining
+                    const totalOrder = Number(order.grandTotal);
+                    const remaining = totalOrder - voucherTotalFromRedemptions;
+                    if (remaining > 0) tenders.push({ method: order.paymentMethod, amount: remaining });
+                } else {
+                    const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
+                    tenders.push({ method: order.paymentMethod, amount });
+                }
             }
 
             // Attach returnedQty to each item
@@ -1016,11 +1009,12 @@ export class PosSalesService implements OnModuleInit {
         const order = await this.prisma.salesOrder.findUnique({
             where: { id },
             include: {
-                items: { include: { item: { include: { size: true } } } },
+                items: { include: { item: { include: { size: true, color: true } } } },
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
                 alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                 merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
+                voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true } } } },
             },
         });
         if (!order) return { status: false, message: 'Order not found' };
@@ -1046,13 +1040,32 @@ export class PosSalesService implements OnModuleInit {
             returnedQty: returnedQtyMap.get(oi.itemId) || 0,
         }));
 
-        const tenders: { method: string; amount: number }[] = [];
+        const tenders: { method: string; amount: number; slipNo?: string }[] = [];
+
+        // Extract voucher redemptions first
+        const voucherTotalFromRedemptions = (order.voucherRedemptions || []).reduce(
+            (sum: number, r: any) => sum + Number(r.amountUsed), 0
+        );
+        for (const r of (order.voucherRedemptions || []) as any[]) {
+            tenders.push({ method: 'voucher', amount: Number(r.amountUsed), slipNo: r.voucher?.code || undefined });
+        }
+
         if (order.tenderType === 'split') {
             if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
-            if (Number(order.cardAmount) > 0) tenders.push({ method: 'card', amount: Number(order.cardAmount) });
+            // cardAmount includes voucher amounts (they were lumped together at creation),
+            // so subtract voucher total to get the real card amount
+            const realCardAmount = Number(order.cardAmount) - voucherTotalFromRedemptions;
+            if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
         } else if (order.paymentMethod) {
-            const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
-            tenders.push({ method: order.paymentMethod, amount });
+            if (voucherTotalFromRedemptions > 0) {
+                // Voucher was used alongside another method; compute remaining
+                const totalOrder = Number(order.grandTotal);
+                const remaining = totalOrder - voucherTotalFromRedemptions;
+                if (remaining > 0) tenders.push({ method: order.paymentMethod, amount: remaining });
+            } else {
+                const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
+                tenders.push({ method: order.paymentMethod, amount });
+            }
         }
 
         // Fetch any credit vouchers issued from this order
@@ -1388,6 +1401,8 @@ export class PosSalesService implements OnModuleInit {
                                     discountStartDate: true,
                                     discountEndDate: true,
                                     brand: { select: { name: true } },
+                                    size: { select: { name: true } },
+                                    color: { select: { name: true } },
                                 },
                             },
                         },

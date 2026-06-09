@@ -53,7 +53,7 @@ export class PurchaseOrderService {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
-        items: { include: { item: true } },
+        items: { include: { item: { include: { size: true, color: true } } } },
         vendor: true,
         vendorQuotation: {
           include: {
