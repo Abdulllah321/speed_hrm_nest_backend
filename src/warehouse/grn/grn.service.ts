@@ -157,9 +157,8 @@ export class GrnService {
     this.logger.log(`Found PO: ${po.poNumber}, Status: ${po.status}`);
 
     if (
-      po.status === 'CLOSED' ||
-      po.status === 'CANCELLED' ||
-      po.status === 'DRAFT'
+      po.status !== 'OPEN' &&
+      po.status !== 'PARTIALLY_RECEIVED'
     ) {
       this.logger.error(`Cannot receive goods for PO in ${po.status} status`);
       throw new BadRequestException(
