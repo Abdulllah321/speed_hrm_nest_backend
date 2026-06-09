@@ -75,7 +75,7 @@ export class LocationService {
   }
 
   async create(
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -88,6 +88,7 @@ export class LocationService {
           companyId: body.companyId,
           status: body.status ?? 'active',
           createdById: ctx.userId,
+          cashGLCode: body.cashGLCode || null,
         },
       });
       const response = { status: true, data: created };
@@ -129,7 +130,7 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -154,6 +155,7 @@ export class LocationService {
               : existing?.cityId,
           companyId: body.companyId ?? existing?.companyId,
           status: body.status ?? existing?.status ?? 'active',
+          cashGLCode: body.cashGLCode !== undefined ? body.cashGLCode : existing?.cashGLCode,
         },
       });
       const response = { status: true, data: updated };
@@ -346,6 +348,7 @@ export class LocationService {
       address?: string;
       cityId?: string;
       status?: string;
+      cashGLCode?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -360,6 +363,7 @@ export class LocationService {
           cityId: i.cityId?.trim() || null,
           status: i.status ?? 'active',
           createdById: ctx.userId,
+          cashGLCode: i.cashGLCode || null,
         })),
         skipDuplicates: true,
       });
@@ -407,6 +411,7 @@ export class LocationService {
       address?: string;
       cityId?: string;
       status?: string;
+      cashGLCode?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -433,6 +438,7 @@ export class LocationService {
                 ? i.cityId?.trim() || null
                 : existing?.cityId,
             status: i.status ?? existing?.status ?? 'active',
+            cashGLCode: i.cashGLCode !== undefined ? i.cashGLCode : existing?.cashGLCode,
           },
         });
       }
