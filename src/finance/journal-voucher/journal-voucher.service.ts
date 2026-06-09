@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CreateJournalVoucherDto } from './dto/create-journal-voucher.dto';
 import { UpdateJournalVoucherDto } from './dto/update-journal-voucher.dto';
 import { PrismaService } from '../../database/prisma.service';
@@ -143,6 +143,10 @@ export class JournalVoucherService {
     try {
       const { details, ...data } = updateJournalVoucherDto;
       const existing = await this.findOne(id);
+
+      if (existing.status !== 'pending') {
+        throw new BadRequestException('Journal Voucher can only be edited when it is in pending status');
+      }
 
       let updated: any;
 
@@ -323,6 +327,10 @@ export class JournalVoucherService {
   ) {
     try {
       const existing = await this.findOne(id);
+
+      if (existing.status !== 'pending') {
+        throw new BadRequestException('Journal Voucher can only be deleted when it is in pending status');
+      }
 
       await this.prisma.$transaction(async (prisma) => {
         // Reverse AccountTransaction entries before deleting ONLY if approved

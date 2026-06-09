@@ -17,6 +17,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 
+import { UpdateStatusDto } from './dto/update-status.dto';
+
 @ApiTags('Receipt Voucher')
 @Controller('api/finance/receipt-vouchers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -64,6 +66,16 @@ export class ReceiptVoucherController {
   @ApiOperation({ summary: 'Update receipt voucher' })
   update(@Param('id') id: string, @Body() dto: UpdateReceiptVoucherDto) {
     return this.receiptVoucherService.update(id, dto);
+  }
+
+  @Patch(':id/status')
+  @Permissions('erp.finance.receipt-voucher.approve')
+  @ApiOperation({ summary: 'Update receipt voucher status' })
+  updateStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateStatusDto,
+  ) {
+    return this.receiptVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks);
   }
 
   @Delete(':id')
