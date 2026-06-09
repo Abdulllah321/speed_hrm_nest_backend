@@ -116,7 +116,12 @@ export class GrnService {
       include: {
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                size: true,
+                color: true,
+              },
+            },
           },
         },
         purchaseOrder: true,

@@ -262,11 +262,9 @@ export class PoUploadProcessor {
             }
 
             const qty = new Decimal(record.data.quantity!);
-            // Price resolution: unitCost > 0 ? unitCost : unitPrice
-            const unitCost = Number(item.unitCost ?? 0);
+            // Price resolution: only use unitPrice
             const unitPriceVal = Number(item.unitPrice ?? 0);
-            const resolvedPriceVal = unitCost > 0 ? unitCost : unitPriceVal;
-            const price = new Decimal(resolvedPriceVal);
+            const price = new Decimal(unitPriceVal);
 
             const lineTotal = qty.mul(price);
             subtotal = subtotal.add(lineTotal);
