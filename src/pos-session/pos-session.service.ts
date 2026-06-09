@@ -4,12 +4,17 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
+import { JournalVoucherService } from '../finance/journal-voucher/journal-voucher.service';
+import { Logger } from '@nestjs/common';
 @Injectable()
 export class PosSessionService {
+    private readonly logger = new Logger(PosSessionService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly prismaMaster: PrismaMasterService,
         private activityLogs: ActivityLogsService,
+        private readonly journalVoucherService: JournalVoucherService,
     ) { }
 
     /**
@@ -187,6 +192,12 @@ export class PosSessionService {
                     userAgent: ctx?.userAgent,
                     status: 'success',
                 }),
+            );
+
+            runInBackground(
+                'Generate POS Journal Voucher',
+                this.generateReconciliationVoucher(currentStatus.session.id, closedSession.posId, ctx)
+                    .catch(err => this.logger.error(`Failed to generate JV for session ${currentStatus.session.id}`, err))
             );
 
             return {
@@ -739,5 +750,219 @@ export class PosSessionService {
                 total: totalCardReceived,
             },
         };
+    }
+
+    /**
+     * Generates a Journal Voucher for a closed session based on reconciliation details.
+     */
+    private async generateReconciliationVoucher(sessionId: string, terminalId: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
+            const metrics = await this.getReconciliationDetails(sessionId);
+            const date = metrics.session.closedAt || new Date();
+            const locationCode = metrics.session.terminal.locationCode;
+            const jvDateStr = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+
+            // Helper to get Account ID
+            const accountMap = new Map<string, string>();
+            const getAccountId = async (code: string | null | undefined): Promise<string | null> => {
+                if (!code) return null;
+                if (accountMap.has(code)) return accountMap.get(code)!;
+                const acc = await this.prisma.chartOfAccount.findFirst({ where: { code } });
+                if (acc) {
+                    accountMap.set(code, acc.id);
+                    return acc.id;
+                }
+                return null;
+            };
+
+            const details: any[] = [];
+            let hasMissingMappings = false;
+
+            const addLine = async (code: string | null, tagCode: string | null, debit: number, credit: number, baseNarration: string) => {
+                if (debit === 0 && credit === 0) return;
+                
+                let accountId = await getAccountId(code);
+                let tagId = await getAccountId(tagCode);
+                let narration = baseNarration;
+
+                if (code && !accountId) {
+                    const fallback = await this.prisma.chartOfAccount.findFirst();
+                    accountId = fallback?.id || 'MISSING';
+                    narration = `[MISSING GL CODE: ${code}] ` + narration;
+                    hasMissingMappings = true;
+                }
+
+                if (tagCode && !tagId) {
+                    narration = `[MISSING TAG: ${tagCode}] ` + narration;
+                    hasMissingMappings = true;
+                }
+
+                if (!accountId) return; // if completely failed to fallback
+
+                details.push({
+                    accountId,
+                    tagAccountId: tagId,
+                    debit,
+                    credit,
+                    narration
+                });
+            };
+
+            // 1. Credit / Debit Cards (Merchant)
+            for (const card of metrics.cardPayments) {
+                // Find bank GL code
+                const merchant = await this.prisma.merchantConfig.findFirst({
+                    where: { bankName: card.bank },
+                    orderBy: { createdAt: 'desc' }
+                });
+                if (merchant?.bankGlCode) {
+                    await addLine(merchant.bankGlCode, locationCode, card.amount, 0, `Credit Card Sales ${card.bank} | ${jvDateStr}`);
+                }
+            }
+            for (const card of metrics.cardGiftVouchers) {
+                const merchant = await this.prisma.merchantConfig.findFirst({
+                    where: { bankName: card.bank },
+                    orderBy: { createdAt: 'desc' }
+                });
+                if (merchant?.bankGlCode) {
+                    await addLine(merchant.bankGlCode, locationCode, card.amount, 0, `Credit Card Sales ${card.bank} | ${jvDateStr}`);
+                }
+            }
+
+            // 2. Total Credit/Debit Cards Commission
+            let totalCommission = 0;
+            metrics.cardPayments.forEach(c => totalCommission += c.commission);
+            metrics.cardGiftVouchers.forEach(c => totalCommission += c.commission);
+            await addLine('80210001', locationCode, totalCommission, 0, `Total Credit Card Commission | ${jvDateStr}`);
+
+            // 3. Cash && Cash - Gift Vouchers Issued
+            const sessionData = await this.prisma.posSession.findUnique({
+                where: { id: sessionId },
+                include: { pos: { include: { location: true } } }
+            });
+            const cashGl = sessionData?.pos?.location?.cashGLCode;
+            if (cashGl) {
+                const totalCash = metrics.cashBreakdown.sale + metrics.cashBreakdown.giftVouchers;
+                await addLine(cashGl, locationCode, totalCash, 0, `Received Cash ag. Gift Vouchers Issued | ${jvDateStr}`);
+            }
+
+            // Vouchers Redeemed (Received)
+            for (const v of metrics.receivedVouchers) {
+                if (v.type === 'Gift Vouchers Corporate') {
+                    // Try to find the voucher's company GL code
+                    const voucher = await this.prisma.voucher.findFirst({ where: { code: v.from } });
+                    const tagId = voucher?.companyGlCode ? voucher.companyGlCode : locationCode;
+                    await addLine('12070008', tagId, v.amount, 0, `Corporate Gift Vouchers Collected | GVC#${v.from} | ${jvDateStr}`);
+                } else if (v.type === 'Gift Vouchers') {
+                    await addLine('12070007', locationCode, v.amount, 0, `Gift Voucher Collected | GV#${v.from} | ${jvDateStr}`);
+                } else if (v.type === 'Credit Vouchers') {
+                    await addLine('12070006', locationCode, v.amount, 0, `Credit Voucher Collected | CRV#${v.from} | ${jvDateStr}`);
+                } else if (v.type === 'Claim Vouchers') {
+                    await addLine('12070009', locationCode, v.amount, 0, `Claim Voucher Collected | CV#${v.from} | ${jvDateStr}`);
+                } else if (v.type === 'Exchange Vouchers') {
+                    await addLine('12070010', locationCode, v.amount, 0, `Exchange Voucher Collected | EV#${v.from} | ${jvDateStr}`);
+                }
+            }
+
+            // 9. On Credit (Receivables)
+            for (const rec of metrics.receivables) {
+                await addLine('31030001', locationCode, rec.amount, 0, `Ded from staff salary ag.CM#123 NDC | ${jvDateStr}`); // Using default narration requested by user
+            }
+
+            // Issued Vouchers
+            for (const ev of metrics.issuedVouchers.exchangeAndClaims) {
+                if (ev.type === 'Exchange Vouchers') {
+                    await addLine('12070010', locationCode, 0, ev.amount, `Exchange Voucher Issued | EV#${ev.from} | ${jvDateStr}`);
+                } else if (ev.type === 'Claim Vouchers') {
+                    await addLine('12070009', locationCode, 0, ev.amount, `Claim Voucher Issued | CV#${ev.from} | ${jvDateStr}`);
+                }
+            }
+            for (const cv of metrics.issuedVouchers.creditVouchers) {
+                await addLine('12070006', locationCode, 0, cv.amount, `Credit Voucher Issued | CRV#${cv.to} | ${jvDateStr}`);
+            }
+            for (const gv of metrics.issuedVouchers.giftVouchers) {
+                if (gv.type === 'Gift Vouchers Corporate') {
+                    await addLine('12070008', locationCode, 0, gv.amount, `Corporate Gift Voucher Issued | GVC#${gv.to} | ${jvDateStr}`);
+                } else {
+                    await addLine('12070007', locationCode, 0, gv.amount, `Gift Voucher Issued | GV#${gv.to} | ${jvDateStr}`);
+                }
+            }
+
+            // 14. FBR POS
+            const fbrCash = metrics.fbrCharges.find(c => c.type === 'Cash')?.amount || 0;
+            const fbrCard = metrics.fbrCharges.find(c => c.type === 'Card')?.amount || 0;
+            await addLine('12060009', locationCode, 0, fbrCard, `POS Service Fee Credit Card | ${jvDateStr}`);
+            await addLine('12060009', locationCode, 0, fbrCash, `POS Service Fee Cash | ${jvDateStr}`);
+
+            // Sales Return
+            await addLine('40020014', locationCode, metrics.financials.salesReturn, 0, `Retail Sales Return | ${jvDateStr}`);
+
+            // Final Calculations
+            const netReceivedCash = metrics.cashBreakdown.total;
+            const netReceivedCard = metrics.cardBreakdown.total;
+
+            const creditVouchersAmt = metrics.issuedVouchers.creditVouchers.reduce((s, v) => s + v.amount, 0);
+            const cashGiftVouchersAmt = metrics.cashBreakdown.giftVouchers;
+            const cardGiftVouchersAmt = metrics.cardBreakdown.giftVouchers;
+            const receivablesAmt = metrics.receivables.reduce((s, r) => s + r.amount, 0);
+
+            // AC: 12070002 -> Transfer Current A/c Cash
+            // Credit = Net Recieved(Cash) + Recievables - Credit Vouchers - Cash Gift Vouchers - On Cash FBR
+            const transferCash = netReceivedCash + receivablesAmt - creditVouchersAmt - cashGiftVouchersAmt - fbrCash;
+            await addLine('12070002', locationCode, 0, transferCash, `Transfer Current A/c Cash | ${jvDateStr}`);
+
+            // AC: 12070003 -> Transfer Current A/c Card
+            // Credit = Net Card Total + Credit Card Gift Vouchers + Total Credit Card Commision - Credit Card Gift Vouchers - Card FBR Charges
+            // Which simplifies to: Net Card Total + Total Commision - Card FBR Charges
+            const transferCard = netReceivedCard + totalCommission - fbrCard;
+            await addLine('12070003', locationCode, 0, transferCard, `Transfer Current A/c Card | ${jvDateStr}`);
+
+            // Generate JV
+            const jvNo = `RS RV-${sessionId.substring(0, 8).toUpperCase()}`;
+            
+            // Auto-balance the voucher if debits and credits do not match
+            let totalDebit = 0;
+            let totalCredit = 0;
+            details.forEach(d => {
+                totalDebit += d.debit;
+                totalCredit += d.credit;
+            });
+
+            const diff = Math.abs(totalDebit - totalCredit);
+            let description = `POS Reconciliation for ${locationCode} on ${jvDateStr}` + 
+                                (hasMissingMappings ? `\n\nATTENTION: Some entries have missing Tag IDs or Account GL Codes. Please correct them before approving.` : '');
+            
+            if (diff > 0.01) {
+                const fallback = await this.prisma.chartOfAccount.findFirst();
+                const accountId = fallback?.id || 'MISSING';
+                let balDebit = 0;
+                let balCredit = 0;
+                if (totalDebit > totalCredit) {
+                    balCredit = diff;
+                } else {
+                    balDebit = diff;
+                }
+                details.push({
+                    accountId,
+                    tagAccountId: null,
+                    debit: balDebit,
+                    credit: balCredit,
+                    narration: `[AUTO-BALANCING LINE] To balance JV. Total Debit was ${totalDebit.toFixed(2)}, Total Credit was ${totalCredit.toFixed(2)}`
+                });
+                description += `\n\nATTENTION: Voucher was unbalanced by ${diff.toFixed(2)}. An auto-balancing line was added. Please review and correct.`;
+            }
+
+            await this.journalVoucherService.create({
+                jvNo,
+                jvDate: date,
+                description,
+                status: 'pending',
+                details
+            }, ctx);
+
+            this.logger.log(`Generated JV ${jvNo} for session ${sessionId}`);
+        } catch (error) {
+            this.logger.error(`Error generating Reconciliation JV for session ${sessionId}:`, error);
+        }
     }
 }
