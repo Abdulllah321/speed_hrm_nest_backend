@@ -85,9 +85,9 @@ export class ItemUpdateBulkUploadController extends BaseBulkUploadController {
     @Permissions('erp.item.read')
     async downloadTemplate(@Res() res: any) {
         const template = [
-            'Barcode,Sale Price,FOB,Sales Tax Rate,Additional Sales Tax',
-            'BAR-001,200.00,12.50,5,0',
-            'BAR-002,150.00,10.00,5,0',
+            'Barcode,SKU,Sale Price,FOB,Sales Tax Rate,Additional Sales Tax',
+            'BAR-001,SKU-001,200.00,12.50,5,0',
+            'BAR-002,SKU-002,150.00,10.00,5,0',
         ].join('\n');
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="item-update-prices-template.csv"');

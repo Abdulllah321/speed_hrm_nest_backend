@@ -32,14 +32,16 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
         progress: BaseUploadProgress,
         prisma: PrismaService,
     ): Promise<void> {
-        // 1. Extract non-empty barcodes
+        // 1. Extract non-empty barcodes and skus
         const barcodes = batch.map(r => r.data.barCode).filter(Boolean) as string[];
-        if (barcodes.length === 0) {
+        const skus = batch.map(r => r.data.sku).filter(Boolean) as string[];
+
+        if (barcodes.length === 0 && skus.length === 0) {
             for (const record of batch) {
                 progress.failedRecords++;
                 progress.errors.push({
                     row: record.row,
-                    reason: 'Barcode is required',
+                    reason: 'Either Barcode or SKU is required',
                     data: record.data,
                 });
                 progress.processedRecords++;
@@ -47,44 +49,57 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
             return;
         }
 
-        // 2. Fetch existing items in bulk by barcode
+        // 2. Fetch existing items in bulk by barcode and/or SKU
+        const orConditions: any[] = [];
+        if (barcodes.length > 0) orConditions.push({ barCode: { in: barcodes } });
+        if (skus.length > 0) orConditions.push({ sku: { in: skus } });
+
         const existingItems = await prisma.item.findMany({
-            where: { barCode: { in: barcodes } },
-            select: { id: true, barCode: true }
+            where: { OR: orConditions },
+            select: { id: true, barCode: true, sku: true }
         });
 
-        // Map trimmed barcodes to internal database item IDs
+        // Map trimmed barcodes and SKUs to internal database item IDs
         const barcodeToIdMap = new Map<string, string>();
+        const skuToIdMap = new Map<string, string>();
         for (const item of existingItems) {
             if (item.barCode) {
                 barcodeToIdMap.set(item.barCode.trim(), item.id);
+            }
+            if (item.sku) {
+                skuToIdMap.set(item.sku.trim(), item.id);
             }
         }
 
         const validRecordsInBatch: { record: ItemUpdateParsedRecord, itemId: string, payload: any }[] = [];
 
         for (const record of batch) {
-            const { barCode, salePrice, fob, taxRate1, taxRate2 } = record.data;
+            const { barCode, sku, salePrice, fob, taxRate1, taxRate2 } = record.data;
 
-            if (!barCode) {
+            if (!barCode && !sku) {
                 progress.failedRecords++;
                 progress.errors.push({
                     row: record.row,
-                    reason: 'Barcode is required',
+                    reason: 'Either Barcode or SKU is required',
                     data: record.data,
                 });
                 progress.processedRecords++;
                 continue;
             }
 
-            const trimmedBarcode = barCode.trim();
-            const itemId = barcodeToIdMap.get(trimmedBarcode);
+            let itemId: string | undefined;
+            if (barCode) {
+                itemId = barcodeToIdMap.get(barCode.trim());
+            }
+            if (!itemId && sku) {
+                itemId = skuToIdMap.get(sku.trim());
+            }
 
             if (!itemId) {
                 progress.failedRecords++;
                 progress.errors.push({
                     row: record.row,
-                    reason: `Barcode "${barCode}" not found in database`,
+                    reason: `Item with Barcode "${barCode || ''}" or SKU "${sku || ''}" not found in database`,
                     data: record.data,
                 });
                 progress.processedRecords++;
