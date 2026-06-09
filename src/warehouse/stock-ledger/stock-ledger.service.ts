@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
+import * as fs from 'fs';
+import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MovementType, Prisma } from '@prisma/client';
 
@@ -6,9 +11,12 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 @Injectable()
 export class StockLedgerService {
+  private readonly logger = new Logger(StockLedgerService.name);
+
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
+    @InjectQueue('stock-ledger-export') private readonly exportQueue: Queue,
   ) { }
 
   async findAll(options?: {
@@ -18,8 +26,9 @@ export class StockLedgerService {
     referenceType?: string;
     page?: number;
     limit?: number;
+    search?: string;
   }) {
-    const { warehouseId, movementType, itemId, referenceType, page = 1, limit = 50 } = options || {};
+    const { warehouseId, movementType, itemId, referenceType, page = 1, limit = 50, search } = options || {};
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -28,6 +37,71 @@ export class StockLedgerService {
       ...(itemId && { itemId }),
       ...(referenceType && { referenceType }),
     };
+
+    if (search) {
+      const searchLower = search.toLowerCase().trim();
+      const cleanSearch = search.startsWith("#") ? search.slice(1) : search;
+
+      // 1. Resolve matching locations
+      const matchingLocations = await this.prisma.location.findMany({
+        where: { name: { contains: search, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      const locationIds = matchingLocations.map((l) => l.id);
+
+      // 2. Resolve friendly reference types to enum values
+      const REVERSE_REFERENCE_LABELS: Record<string, string[]> = {
+        "grn": ["GRN"],
+        "pos sale": ["POS_SALE"],
+        "pos return": ["POS_RETURN"],
+        "pos void": ["POS_VOID"],
+        "transfer": ["TRANSFER_REQUEST"],
+        "return transfer": ["RETURN_REQUEST"],
+        "outlet transfer in": ["OUTLET_TRANSFER_IN"],
+        "outlet transfer out": ["OUTLET_TRANSFER_OUT"],
+        "stock movement": ["STOCK_MOVEMENT"],
+        "return movement": ["RETURN_MOVEMENT"],
+        "adjustment": ["ADJUSTMENT"],
+        "landed cost": ["LANDED_COST"],
+        "opening bal": ["OPENING_BALANCE"],
+        "delivery challan": ["DELIVERY_CHALLAN"],
+        "purchase return": ["PURCHASE_RETURN", "PURCHASE_RETURN_LC", "PURCHASE_RETURN_GRN"],
+        "bulk upload": ["BULK_STOCK_UPLOAD"],
+        "pos claim return": ["POS_CLAIM_APPROVED"],
+        "claim acknowledged": ["CLAIM_ACKNOWLEDGED"],
+      };
+
+      const matchedEnumValues: string[] = [];
+      for (const [friendly, enums] of Object.entries(REVERSE_REFERENCE_LABELS)) {
+        if (friendly.includes(searchLower) || searchLower.includes(friendly)) {
+          matchedEnumValues.push(...enums);
+        }
+      }
+
+      // 3. Resolve direction (movementType)
+      let matchedMovementType: MovementType | undefined = undefined;
+      if (searchLower === "inbound" || searchLower === "in") {
+        matchedMovementType = MovementType.IN;
+      } else if (searchLower === "outbound" || searchLower === "out") {
+        matchedMovementType = MovementType.OUT;
+      }
+
+      // 4. Resolve quantity
+      const searchNum = parseFloat(searchLower);
+      const isSearchNum = !isNaN(searchNum);
+
+      where.OR = [
+        { item: { sku: { contains: search, mode: 'insensitive' } } },
+        { item: { description: { contains: search, mode: 'insensitive' } } },
+        { warehouse: { name: { contains: search, mode: 'insensitive' } } },
+        { referenceId: { contains: cleanSearch, mode: 'insensitive' } },
+        { referenceType: { contains: search, mode: 'insensitive' } },
+        ...(locationIds.length > 0 ? [{ locationId: { in: locationIds } }] : []),
+        ...(matchedEnumValues.length > 0 ? [{ referenceType: { in: matchedEnumValues } }] : []),
+        ...(matchedMovementType ? [{ movementType: matchedMovementType }] : []),
+        ...(isSearchNum ? [{ qty: searchNum }] : []),
+      ];
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.stockLedger.findMany({
@@ -275,5 +349,81 @@ export class StockLedgerService {
       );
       throw error;
     }
+  }
+
+  async queueExport(opts: {
+    userId: string;
+    warehouseId?: string;
+    movementType?: MovementType;
+    itemId?: string;
+    referenceType?: string;
+    search?: string;
+  }): Promise<{ jobId: string }> {
+    const jobId = uuidv4();
+
+    // Read tenant credentials from the live request context
+    const tenantId    = this.prisma.getTenantId()    ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    await this.exportQueue.add(
+      {
+        jobId,
+        userId:   opts.userId,
+        tenantId,
+        tenantDbUrl,
+        warehouseId: opts.warehouseId,
+        movementType: opts.movementType,
+        itemId: opts.itemId,
+        referenceType: opts.referenceType,
+        search: opts.search,
+      },
+      {
+        jobId,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+        timeout: 2 * 60 * 60 * 1000,
+      },
+    );
+
+    this.logger.log(`[StockLedgerExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`);
+    return { jobId };
+  }
+
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+    const job = await this.exportQueue.getJob(jobId);
+    if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
+    const state    = await job.getState();
+    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    return { state, progress };
+  }
+
+  async streamExportFile(jobId: string, res: any): Promise<void> {
+    const filePath = path.join(process.cwd(), 'uploads', 'exports', `export-${jobId}.xlsx`);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+    }
+
+    const stat      = fs.statSync(filePath);
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename  = `stock-ledger-export-${timestamp}.xlsx`;
+
+    const stream = fs.createReadStream(filePath);
+    stream.on('close', () => {
+      fs.unlink(filePath, (err) => {
+        if (err) this.logger.warn(`Could not delete export file: ${err.message}`);
+        else     this.logger.log(`[StockLedgerExport] Cleaned up ${filePath}`);
+      });
+    });
+    stream.on('error', (err) => {
+      this.logger.error(`[StockLedgerExport] Stream error: ${err.message}`);
+    });
+
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${filename}"`);
+    res.header('Content-Length', stat.size);
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(stream);
   }
 }
