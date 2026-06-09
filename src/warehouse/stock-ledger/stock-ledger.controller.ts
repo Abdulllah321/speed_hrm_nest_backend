@@ -15,6 +15,7 @@ export class StockLedgerController {
   @Get()
   async findAll(
     @Query('warehouseId') warehouseId?: string,
+    @Query('locationId') locationId?: string,
     @Query('movementType') movementType?: MovementType,
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
@@ -24,6 +25,7 @@ export class StockLedgerController {
   ) {
     return this.stockLedgerService.findAll({
       warehouseId,
+      locationId,
       movementType,
       itemId,
       referenceType,
@@ -38,6 +40,7 @@ export class StockLedgerController {
   async queueExport(
     @Req() req: any,
     @Query('warehouseId') warehouseId?: string,
+    @Query('locationId') locationId?: string,
     @Query('movementType') movementType?: MovementType,
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
@@ -46,6 +49,7 @@ export class StockLedgerController {
     const result = await this.stockLedgerService.queueExport({
       userId: req.user?.userId || req.user?.id,
       warehouseId,
+      locationId,
       movementType,
       itemId,
       referenceType,
