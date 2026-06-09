@@ -35,8 +35,12 @@ export class TransferRequestController {
     @Get()
     @Permissions('pos.inventory.receiving.view', 'pos.inventory.returns.view', 'pos.inventory.inbound.view', 'pos.inventory.outbound.view', 'pos.inventory.receipt.view', 'erp.inventory.stock-transfer.read')
     @ApiOperation({ summary: 'Get transfer requests' })
-    async getRequests(@Query('warehouseId') warehouseId?: string, @Query('status') status?: string) {
-        const data = await this.transferRequestService.getRequests(warehouseId, status);
+    async getRequests(
+        @Query('warehouseId') warehouseId?: string,
+        @Query('status') status?: string,
+        @Query('id') id?: string,
+    ) {
+        const data = await this.transferRequestService.getRequests(warehouseId, status, id);
         return { status: true, data };
     }
 

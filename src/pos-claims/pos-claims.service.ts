@@ -414,11 +414,8 @@ export class PosClaimsService {
                             status: 'PENDING - Awaiting PLM acknowledgment'
                         });
 
-                        // ⚡ DO NOT update inventory yet - wait for PLM acknowledgment
-                        console.log('⏳ Inventory update deferred until PLM acknowledges receipt');
-                        
-                        // Note: Inventory will be updated when PLM acknowledges the transfer
-                        // via the acknowledgeClaim endpoint
+                         // ⚡ Inventory update and ledger entries deferred until PLM acknowledgment
+                         console.log('⏳ Ledger entries and inventory updates deferred until PLM acknowledgment');
 
                         // Link transfer request to claim
                         await tx.posClaim.update({
