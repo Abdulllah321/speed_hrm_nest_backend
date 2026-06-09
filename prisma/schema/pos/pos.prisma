@@ -29,6 +29,8 @@ model MerchantConfig {
   commissionRate   Decimal  @map("commission_rate") @db.Decimal(8, 6)
   /// Bank GL account code, e.g. "31100005"
   bankGlCode       String   @map("bank_gl_code")
+
+
   isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
@@ -270,6 +272,7 @@ model Voucher {
   // Ownership / binding
   customerId           String? @map("customer_id") // CREDIT vouchers
   companyName          String? @map("company_name") // CORPORATE vouchers
+  companyGlCode        String? 
   requireCustomerMatch Boolean @default(false) @map("require_customer_match")
 
   // Issuance context
