@@ -1891,6 +1891,8 @@ export const PERMISSIONS = [
   { name: 'erp.procurement.grn.create', description: 'Create Goods Receipt Note' },
   { name: 'erp.procurement.grn.read', description: 'View Goods Receipt Notes' },
   { name: 'erp.procurement.grn.update', description: 'Update GRN Status' },
+  { name: 'erp.procurement.grn.check', description: 'Check / Verify Goods Receipt Note' },
+  { name: 'erp.procurement.grn.authorize', description: 'Authorize / Final Approve Goods Receipt Note' },
 
   // ── ERP Procurement — Landed Cost ───────────────────────────────────────────
   { name: 'erp.procurement.landed-cost.read', description: 'View Landed Costs' },
