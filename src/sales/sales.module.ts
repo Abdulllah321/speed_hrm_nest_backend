@@ -6,11 +6,11 @@ import { SalesOrderService } from './services/sales-order.service';
 import { SalesInvoiceService } from './services/sales-invoice.service';
 import { DeliveryChallanService } from './services/delivery-challan.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
+import { StockLedgerModule } from '../warehouse/stock-ledger/stock-ledger.module';
 import { FinanceAccountConfigModule } from '../finance/finance-account-config/finance-account-config.module';
 
 @Module({
-  imports: [FinanceAccountConfigModule],
+  imports: [FinanceAccountConfigModule, StockLedgerModule],
   controllers: [
     SalesOrderController,
     SalesInvoiceController,
@@ -21,7 +21,6 @@ import { FinanceAccountConfigModule } from '../finance/finance-account-config/fi
     SalesInvoiceService,
     DeliveryChallanService,
     PrismaService,
-    StockLedgerService,
   ],
   exports: [
     SalesOrderService,
