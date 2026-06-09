@@ -135,9 +135,9 @@ export class StockLedgerExportProcessor {
         // 3. Resolve direction (movementType)
         let matchedMovementType: MovementType | undefined = undefined;
         if (searchLower === "inbound" || searchLower === "in") {
-          matchedMovementType = MovementType.IN;
+          matchedMovementType = MovementType.INBOUND;
         } else if (searchLower === "outbound" || searchLower === "out") {
-          matchedMovementType = MovementType.OUT;
+          matchedMovementType = MovementType.OUTBOUND;
         }
 
         // 4. Resolve quantity

@@ -167,16 +167,22 @@ export class TransferRequestService {
         }
     }
 
-    async getRequests(warehouseId?: string, status?: string) {
+    async getRequests(warehouseId?: string, status?: string, id?: string) {
         const requests = await this.prisma.transferRequest.findMany({
             where: {
+                ...(id ? { id } : {}),
                 ...(warehouseId ? { fromWarehouseId: warehouseId } : {}),
                 ...(status ? { status } : {}),
             },
             include: {
                 items: {
                     include: {
-                        item: true
+                        item: {
+                            include: {
+                                color: true,
+                                size: true
+                            }
+                        }
                     }
                 },
                 fromWarehouse: { select: { name: true, code: true } },
@@ -200,7 +206,12 @@ export class TransferRequestService {
             include: {
                 items: {
                     include: {
-                        item: true
+                        item: {
+                            include: {
+                                color: true,
+                                size: true
+                            }
+                        }
                     }
                 },
             },
@@ -220,7 +231,12 @@ export class TransferRequestService {
             include: {
                 items: {
                     include: {
-                        item: true
+                        item: {
+                            include: {
+                                color: true,
+                                size: true
+                            }
+                        }
                     }
                 },
             },
@@ -243,7 +259,12 @@ export class TransferRequestService {
             include: {
                 items: {
                     include: {
-                        item: true
+                        item: {
+                            include: {
+                                color: true,
+                                size: true
+                            }
+                        }
                     }
                 },
             },
@@ -264,7 +285,12 @@ export class TransferRequestService {
             include: {
                 items: {
                     include: {
-                        item: true
+                        item: {
+                            include: {
+                                color: true,
+                                size: true
+                            }
+                        }
                     }
                 },
             },
