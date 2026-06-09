@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 import {
   CreatePurchaseOrderDto,
   AwardFromRfqDto,
@@ -18,16 +19,18 @@ export class PurchaseOrderService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
+    private prismaMaster: PrismaMasterService,
   ) {}
 
   async findAll() {
-    return this.prisma.purchaseOrder.findMany({
+    const list = await this.prisma.purchaseOrder.findMany({
       include: {
         vendor: true,
         vendorQuotation: true,
       },
       orderBy: { createdAt: 'desc' },
     });
+    return this.resolveUserNamesForList(list);
   }
 
   async findPendingQuotations() {
@@ -71,7 +74,7 @@ export class PurchaseOrderService {
       throw new NotFoundException('Purchase Order not found');
     }
 
-    return po;
+    return this.resolveUserNames(po);
   }
 
   async create(createDto: CreatePurchaseOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
@@ -142,7 +145,8 @@ export class PurchaseOrderService {
               : null,
             orderType: finalOrderType || null,
             goodsType: finalGoodsType || null,
-            status: 'OPEN',
+            status: 'PENDING_CHECKER',
+            createdById: ctx?.userId || null,
             subtotal,
             taxAmount: new Decimal(0),
             discountAmount: new Decimal(0),
@@ -252,7 +256,8 @@ export class PurchaseOrderService {
               : null,
             orderType: createDto.orderType || quotation.rfq?.purchaseRequisition?.type?.toUpperCase() || null,
             goodsType: createDto.goodsType || quotation.rfq?.purchaseRequisition?.goodsType || null,
-            status: 'OPEN',
+            status: 'PENDING_CHECKER',
+            createdById: ctx?.userId || null,
             subtotal: quotation.subtotal,
             taxAmount: quotation.taxAmount,
             discountAmount: quotation.discountAmount,
@@ -313,11 +318,61 @@ export class PurchaseOrderService {
     }
   }
 
-  async updateStatus(id: string, status: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateStatus(
+    id: string,
+    status: string,
+    ctx?: {
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+      userPermissions?: string[];
+      roleName?: string;
+    },
+  ) {
     try {
+      const po = await this.prisma.purchaseOrder.findUnique({ where: { id } });
+      if (!po) {
+        throw new NotFoundException('Purchase Order not found');
+      }
+
+      const userPermissions = ctx?.userPermissions || [];
+      const isSuperAdmin =
+        userPermissions.includes('*') ||
+        ctx?.roleName?.toLowerCase() === 'super_admin' ||
+        ctx?.roleName?.toLowerCase() === 'admin';
+
+      const updateData: any = { status };
+
+      // Enforce hierarchical approvals
+      if (po.status === 'PENDING_CHECKER') {
+        if (status !== 'PENDING_AUTHORIZER' && status !== 'REJECTED') {
+          throw new BadRequestException(`Invalid status transition from PENDING_CHECKER to ${status}.`);
+        }
+        if (!isSuperAdmin && !userPermissions.includes('erp.procurement.po.check')) {
+          throw new BadRequestException('You do not have permission to check this Purchase Order (requires erp.procurement.po.check).');
+        }
+
+        updateData.checkedById = ctx?.userId || null;
+        updateData.checkedAt = new Date();
+      } else if (po.status === 'PENDING_AUTHORIZER') {
+        if (status !== 'OPEN' && status !== 'REJECTED') {
+          throw new BadRequestException(`Invalid status transition from PENDING_AUTHORIZER to ${status}.`);
+        }
+        if (!isSuperAdmin && !userPermissions.includes('erp.procurement.po.authorize')) {
+          throw new BadRequestException('You do not have permission to authorize this Purchase Order (requires erp.procurement.po.authorize).');
+        }
+
+        updateData.authorizedById = ctx?.userId || null;
+        updateData.authorizedAt = new Date();
+      } else {
+        if (!isSuperAdmin && status !== 'CLOSED' && status !== 'PARTIALLY_RECEIVED') {
+          throw new BadRequestException(`Purchase Order is in ${po.status} status and cannot be modified.`);
+        }
+      }
+
       const updated = await this.prisma.purchaseOrder.update({
         where: { id },
-        data: { status },
+        data: updateData,
       });
 
       runInBackground(
@@ -465,7 +520,8 @@ export class PurchaseOrderService {
                 : null,
               orderType: group.orderType || rfq.purchaseRequisition?.type?.toUpperCase() || null,
               goodsType: group.goodsType || rfq.purchaseRequisition?.goodsType || null,
-              status: 'OPEN',
+              status: 'PENDING_CHECKER',
+              createdById: ctx?.userId || null,
               subtotal,
               taxAmount,
               discountAmount,
@@ -571,7 +627,8 @@ export class PurchaseOrderService {
                 : null,
               orderType: group.orderType || null,
               goodsType: group.goodsType || null,
-              status: 'OPEN',
+              status: 'PENDING_CHECKER',
+              createdById: ctx?.userId || null,
               subtotal,
               taxAmount: new Decimal(0),
               discountAmount: new Decimal(0),
@@ -624,5 +681,51 @@ export class PurchaseOrderService {
       );
       throw error;
     }
+  }
+
+  private async resolveUserNames(po: any) {
+    if (!po) return po;
+    const userIds = [po.createdById, po.checkedById, po.authorizedById].filter(Boolean) as string[];
+    if (userIds.length === 0) return po;
+
+    const users = await this.prismaMaster.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
+    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
+    return {
+      ...po,
+      creatorName: po.createdById ? userMap.get(po.createdById) || 'Unknown User' : null,
+      checkerName: po.checkedById ? userMap.get(po.checkedById) || 'Unknown User' : null,
+      authorizerName: po.authorizedById ? userMap.get(po.authorizedById) || 'Unknown User' : null,
+    };
+  }
+
+  private async resolveUserNamesForList(pos: any[]) {
+    if (!pos || pos.length === 0) return pos;
+    const userIdsSet = new Set<string>();
+    pos.forEach(po => {
+      if (po.createdById) userIdsSet.add(po.createdById);
+      if (po.checkedById) userIdsSet.add(po.checkedById);
+      if (po.authorizedById) userIdsSet.add(po.authorizedById);
+    });
+    const userIds = Array.from(userIdsSet);
+    if (userIds.length === 0) return pos;
+
+    const users = await this.prismaMaster.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
+    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
+    return pos.map(po => ({
+      ...po,
+      creatorName: po.createdById ? userMap.get(po.createdById) || 'Unknown User' : null,
+      checkerName: po.checkedById ? userMap.get(po.checkedById) || 'Unknown User' : null,
+      authorizerName: po.authorizedById ? userMap.get(po.authorizedById) || 'Unknown User' : null,
+    }));
   }
 }

@@ -96,7 +96,7 @@ export class PoUploadProcessor {
                 }
 
                 try {
-                    await this.createPoWithMetadata(metadata, validRecords, progress, prisma);
+                    await this.createPoWithMetadata(metadata, validRecords, progress, prisma, userId);
                 } catch (err: any) {
                     this.logger.error(`Failed to create PO: ${err.message}`);
                     progress.failedRecords += validRecords.length;
@@ -222,7 +222,7 @@ export class PoUploadProcessor {
         }
     }
 
-    private async createPoWithMetadata(metadata: any, records: PoParsedRecord[], progress: PoUploadProgress, prisma: PrismaService): Promise<void> {
+    private async createPoWithMetadata(metadata: any, records: PoParsedRecord[], progress: PoUploadProgress, prisma: PrismaService, userId: string): Promise<void> {
         const vendorId = metadata?.vendorId;
         if (!vendorId) throw new Error('Vendor is required for PO import but none was provided.');
 
@@ -287,7 +287,8 @@ export class PoUploadProcessor {
         await (prisma as any).purchaseOrder.create({
             data: {
                 poNumber, vendorId: vendor.id, orderType, goodsType,
-                expectedDeliveryDate, notes, status: 'OPEN',
+                expectedDeliveryDate, notes, status: 'PENDING_CHECKER',
+                createdById: userId,
                 subtotal, taxAmount: new Decimal(0), discountAmount: new Decimal(0), totalAmount: subtotal,
                 items: { create: itemsData },
             },
