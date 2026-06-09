@@ -4,12 +4,17 @@ model GoodsReceiptNote {
   purchaseOrderId  String                 @map("purchase_order_id")
   warehouseId      String                 @map("warehouse_id")
   receivedDate     DateTime               @default(now()) @map("received_date")
-  status           String                 @default("SUBMITTED")
+  status           String                 @default("PENDING_CHECKER")
   notes            String?
   orderType        String?                @map("order_type") // IMPORT, LOCAL (copied from PO)
   goodsType        String?                @map("goods_type") // CONSUMABLE, FRESH (copied from PO)
   createdAt        DateTime               @default(now()) @map("created_at")
   updatedAt        DateTime               @updatedAt @map("updated_at")
+  createdById      String?                @map("created_by_id")
+  checkedById      String?                @map("checked_by_id")
+  checkedAt        DateTime?              @map("checked_at")
+  authorizedById   String?                @map("authorized_by_id")
+  authorizedAt     DateTime?              @map("authorized_at")
   items            GoodsReceiptNoteItem[]
   purchaseOrder    PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
   warehouse        Warehouse              @relation(fields: [warehouseId], references: [id])
