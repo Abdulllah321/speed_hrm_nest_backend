@@ -654,12 +654,21 @@ export class PosSessionService {
         ];
 
         // Financials:
-        // returns value is sum of face value of issued EXCHANGE vouchers
+        const totalCards = totalCardReceived;
+        const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
+        const totalReceivable = totalCreditAmount;
+        const totalIssued = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
+            + creditVouchers.reduce((sum, v) => sum + v.amount, 0)
+            + giftVouchers.reduce((sum, v) => sum + v.amount, 0);
+        const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
+
+        const computedSale = totalCards + totalReceived + totalReceivable + totalIssued - fbrTotal;
         const returnAmount = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0);
+
         const financials = {
-            sale: grossSales,
+            sale: computedSale,
             salesReturn: returnAmount,
-            netSales: grossSales - returnAmount,
+            netSales: computedSale - returnAmount,
         };
 
         const openedStr = session.openedAt.toISOString();
@@ -716,7 +725,7 @@ export class PosSessionService {
                       },
             },
             metrics: {
-                grossSales,
+                grossSales: financials.sale,
                 netSales: financials.netSales,
                 totalTaxes,
                 totalDiscounts,
