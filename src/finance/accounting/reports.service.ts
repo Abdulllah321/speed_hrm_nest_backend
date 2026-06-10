@@ -385,7 +385,7 @@ export class ReportsService {
     });
     const d = Number(before._sum.debit ?? 0);
     const c = Number(before._sum.credit ?? 0);
-    const openingBalance = isDebitNormal ? c - d : d - c;
+    const openingBalance = isDebitNormal ? d - c : c - d;
 
     // Transaction rows within range (excluding OPENING_BALANCE transactions)
     const where: any = {
@@ -451,7 +451,7 @@ export class ReportsService {
       for (const tx of skippedTx) {
         const d = Number(tx.debit),
           c = Number(tx.credit);
-        pageStartingBalance += isDebitNormal ? c - d : d - c;
+        pageStartingBalance += d - c;
       }
     }
 
@@ -460,7 +460,7 @@ export class ReportsService {
     const rows = transactions.map((tx) => {
       const d = Number(tx.debit),
         c = Number(tx.credit);
-      running += isDebitNormal ? c - d : d - c;
+      running += d - c;
       return {
         ...tx,
         debit: d,
@@ -471,9 +471,7 @@ export class ReportsService {
 
     const rangeTotalDebit = Number(totalAgg._sum.debit ?? 0);
     const rangeTotalCredit = Number(totalAgg._sum.credit ?? 0);
-    const rangeClosingBalance = isDebitNormal
-      ? openingBalance + rangeTotalCredit - rangeTotalDebit
-      : openingBalance + rangeTotalDebit - rangeTotalCredit;
+    const rangeClosingBalance = openingBalance + rangeTotalDebit - rangeTotalCredit;
 
     return {
       account: { ...account, balance: Number(account.balance) },
