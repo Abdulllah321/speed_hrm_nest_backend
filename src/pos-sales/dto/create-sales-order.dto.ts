@@ -61,9 +61,9 @@ export class SalesOrderItemDto {
 
 // ── Multi-tender item ────────────────────────────────────────────────────
 export class TenderItemDto {
-    @ApiProperty({ description: 'Tender method: cash | card | bank_transfer | voucher' })
+    @ApiProperty({ description: 'Tender method: cash | card | bank_transfer | voucher | credit_account' })
     @IsString()
-    @IsIn(['cash', 'card', 'bank_transfer', 'voucher'])
+    @IsIn(['cash', 'card', 'bank_transfer', 'voucher', 'credit_account'])
     method: string;
 
     @ApiProperty({ description: 'Amount tendered' })
@@ -80,6 +80,11 @@ export class TenderItemDto {
     @IsOptional()
     @IsString()
     slipNo?: string;
+
+    @ApiPropertyOptional({ description: 'Voucher UUID (for voucher tenders)' })
+    @IsOptional()
+    @IsString()
+    voucherId?: string;
 }
 
 // ── Alliance / bank card meta ─────────────────────────────────────────────

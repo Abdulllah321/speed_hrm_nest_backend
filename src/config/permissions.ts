@@ -1884,11 +1884,15 @@ export const PERMISSIONS = [
   { name: 'erp.procurement.po.read', description: 'View Purchase Orders' },
   { name: 'erp.procurement.po.create', description: 'Create Purchase Order' },
   { name: 'erp.procurement.po.update', description: 'Update Purchase Order Status' },
+  { name: 'erp.procurement.po.check', description: 'Check / Verify Purchase Order' },
+  { name: 'erp.procurement.po.authorize', description: 'Authorize / Final Approve Purchase Order' },
 
   // ── ERP Procurement — GRN (stub for cross-reference) ───────────────────────
   { name: 'erp.procurement.grn.create', description: 'Create Goods Receipt Note' },
   { name: 'erp.procurement.grn.read', description: 'View Goods Receipt Notes' },
   { name: 'erp.procurement.grn.update', description: 'Update GRN Status' },
+  { name: 'erp.procurement.grn.check', description: 'Check / Verify Goods Receipt Note' },
+  { name: 'erp.procurement.grn.authorize', description: 'Authorize / Final Approve Goods Receipt Note' },
 
   // ── ERP Procurement — Landed Cost ───────────────────────────────────────────
   { name: 'erp.procurement.landed-cost.read', description: 'View Landed Costs' },

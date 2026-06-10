@@ -215,8 +215,14 @@ export class PosConfigController {
         @Query('voucherType') voucherType?: string,
         @Query('locationId') locationId?: string,
         @Query('search') search?: string,
+        @Query('includeVoided') includeVoided?: string,
     ) {
-        return this.voucherService.listVouchers({ voucherType, locationId, search });
+        return this.voucherService.listVouchers({
+            voucherType,
+            locationId,
+            search,
+            includeVoided: includeVoided === 'true',
+        });
     }
 
     @Get('vouchers/:id')
@@ -295,6 +301,18 @@ export class PosConfigController {
     @ApiOperation({ summary: 'Void a voucher' })
     async voidVoucher(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: any) {
         return this.voucherService.voidVoucher(id, body.reason, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+    }
+
+    @Put('vouchers/:id/restore')
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @Permissions('pos.voucher.void')
+    @ApiOperation({ summary: 'Restore a voided voucher' })
+    async restoreVoucher(@Param('id') id: string, @Req() req: any) {
+        return this.voucherService.restoreVoidedVoucher(id, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],

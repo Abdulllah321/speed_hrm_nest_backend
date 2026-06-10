@@ -8,5 +8,6 @@ import { AccountingModule } from '../accounting/accounting.module';
   imports: [DatabaseModule, AccountingModule],
   controllers: [JournalVoucherController],
   providers: [JournalVoucherService],
+  exports: [JournalVoucherService],
 })
 export class JournalVoucherModule {}

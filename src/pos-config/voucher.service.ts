@@ -39,9 +39,13 @@ export class VoucherService {
         locationId?: string;
         isActive?: boolean;
         search?: string;
+        includeVoided?: boolean;
     }) {
         try {
-            const where: any = { isDeleted: false };
+            const where: any = {};
+            if (!filters?.includeVoided) {
+                where.isDeleted = false;
+            }
             if (filters?.voucherType) where.voucherType = filters.voucherType;
             if (filters?.isActive !== undefined) where.isActive = filters.isActive;
             if (filters?.search) {
@@ -81,6 +85,7 @@ export class VoucherService {
         description?: string;
         customerId?: string;
         companyName?: string;
+        companyGlCode?: string;
         requireCustomerMatch?: boolean;
         issuedByLocationId?: string;
         issuedByUserId?: string;
@@ -115,6 +120,7 @@ export class VoucherService {
                     description: data.description,
                     customerId: data.customerId,
                     companyName: data.companyName,
+                    companyGlCode: data.companyGlCode,
                     requireCustomerMatch: data.requireCustomerMatch ?? false,
                     issuedByLocationId: data.issuedByLocationId,
                     issuedByUserId: data.issuedByUserId,
@@ -193,6 +199,7 @@ export class VoucherService {
         discount?: number;
         description?: string;
         companyName?: string;
+        companyGlCode?: string;
         expiresAt?: string;
         locationIds?: string[];
         issuedByLocationId?: string;
@@ -228,6 +235,7 @@ export class VoucherService {
                             discount: data.discount ?? 0,
                             description: data.description,
                             companyName: data.companyName,
+                            companyGlCode: data.companyGlCode,
                             issuedByLocationId: data.issuedByLocationId,
                             issuedByUserId: data.issuedByUserId,
                             expiresAt,
@@ -314,8 +322,8 @@ export class VoucherService {
             });
 
             if (!voucher) return { status: false, message: 'Voucher not found' };
-            if (!voucher.isActive) return { status: false, message: 'Voucher has been voided' };
             if (voucher.isRedeemed) return { status: false, message: 'Voucher has already been redeemed' };
+            if (!voucher.isActive) return { status: false, message: 'Voucher has been voided' };
             if (voucher.expiresAt && voucher.expiresAt < new Date()) {
                 return { status: false, message: 'Voucher has expired' };
             }
@@ -400,19 +408,24 @@ export class VoucherService {
                 data: { voucherId: r.voucherId, orderId, amountUsed: r.amountUsed },
             });
 
-            // ── Generate CREDIT voucher for unused balance ──
-            // All voucher types (including EXCHANGE) generate credit vouchers for remaining balance
+            // ── Generate remaining balance voucher ──
             if (remainingBalance > 0) {
-                const creditVoucherCode = this.generateCreditVoucherCode();
+                const isCorporate = voucher.voucherType === 'CORPORATE';
+                const nextType = isCorporate ? 'CORPORATE' : 'CREDIT';
+                const newCode = generateCode(nextType);
                 const expiresAt = voucher.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
                 const creditVoucher = await tx.voucher.create({
                     data: {
-                        code: creditVoucherCode,
-                        voucherType: 'CREDIT',
+                        code: newCode,
+                        voucherType: nextType,
                         faceValue: remainingBalance,
-                        description: `Credit voucher for unused balance from ${voucher.code}`,
-                        customerId: voucher.customerId,
+                        description: isCorporate
+                            ? `Corporate voucher for unused balance from ${voucher.code}`
+                            : `Credit voucher for unused balance from ${voucher.code}`,
+                        customerId: isCorporate ? null : voucher.customerId,
+                        companyName: isCorporate ? voucher.companyName : null,
+                        companyGlCode: isCorporate ? voucher.companyGlCode : null,
                         issuedByLocationId: locationId,
                         issuedByUserId: ctx?.userId,
                         sourceOrderId: orderId,
@@ -440,14 +453,16 @@ export class VoucherService {
                     });
                 }
 
-                // Log credit voucher issuance
+                // Log remaining balance voucher issuance
                 await tx.voucherTransaction.create({
                     data: {
                         voucherId: creditVoucher.id,
                         action: 'ISSUED',
                         amountUsed: 0,
                         locationId,
-                        notes: `Credit voucher issued for unused balance of ${voucher.code}`,
+                        notes: isCorporate
+                            ? `Corporate voucher issued for unused balance of ${voucher.code}`
+                            : `Credit voucher issued for unused balance of ${voucher.code}`,
                     },
                 });
 
@@ -569,6 +584,64 @@ export class VoucherService {
         }
     }
 
+    // ── Restore a voided voucher ──────────────────────────────────
+    async restoreVoidedVoucher(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+        try {
+            const voucher = await this.prisma.voucher.findFirst({ where: { id } });
+            if (!voucher) return { status: false, message: 'Voucher not found' };
+            if (!voucher.isDeleted) return { status: false, message: 'Voucher is not voided/deleted' };
+            if (voucher.isRedeemed) return { status: false, message: 'Cannot restore a redeemed voucher' };
+
+            await this.prisma.voucher.update({
+                where: { id },
+                data: { isActive: true, isDeleted: false, deletedAt: null },
+            });
+
+            await this.prisma.voucherTransaction.create({
+                data: {
+                    voucherId: id,
+                    action: 'RESTORED',
+                    amountUsed: 0,
+                    notes: 'Restored by staff',
+                },
+            });
+
+            runInBackground(
+                'Restore Voucher',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    entityId: id,
+                    description: `Restored voucher ${voucher.code}.`,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'success',
+                }),
+            );
+
+            return { status: true, message: 'Voucher restored' };
+        } catch (error: any) {
+            runInBackground(
+                'Restore Voucher (Failure)',
+                this.activityLogs.log({
+                    userId: ctx?.userId,
+                    action: 'update',
+                    module: 'pos-config',
+                    entity: 'Voucher',
+                    entityId: id,
+                    description: `Failed to restore voucher`,
+                    errorMessage: error?.message,
+                    ipAddress: ctx?.ipAddress,
+                    userAgent: ctx?.userAgent,
+                    status: 'failure',
+                }),
+            );
+            return { status: false, message: error.message };
+        }
+    }
+
     // ── Restore voucher on order void/return ──────────────────────
     async restoreVoucher(voucherId: string, orderId: string, locationId: string, tx: any) {
         await tx.voucher.update({
@@ -592,7 +665,7 @@ export class VoucherService {
     async getVoucher(id: string) {
         try {
             const voucher = await this.prisma.voucher.findFirst({
-                where: { id, isDeleted: false },
+                where: { id },
                 include: {
                     locations: { include: { location: { select: { id: true, name: true, code: true } } } },
                     transactions: { orderBy: { createdAt: 'desc' } },
