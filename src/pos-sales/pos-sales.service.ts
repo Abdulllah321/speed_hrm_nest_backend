@@ -189,7 +189,7 @@ export class PosSalesService implements OnModuleInit {
                 const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
                 const cashAmount = tenders.filter(t => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
                 const voucherAmount = tenders.filter(t => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
-                const cardAmount = tenders.filter(t => t.method !== 'cash' && t.method !== 'voucher').reduce((a, t) => a + Number(t.amount), 0);
+                const cardAmount = tenders.filter(t => t.method !== 'cash' && t.method !== 'voucher' && t.method !== 'credit_account').reduce((a, t) => a + Number(t.amount), 0);
 
                 if (dto.allianceId) {
                     const hasCashTender = tenders.some(t => t.method === 'cash');
@@ -944,7 +944,7 @@ export class PosSalesService implements OnModuleInit {
                 // so subtract voucher total only if order.voucherAmount is null/undefined
                 const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
                 const realCardAmount = isLegacy
-                    ? Number(order.cardAmount) - voucherTotalFromRedemptions
+                    ? Math.max(0, Number(order.cardAmount) - voucherTotalFromRedemptions - Number(order.changeAmount ?? 0))
                     : Number(order.cardAmount);
                 if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
             } else if (order.paymentMethod) {
@@ -1061,7 +1061,7 @@ export class PosSalesService implements OnModuleInit {
             // so subtract voucher total only if order.voucherAmount is null/undefined
             const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
             const realCardAmount = isLegacy
-                ? Number(order.cardAmount) - voucherTotalFromRedemptions
+                ? Math.max(0, Number(order.cardAmount) - voucherTotalFromRedemptions - Number(order.changeAmount ?? 0))
                 : Number(order.cardAmount);
             if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
         } else if (order.paymentMethod) {
@@ -2763,7 +2763,7 @@ export class PosSalesService implements OnModuleInit {
             const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
             const cashAmount = tenders.filter((t) => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
             const voucherAmount = tenders.filter((t) => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
-            const cardAmount = tenders.filter((t) => t.method !== 'cash' && t.method !== 'voucher').reduce((a, t) => a + Number(t.amount), 0);
+            const cardAmount = tenders.filter((t) => t.method !== 'cash' && t.method !== 'voucher' && t.method !== 'credit_account').reduce((a, t) => a + Number(t.amount), 0);
             const grandTotal = Number(order.grandTotal);
 
             const totalPaidRounded = Math.round(totalPaid * 100) / 100;
