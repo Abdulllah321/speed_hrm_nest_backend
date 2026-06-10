@@ -187,7 +187,9 @@ export class GeneralLedgerExportProcessor {
           transactionDate: row.transactionDate ? new Date(row.transactionDate) : null,
           sourceRef:       row.sourceRef,
           sourceType:      SOURCE_LABELS[row.sourceType] ?? row.sourceType,
-          narration:       row.narration || row.description || '—',
+          narration:       row.tagAccount 
+            ? `${row.narration || row.description || '—'} [Tag: ${row.tagAccount.code} - ${row.tagAccount.name}]` 
+            : (row.narration || row.description || '—'),
           debit:           row.debit > 0 ? Number(row.debit) : null,
           credit:          row.credit > 0 ? Number(row.credit) : null,
           runningBalance:  Number(row.runningBalance),
