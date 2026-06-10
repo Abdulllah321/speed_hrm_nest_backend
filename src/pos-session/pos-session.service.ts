@@ -429,9 +429,14 @@ export class PosSessionService {
             totalTaxes += taxAmount;
             totalDiscounts += (discountAmount + globalDiscountAmount);
 
+            const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
+            const voucherRedemptionsSum = order.voucherRedemptions?.reduce((sum, r) => sum + Number(r.amountUsed), 0) ?? 0;
+
             const cash = Number(order.cashAmount ?? 0);
-            const card = Number(order.cardAmount ?? 0);
-            const voucher = Number(order.voucherAmount ?? 0);
+            const card = isLegacy
+                ? Math.max(0, Number(order.cardAmount ?? 0) - voucherRedemptionsSum - Number(order.changeAmount ?? 0))
+                : Number(order.cardAmount ?? 0);
+            const voucher = isLegacy ? voucherRedemptionsSum : Number(order.voucherAmount ?? 0);
 
             if (cash > 0) {
                 cashSalesCount++;
@@ -515,6 +520,7 @@ export class PosSessionService {
         const exchangeAndClaims: Array<{ type: string; amount: number; from: string }> = [];
         const creditVouchers: Array<{ type: string; amount: number; from: string; to: string }> = [];
         const giftVouchers: Array<{ type: string; amount: number; from: string; to: string }> = [];
+        const refundVouchers: Array<{ type: string; amount: number; from: string }> = [];
 
         // Track how much of cash/card was for gift vouchers issued
         let cashGiftVouchersAmt = 0;
@@ -542,6 +548,12 @@ export class PosSessionService {
                     amount: faceValue,
                     from: fromCode,
                     to: v.code,
+                });
+            } else if (v.voucherType === 'REFUND') {
+                refundVouchers.push({
+                    type: 'Refund Vouchers',
+                    amount: faceValue,
+                    from: v.code,
                 });
             } else if (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE') {
                 const type = v.voucherType === 'CORPORATE' ? 'Gift Vouchers Corporate' : 'Gift Vouchers';
@@ -659,16 +671,20 @@ export class PosSessionService {
         const totalReceivable = totalCreditAmount;
         const totalIssued = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
             + creditVouchers.reduce((sum, v) => sum + v.amount, 0)
-            + giftVouchers.reduce((sum, v) => sum + v.amount, 0);
+            + giftVouchers.reduce((sum, v) => sum + v.amount, 0)
+            + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
         const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
         const computedSale = totalCards + totalReceived + totalReceivable + totalIssued - fbrTotal;
-        const returnAmount = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0);
+        const returnAmount = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
+            + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
 
+        const creditVouchersTotal = creditVouchers.reduce((sum, v) => sum + v.amount, 0);
+        const refundVouchersTotal = refundVouchers.reduce((sum, v) => sum + v.amount, 0);
         const financials = {
             sale: computedSale,
             salesReturn: returnAmount,
-            netSales: computedSale - returnAmount,
+            netSales: computedSale - returnAmount - creditVouchersTotal - refundVouchersTotal,
         };
 
         const openedStr = session.openedAt.toISOString();
@@ -745,6 +761,7 @@ export class PosSessionService {
                 exchangeAndClaims,
                 creditVouchers,
                 giftVouchers,
+                refundVouchers,
             },
             fbrCharges,
             financials,
