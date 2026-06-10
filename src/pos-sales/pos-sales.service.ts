@@ -188,7 +188,8 @@ export class PosSalesService implements OnModuleInit {
                 const tenderMethods = [...new Set(tenders.map(t => t.method))];
                 const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
                 const cashAmount = tenders.filter(t => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
-                const cardAmount = tenders.filter(t => t.method !== 'cash').reduce((a, t) => a + Number(t.amount), 0);
+                const voucherAmount = tenders.filter(t => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
+                const cardAmount = tenders.filter(t => t.method !== 'cash' && t.method !== 'voucher').reduce((a, t) => a + Number(t.amount), 0);
 
                 if (dto.allianceId) {
                     const hasCashTender = tenders.some(t => t.method === 'cash');
@@ -468,6 +469,7 @@ export class PosSalesService implements OnModuleInit {
                         tenderType: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                         cashAmount: cashAmount || undefined,
                         cardAmount: cardAmount || undefined,
+                        voucherAmount: voucherAmount || undefined,
                         changeAmount: changeAmount || undefined,
                         isGiftReceipt: dto.isGiftReceipt || false,
                         items: {
@@ -938,9 +940,12 @@ export class PosSalesService implements OnModuleInit {
 
             if (order.tenderType === 'split') {
                 if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
-                // cardAmount includes voucher amounts (they were lumped together at creation),
-                // so subtract voucher total to get the real card amount
-                const realCardAmount = Number(order.cardAmount) - voucherTotalFromRedemptions;
+                // cardAmount includes voucher amounts for legacy orders (they were lumped together at creation),
+                // so subtract voucher total only if order.voucherAmount is null/undefined
+                const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
+                const realCardAmount = isLegacy
+                    ? Number(order.cardAmount) - voucherTotalFromRedemptions
+                    : Number(order.cardAmount);
                 if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
             } else if (order.paymentMethod) {
                 if (voucherTotalFromRedemptions > 0) {
@@ -1052,9 +1057,12 @@ export class PosSalesService implements OnModuleInit {
 
         if (order.tenderType === 'split') {
             if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
-            // cardAmount includes voucher amounts (they were lumped together at creation),
-            // so subtract voucher total to get the real card amount
-            const realCardAmount = Number(order.cardAmount) - voucherTotalFromRedemptions;
+            // cardAmount includes voucher amounts for legacy orders (they were lumped together at creation),
+            // so subtract voucher total only if order.voucherAmount is null/undefined
+            const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
+            const realCardAmount = isLegacy
+                ? Number(order.cardAmount) - voucherTotalFromRedemptions
+                : Number(order.cardAmount);
             if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
         } else if (order.paymentMethod) {
             if (voucherTotalFromRedemptions > 0) {
@@ -1070,7 +1078,7 @@ export class PosSalesService implements OnModuleInit {
 
         // Fetch any credit vouchers issued from this order
         const creditVouchers = await this.prisma.voucher.findMany({
-            where: { sourceOrderId: id, isDeleted: false },
+            where: { sourceOrderId: id, voucherType: 'CREDIT', isDeleted: false },
             select: { code: true, faceValue: true, expiresAt: true },
         });
 
@@ -2754,7 +2762,8 @@ export class PosSalesService implements OnModuleInit {
             const tenderMethods = [...new Set(tenders.map((t) => t.method))];
             const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
             const cashAmount = tenders.filter((t) => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
-            const cardAmount = tenders.filter((t) => t.method !== 'cash').reduce((a, t) => a + Number(t.amount), 0);
+            const voucherAmount = tenders.filter((t) => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
+            const cardAmount = tenders.filter((t) => t.method !== 'cash' && t.method !== 'voucher').reduce((a, t) => a + Number(t.amount), 0);
             const grandTotal = Number(order.grandTotal);
 
             const totalPaidRounded = Math.round(totalPaid * 100) / 100;
@@ -2777,6 +2786,7 @@ export class PosSalesService implements OnModuleInit {
                     tenderType: paymentMethod,
                     cashAmount: cashAmount || undefined,
                     cardAmount: cardAmount || undefined,
+                    voucherAmount: voucherAmount || undefined,
                     changeAmount: changeAmount || undefined,
                     paymentStatus,
                 },

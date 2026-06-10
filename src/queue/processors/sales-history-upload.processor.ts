@@ -458,6 +458,7 @@ export class SalesHistoryUploadProcessor {
                 const creditVoucher = firstRow.creditVoucherAmount || 0;
                 const exchangeVoucher = firstRow.exchangeVoucherAmount || 0;
                 const onCredit = firstRow.onCreditAmount || 0;
+                const voucherAmount = giftVoucher + creditVoucher + exchangeVoucher;
 
                 const totalPaid = cashSale + cardSale + giftVoucher + creditVoucher + exchangeVoucher;
                 let paymentMethod = 'cash';
@@ -555,6 +556,7 @@ export class SalesHistoryUploadProcessor {
                         grandTotal,
                         cashAmount: cashSale || undefined,
                         cardAmount: cardSale || undefined,
+                        voucherAmount: voucherAmount || undefined,
                         tenderType: paymentMethod,
                         fbrInvoiceNumber: fbrInvoiceNumber || undefined,
                         fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
