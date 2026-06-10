@@ -63,12 +63,14 @@ export class PurchaseOrderController {
   }
 
   @Patch(':id/status')
-  @Permissions('erp.procurement.po.update')
+  @Permissions('erp.procurement.po.update', 'erp.procurement.po.check', 'erp.procurement.po.authorize')
   updateStatus(@Param('id') id: string, @Body('status') status: string, @Req() req: any) {
     return this.purchaseOrderService.updateStatus(id, status, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
+      userPermissions: req.user?.permissions,
+      roleName: req.user?.roleName,
     });
   }
 }

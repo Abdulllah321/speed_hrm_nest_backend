@@ -57,6 +57,8 @@ export class ReceiptVoucherService {
       const resolvedDebitAccountId = firstDebitDetail?.accountId ?? data.debitAccountId;
       const resolvedDebitAmount = data.debitAmount || totalDebit || 0;
 
+      const targetStatus = data.status || 'pending';
+
       // Create the receipt voucher
       const rv = await prisma.receiptVoucher.create({
         data: {
@@ -73,7 +75,7 @@ export class ReceiptVoucherService {
           isAdvance: data.isAdvance ?? false,
           isTaxApplicable: data.isTaxApplicable ?? false,
           description: data.description,
-          status: data.status || 'approved',
+          status: targetStatus,
           details: { 
             create: details
               .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
@@ -95,61 +97,21 @@ export class ReceiptVoucherService {
         },
       });
 
-      // ── Update sales invoice payment statuses ────────────────────────────
+      // ── Create invoice links (always) ──
       if (invoices && invoices.length > 0) {
         for (const inv of invoices) {
-          const si = await prisma.eRPSalesInvoice.findUnique({ where: { id: inv.salesInvoiceId } });
-          if (si) {
-            const newPaid = Number(si.paidAmount) + Number(inv.receivedAmount);
-            const newBalance = Number(si.grandTotal) - newPaid;
-            let paymentStatus = 'UNPAID';
-            if (newBalance <= 0.01) paymentStatus = 'FULLY_PAID';
-            else if (newPaid > 0) paymentStatus = 'PARTIALLY_PAID';
-
-            const invoiceStatus = newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'PENDING';
-
-            await prisma.eRPSalesInvoice.update({
-              where: { id: inv.salesInvoiceId },
-              data: {
-                paidAmount: newPaid,
-                balanceAmount: Math.max(0, newBalance),
-                paymentStatus,
-                status: invoiceStatus as any,
-              },
-            });
-
-            await prisma.receiptVoucherToInvoice.create({
-              data: {
-                receiptVoucherId: rv.id,
-                salesInvoiceId: inv.salesInvoiceId,
-                receivedAmount: inv.receivedAmount,
-              },
-            });
-          }
+          await prisma.receiptVoucherToInvoice.create({
+            data: {
+              receiptVoucherId: rv.id,
+              salesInvoiceId: inv.salesInvoiceId,
+              receivedAmount: inv.receivedAmount,
+            },
+          });
         }
       }
 
-      // ── Post journal lines ───────────────────────────────────────────────
-      if (totalDebit > 0) {
-        const allLines = details
-          .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-          .map(d => ({
-            accountId:       d.accountId,
-            tagAccountId:    d.tagAccountId?.trim() || undefined,
-            debit:           Number(d.debit) || 0,
-            credit:          Number(d.credit) || 0,
-            narration:       d.narration || data.description || undefined,
-            refBillNo:       d.refBillNo || data.refBillNo || undefined,
-            isTaxApplicable: d.isTaxApplicable ?? false,
-          }));
-
-        await this.accounting.postLines(allLines, {
-          sourceType: 'RECEIPT_VOUCHER',
-          sourceId: rv.id,
-          sourceRef: rv.rvNo,
-          description: data.description || `Receipt Voucher: ${rv.rvNo}`,
-          transactionDate: new Date(data.rvDate),
-        }, prisma);
+      if (targetStatus === 'approved') {
+        await this.postReceiptVoucherToLedger(rv.id, prisma);
       }
 
       return rv;
@@ -186,7 +148,11 @@ export class ReceiptVoucherService {
 
   async update(id: string, dto: UpdateReceiptVoucherDto) {
     const { details, invoices: _invoices, ...data } = dto as any;
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+
+    if (existing.status !== 'pending') {
+      throw new BadRequestException('Receipt Voucher can only be edited when it is in pending status');
+    }
 
     // Only scalar fields that Prisma accepts on update
     const scalarData = {
@@ -240,8 +206,115 @@ export class ReceiptVoucherService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    if (existing.status !== 'pending') {
+      throw new BadRequestException('Receipt Voucher can only be deleted when it is in pending status');
+    }
     return this.prisma.receiptVoucher.delete({ where: { id } });
+  }
+
+  async updateStatus(id: string, status: string, remarks?: string) {
+    const existing = await this.findOne(id);
+
+    const validStatuses = ['pending', 'approved', 'rejected'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException('Invalid status. Must be pending, approved, or rejected');
+    }
+
+    if (existing.status !== 'pending') {
+      throw new BadRequestException('Receipt Voucher status can only be changed when it is in pending status');
+    }
+
+    return this.prisma.$transaction(async (prisma) => {
+      const updated = await prisma.receiptVoucher.update({
+        where: { id },
+        data: {
+          status,
+          ...(remarks && { description: remarks }),
+        },
+        include: {
+          details: {
+            include: {
+              account: true,
+            },
+          },
+          debitAccount: true,
+          customer: true,
+        },
+      });
+
+      if (status === 'approved') {
+        await this.postReceiptVoucherToLedger(id, prisma);
+      }
+
+      return updated;
+    });
+  }
+
+  private async postReceiptVoucherToLedger(voucherId: string, prisma: any) {
+    const voucher = await prisma.receiptVoucher.findUnique({
+      where: { id: voucherId },
+      include: {
+        details: true,
+      },
+    });
+    if (!voucher) return;
+
+    const details = voucher.details;
+    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
+
+    const invoices = await prisma.receiptVoucherToInvoice.findMany({
+      where: { receiptVoucherId: voucherId },
+    });
+
+    // ── Update sales invoice payment statuses ────────────────────────────
+    if (invoices && invoices.length > 0) {
+      for (const inv of invoices) {
+        const si = await prisma.eRPSalesInvoice.findUnique({ where: { id: inv.salesInvoiceId } });
+        if (si) {
+          const newPaid = Number(si.paidAmount) + Number(inv.receivedAmount);
+          const newBalance = Number(si.grandTotal) - newPaid;
+          let paymentStatus = 'UNPAID';
+          if (newBalance <= 0.01) paymentStatus = 'FULLY_PAID';
+          else if (newPaid > 0) paymentStatus = 'PARTIALLY_PAID';
+
+          const invoiceStatus = newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'PENDING';
+
+          await prisma.eRPSalesInvoice.update({
+            where: { id: inv.salesInvoiceId },
+            data: {
+              paidAmount: newPaid,
+              balanceAmount: Math.max(0, newBalance),
+              paymentStatus,
+              status: invoiceStatus as any,
+            },
+          });
+        }
+      }
+    }
+
+    // ── Post journal lines ───────────────────────────────────────────────
+    if (totalDebit > 0) {
+      const allLines = details
+        .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
+        .map(d => ({
+          accountId:       d.accountId,
+          tagAccountId:    d.tagAccountId?.trim() || undefined,
+          debit:           Number(d.debit) || 0,
+          credit:          Number(d.credit) || 0,
+          narration:       d.narration || voucher.description || undefined,
+          refBillNo:       d.refBillNo || voucher.refBillNo || undefined,
+          isTaxApplicable: d.isTaxApplicable ?? false,
+        }));
+
+      await this.accounting.postLines(allLines, {
+        sourceType: 'RECEIPT_VOUCHER',
+        sourceId: voucher.id,
+        sourceRef: voucher.rvNo,
+        description: voucher.description || `Receipt Voucher: ${voucher.rvNo}`,
+        transactionDate: new Date(voucher.rvDate),
+      }, prisma);
+    }
   }
 
   // ── Customer / Invoice helpers ─────────────────────────────────────────────

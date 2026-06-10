@@ -26,6 +26,11 @@ export class CreateLocationDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ example: '12010001' })
+  @IsOptional()
+  @IsString()
+  cashGLCode?: string;
 }
 
 export class UpdateLocationDto {
@@ -58,6 +63,11 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ example: '12010001' })
+  @IsOptional()
+  @IsString()
+  cashGLCode?: string;
 }
 
 export class UpdateLocationOtherInfoDto {
