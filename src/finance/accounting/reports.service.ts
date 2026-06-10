@@ -2,6 +2,23 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountType } from '@prisma/client';
 
+function parseFromDate(dateStr?: string): Date | undefined {
+  if (!dateStr) return undefined;
+  if (dateStr.includes('T')) {
+    return new Date(dateStr);
+  }
+  return new Date(`${dateStr}T00:00:00.000Z`);
+}
+
+function parseToDate(dateStr?: string): Date | undefined {
+  if (!dateStr) return undefined;
+  if (dateStr.includes('T')) {
+    return new Date(dateStr);
+  }
+  return new Date(`${dateStr}T23:59:59.999Z`);
+}
+
+
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -33,8 +50,8 @@ export class ReportsService {
       allAccounts.map((a) => [a.id, { ...a, balance: Number(a.balance) }]),
     );
 
-    const fromDate = from ? new Date(from) : undefined;
-    const toDate = to ? new Date(to) : undefined;
+    const fromDate = parseFromDate(from);
+    const toDate = parseToDate(to);
 
     // 1. Get Opening Balances
     const openingWhere: any = fromDate
@@ -330,45 +347,69 @@ export class ReportsService {
       account.type === AccountType.ASSET ||
       account.type === AccountType.EXPENSE;
 
-    // Opening balance = sum of all transactions BEFORE `from` matching optional filters
+    const fromDate = parseFromDate(from);
+    const toDate = parseToDate(to);
+
+    // Opening balance = sum of all transactions matching optional filters that precede the query date, plus any OPENING_BALANCE transactions.
     const openingWhere: any = {
-      OR: [
-        { accountId },
-        { tagAccountId: accountId }
+      AND: [
+        {
+          OR: [
+            { accountId },
+            { tagAccountId: accountId }
+          ]
+        }
       ]
     };
-    if (from) {
-      openingWhere.transactionDate = { lt: new Date(from) };
-    }
-    if (sourceType) {
-      openingWhere.sourceType = sourceType;
-    }
 
-    let openingBalance = 0;
-    if (from || sourceType) {
-      const before = await this.prisma.accountTransaction.aggregate({
-        where: openingWhere,
-        _sum: { debit: true, credit: true },
+    if (sourceType) {
+      openingWhere.AND.push({ sourceType });
+      if (fromDate) {
+        openingWhere.AND.push({ transactionDate: { lt: fromDate } });
+      }
+    } else {
+      openingWhere.AND.push({
+        OR: [
+          { sourceType: 'OPENING_BALANCE' },
+          ...(fromDate ? [{
+            transactionDate: { lt: fromDate },
+            sourceType: { not: 'OPENING_BALANCE' }
+          }] : [])
+        ]
       });
-      const d = Number(before._sum.debit ?? 0);
-      const c = Number(before._sum.credit ?? 0);
-      openingBalance = isDebitNormal ? d - c : c - d;
     }
 
+    const before = await this.prisma.accountTransaction.aggregate({
+      where: openingWhere,
+      _sum: { debit: true, credit: true },
+    });
+    const d = Number(before._sum.debit ?? 0);
+    const c = Number(before._sum.credit ?? 0);
+    const openingBalance = isDebitNormal ? d - c : c - d;
+
+    // Transaction rows within range (excluding OPENING_BALANCE transactions)
     const where: any = {
-      OR: [
-        { accountId },
-        { tagAccountId: accountId }
+      AND: [
+        {
+          OR: [
+            { accountId },
+            { tagAccountId: accountId }
+          ]
+        }
       ]
     };
-    if (from || to) {
-      where.transactionDate = {
-        ...(from && { gte: new Date(from) }),
-        ...(to && { lte: new Date(to) }),
-      };
-    }
+
     if (sourceType) {
-      where.sourceType = sourceType;
+      where.AND.push({ sourceType });
+    } else {
+      where.AND.push({ sourceType: { not: 'OPENING_BALANCE' } });
+    }
+
+    if (fromDate || toDate) {
+      const dateConditions: any = {};
+      if (fromDate) dateConditions.gte = fromDate;
+      if (toDate) dateConditions.lte = toDate;
+      where.AND.push({ transactionDate: dateConditions });
     }
 
     // Stable sort order: transactionDate, then createdAt, then id to prevent row shifting
@@ -589,8 +630,10 @@ export class ReportsService {
   // ─────────────────────────────────────────────────────────────────────────
   async getAccountSummary(from?: string, to?: string) {
     const dateFilter: any = {};
-    if (from) dateFilter.gte = new Date(from);
-    if (to) dateFilter.lte = new Date(to);
+    const fromDate = parseFromDate(from);
+    const toDate = parseToDate(to);
+    if (fromDate) dateFilter.gte = fromDate;
+    if (toDate) dateFilter.lte = toDate;
 
     const bySource = await this.prisma.accountTransaction.groupBy({
       by: ['sourceType'],
@@ -648,8 +691,10 @@ export class ReportsService {
     to?: string,
   ): Promise<Map<string, { debit: number; credit: number }>> {
     const dateFilter: any = {};
-    if (from) dateFilter.gte = new Date(from);
-    if (to) dateFilter.lte = new Date(to);
+    const fromDate = parseFromDate(from);
+    const toDate = parseToDate(to);
+    if (fromDate) dateFilter.gte = fromDate;
+    if (toDate) dateFilter.lte = toDate;
 
     const agg = await this.prisma.accountTransaction.groupBy({
       by: ['accountId'],
