@@ -688,6 +688,7 @@ export class PosSessionService {
         let cardSalesCount = 0;
         let voucherSalesCount = 0;
         let totalVouchersReceivedAmt = 0;
+        let giftVouchersReceivedAmt = 0;
 
         // Group card payments and card gift vouchers
         const cardGroup: Record<string, { bank: string; amount: number; rate: number; commission: number }> = {};
@@ -766,6 +767,10 @@ export class PosSessionService {
                     totalVouchersReceivedAmt += amountUsed;
 
                     const v = redemption.voucher;
+                    if (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE' || v.voucherType === 'OUTLET_GIFT') {
+                        giftVouchersReceivedAmt += amountUsed;
+                    }
+
                     let type = 'Vouchers';
                     if (v.voucherType === 'CORPORATE') {
                         type = 'Gift Vouchers Corporate';
@@ -956,7 +961,7 @@ export class PosSessionService {
             + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
         const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
-        const computedSale = totalCards + totalReceived + totalReceivable + totalIssued - fbrTotal;
+        const computedSale = totalCards + totalReceived + totalReceivable + totalIssued - fbrTotal - giftVouchersReceivedAmt;
         const returnAmount = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
             + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
 
