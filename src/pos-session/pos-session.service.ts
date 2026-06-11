@@ -1107,9 +1107,13 @@ export class PosSessionService {
       totalReceivable -
       fbrTotal;
 
-    const returnAmount =
+    const totalIssued =
       exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
+      creditVouchers.reduce((sum, v) => sum + v.amount, 0) +
+      giftVouchers.reduce((sum, v) => sum + v.amount, 0) +
       refundVouchers.reduce((sum, v) => sum + v.amount, 0);
+
+    const returnAmount = totalIssued;
 
     const creditVouchersTotal = creditVouchers.reduce(
       (sum, v) => sum + v.amount,
@@ -1122,8 +1126,7 @@ export class PosSessionService {
     const financials = {
       sale: computedSale,
       salesReturn: returnAmount,
-      netSales:
-        computedSale - returnAmount - creditVouchersTotal - refundVouchersTotal,
+      netSales: computedSale - returnAmount - refundVouchersTotal,
     };
 
     const formatDate = (dateStr: string) => {
