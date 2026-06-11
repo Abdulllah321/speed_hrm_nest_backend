@@ -59,15 +59,23 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
             select: { id: true, barCode: true, sku: true }
         });
 
-        // Map trimmed barcodes and SKUs to internal database item IDs
-        const barcodeToIdMap = new Map<string, string>();
-        const skuToIdMap = new Map<string, string>();
+        // Map trimmed barcodes and SKUs to internal database items (arrays of items since SKU/barcode can match multiple items)
+        const barcodeToItemsMap = new Map<string, typeof existingItems>();
+        const skuToItemsMap = new Map<string, typeof existingItems>();
         for (const item of existingItems) {
             if (item.barCode) {
-                barcodeToIdMap.set(item.barCode.trim(), item.id);
+                const cleanBarcode = item.barCode.trim();
+                if (!barcodeToItemsMap.has(cleanBarcode)) {
+                    barcodeToItemsMap.set(cleanBarcode, []);
+                }
+                barcodeToItemsMap.get(cleanBarcode)!.push(item);
             }
             if (item.sku) {
-                skuToIdMap.set(item.sku.trim(), item.id);
+                const cleanSku = item.sku.trim();
+                if (!skuToItemsMap.has(cleanSku)) {
+                    skuToItemsMap.set(cleanSku, []);
+                }
+                skuToItemsMap.get(cleanSku)!.push(item);
             }
         }
 
@@ -87,15 +95,21 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
                 continue;
             }
 
-            let itemId: string | undefined;
-            if (barCode) {
-                itemId = barcodeToIdMap.get(barCode.trim());
-            }
-            if (!itemId && sku) {
-                itemId = skuToIdMap.get(sku.trim());
+            let matchedItems: typeof existingItems = [];
+
+            // Prefer SKU Code if available
+            if (sku) {
+                const cleanSku = sku.trim();
+                matchedItems = skuToItemsMap.get(cleanSku) || [];
             }
 
-            if (!itemId) {
+            // Fallback to Barcode if SKU not found or not provided
+            if (matchedItems.length === 0 && barCode) {
+                const cleanBarcode = barCode.trim();
+                matchedItems = barcodeToItemsMap.get(cleanBarcode) || [];
+            }
+
+            if (matchedItems.length === 0) {
                 progress.failedRecords++;
                 progress.errors.push({
                     row: record.row,
@@ -119,7 +133,9 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
                 continue;
             }
 
-            validRecordsInBatch.push({ record, itemId, payload });
+            for (const matchedItem of matchedItems) {
+                validRecordsInBatch.push({ record, itemId: matchedItem.id, payload });
+            }
             progress.processedRecords++;
         }
 
@@ -133,24 +149,40 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
                     })
                 );
                 await prisma.$transaction(transactionPromises);
-                progress.successRecords += validRecordsInBatch.length;
+                
+                // Since multiple updates can belong to the same CSV row, count unique rows successfully updated
+                const uniqueRowNumbers = new Set(validRecordsInBatch.map(x => x.record.row));
+                progress.successRecords += uniqueRowNumbers.size;
             } catch (error) {
                 this.logger.error(`Batch transaction update failed: ${error.message}. Retrying individually...`);
                 // Fallback to row-by-row updates for isolation of errors
+                // Group the valid item updates by their original CSV row
+                const rowsGrouped = new Map<number, typeof validRecordsInBatch>();
                 for (const item of validRecordsInBatch) {
+                    const row = item.record.row;
+                    if (!rowsGrouped.has(row)) {
+                        rowsGrouped.set(row, []);
+                    }
+                    rowsGrouped.get(row)!.push(item);
+                }
+
+                for (const [row, items] of rowsGrouped) {
                     try {
-                        await prisma.item.update({
-                            where: { id: item.itemId },
-                            data: item.payload,
-                        });
+                        const promises = items.map(item =>
+                            prisma.item.update({
+                                where: { id: item.itemId },
+                                data: item.payload,
+                            })
+                        );
+                        await prisma.$transaction(promises);
                         progress.successRecords++;
                     } catch (err) {
-                        this.logger.error(`Individual update failed for row ${item.record.row}: ${err.message}`);
+                        this.logger.error(`Individual update failed for row ${row}: ${err.message}`);
                         progress.failedRecords++;
                         progress.errors.push({
-                            row: item.record.row,
+                            row: row,
                             reason: `Update failed: ${err.message}`,
-                            data: item.record.data,
+                            data: items[0].record.data,
                         });
                     }
                 }
