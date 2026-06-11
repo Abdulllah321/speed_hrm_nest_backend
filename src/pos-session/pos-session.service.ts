@@ -669,13 +669,16 @@ export class PosSessionService {
         const totalCards = totalCardReceived;
         const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
         const totalReceivable = totalCreditAmount;
-        const totalIssued = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
-            + creditVouchers.reduce((sum, v) => sum + v.amount, 0)
-            + giftVouchers.reduce((sum, v) => sum + v.amount, 0)
-            + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
         const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
-        const computedSale = totalCards + totalReceived + totalReceivable + totalIssued - fbrTotal;
+        const creditCardGiftVouchersTotal = cardGiftVouchers.reduce((sum, v) => sum + v.amount, 0);
+        const cashGiftVouchersTotal = cashGiftVouchersAmt;
+
+        const computedSale = (totalCards - creditCardGiftVouchersTotal)
+            + (totalReceived - cashGiftVouchersTotal)
+            + totalReceivable
+            - fbrTotal;
+
         const returnAmount = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
             + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
 
