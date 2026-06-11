@@ -12,6 +12,11 @@ export class CreateLocationDto {
   @IsString()
   code?: string;
 
+  @ApiPropertyOptional({ example: 'SSDMC' })
+  @IsOptional()
+  @IsString()
+  shortCode?: string;
+
   @ApiPropertyOptional({ example: '123 Main St' })
   @IsOptional()
   @IsString()
@@ -48,6 +53,11 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsString()
   code?: string;
+
+  @ApiPropertyOptional({ example: 'SSDMC' })
+  @IsOptional()
+  @IsString()
+  shortCode?: string;
 
   @ApiPropertyOptional({ example: '456 Market St' })
   @IsOptional()

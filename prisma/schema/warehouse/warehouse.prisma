@@ -39,6 +39,7 @@ model Location {
   id                 String    @id @default(uuid())
   name               String    @unique
   code               String    @unique @default(cuid())
+  shortCode          String?   @unique @map("short_code")
   phone              String?
   warehouseId        String?   @map("warehouse_id")
   geoFenceEnabled    Boolean   @default(false)

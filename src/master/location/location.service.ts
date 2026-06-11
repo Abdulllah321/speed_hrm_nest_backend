@@ -5,6 +5,16 @@ import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
+export function generateShortCode(name: string): string {
+  if (!name) return 'LOC';
+  return name
+    .split(/[\s\-_]+/)
+    .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
+    .filter((word) => word.length > 0)
+    .map((word) => word[0].toUpperCase())
+    .join('');
+}
+
 @Injectable()
 export class LocationService {
   constructor(
@@ -75,7 +85,7 @@ export class LocationService {
   }
 
   async create(
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -89,6 +99,7 @@ export class LocationService {
           status: body.status ?? 'active',
           createdById: ctx.userId,
           cashGLCode: body.cashGLCode || null,
+          shortCode: body.shortCode?.trim() || generateShortCode(body.name),
         },
       });
       const response = { status: true, data: created };
@@ -130,7 +141,7 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -156,6 +167,10 @@ export class LocationService {
           companyId: body.companyId ?? existing?.companyId,
           status: body.status ?? existing?.status ?? 'active',
           cashGLCode: body.cashGLCode !== undefined ? body.cashGLCode : existing?.cashGLCode,
+          shortCode:
+            body.shortCode !== undefined
+              ? body.shortCode?.trim() || generateShortCode(body.name ?? existing?.name ?? '')
+              : existing?.shortCode,
         },
       });
       const response = { status: true, data: updated };
@@ -349,6 +364,7 @@ export class LocationService {
       cityId?: string;
       status?: string;
       cashGLCode?: string;
+      shortCode?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -364,6 +380,7 @@ export class LocationService {
           status: i.status ?? 'active',
           createdById: ctx.userId,
           cashGLCode: i.cashGLCode || null,
+          shortCode: i.shortCode?.trim() || generateShortCode(i.name),
         })),
         skipDuplicates: true,
       });
@@ -412,6 +429,7 @@ export class LocationService {
       cityId?: string;
       status?: string;
       cashGLCode?: string;
+      shortCode?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -439,6 +457,10 @@ export class LocationService {
                 : existing?.cityId,
             status: i.status ?? existing?.status ?? 'active',
             cashGLCode: i.cashGLCode !== undefined ? i.cashGLCode : existing?.cashGLCode,
+            shortCode:
+              i.shortCode !== undefined
+                ? i.shortCode?.trim() || generateShortCode(i.name ?? existing?.name ?? '')
+                : existing?.shortCode,
           },
         });
       }

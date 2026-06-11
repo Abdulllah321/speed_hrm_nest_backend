@@ -92,8 +92,9 @@ export class PosSessionController {
     async getReconciliationDetails(
         @Req() req: any,
         @Param('id') sessionId: string,
+        @Query('date') date?: string,
     ) {
         this.extractTerminalContext(req);
-        return this.sessionService.getReconciliationDetails(sessionId);
+        return this.sessionService.getReconciliationDetails(sessionId, date);
     }
 }
