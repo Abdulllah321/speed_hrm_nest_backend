@@ -638,7 +638,7 @@ export class PosSessionService {
    * Computes all drawer totals, tax/discount and payment method aggregates,
    * and fetches the cashier user profile from the master database.
    */
-  async getReconciliationDetails(sessionId: string, dateStr?: string) {
+  async getReconciliationDetails(sessionId: string) {
     const session = await this.prisma.posSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -654,42 +654,7 @@ export class PosSessionService {
       throw new NotFoundException('POS Session not found.');
     }
 
-    const locationId = session.pos.locationId;
-
-    // Determine available dates for the session (local calendar days)
-    const dates: string[] = [];
-    const start = new Date(session.openedAt);
-    const end = session.closedAt ? new Date(session.closedAt) : new Date();
-
-    const toLocalDateString = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    const startDateStr = toLocalDateString(start);
-    const endDateStr = toLocalDateString(end);
-
-    let tempDate = new Date(start);
-    while (toLocalDateString(tempDate) <= endDateStr) {
-      dates.push(toLocalDateString(tempDate));
-      tempDate.setDate(tempDate.getDate() + 1);
-    }
-
-    // Validate or fallback selected date
-    const selectedDateStr =
-      dateStr && dates.includes(dateStr) ? dateStr : startDateStr;
-
-    // Calculate time boundaries in server's local time
-    const targetDate = new Date(selectedDateStr + 'T00:00:00');
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    // Fetch Cashier Profile from Central/Master DB for the main session
+    // Fetch Cashier Profile from Central/Master DB
     const cashier = session.userId
       ? await this.prismaMaster.user.findUnique({
           where: { id: session.userId },
@@ -701,15 +666,17 @@ export class PosSessionService {
         })
       : null;
 
-    // Query sales orders at this LOCATION during the selected day
+    // Query sales orders within the timeframe of this session
+    const timeFilter: any = { gte: session.openedAt };
+    if (session.closedAt) {
+      timeFilter.lte = session.closedAt;
+    }
+
     const orders = await this.prisma.salesOrder.findMany({
       where: {
-        locationId: locationId, // Scoped to Location!
+        posId: session.pos.posId, // terminal code (e.g. 001)
         status: 'completed',
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
+        createdAt: timeFilter,
       },
       include: {
         merchant: true,
@@ -725,14 +692,11 @@ export class PosSessionService {
       },
     });
 
-    // Query all vouchers issued during this day at this location
+    // Query all vouchers issued during this session's timeframe at this location
     const issuedVouchers = await this.prisma.voucher.findMany({
       where: {
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-        issuedByLocationId: locationId, // Scoped to Location!
+        createdAt: timeFilter,
+        issuedByLocationId: session.pos.locationId,
       },
       include: {
         claims: true,
@@ -1094,15 +1058,21 @@ export class PosSessionService {
     const totalCards = totalCardReceived;
     const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
     const totalReceivable = totalCreditAmount;
-    const totalIssued =
-      exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
-      creditVouchers.reduce((sum, v) => sum + v.amount, 0) +
-      giftVouchers.reduce((sum, v) => sum + v.amount, 0) +
-      refundVouchers.reduce((sum, v) => sum + v.amount, 0);
     const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
+    const creditCardGiftVouchersTotal = cardGiftVouchers.reduce(
+      (sum, v) => sum + v.amount,
+      0,
+    );
+    const cashGiftVouchersTotal = cashGiftVouchersAmt;
+
     const computedSale =
-      totalCards + totalReceived + totalReceivable + totalIssued - fbrTotal;
+      totalCards -
+      creditCardGiftVouchersTotal +
+      (totalReceived - cashGiftVouchersTotal) +
+      totalReceivable -
+      fbrTotal;
+
     const returnAmount =
       exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
       refundVouchers.reduce((sum, v) => sum + v.amount, 0);
@@ -1122,101 +1092,29 @@ export class PosSessionService {
         computedSale - returnAmount - creditVouchersTotal - refundVouchersTotal,
     };
 
-    // Compute expectation, actual cash, and variance for the selected day across all sessions at the location
-    const sessionsOnDay = await this.prisma.posSession.findMany({
-      where: {
-        pos: {
-          locationId: locationId,
-        },
-        openedAt: {
-          lte: endOfDay,
-        },
-        OR: [{ closedAt: null }, { closedAt: { gte: startOfDay } }],
-      },
-      include: {
-        pos: true,
-      },
-    });
-
-    let totalStartingFloat = 0;
-    for (const s of sessionsOnDay) {
-      if (s.openedAt < startOfDay) {
-        const priorSales = await this.prisma.salesOrder.aggregate({
-          where: {
-            posId: s.pos.posId,
-            status: 'completed',
-            createdAt: {
-              gte: s.openedAt,
-              lt: startOfDay,
-            },
-          },
-          _sum: { cashAmount: true },
-        });
-        const priorCashSales = Number(priorSales._sum.cashAmount ?? 0);
-        totalStartingFloat += Number(s.openingFloat) + priorCashSales;
-      } else {
-        totalStartingFloat += Number(s.openingFloat);
-      }
-    }
-
-    const expectedCash = totalStartingFloat + totalCashReceived;
-
-    let totalActualCash = 0;
-    let anySessionOpen = false;
-    for (const s of sessionsOnDay) {
-      if (s.status === 'open') {
-        anySessionOpen = true;
-      }
-      if (s.closedAt && s.closedAt <= endOfDay) {
-        totalActualCash += Number(s.actualCash ?? 0);
-      } else {
-        const sessionSalesOnDay = await this.prisma.salesOrder.aggregate({
-          where: {
-            posId: s.pos.posId,
-            status: 'completed',
-            createdAt: {
-              gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
-              lte: endOfDay,
-            },
-          },
-          _sum: { cashAmount: true },
-        });
-        const sessionCashSalesOnDay = Number(
-          sessionSalesOnDay._sum.cashAmount ?? 0,
-        );
-
-        let sessionStartingCash = 0;
-        if (s.openedAt < startOfDay) {
-          const priorSales = await this.prisma.salesOrder.aggregate({
-            where: {
-              posId: s.pos.posId,
-              status: 'completed',
-              createdAt: {
-                gte: s.openedAt,
-                lt: startOfDay,
-              },
-            },
-            _sum: { cashAmount: true },
-          });
-          sessionStartingCash =
-            Number(s.openingFloat) + Number(priorSales._sum.cashAmount ?? 0);
-        } else {
-          sessionStartingCash = Number(s.openingFloat);
-        }
-
-        totalActualCash += sessionStartingCash + sessionCashSalesOnDay;
-      }
-    }
-
-    const difference = totalActualCash - expectedCash;
-
-    const formatDate = (date: Date) => {
+    const openedStr = session.openedAt.toISOString();
+    const closedStr = session.closedAt
+      ? session.closedAt.toISOString()
+      : new Date().toISOString();
+    const formatDate = (dateStr: string) => {
+      const date = new Date(dateStr);
       const day = String(date.getDate()).padStart(2, '0');
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const year = date.getFullYear();
       return `${day}/${month}/${year}`;
     };
-    const dateRange = formatDate(startOfDay);
+    const dateRange =
+      formatDate(openedStr) === formatDate(closedStr)
+        ? formatDate(openedStr)
+        : `${formatDate(openedStr)} - ${formatDate(closedStr)}`;
+
+    const openingFloat = Number(session.openingFloat ?? 0);
+    // expectedCash = starting float + total cash received
+    const expectedCash = openingFloat + totalCashReceived;
+    const actualCash =
+      session.actualCash !== null ? Number(session.actualCash) : null;
+    const difference =
+      session.difference !== null ? Number(session.difference) : null;
 
     return {
       companyName: 'Speed (Private) Limited',
@@ -1224,25 +1122,17 @@ export class PosSessionService {
       reportTitle: 'Sales Reconciliation',
       dateRange: dateRange,
       documentNumber: `REC-${session.id ? session.id.substring(0, 8).toUpperCase() : 'TEMP'}`,
-      selectedDate: selectedDateStr,
-      availableDates: dates,
 
       session: {
         id: session.id,
-        status: anySessionOpen ? 'open' : 'closed',
+        status: session.status,
         openedAt: session.openedAt,
         closedAt: session.closedAt,
-        openingFloat: totalStartingFloat,
+        openingFloat,
         openingNote: session.openingNote,
         expectedCash,
-        actualCash:
-          anySessionOpen && totalActualCash === expectedCash
-            ? null
-            : totalActualCash,
-        difference:
-          anySessionOpen && totalActualCash === expectedCash
-            ? null
-            : difference,
+        actualCash,
+        difference,
         closingNote: session.closingNote,
         terminal: {
           name: session.pos.name,
@@ -1298,7 +1188,6 @@ export class PosSessionService {
       },
     };
   }
-
   /**
    * Generates a Journal Voucher for a closed session based on reconciliation details.
    */
@@ -1308,22 +1197,7 @@ export class PosSessionService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const session = await this.prisma.posSession.findUnique({
-        where: { id: sessionId },
-      });
-      const toLocalDateString = (d: Date) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-      const closeDateStr = session?.closedAt
-        ? toLocalDateString(session.closedAt)
-        : undefined;
-      const metrics = await this.getReconciliationDetails(
-        sessionId,
-        closeDateStr,
-      );
+      const metrics = await this.getReconciliationDetails(sessionId);
       const date = metrics.session.closedAt || new Date();
       const locationCode = metrics.session.terminal.locationCode;
       const jvDateStr = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
