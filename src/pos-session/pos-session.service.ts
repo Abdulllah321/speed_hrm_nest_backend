@@ -1134,7 +1134,7 @@ export class PosSessionService {
     const financials = {
       sale: computedSale,
       salesReturn: returnAmount,
-      netSales: computedSale - returnAmount - refundVouchersTotal,
+      netSales: computedSale - returnAmount,
     };
 
     const formatDate = (dateStr: string) => {
