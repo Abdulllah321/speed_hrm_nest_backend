@@ -679,12 +679,8 @@ export class PosSessionService {
             + totalReceivable
             - fbrTotal;
 
-        const totalIssued = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
-            + creditVouchers.reduce((sum, v) => sum + v.amount, 0)
-            + giftVouchers.reduce((sum, v) => sum + v.amount, 0)
+        const returnAmount = exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0)
             + refundVouchers.reduce((sum, v) => sum + v.amount, 0);
-
-        const returnAmount = totalIssued;
 
         const creditVouchersTotal = creditVouchers.reduce((sum, v) => sum + v.amount, 0);
         const refundVouchersTotal = refundVouchers.reduce((sum, v) => sum + v.amount, 0);
