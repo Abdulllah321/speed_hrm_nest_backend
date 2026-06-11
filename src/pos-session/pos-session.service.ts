@@ -62,10 +62,7 @@ export class PosSessionService {
         });
 
         // If parent has an active open session with a float
-        if (
-          parentActiveSession &&
-          parentActiveSession.openingFloat !== null
-        ) {
+        if (parentActiveSession && parentActiveSession.openingFloat !== null) {
           let childActiveSession = activeSession;
           if (!childActiveSession) {
             childActiveSession = await this.prisma.posSession.findFirst({
@@ -147,9 +144,10 @@ export class PosSessionService {
     const calculatedCashSales = cashSales._sum.cashAmount
       ? Number(cashSales._sum.cashAmount)
       : 0;
-    const floatAmount = activeSession.openingFloat !== null
-      ? Number(activeSession.openingFloat)
-      : null;
+    const floatAmount =
+      activeSession.openingFloat !== null
+        ? Number(activeSession.openingFloat)
+        : null;
 
     // The total expected cash = Opening Float + total cash from sales
     const expectedCash = (floatAmount ?? 0) + calculatedCashSales;
@@ -687,7 +685,8 @@ export class PosSessionService {
     }
 
     // Determine the selected date
-    const selectedDate = date && availableDates.includes(date) ? date : availableDates[0];
+    const selectedDate =
+      date && availableDates.includes(date) ? date : availableDates[0];
 
     // Filter by the selected date range
     const startOfDay = new Date(selectedDate + 'T00:00:00');
@@ -696,8 +695,12 @@ export class PosSessionService {
     const endOfDay = new Date(selectedDate + 'T00:00:00');
     endOfDay.setHours(23, 59, 59, 999);
 
-    const startRange = new Date(Math.max(session.openedAt.getTime(), startOfDay.getTime()));
-    const sessionEnd = session.closedAt ? session.closedAt.getTime() : Date.now();
+    const startRange = new Date(
+      Math.max(session.openedAt.getTime(), startOfDay.getTime()),
+    );
+    const sessionEnd = session.closedAt
+      ? session.closedAt.getTime()
+      : Date.now();
     const endRange = new Date(Math.min(sessionEnd, endOfDay.getTime()));
 
     const timeFilter = {
@@ -901,7 +904,10 @@ export class PosSessionService {
         const change = Number(order.changeAmount ?? 0);
         const netCash = Math.max(0, cash - change);
 
-        const creditAmt = Math.max(0, Number((grandTotal - netCash - card - voucher).toFixed(2)));
+        const creditAmt = Math.max(
+          0,
+          Number((grandTotal - netCash - card - voucher).toFixed(2)),
+        );
         if (creditAmt > 0) {
           totalCreditAmount += creditAmt;
         }
@@ -1121,8 +1127,10 @@ export class PosSessionService {
       giftVouchers.reduce((sum, v) => sum + v.amount, 0) +
       refundVouchers.reduce((sum, v) => sum + v.amount, 0);
 
-    const returnAmount = totalIssued;
-
+    const returnAmount =
+      exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
+      refundVouchers.reduce((sum, v) => sum + v.amount, 0);
+      
     const creditVouchersTotal = creditVouchers.reduce(
       (sum, v) => sum + v.amount,
       0,
@@ -1216,8 +1224,7 @@ export class PosSessionService {
             _sum: { cashAmount: true },
           });
           sessionStartingCash =
-            Number(s.openingFloat) +
-            Number(priorSales._sum.cashAmount ?? 0);
+            Number(s.openingFloat) + Number(priorSales._sum.cashAmount ?? 0);
         } else {
           sessionStartingCash = Number(s.openingFloat);
         }
@@ -1225,7 +1232,7 @@ export class PosSessionService {
       }
     }
 
-    const difference = anySessionOpen ? null : (totalActualCash - expectedCash);
+    const difference = anySessionOpen ? null : totalActualCash - expectedCash;
     const finalActualCash = anySessionOpen ? null : totalActualCash;
 
     const startRangeStr = startRange.toISOString();
@@ -1655,7 +1662,9 @@ export class PosSessionService {
         );
 
         if (details.length === 0) {
-          this.logger.log(`No entries to generate JV for session ${sessionId} on ${dateStr}`);
+          this.logger.log(
+            `No entries to generate JV for session ${sessionId} on ${dateStr}`,
+          );
           continue;
         }
 
