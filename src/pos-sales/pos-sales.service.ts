@@ -2206,7 +2206,7 @@ export class PosSalesService implements OnModuleInit {
             return {
                 status: true,
                 data: result,
-                message: `Order ${orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
+                message: `Order ${result.orderNumber} placed on hold until ${holdExpiresAt.toLocaleTimeString()}`,
             };
         } catch (error: any) {
             runInBackground(
