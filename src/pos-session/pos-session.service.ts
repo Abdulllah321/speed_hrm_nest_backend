@@ -32,6 +32,72 @@ export class PosSessionService {
             orderBy: { openedAt: 'desc' },
         });
 
+        // Fetch terminal info to check if it's a child terminal
+        const terminal = await this.prisma.pos.findUnique({
+            where: { id: terminalId },
+        });
+
+        if (terminal && !terminal.isParent) {
+            // Find parent terminal for this location
+            const parentTerminal = await this.prisma.pos.findFirst({
+                where: { locationId: terminal.locationId, isParent: true, isDeleted: false, status: 'active' },
+            });
+            if (parentTerminal) {
+                const parentActiveSession = await this.prisma.posSession.findFirst({
+                    where: { posId: parentTerminal.id, status: 'open' },
+                    orderBy: { openedAt: 'desc' },
+                });
+                
+                // If parent has an active open session with a float
+                if (parentActiveSession && parentActiveSession.openingFloat && Number(parentActiveSession.openingFloat) > 0) {
+                    let childActiveSession = activeSession;
+                    if (!childActiveSession) {
+                        childActiveSession = await this.prisma.posSession.findFirst({
+                            where: { posId: terminalId, status: 'open' },
+                            orderBy: { openedAt: 'desc' },
+                        });
+                    }
+                    if (!childActiveSession) {
+                        childActiveSession = await this.prisma.posSession.create({
+                            data: {
+                                posId: terminalId,
+                                status: 'open',
+                                openingFloat: 0,
+                            }
+                        });
+                    }
+
+                    // Query sales orders for this child terminal within its active session
+                    const cashSales = await this.prisma.salesOrder.aggregate({
+                        where: {
+                            posId: posId,
+                            status: 'completed',
+                            createdAt: {
+                                gte: childActiveSession.openedAt,
+                            },
+                        },
+                        _sum: {
+                            cashAmount: true,
+                        },
+                    });
+
+                    const calculatedCashSales = cashSales._sum.cashAmount ? Number(cashSales._sum.cashAmount) : 0;
+
+                    return {
+                        session: childActiveSession,
+                        metrics: {
+                            openingFloat: 0,
+                            cashSales: calculatedCashSales,
+                            expectedCash: calculatedCashSales,
+                        },
+                        isDrawerOpen: true,
+                        authorizedByParent: true,
+                        parentSessionId: parentActiveSession.id,
+                    };
+                }
+            }
+        }
+
         if (!activeSession) {
             return {
                 session: null,
@@ -82,6 +148,16 @@ export class PosSessionService {
    */
     async openDrawer(terminalId: string, amount: number, note?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const terminal = await this.prisma.pos.findUnique({
+                where: { id: terminalId },
+            });
+            if (!terminal) {
+                throw new NotFoundException('Terminal not found');
+            }
+            if (!terminal.isParent) {
+                throw new BadRequestException('Shifts can only be opened on the Parent Terminal.');
+            }
+
             let activeSession = await this.prisma.posSession.findFirst({
                 where: { posId: terminalId, status: 'open' },
                 orderBy: { openedAt: 'desc' },
@@ -156,6 +232,16 @@ export class PosSessionService {
    */
     async closeDrawer(terminalId: string, posId: string, locationId: string, actualCash: number, note?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
+            const terminal = await this.prisma.pos.findUnique({
+                where: { id: terminalId },
+            });
+            if (!terminal) {
+                throw new NotFoundException('Terminal not found');
+            }
+            if (!terminal.isParent) {
+                throw new BadRequestException('Shifts can only be closed on the Parent Terminal.');
+            }
+
             // We first get the current session and calculations to figure out the variance
             const currentStatus = await this.getCurrentSession(terminalId, posId, locationId);
 
@@ -177,6 +263,27 @@ export class PosSessionService {
                     status: 'closed',
                 },
             });
+
+            // Automatically close all child sessions at this location
+            const openChildSessions = await this.prisma.posSession.findMany({
+                where: {
+                    status: 'open',
+                    pos: {
+                        locationId: locationId,
+                        isParent: false,
+                    },
+                },
+            });
+
+            for (const childSess of openChildSessions) {
+                await this.prisma.posSession.update({
+                    where: { id: childSess.id },
+                    data: {
+                        status: 'closed',
+                        closedAt: new Date(),
+                    },
+                });
+            }
 
             runInBackground(
                 'Close Drawer',
@@ -233,57 +340,117 @@ export class PosSessionService {
         page: number = 1,
         limit: number = 20,
     ) {
+        const terminal = await this.prisma.pos.findUnique({
+            where: { id: terminalId },
+        });
+        if (!terminal) {
+            throw new NotFoundException('Terminal not found');
+        }
+        const locationId = terminal.locationId;
+
+        const parentPos = await this.prisma.pos.findFirst({
+            where: { locationId, isParent: true, isDeleted: false, status: 'active' },
+        });
+        if (!parentPos) {
+            return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+        }
+
+        const parentSessions = await this.prisma.posSession.findMany({
+            where: {
+                posId: parentPos.id,
+                NOT: {
+                    status: 'open',
+                    openingFloat: 0,
+                },
+            },
+            orderBy: { openedAt: 'desc' },
+        });
+
+        const dailyRecords: Array<{
+            dateStr: string;
+            sessionId: string;
+            openedAt: Date;
+            closedAt: Date | null;
+            status: string;
+            openingFloat: number;
+            openingNote: string | null;
+            closingNote: string | null;
+        }> = [];
+
+        const toLocalDateString = (d: Date) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        for (const sess of parentSessions) {
+            const start = new Date(sess.openedAt);
+            const end = sess.closedAt ? new Date(sess.closedAt) : new Date();
+
+            const startDateStr = toLocalDateString(start);
+            const endDateStr = toLocalDateString(end);
+
+            let tempDate = new Date(start);
+            while (toLocalDateString(tempDate) <= endDateStr) {
+                const dateStr = toLocalDateString(tempDate);
+                
+                if (!dailyRecords.some(r => r.dateStr === dateStr)) {
+                    dailyRecords.push({
+                        dateStr,
+                        sessionId: sess.id,
+                        openedAt: sess.openedAt,
+                        closedAt: sess.closedAt,
+                        status: sess.status,
+                        openingFloat: Number(sess.openingFloat),
+                        openingNote: sess.openingNote,
+                        closingNote: sess.closingNote,
+                    });
+                }
+                tempDate.setDate(tempDate.getDate() + 1);
+            }
+        }
+
+        dailyRecords.sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+
+        const total = dailyRecords.length;
         const skip = (page - 1) * limit;
+        const pageRecords = dailyRecords.slice(skip, skip + limit);
 
-        const [sessions, total] = await Promise.all([
-            this.prisma.posSession.findMany({
-                where: {
-                    posId: terminalId,
-                    NOT: {
-                        status: 'open',
-                        openingFloat: 0,
-                    },
-                },
-                orderBy: { openedAt: 'desc' },
-                skip,
-                take: limit,
-            }),
-            this.prisma.posSession.count({
-                where: {
-                    posId: terminalId,
-                    NOT: {
-                        status: 'open',
-                        openingFloat: 0,
-                    },
-                },
-            }),
-        ]);
-
-        // For each session, aggregate sales that occurred within its timeframe
         const enriched = await Promise.all(
-            sessions.map(async (session) => {
-                const timeFilter: any = { gte: session.openedAt };
-                if (session.closedAt) timeFilter.lte = session.closedAt;
+            pageRecords.map(async (record) => {
+                const targetDate = new Date(record.dateStr + 'T00:00:00');
+                const startOfDay = new Date(targetDate);
+                startOfDay.setHours(0, 0, 0, 0);
 
+                const endOfDay = new Date(targetDate);
+                endOfDay.setHours(23, 59, 59, 999);
+
+                // Fetch sales orders for the entire location on this day
                 const [salesAgg, orderCount] = await Promise.all([
                     this.prisma.salesOrder.aggregate({
                         where: {
-                            posId: posId,
+                            locationId: locationId,
                             status: 'completed',
-                            createdAt: timeFilter,
+                            createdAt: {
+                                gte: startOfDay,
+                                lte: endOfDay,
+                            },
                         },
                         _sum: {
                             grandTotal: true,
                             cashAmount: true,
                             cardAmount: true,
                         },
-                        _count: { id: true },
                     }),
                     this.prisma.salesOrder.count({
                         where: {
-                            posId: posId,
+                            locationId: locationId,
                             status: 'completed',
-                            createdAt: timeFilter,
+                            createdAt: {
+                                gte: startOfDay,
+                                lte: endOfDay,
+                            },
                         },
                     }),
                 ]);
@@ -291,19 +458,98 @@ export class PosSessionService {
                 const totalSales = Number(salesAgg._sum.grandTotal ?? 0);
                 const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
                 const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
-                const openingFloat = Number(session.openingFloat ?? 0);
+
+                // Calculate daily expected and actual cash for the location
+                const sessionsOnDay = await this.prisma.posSession.findMany({
+                    where: {
+                        pos: { locationId: locationId },
+                        openedAt: { lte: endOfDay },
+                        OR: [
+                            { closedAt: null },
+                            { closedAt: { gte: startOfDay } },
+                        ],
+                    },
+                    include: { pos: true },
+                });
+
+                let totalStartingFloat = 0;
+                for (const s of sessionsOnDay) {
+                    if (s.openedAt < startOfDay) {
+                        const priorSales = await this.prisma.salesOrder.aggregate({
+                            where: {
+                                posId: s.pos.posId,
+                                status: 'completed',
+                                createdAt: {
+                                    gte: s.openedAt,
+                                    lt: startOfDay,
+                                },
+                            },
+                            _sum: { cashAmount: true },
+                        });
+                        totalStartingFloat += Number(s.openingFloat) + Number(priorSales._sum.cashAmount ?? 0);
+                    } else {
+                        totalStartingFloat += Number(s.openingFloat);
+                    }
+                }
+
+                const expectedCash = totalStartingFloat + cashSales;
+
+                let totalActualCash = 0;
+                let anySessionOpen = false;
+                for (const s of sessionsOnDay) {
+                    if (s.status === 'open') {
+                        anySessionOpen = true;
+                    }
+                    if (s.closedAt && s.closedAt <= endOfDay) {
+                        totalActualCash += Number(s.actualCash ?? 0);
+                    } else {
+                        const sessionSalesOnDay = await this.prisma.salesOrder.aggregate({
+                            where: {
+                                posId: s.pos.posId,
+                                status: 'completed',
+                                createdAt: {
+                                    gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
+                                    lte: endOfDay,
+                                },
+                            },
+                            _sum: { cashAmount: true },
+                        });
+                        const sessionCashSalesOnDay = Number(sessionSalesOnDay._sum.cashAmount ?? 0);
+                        
+                        let sessionStartingCash = 0;
+                        if (s.openedAt < startOfDay) {
+                            const priorSales = await this.prisma.salesOrder.aggregate({
+                                where: {
+                                    posId: s.pos.posId,
+                                    status: 'completed',
+                                    createdAt: {
+                                        gte: s.openedAt,
+                                        lt: startOfDay,
+                                    },
+                                },
+                                _sum: { cashAmount: true },
+                            });
+                            sessionStartingCash = Number(s.openingFloat) + Number(priorSales._sum.cashAmount ?? 0);
+                        } else {
+                            sessionStartingCash = Number(s.openingFloat);
+                        }
+                        totalActualCash += sessionStartingCash + sessionCashSalesOnDay;
+                    }
+                }
+
+                const difference = totalActualCash - expectedCash;
 
                 return {
-                    id: session.id,
-                    status: session.status,
-                    openedAt: session.openedAt,
-                    closedAt: session.closedAt,
-                    openingFloat,
-                    openingNote: session.openingNote,
-                    expectedCash: session.expectedCash ? Number(session.expectedCash) : openingFloat + cashSales,
-                    actualCash: session.actualCash ? Number(session.actualCash) : null,
-                    difference: session.difference ? Number(session.difference) : null,
-                    closingNote: session.closingNote,
+                    id: record.sessionId,
+                    status: anySessionOpen ? 'open' : 'closed',
+                    openedAt: startOfDay,
+                    closedAt: anySessionOpen ? null : endOfDay,
+                    openingFloat: totalStartingFloat,
+                    openingNote: record.openingNote,
+                    expectedCash,
+                    actualCash: anySessionOpen && totalActualCash === expectedCash ? null : totalActualCash,
+                    difference: anySessionOpen && totalActualCash === expectedCash ? null : difference,
+                    closingNote: record.closingNote,
                     metrics: {
                         totalSales,
                         cashSales,
@@ -311,7 +557,7 @@ export class PosSessionService {
                         orderCount,
                     },
                 };
-            }),
+            })
         );
 
         return {
@@ -330,7 +576,7 @@ export class PosSessionService {
      * Computes all drawer totals, tax/discount and payment method aggregates,
      * and fetches the cashier user profile from the master database.
      */
-    async getReconciliationDetails(sessionId: string) {
+    async getReconciliationDetails(sessionId: string, dateStr?: string) {
         const session = await this.prisma.posSession.findUnique({
             where: { id: sessionId },
             include: {
@@ -346,7 +592,41 @@ export class PosSessionService {
             throw new NotFoundException('POS Session not found.');
         }
 
-        // Fetch Cashier Profile from Central/Master DB
+        const locationId = session.pos.locationId;
+
+        // Determine available dates for the session (local calendar days)
+        const dates: string[] = [];
+        const start = new Date(session.openedAt);
+        const end = session.closedAt ? new Date(session.closedAt) : new Date();
+
+        const toLocalDateString = (d: Date) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        const startDateStr = toLocalDateString(start);
+        const endDateStr = toLocalDateString(end);
+
+        let tempDate = new Date(start);
+        while (toLocalDateString(tempDate) <= endDateStr) {
+            dates.push(toLocalDateString(tempDate));
+            tempDate.setDate(tempDate.getDate() + 1);
+        }
+
+        // Validate or fallback selected date
+        const selectedDateStr = dateStr && dates.includes(dateStr) ? dateStr : startDateStr;
+
+        // Calculate time boundaries in server's local time
+        const targetDate = new Date(selectedDateStr + 'T00:00:00');
+        const startOfDay = new Date(targetDate);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(targetDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // Fetch Cashier Profile from Central/Master DB for the main session
         const cashier = session.userId
             ? await this.prismaMaster.user.findUnique({
                   where: { id: session.userId },
@@ -358,17 +638,15 @@ export class PosSessionService {
               })
             : null;
 
-        // Query sales orders within the timeframe of this session
-        const timeFilter: any = { gte: session.openedAt };
-        if (session.closedAt) {
-            timeFilter.lte = session.closedAt;
-        }
-
+        // Query sales orders at this LOCATION during the selected day
         const orders = await this.prisma.salesOrder.findMany({
             where: {
-                posId: session.pos.posId, // terminal code (e.g. 001)
+                locationId: locationId, // Scoped to Location!
                 status: 'completed',
-                createdAt: timeFilter,
+                createdAt: {
+                    gte: startOfDay,
+                    lte: endOfDay,
+                },
             },
             include: {
                 merchant: true,
@@ -384,11 +662,14 @@ export class PosSessionService {
             },
         });
 
-        // Query all vouchers issued during this session's timeframe at this location
+        // Query all vouchers issued during this day at this location
         const issuedVouchers = await this.prisma.voucher.findMany({
             where: {
-                createdAt: timeFilter,
-                issuedByLocationId: session.pos.locationId,
+                createdAt: {
+                    gte: startOfDay,
+                    lte: endOfDay,
+                },
+                issuedByLocationId: locationId, // Scoped to Location!
             },
             include: {
                 claims: true,
@@ -687,24 +968,101 @@ export class PosSessionService {
             netSales: computedSale - returnAmount - creditVouchersTotal - refundVouchersTotal,
         };
 
-        const openedStr = session.openedAt.toISOString();
-        const closedStr = session.closedAt ? session.closedAt.toISOString() : new Date().toISOString();
-        const formatDate = (dateStr: string) => {
-            const date = new Date(dateStr);
+        // Compute expectation, actual cash, and variance for the selected day across all sessions at the location
+        const sessionsOnDay = await this.prisma.posSession.findMany({
+            where: {
+                pos: {
+                    locationId: locationId,
+                },
+                openedAt: {
+                    lte: endOfDay,
+                },
+                OR: [
+                    { closedAt: null },
+                    { closedAt: { gte: startOfDay } },
+                ],
+            },
+            include: {
+                pos: true,
+            },
+        });
+
+        let totalStartingFloat = 0;
+        for (const s of sessionsOnDay) {
+            if (s.openedAt < startOfDay) {
+                const priorSales = await this.prisma.salesOrder.aggregate({
+                    where: {
+                        posId: s.pos.posId,
+                        status: 'completed',
+                        createdAt: {
+                            gte: s.openedAt,
+                            lt: startOfDay,
+                        },
+                    },
+                    _sum: { cashAmount: true },
+                });
+                const priorCashSales = Number(priorSales._sum.cashAmount ?? 0);
+                totalStartingFloat += Number(s.openingFloat) + priorCashSales;
+            } else {
+                totalStartingFloat += Number(s.openingFloat);
+            }
+        }
+
+        const expectedCash = totalStartingFloat + totalCashReceived;
+
+        let totalActualCash = 0;
+        let anySessionOpen = false;
+        for (const s of sessionsOnDay) {
+            if (s.status === 'open') {
+                anySessionOpen = true;
+            }
+            if (s.closedAt && s.closedAt <= endOfDay) {
+                totalActualCash += Number(s.actualCash ?? 0);
+            } else {
+                const sessionSalesOnDay = await this.prisma.salesOrder.aggregate({
+                    where: {
+                        posId: s.pos.posId,
+                        status: 'completed',
+                        createdAt: {
+                            gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
+                            lte: endOfDay,
+                        },
+                    },
+                    _sum: { cashAmount: true },
+                });
+                const sessionCashSalesOnDay = Number(sessionSalesOnDay._sum.cashAmount ?? 0);
+                
+                let sessionStartingCash = 0;
+                if (s.openedAt < startOfDay) {
+                    const priorSales = await this.prisma.salesOrder.aggregate({
+                        where: {
+                            posId: s.pos.posId,
+                            status: 'completed',
+                            createdAt: {
+                                gte: s.openedAt,
+                                lt: startOfDay,
+                            },
+                        },
+                        _sum: { cashAmount: true },
+                    });
+                    sessionStartingCash = Number(s.openingFloat) + Number(priorSales._sum.cashAmount ?? 0);
+                } else {
+                    sessionStartingCash = Number(s.openingFloat);
+                }
+                
+                totalActualCash += sessionStartingCash + sessionCashSalesOnDay;
+            }
+        }
+
+        const difference = totalActualCash - expectedCash;
+
+        const formatDate = (date: Date) => {
             const day = String(date.getDate()).padStart(2, '0');
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const year = date.getFullYear();
             return `${day}/${month}/${year}`;
         };
-        const dateRange = formatDate(openedStr) === formatDate(closedStr)
-            ? formatDate(openedStr)
-            : `${formatDate(openedStr)} - ${formatDate(closedStr)}`;
-
-        const openingFloat = Number(session.openingFloat ?? 0);
-        // expectedCash = starting float + total cash received
-        const expectedCash = openingFloat + totalCashReceived;
-        const actualCash = session.actualCash !== null ? Number(session.actualCash) : null;
-        const difference = session.difference !== null ? Number(session.difference) : null;
+        const dateRange = formatDate(startOfDay);
 
         return {
             companyName: 'Speed (Private) Limited',
@@ -712,17 +1070,19 @@ export class PosSessionService {
             reportTitle: 'Sales Reconciliation',
             dateRange: dateRange,
             documentNumber: `REC-${session.id ? session.id.substring(0, 8).toUpperCase() : 'TEMP'}`,
+            selectedDate: selectedDateStr,
+            availableDates: dates,
 
             session: {
                 id: session.id,
-                status: session.status,
+                status: anySessionOpen ? 'open' : 'closed',
                 openedAt: session.openedAt,
                 closedAt: session.closedAt,
-                openingFloat,
+                openingFloat: totalStartingFloat,
                 openingNote: session.openingNote,
                 expectedCash,
-                actualCash,
-                difference,
+                actualCash: anySessionOpen && totalActualCash === expectedCash ? null : totalActualCash,
+                difference: anySessionOpen && totalActualCash === expectedCash ? null : difference,
                 closingNote: session.closingNote,
                 terminal: {
                     name: session.pos.name,
@@ -783,7 +1143,15 @@ export class PosSessionService {
      */
     private async generateReconciliationVoucher(sessionId: string, terminalId: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const metrics = await this.getReconciliationDetails(sessionId);
+            const session = await this.prisma.posSession.findUnique({ where: { id: sessionId } });
+            const toLocalDateString = (d: Date) => {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            const closeDateStr = session?.closedAt ? toLocalDateString(session.closedAt) : undefined;
+            const metrics = await this.getReconciliationDetails(sessionId, closeDateStr);
             const date = metrics.session.closedAt || new Date();
             const locationCode = metrics.session.terminal.locationCode;
             const jvDateStr = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;

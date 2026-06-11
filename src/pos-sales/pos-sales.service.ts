@@ -40,47 +40,72 @@ export class PosSalesService implements OnModuleInit {
         }, msUntilMidnight);
     }
 
-    // ─── Generate next SO number ──────────────────────────────────────
-    private async generateOrderNumber(): Promise<string> {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        const prefix = `${year}${month}${day}-`;
+    // ─── Generate next SO number per location ──────────────────────────
+    private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        const prismaClient = tx || this.prisma;
+        
+        // Find the location name and configured shortCode
+        const location = await prismaClient.location.findUnique({
+            where: { id: locationId },
+            select: { name: true, shortCode: true }
+        });
 
-        // Fetch the last 50 sales orders to find the latest valid sequence number
-        const lastOrders = await this.prisma.salesOrder.findMany({
+        if (!location) {
+            throw new Error(`Location not found for ID: ${locationId}`);
+        }
+
+        // Determine shortCode: use custom configured shortCode or generate dynamically
+        let shortCode = location.shortCode?.trim();
+        if (!shortCode) {
+            // Helper logic matching generateShortCode from location.service.ts
+            shortCode = location.name
+                .split(/[\s\-_]+/)
+                .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                .filter((word) => word.length > 0)
+                .map((word) => word[0].toUpperCase())
+                .join('');
+        }
+        if (!shortCode) {
+            shortCode = 'LOC';
+        }
+
+        // Fiscal Year Start (Pakistan: July 1st)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-indexed, July is 6
+        const fiscalYearStartYear = month >= 6 ? year : year - 1;
+        const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
+
+        // Find the latest sales order for this location created during the current fiscal year
+        const lastOrder = await prismaClient.salesOrder.findFirst({
+            where: {
+                locationId,
+                createdAt: { gte: fiscalYearStartDate },
+                orderNumber: { startsWith: `SI-${shortCode}-` }
+            },
             orderBy: { createdAt: 'desc' },
-            take: 50,
-            select: { orderNumber: true },
+            select: { orderNumber: true }
         });
 
         let seq = 1;
-        for (const order of lastOrders) {
-            if (order.orderNumber) {
-                const parts = order.orderNumber.split('-');
-                const lastPart = parts[parts.length - 1] || '';
-                // Ensure the last part consists entirely of digits
-                if (/^\d+$/.test(lastPart)) {
-                    const lastSeq = parseInt(lastPart, 10);
-                    if (!isNaN(lastSeq)) {
-                        seq = lastSeq + 1;
-                        break;
-                    }
-                }
+        if (lastOrder && lastOrder.orderNumber) {
+            const parts = lastOrder.orderNumber.split('-');
+            const lastPart = parts[parts.length - 1];
+            if (/^\d+$/.test(lastPart)) {
+                seq = parseInt(lastPart, 10) + 1;
             }
         }
 
-        let nextOrderNumber = `${prefix}${String(seq).padStart(5, '0')}`;
-        let exists = await this.prisma.salesOrder.findUnique({
+        let nextOrderNumber = `SI-${shortCode}-${String(seq).padStart(5, '0')}`;
+        let exists = await prismaClient.salesOrder.findUnique({
             where: { orderNumber: nextOrderNumber },
             select: { id: true }
         });
-        
+
         while (exists) {
             seq++;
-            nextOrderNumber = `${prefix}${String(seq).padStart(5, '0')}`;
-            exists = await this.prisma.salesOrder.findUnique({
+            nextOrderNumber = `SI-${shortCode}-${String(seq).padStart(5, '0')}`;
+            exists = await prismaClient.salesOrder.findUnique({
                 where: { orderNumber: nextOrderNumber },
                 select: { id: true }
             });
@@ -164,8 +189,11 @@ export class PosSalesService implements OnModuleInit {
 
         try {
             const result = await this.prisma.$transaction(async (tx) => {
-                const orderNumber = await this.generateOrderNumber();
                 const locationId = dto.locationId;
+                if (!locationId) {
+                    throw new Error('Location ID is required to create a sales order.');
+                }
+                const orderNumber = await this.generateOrderNumber(locationId, tx);
 
                 // ── Resolve default warehouse ───────────────────────────
                 const warehouse = await tx.warehouse.findFirst({
@@ -2058,8 +2086,6 @@ export class PosSalesService implements OnModuleInit {
     // ─── Hold order (max 1 hour, auto-cleared at midnight) ───────────
     async holdOrder(dto: CreateSalesOrderDto, cashierUserId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const orderNumber = await this.generateOrderNumber();
-
             const now = new Date();
             const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
             const midnight = new Date(now);
@@ -2093,6 +2119,11 @@ export class PosSalesService implements OnModuleInit {
             const grandTotal = Math.max(0, Math.round(subtotal - totalDiscount + totalTax));
 
             const result = await this.prisma.$transaction(async (tx) => {
+                const locationId = dto.locationId;
+                if (!locationId) {
+                    throw new Error('Location ID is required to hold an order.');
+                }
+                const orderNumber = await this.generateOrderNumber(locationId, tx);
                 const order = await tx.salesOrder.create({
                     data: {
                         orderNumber,
