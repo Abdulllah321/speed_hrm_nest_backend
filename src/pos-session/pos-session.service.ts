@@ -894,9 +894,17 @@ export class PosSessionService {
       // Receivable On Credit
       if (
         order.paymentMethod === 'credit_account' ||
-        order.tenderType === 'credit_account'
+        order.tenderType === 'credit_account' ||
+        order.paymentMethod === 'split' ||
+        order.tenderType === 'split'
       ) {
-        totalCreditAmount += grandTotal;
+        const change = Number(order.changeAmount ?? 0);
+        const netCash = Math.max(0, cash - change);
+
+        const creditAmt = Math.max(0, Number((grandTotal - netCash - card - voucher).toFixed(2)));
+        if (creditAmt > 0) {
+          totalCreditAmount += creditAmt;
+        }
       }
     }
 
