@@ -17,6 +17,8 @@ const includeMasterData = {
   color: true,
   itemClass: true,
   itemSubclass: true,
+  hsCode: true,
+  segment: true,
 };
 
 @Injectable()
@@ -42,12 +44,13 @@ export class ItemService {
   }
 
   private async generateNextItemId(): Promise<string> {
-    const last = await this.prisma.item.findFirst({
-      orderBy: { itemId: 'desc' },
-      select: { itemId: true },
-    });
-    const lastNum =
-      last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+    const last = await this.prisma.$queryRaw<{ itemId: string }[]>`
+      SELECT "itemId" FROM "Item"
+      WHERE "itemId" ~ '^[0-9]+$'
+      ORDER BY CAST("itemId" AS INTEGER) DESC
+      LIMIT 1
+    `;
+    const lastNum = last && last[0] ? parseInt(last[0].itemId, 10) : 0;
     const next = lastNum + 1;
     if (next > 999999) {
       throw new Error('Item ID sequence exceeded maximum 999999');
