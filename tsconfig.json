@@ -26,6 +26,5 @@
     "node_modules",
     "dist",
     "prisma/**/*.ts",
-    "scripts/**/*.ts"
   ]
 }
