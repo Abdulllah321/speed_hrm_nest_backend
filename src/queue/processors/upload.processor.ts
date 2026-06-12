@@ -583,27 +583,22 @@ export class UploadProcessor {
 
         // ── Auto-generate itemIds for new records ────────────────────────────
         if (recordsNeedingId.length > 0) {
-            // Find the current highest numeric itemId by fetching the top 100 items desc
-            // filtering to match lexicographically within numeric bounds.
-            const itemsList = await prisma.item.findMany({
-                where: {
-                    itemId: {
-                        gte: '000000',
-                        lte: '99999999',
-                    }
-                },
-                orderBy: { itemId: 'desc' },
-                take: 100,
-                select: { itemId: true },
-            });
-            const last = itemsList.find(i => /^\d+$/.test(i.itemId));
-            const lastNum = last ? parseInt(last.itemId, 10) : 0;
+            // Use raw SQL MAX(CAST) so we get the true numeric maximum regardless
+            // of string padding differences that fool Postgres lexicographic ordering.
+            const maxResult = await prisma.$queryRaw<{ max_id: number | null }[]>`
+                SELECT MAX(CAST("itemId" AS BIGINT)) AS max_id
+                FROM "Item"
+                WHERE "itemId" ~ '^[0-9]+$'
+            `;
+            const lastNum = maxResult[0]?.max_id ? Number(maxResult[0].max_id) : 0;
+            this.logger.log(`[UploadProcessor] Current max numeric itemId: ${lastNum}. Generating ${recordsNeedingId.length} new IDs starting from ${lastNum + 1}.`);
 
             let counter = lastNum;
             for (const record of recordsNeedingId) {
                 counter++;
                 if (counter > 9999999) throw new Error('Item ID sequence exceeded maximum 9999999');
                 record.data.itemId = String(counter).padStart(6, '0');
+                this.logger.log(`[UploadProcessor] Row ${record.row}: Assigned new itemId: ${record.data.itemId}`);
             }
         }
 
@@ -640,39 +635,31 @@ export class UploadProcessor {
             }
         }
 
-        // Execute Bulk Creation
+        // Execute Bulk Creation — use upsert per record so nothing is ever silently skipped.
+        // createMany+skipDuplicates returns 0 when it perceives ANY duplicate in the batch,
+        // causing entire batches to be discarded. Upsert guarantees every row is handled.
         if (toCreate.length > 0) {
-            try {
-                const result = await prisma.item.createMany({
-                    data: toCreate,
-                    skipDuplicates: true
-                });
-                const insertedCount = result?.count ?? 0;
-                progress.successRecords += insertedCount;
-                progress.skippedRecords += (toCreate.length - insertedCount);
-                progress.processedRecords += toCreate.length;
-
-                // Add to successful IDs
-                for (const item of toCreate) {
-                    newItemIds.add(item.itemId);
+            this.logger.log(`[UploadProcessor] Creating ${toCreate.length} new items via upsert...`);
+            for (const item of toCreate) {
+                try {
+                    await prisma.item.upsert({
+                        where: { itemId: item.itemId },
+                        update: item,   // Overwrite if somehow the ID already exists
+                        create: item,
+                    });
+                    progress.successRecords++;
+                    newItemIds.add(item.itemId);   // Only track confirmed inserts/upserts
+                    this.logger.log(`[UploadProcessor] Created/upserted new item: itemId=${item.itemId}, sku=${item.sku}, barCode=${item.barCode}`);
+                } catch (e) {
+                    this.logger.error(`[UploadProcessor] Failed to upsert new item itemId=${item.itemId} sku=${item.sku}: ${e.message}`);
+                    progress.failedRecords++;
+                    progress.errors.push({
+                        row: -1,
+                        reason: `Create failed for itemId ${item.itemId}: ${e.message}`,
+                        data: { itemId: item.itemId, sku: item.sku },
+                    });
                 }
-
-                if (insertedCount < toCreate.length) {
-                    this.logger.warn(`[Bulk Item Upload] Succeeded but partially skipped: requested ${toCreate.length}, actually inserted ${insertedCount}. Mismatched ${toCreate.length - insertedCount} records might already exist (skipDuplicates: true).`);
-                }
-            } catch (error) {
-                this.logger.error(`Bulk create failed, falling back to individual processing: ${error.message}`);
-                // Fallback to individual for this specific subset if bulk fails (rare)
-                for (const item of toCreate) {
-                    try {
-                        await prisma.item.create({ data: item });
-                        progress.successRecords++;
-                        newItemIds.add(item.itemId);
-                    } catch (e) {
-                        progress.failedRecords++;
-                    }
-                    progress.processedRecords++;
-                }
+                progress.processedRecords++;
             }
         }
 
