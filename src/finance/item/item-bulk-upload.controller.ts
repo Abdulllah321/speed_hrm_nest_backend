@@ -146,6 +146,20 @@ export class ItemBulkUploadController {
         };
     }
 
+    @Get(':uploadId/success-report')
+    @ApiOperation({ summary: 'Download success export report (CSV)' })
+    async downloadSuccessReport(
+        @Param('uploadId') uploadId: string,
+        @Res() res: any,
+    ) {
+        const result = await this.bulkUploadService.prepareSuccessReport(uploadId);
+        if (!result.ready) {
+            throw new BadRequestException('Success report not found or not generated yet.');
+        }
+
+        await this.bulkUploadService.streamSuccessReport(uploadId, res);
+    }
+
     // More specific sub-paths before less specific ones
     @Get(':uploadId/error-report')
     @ApiOperation({ summary: 'Download error report (streamed CSV) or check readiness via ?prepare=true' })

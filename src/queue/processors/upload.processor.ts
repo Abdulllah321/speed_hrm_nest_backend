@@ -93,6 +93,7 @@ export class UploadProcessor {
             let successRecordsCount = 0;
             let lastEmitTime = Date.now();
             const itemIdSet = new Set<string>(); // For duplicate detection (memory intensive but better than full records)
+            const successfulItemIds = new Set<string>();
 
             if (mode === 'import') {
                 // Stage 2: Streaming Batch Import
@@ -129,7 +130,7 @@ export class UploadProcessor {
                     importBatch.push(record);
 
                     if (importBatch.length >= 1000) {
-                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
+                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, successfulItemIds);
                         importBatch = []; // Clear memory
 
                         // Yield to event loop to prevent blocking other requests
@@ -177,7 +178,107 @@ export class UploadProcessor {
 
                 // Final small batch
                 if (importBatch.length > 0) {
-                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
+                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, successfulItemIds);
+                }
+
+                // Generate success report if we had successes (100% backend/DB data)
+                if (successfulItemIds.size > 0) {
+                    this.logger.log(`[Job ${job.id}] Generating success export report for ${successfulItemIds.size} items...`);
+                    const successReportPath = path.join(process.cwd(), 'uploads', 'bulk', `success-${uploadId}.csv`);
+                    const errorReportDir = path.dirname(successReportPath);
+                    if (!fs.existsSync(errorReportDir)) {
+                        fs.mkdirSync(errorReportDir, { recursive: true });
+                    }
+
+                    const successItems = await prisma.item.findMany({
+                        where: { itemId: { in: Array.from(successfulItemIds) } },
+                        include: {
+                            brand: true,
+                            division: true,
+                            gender: true,
+                            size: true,
+                            silhouette: true,
+                            channelClass: true,
+                            color: true,
+                            category: true,
+                            subCategory: true,
+                            itemClass: true,
+                            itemSubclass: true,
+                            season: true,
+                            segment: true,
+                            hsCode: true,
+                        }
+                    });
+
+                    const csvWriter = fs.createWriteStream(successReportPath, { flags: 'w' });
+                    const headers = [
+                        'ItemID', 'SKU', 'BarCode', 'Description', 'UnitPrice', 'UnitCost', 'FOB',
+                        'TaxRate1', 'TaxRate2', 'DiscountRate', 'DiscountAmount', 'Status', 'IsActive',
+                        'Brand', 'Division', 'Gender', 'Size', 'Silhouette', 'ChannelClass', 'Color',
+                        'Category', 'SubCategory', 'ItemClass', 'ItemSubclass', 'Season', 'Segment',
+                        'HSCode', 'UOM', 'Currency', 'LaunchDate', 'OldSeason', 'CaseMaterial', 'Band',
+                        'MovementType', 'MovementName', 'HeelHeight', 'Width', 'CreatedAt', 'UpdatedAt'
+                    ];
+                    csvWriter.write(headers.join(',') + '\n');
+
+                    const escapeCsv = (val: any): string => {
+                        if (val === null || val === undefined) return '';
+                        const str = String(val).replace(/"/g, '""');
+                        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+                            return `"${str}"`;
+                        }
+                        return str;
+                    };
+
+                    for (const item of successItems) {
+                        const row = [
+                            escapeCsv(item.itemId),
+                            escapeCsv(item.sku),
+                            escapeCsv(item.barCode),
+                            escapeCsv(item.description),
+                            item.unitPrice,
+                            item.unitCost,
+                            item.fob,
+                            item.taxRate1 ?? 0,
+                            item.taxRate2 ?? 0,
+                            item.discountRate ?? 0,
+                            item.discountAmount ?? 0,
+                            escapeCsv(item.status),
+                            item.isActive,
+                            escapeCsv(item.brand?.name),
+                            escapeCsv(item.division?.name),
+                            escapeCsv(item.gender?.name),
+                            escapeCsv(item.size?.name),
+                            escapeCsv(item.silhouette?.name),
+                            escapeCsv(item.channelClass?.name),
+                            escapeCsv(item.color?.name),
+                            escapeCsv(item.category?.name),
+                            escapeCsv(item.subCategory?.name),
+                            escapeCsv(item.itemClass?.name),
+                            escapeCsv(item.itemSubclass?.name),
+                            escapeCsv(item.season?.name),
+                            escapeCsv(item.segment?.name),
+                            escapeCsv(item.hsCode?.hsCode),
+                            escapeCsv(item.uom),
+                            escapeCsv(item.currency),
+                            escapeCsv(item.launchDate?.toISOString()),
+                            escapeCsv(item.oldSeason),
+                            escapeCsv(item.case),
+                            escapeCsv(item.band),
+                            escapeCsv(item.movementType),
+                            escapeCsv(item.movementName),
+                            escapeCsv(item.heelHeight),
+                            escapeCsv(item.width),
+                            escapeCsv(item.createdAt?.toISOString()),
+                            escapeCsv(item.updatedAt?.toISOString())
+                        ];
+                        csvWriter.write(row.join(',') + '\n');
+                    }
+
+                    await new Promise<void>((resolve, reject) => {
+                        csvWriter.end((err: any) => err ? reject(err) : resolve());
+                    });
+                    this.logger.log(`[Job ${job.id}] Success export report generated successfully at ${successReportPath}`);
                 }
             } else {
                 // Stage 1: Validation Mode
@@ -398,7 +499,14 @@ export class UploadProcessor {
     /**
      * Process a batch of records with individual error isolation and bulk operations
      */
-    private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
+    private async processBatch(
+        batch: ParsedRecord[],
+        progress: UploadProgress,
+        uploadId: string,
+        prisma: PrismaService,
+        tenantMasterData: MasterDataService,
+        successfulItemIds: Set<string>
+    ): Promise<void> {
         // ── Bulk existence check by ItemID, Barcode, and SKU ─────────────────
         const itemIds = batch.map(r => r.data.itemId ? String(r.data.itemId).trim() : '').filter(Boolean);
         const barcodes = batch.map(r => r.data.barCode ? String(r.data.barCode).trim() : '').filter(Boolean);
@@ -447,10 +555,12 @@ export class UploadProcessor {
             }
 
             if (match) {
+                this.logger.log(`[UploadProcessor] Row ${record.row}: Match found - Carry Over Item. SKU: ${sku || 'N/A'}, Barcode: ${barCode || 'N/A'}, matched to existing database ItemID: ${match.itemId}`);
                 matchedRecordMap.set(record.row, match);
                 // Sync the matched ID back to record data so prepareItemData gets the correct mapped context
                 record.data.itemId = match.itemId;
             } else {
+                this.logger.log(`[UploadProcessor] Row ${record.row}: No match found - Outstanding (New) Item. SKU: ${sku || 'N/A'}, Barcode: ${barCode || 'N/A'}`);
                 if (!itemId) {
                     recordsNeedingId.push(record);
                 }
@@ -478,7 +588,7 @@ export class UploadProcessor {
         }
 
         const toCreate: any[] = [];
-        const toUpdate: Array<{ id: string, data: any, row: number }> = [];
+        const toUpdate: Array<{ id: string, data: any, row: number, itemId: string }> = [];
 
         for (const record of batch) {
             try {
@@ -489,7 +599,8 @@ export class UploadProcessor {
                     toUpdate.push({
                         id: match.id,
                         data: itemData,
-                        row: record.row
+                        row: record.row,
+                        itemId: match.itemId
                     });
                 } else {
                     toCreate.push({
@@ -521,6 +632,11 @@ export class UploadProcessor {
                 progress.skippedRecords += (toCreate.length - insertedCount);
                 progress.processedRecords += toCreate.length;
 
+                // Add to successful IDs
+                for (const item of toCreate) {
+                    successfulItemIds.add(item.itemId);
+                }
+
                 if (insertedCount < toCreate.length) {
                     this.logger.warn(`[Bulk Item Upload] Succeeded but partially skipped: requested ${toCreate.length}, actually inserted ${insertedCount}. Mismatched ${toCreate.length - insertedCount} records might already exist (skipDuplicates: true).`);
                 }
@@ -531,6 +647,7 @@ export class UploadProcessor {
                     try {
                         await prisma.item.create({ data: item });
                         progress.successRecords++;
+                        successfulItemIds.add(item.itemId);
                     } catch (e) {
                         progress.failedRecords++;
                     }
@@ -550,6 +667,9 @@ export class UploadProcessor {
                     );
                     progress.successRecords += chunk.length;
                     progress.processedRecords += chunk.length;
+                    for (const item of chunk) {
+                        successfulItemIds.add(item.itemId);
+                    }
                 } catch (error) {
                     // Transaction failed — fall back to individual so we can isolate which rows failed
                     this.logger.warn(`Batch update transaction failed for chunk ${i / chunkSize + 1}, falling back to individual: ${error.message}`);
@@ -557,6 +677,7 @@ export class UploadProcessor {
                         try {
                             await prisma.item.update({ where: { id: item.id }, data: item.data });
                             progress.successRecords++;
+                            successfulItemIds.add(item.itemId);
                         } catch (e) {
                             progress.failedRecords++;
                             progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
