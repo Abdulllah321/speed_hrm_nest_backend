@@ -9,6 +9,7 @@ import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as XLSX from 'xlsx';
 
 export interface UploadJobData {
     uploadId: string;
@@ -92,8 +93,9 @@ export class UploadProcessor {
             let totalRecordsCount = 0;
             let successRecordsCount = 0;
             let lastEmitTime = Date.now();
-            const itemIdSet = new Set<string>(); // For duplicate detection (memory intensive but better than full records)
-            const successfulItemIds = new Set<string>();
+            const itemIdSet = new Set<string>();
+            const carryOverItemIds = new Set<string>();
+            const newItemIds = new Set<string>();
 
             if (mode === 'import') {
                 // Stage 2: Streaming Batch Import
@@ -130,7 +132,7 @@ export class UploadProcessor {
                     importBatch.push(record);
 
                     if (importBatch.length >= 1000) {
-                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, successfulItemIds);
+                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, carryOverItemIds, newItemIds);
                         importBatch = []; // Clear memory
 
                         // Yield to event loop to prevent blocking other requests
@@ -178,106 +180,116 @@ export class UploadProcessor {
 
                 // Final small batch
                 if (importBatch.length > 0) {
-                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, successfulItemIds);
+                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, carryOverItemIds, newItemIds);
                 }
 
-                // Generate success report if we had successes (100% backend/DB data)
-                if (successfulItemIds.size > 0) {
-                    this.logger.log(`[Job ${job.id}] Generating success export report for ${successfulItemIds.size} items...`);
-                    const successReportPath = path.join(process.cwd(), 'uploads', 'bulk', `success-${uploadId}.csv`);
+                // Generate success report if we had successes (100% backend/DB data in multi-sheet Excel format)
+                if (carryOverItemIds.size > 0 || newItemIds.size > 0) {
+                    this.logger.log(`[Job ${job.id}] Generating success export report for ${carryOverItemIds.size} carry overs and ${newItemIds.size} new items...`);
+                    const successReportPath = path.join(process.cwd(), 'uploads', 'bulk', `success-${uploadId}.xlsx`);
                     const errorReportDir = path.dirname(successReportPath);
                     if (!fs.existsSync(errorReportDir)) {
                         fs.mkdirSync(errorReportDir, { recursive: true });
                     }
 
-                    const successItems = await prisma.item.findMany({
-                        where: { itemId: { in: Array.from(successfulItemIds) } },
-                        include: {
-                            brand: true,
-                            division: true,
-                            gender: true,
-                            size: true,
-                            silhouette: true,
-                            channelClass: true,
-                            color: true,
-                            category: true,
-                            subCategory: true,
-                            itemClass: true,
-                            itemSubclass: true,
-                            season: true,
-                            segment: true,
-                            hsCode: true,
-                        }
+                    const mapItemToExcelRow = (item: any) => ({
+                        'Item ID': item.itemId,
+                        'SKU': item.sku,
+                        'Barcode': item.barCode,
+                        'Description': item.description,
+                        'Unit Price': item.unitPrice,
+                        'Unit Cost': item.unitCost,
+                        'FOB': item.fob,
+                        'Sale Tax Rate': item.taxRate1 ?? 0,
+                        'Additional Sales Tax': item.taxRate2 ?? 0,
+                        'Discount %': item.discountRate ?? 0,
+                        'Discount Amount': item.discountAmount ?? 0,
+                        'Status': item.status,
+                        'Is Active': item.isActive ? 'Yes' : 'No',
+                        'Brand': item.brand?.name || '',
+                        'Division': item.division?.name || '',
+                        'Gender': item.gender?.name || '',
+                        'Size': item.size?.name || '',
+                        'Silhouette': item.silhouette?.name || '',
+                        'Channel Class': item.channelClass?.name || '',
+                        'Color': item.color?.name || '',
+                        'Category': item.category?.name || '',
+                        'Sub Category': item.subCategory?.name || '',
+                        'Item Class': item.itemClass?.name || '',
+                        'Item Subclass': item.itemSubclass?.name || '',
+                        'Season': item.season?.name || '',
+                        'Segment': item.segment?.name || '',
+                        'HS Code': item.hsCode?.hsCode || '',
+                        'UOM': item.uom || '',
+                        'Currency': item.currency || '',
+                        'Launch Date': item.launchDate ? item.launchDate.toISOString().split('T')[0] : '',
+                        'Old Season': item.oldSeason || '',
+                        'Case Material': item.case || '',
+                        'Band': item.band || '',
+                        'Movement Type': item.movementType || '',
+                        'Movement Name': item.movementName || '',
+                        'Heel Height': item.heelHeight || '',
+                        'Width': item.width || '',
+                        'Created At': item.createdAt ? item.createdAt.toISOString() : '',
+                        'Updated At': item.updatedAt ? item.updatedAt.toISOString() : ''
                     });
 
-                    const csvWriter = fs.createWriteStream(successReportPath, { flags: 'w' });
-                    const headers = [
-                        'ItemID', 'SKU', 'BarCode', 'Description', 'UnitPrice', 'UnitCost', 'FOB',
-                        'TaxRate1', 'TaxRate2', 'DiscountRate', 'DiscountAmount', 'Status', 'IsActive',
-                        'Brand', 'Division', 'Gender', 'Size', 'Silhouette', 'ChannelClass', 'Color',
-                        'Category', 'SubCategory', 'ItemClass', 'ItemSubclass', 'Season', 'Segment',
-                        'HSCode', 'UOM', 'Currency', 'LaunchDate', 'OldSeason', 'CaseMaterial', 'Band',
-                        'MovementType', 'MovementName', 'HeelHeight', 'Width', 'CreatedAt', 'UpdatedAt'
-                    ];
-                    csvWriter.write(headers.join(',') + '\n');
-
-                    const escapeCsv = (val: any): string => {
-                        if (val === null || val === undefined) return '';
-                        const str = String(val).replace(/"/g, '""');
-                        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
-                            return `"${str}"`;
-                        }
-                        return str;
-                    };
-
-                    for (const item of successItems) {
-                        const row = [
-                            escapeCsv(item.itemId),
-                            escapeCsv(item.sku),
-                            escapeCsv(item.barCode),
-                            escapeCsv(item.description),
-                            item.unitPrice,
-                            item.unitCost,
-                            item.fob,
-                            item.taxRate1 ?? 0,
-                            item.taxRate2 ?? 0,
-                            item.discountRate ?? 0,
-                            item.discountAmount ?? 0,
-                            escapeCsv(item.status),
-                            item.isActive,
-                            escapeCsv(item.brand?.name),
-                            escapeCsv(item.division?.name),
-                            escapeCsv(item.gender?.name),
-                            escapeCsv(item.size?.name),
-                            escapeCsv(item.silhouette?.name),
-                            escapeCsv(item.channelClass?.name),
-                            escapeCsv(item.color?.name),
-                            escapeCsv(item.category?.name),
-                            escapeCsv(item.subCategory?.name),
-                            escapeCsv(item.itemClass?.name),
-                            escapeCsv(item.itemSubclass?.name),
-                            escapeCsv(item.season?.name),
-                            escapeCsv(item.segment?.name),
-                            escapeCsv(item.hsCode?.hsCode),
-                            escapeCsv(item.uom),
-                            escapeCsv(item.currency),
-                            escapeCsv(item.launchDate?.toISOString()),
-                            escapeCsv(item.oldSeason),
-                            escapeCsv(item.case),
-                            escapeCsv(item.band),
-                            escapeCsv(item.movementType),
-                            escapeCsv(item.movementName),
-                            escapeCsv(item.heelHeight),
-                            escapeCsv(item.width),
-                            escapeCsv(item.createdAt?.toISOString()),
-                            escapeCsv(item.updatedAt?.toISOString())
-                        ];
-                        csvWriter.write(row.join(',') + '\n');
+                    let carryOversRows: any[] = [];
+                    if (carryOverItemIds.size > 0) {
+                        const carryOverItems = await prisma.item.findMany({
+                            where: { itemId: { in: Array.from(carryOverItemIds) } },
+                            include: {
+                                brand: true,
+                                division: true,
+                                gender: true,
+                                size: true,
+                                silhouette: true,
+                                channelClass: true,
+                                color: true,
+                                category: true,
+                                subCategory: true,
+                                itemClass: true,
+                                itemSubclass: true,
+                                season: true,
+                                segment: true,
+                                hsCode: true,
+                            }
+                        });
+                        carryOversRows = carryOverItems.map(mapItemToExcelRow);
                     }
 
-                    await new Promise<void>((resolve, reject) => {
-                        csvWriter.end((err: any) => err ? reject(err) : resolve());
-                    });
+                    let newItemsRows: any[] = [];
+                    if (newItemIds.size > 0) {
+                        const newItems = await prisma.item.findMany({
+                            where: { itemId: { in: Array.from(newItemIds) } },
+                            include: {
+                                brand: true,
+                                division: true,
+                                gender: true,
+                                size: true,
+                                silhouette: true,
+                                channelClass: true,
+                                color: true,
+                                category: true,
+                                subCategory: true,
+                                itemClass: true,
+                                itemSubclass: true,
+                                season: true,
+                                segment: true,
+                                hsCode: true,
+                            }
+                        });
+                        newItemsRows = newItems.map(mapItemToExcelRow);
+                    }
+
+                    const wb = XLSX.utils.book_new();
+                    const wsCarryOvers = XLSX.utils.json_to_sheet(carryOversRows);
+                    const wsNewItems = XLSX.utils.json_to_sheet(newItemsRows);
+
+                    XLSX.utils.book_append_sheet(wb, wsCarryOvers, 'Carry Overs');
+                    XLSX.utils.book_append_sheet(wb, wsNewItems, 'New Items');
+
+                    XLSX.writeFile(wb, successReportPath);
                     this.logger.log(`[Job ${job.id}] Success export report generated successfully at ${successReportPath}`);
                 }
             } else {
@@ -326,11 +338,15 @@ export class UploadProcessor {
                     return Promise.resolve();
                 };
 
+                    const itemIdSet = new Set<string>();
+                    const barCodeSet = new Set<string>();
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
 
                     const itemId = record.data.itemId ? String(record.data.itemId).trim() : undefined;
                     const barCode = record.data.barCode ? String(record.data.barCode).trim() : undefined;
+
+
 
                     if (record.data.itemId) {
                         const normalized = String(record.data.itemId).trim().toLowerCase();
@@ -496,16 +512,14 @@ export class UploadProcessor {
         }
     }
 
-    /**
-     * Process a batch of records with individual error isolation and bulk operations
-     */
     private async processBatch(
         batch: ParsedRecord[],
         progress: UploadProgress,
         uploadId: string,
         prisma: PrismaService,
         tenantMasterData: MasterDataService,
-        successfulItemIds: Set<string>
+        carryOverItemIds: Set<string>,
+        newItemIds: Set<string>
     ): Promise<void> {
         // ── Bulk existence check by ItemID, Barcode, and SKU ─────────────────
         const itemIds = batch.map(r => r.data.itemId ? String(r.data.itemId).trim() : '').filter(Boolean);
@@ -570,8 +584,14 @@ export class UploadProcessor {
         // ── Auto-generate itemIds for new records ────────────────────────────
         if (recordsNeedingId.length > 0) {
             // Find the current highest numeric itemId by fetching the top 100 items desc
-            // and finding the first one that has exactly a 6-digit numeric ID.
+            // filtering to match lexicographically within 6-digit numeric bounds.
             const itemsList = await prisma.item.findMany({
+                where: {
+                    itemId: {
+                        gte: '000000',
+                        lte: '999999',
+                    }
+                },
                 orderBy: { itemId: 'desc' },
                 take: 100,
                 select: { itemId: true },
@@ -634,7 +654,7 @@ export class UploadProcessor {
 
                 // Add to successful IDs
                 for (const item of toCreate) {
-                    successfulItemIds.add(item.itemId);
+                    newItemIds.add(item.itemId);
                 }
 
                 if (insertedCount < toCreate.length) {
@@ -647,7 +667,7 @@ export class UploadProcessor {
                     try {
                         await prisma.item.create({ data: item });
                         progress.successRecords++;
-                        successfulItemIds.add(item.itemId);
+                        newItemIds.add(item.itemId);
                     } catch (e) {
                         progress.failedRecords++;
                     }
@@ -668,7 +688,7 @@ export class UploadProcessor {
                     progress.successRecords += chunk.length;
                     progress.processedRecords += chunk.length;
                     for (const item of chunk) {
-                        successfulItemIds.add(item.itemId);
+                        carryOverItemIds.add(item.itemId);
                     }
                 } catch (error) {
                     // Transaction failed — fall back to individual so we can isolate which rows failed
@@ -677,7 +697,7 @@ export class UploadProcessor {
                         try {
                             await prisma.item.update({ where: { id: item.id }, data: item.data });
                             progress.successRecords++;
-                            successfulItemIds.add(item.itemId);
+                            carryOverItemIds.add(item.itemId);
                         } catch (e) {
                             progress.failedRecords++;
                             progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
