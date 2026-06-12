@@ -42,12 +42,13 @@ export class ItemService {
   }
 
   private async generateNextItemId(): Promise<string> {
-    const last = await this.prisma.item.findFirst({
+    const itemsList = await this.prisma.item.findMany({
       orderBy: { itemId: 'desc' },
+      take: 100,
       select: { itemId: true },
     });
-    const lastNum =
-      last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+    const last = itemsList.find((i) => /^\d{6}$/.test(i.itemId));
+    const lastNum = last ? parseInt(last.itemId, 10) : 0;
     const next = lastNum + 1;
     if (next > 999999) {
       throw new Error('Item ID sequence exceeded maximum 999999');

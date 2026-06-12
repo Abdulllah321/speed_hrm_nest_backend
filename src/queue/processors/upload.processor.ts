@@ -404,14 +404,16 @@ export class UploadProcessor {
         const rowsNeedingId = batch.filter(r => !r.data.itemId || String(r.data.itemId).trim() === '');
 
         if (rowsNeedingId.length > 0) {
-            // Find the current highest numeric itemId in one query, then assign a
-            // contiguous block — avoids N round-trips and is race-condition safe
-            // because createMany with skipDuplicates handles any collision.
-            const last = await prisma.item.findFirst({
+            // Find the current highest numeric itemId by fetching the top 100 items desc
+            // and finding the first one that has exactly a 6-digit numeric ID.
+            // This prevents custom string IDs (like "ITEM-001") from resetting the sequence.
+            const itemsList = await prisma.item.findMany({
                 orderBy: { itemId: 'desc' },
+                take: 100,
                 select: { itemId: true },
             });
-            const lastNum = last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+            const last = itemsList.find(i => /^\d{6}$/.test(i.itemId));
+            const lastNum = last ? parseInt(last.itemId, 10) : 0;
 
             let counter = lastNum;
             for (const record of rowsNeedingId) {
@@ -464,12 +466,18 @@ export class UploadProcessor {
         // Execute Bulk Creation
         if (toCreate.length > 0) {
             try {
-                await prisma.item.createMany({
+                const result = await prisma.item.createMany({
                     data: toCreate,
                     skipDuplicates: true
                 });
-                progress.successRecords += toCreate.length;
+                const insertedCount = result?.count ?? 0;
+                progress.successRecords += insertedCount;
+                progress.skippedRecords += (toCreate.length - insertedCount);
                 progress.processedRecords += toCreate.length;
+
+                if (insertedCount < toCreate.length) {
+                    this.logger.warn(`[Bulk Item Upload] Succeeded but partially skipped: requested ${toCreate.length}, actually inserted ${insertedCount}. Mismatched ${toCreate.length - insertedCount} records might already exist (skipDuplicates: true).`);
+                }
             } catch (error) {
                 this.logger.error(`Bulk create failed, falling back to individual processing: ${error.message}`);
                 // Fallback to individual for this specific subset if bulk fails (rare)

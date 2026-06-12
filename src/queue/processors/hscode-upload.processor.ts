@@ -71,11 +71,13 @@ export class HsCodeUploadProcessor extends BaseUploadProcessor<HsCodeParsedRecor
         // Execute Bulk Creation
         if (toCreate.length > 0) {
             try {
-                await prisma.hsCode.createMany({
+                const result = await prisma.hsCode.createMany({
                     data: toCreate,
                     skipDuplicates: true
                 });
-                progress.successRecords += toCreate.length;
+                const insertedCount = result?.count ?? 0;
+                progress.successRecords += insertedCount;
+                progress.skippedRecords += (toCreate.length - insertedCount);
             } catch (error) {
                 this.logger.error(`Bulk create of HS Codes failed: ${error.message}`);
                 // Fallback to individual
