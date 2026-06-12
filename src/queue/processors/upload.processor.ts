@@ -399,14 +399,68 @@ export class UploadProcessor {
      * Process a batch of records with individual error isolation and bulk operations
      */
     private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
-        // ── Auto-generate itemIds for rows that don't have one ────────────────
-        // Count how many rows need a generated ID
-        const rowsNeedingId = batch.filter(r => !r.data.itemId || String(r.data.itemId).trim() === '');
+        // ── Bulk existence check by ItemID, Barcode, and SKU ─────────────────
+        const itemIds = batch.map(r => r.data.itemId ? String(r.data.itemId).trim() : '').filter(Boolean);
+        const barcodes = batch.map(r => r.data.barCode ? String(r.data.barCode).trim() : '').filter(Boolean);
+        const skus = batch.map(r => r.data.sku ? String(r.data.sku).trim() : '').filter(Boolean);
 
-        if (rowsNeedingId.length > 0) {
+        const orConditions: any[] = [];
+        if (itemIds.length > 0) orConditions.push({ itemId: { in: itemIds } });
+        if (barcodes.length > 0) orConditions.push({ barCode: { in: barcodes } });
+        if (skus.length > 0) orConditions.push({ sku: { in: skus } });
+
+        const existingItems = orConditions.length > 0
+            ? await prisma.item.findMany({
+                where: { OR: orConditions },
+                select: { id: true, itemId: true, barCode: true, sku: true }
+              })
+            : [];
+
+        // Build lookup maps
+        const itemIdMap = new Map<string, string>();
+        const barcodeMap = new Map<string, { id: string; itemId: string }>();
+        const skuMap = new Map<string, { id: string; itemId: string }>();
+
+        for (const item of existingItems) {
+            itemIdMap.set(item.itemId, item.id);
+            if (item.barCode) barcodeMap.set(item.barCode.trim(), { id: item.id, itemId: item.itemId });
+            if (item.sku) skuMap.set(item.sku.trim(), { id: item.id, itemId: item.itemId });
+        }
+
+        // Determine which records already exist and which ones need auto-generated IDs
+        const matchedRecordMap = new Map<number, { id: string; itemId: string }>();
+        const recordsNeedingId: ParsedRecord[] = [];
+
+        for (const record of batch) {
+            const itemId = record.data.itemId ? String(record.data.itemId).trim() : undefined;
+            const barCode = record.data.barCode ? String(record.data.barCode).trim() : undefined;
+            const sku = record.data.sku ? String(record.data.sku).trim() : undefined;
+
+            let match: { id: string; itemId: string } | undefined = undefined;
+
+            if (itemId && itemIdMap.has(itemId)) {
+                match = { id: itemIdMap.get(itemId)!, itemId };
+            } else if (barCode && barcodeMap.has(barCode)) {
+                match = barcodeMap.get(barCode);
+            } else if (sku && skuMap.has(sku)) {
+                match = skuMap.get(sku);
+            }
+
+            if (match) {
+                matchedRecordMap.set(record.row, match);
+                // Sync the matched ID back to record data so prepareItemData gets the correct mapped context
+                record.data.itemId = match.itemId;
+            } else {
+                if (!itemId) {
+                    recordsNeedingId.push(record);
+                }
+            }
+        }
+
+        // ── Auto-generate itemIds for new records ────────────────────────────
+        if (recordsNeedingId.length > 0) {
             // Find the current highest numeric itemId by fetching the top 100 items desc
             // and finding the first one that has exactly a 6-digit numeric ID.
-            // This prevents custom string IDs (like "ITEM-001") from resetting the sequence.
             const itemsList = await prisma.item.findMany({
                 orderBy: { itemId: 'desc' },
                 take: 100,
@@ -416,20 +470,12 @@ export class UploadProcessor {
             const lastNum = last ? parseInt(last.itemId, 10) : 0;
 
             let counter = lastNum;
-            for (const record of rowsNeedingId) {
+            for (const record of recordsNeedingId) {
                 counter++;
                 if (counter > 9999999) throw new Error('Item ID sequence exceeded maximum 9999999');
                 record.data.itemId = String(counter).padStart(6, '0');
             }
         }
-
-        // Bulk existence check
-        const itemIds = batch.map(r => String(r.data.itemId)).filter(Boolean);
-        const existingItems = await prisma.item.findMany({
-            where: { itemId: { in: itemIds } },
-            select: { id: true, itemId: true }
-        });
-        const existingMap = new Map(existingItems.map(i => [i.itemId, i.id]));
 
         const toCreate: any[] = [];
         const toUpdate: Array<{ id: string, data: any, row: number }> = [];
@@ -437,18 +483,18 @@ export class UploadProcessor {
         for (const record of batch) {
             try {
                 const itemData = await this.prepareItemData(record, tenantMasterData);
-                const itemId = String(record.data.itemId);
+                const match = matchedRecordMap.get(record.row);
 
-                if (existingMap.has(itemId)) {
+                if (match) {
                     toUpdate.push({
-                        id: existingMap.get(itemId) as string,
+                        id: match.id,
                         data: itemData,
                         row: record.row
                     });
                 } else {
                     toCreate.push({
                         ...itemData,
-                        itemId: itemId, // Required for creation
+                        itemId: String(record.data.itemId),
                     });
                 }
             } catch (error) {
