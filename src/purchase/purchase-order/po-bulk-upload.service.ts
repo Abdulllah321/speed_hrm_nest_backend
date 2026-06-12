@@ -22,27 +22,38 @@ export class PoBulkUploadService {
         userId: string,
         metadata?: { vendorId?: string; orderType?: string; goodsType?: string; expectedDeliveryDate?: string; notes?: string }
     ): Promise<{ uploadId: string; jobId: string }> {
-        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const upload = await this.prisma.bulkUpload.create({
-            data: { jobId: tempJobId, filename, totalRecords: 0, uploadedBy: userId, status: 'validating' },
-        });
-
         const uploadDir = path.join(process.cwd(), 'uploads', 'bulk', 'po');
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-        const ext = filename.split('.').pop();
-        fs.writeFileSync(path.join(uploadDir, `po-upload-${upload.id}.${ext}`), fileBuffer);
-
+        // Step 1: Add the job first to get the real jobId from Bull
         const job = await this.uploadQueue.add({
-            uploadId: upload.id, fileBuffer, filename, userId,
+            uploadId: '__pending__', fileBuffer, filename, userId,
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'validate',
             metadata,
         } as any, { removeOnComplete: false, removeOnFail: false });
 
-        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: String(job.id) } });
-        return { uploadId: upload.id, jobId: String(job.id) };
+        const jobId = String(job.id);
+
+        // Step 2: Create the DB record with the real jobId in a single operation — no update needed
+        const upload = await this.prisma.bulkUpload.create({
+            data: { jobId, filename, totalRecords: 0, uploadedBy: userId, status: 'validating' },
+        });
+
+        const ext = filename.split('.').pop();
+        fs.writeFileSync(path.join(uploadDir, `po-upload-${upload.id}.${ext}`), fileBuffer);
+
+        // Step 3: Update the job payload with the real uploadId so the worker can use it
+        await job.update({
+            uploadId: upload.id, fileBuffer, filename, userId,
+            tenantId: this.prisma.getTenantId() || '',
+            tenantDbUrl: this.prisma.getTenantDbUrl() || '',
+            mode: 'validate',
+            metadata,
+        } as any);
+
+        return { uploadId: upload.id, jobId };
     }
 
     async confirmUpload(
