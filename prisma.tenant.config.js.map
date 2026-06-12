@@ -1,1 +1,0 @@
-{"version":3,"file":"prisma.tenant.config.js","sourceRoot":"","sources":["prisma.tenant.config.ts"],"names":[],"mappings":";;AAAA,yBAAsB;AAEtB,0CAAmC;AAEnC,kBAAe;IACb,MAAM,EAAE,eAAe;IACvB,UAAU,EAAE;QACV,IAAI,EAAE,0BAA0B;KACjC;IACD,UAAU,EAAE;QACV,GAAG,EAAE,IAAA,YAAG,EAAC,qBAAqB,CAAC;KAChC;CACqB,CAAA"}
