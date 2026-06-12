@@ -825,7 +825,11 @@ export class PosSessionService {
             (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE'),
         );
         const vouchersValue = orderIssuedVouchers.reduce(
-          (sum, v) => sum + Number(v.faceValue),
+          (sum, v) => {
+            const fVal = Number(v.faceValue);
+            const discAmt = Number(v.discount ?? 0);
+            return sum + (fVal - discAmt);
+          },
           0,
         );
 
@@ -941,6 +945,7 @@ export class PosSessionService {
     // Track how much of cash/card was for gift vouchers issued
     let cashGiftVouchersAmt = 0;
     let cardGiftVouchersAmt = 0;
+    let totalGiftVoucherDiscount = 0;
 
     for (const v of issuedVouchers) {
       const faceValue = Number(v.faceValue);
@@ -980,6 +985,10 @@ export class PosSessionService {
             ? 'Gift Vouchers Corporate'
             : 'Gift Vouchers';
 
+        const discountAmount = Number(v.discount ?? 0);
+        const netAmount = faceValue - discountAmount;
+        totalGiftVoucherDiscount += discountAmount;
+
         // Attribute to Cash vs Card based on paymentMode or purchase order
         let isCard = false;
         let isCash = false;
@@ -1013,14 +1022,14 @@ export class PosSessionService {
         }
 
         if (isCard) {
-          cardGiftVouchersAmt += faceValue;
+          cardGiftVouchersAmt += netAmount;
 
           // If this voucher is NOT linked to an order already counted in the order loop,
           // we must add its card payment/commission to cardGiftVouchers/totalCardReceived
           const isLinkedToOrder =
             v.sourceOrderId && orders.some((o) => o.id === v.sourceOrderId);
           if (!isLinkedToOrder) {
-            totalCardReceived += faceValue;
+            totalCardReceived += netAmount;
             cardSalesCount++;
 
             const bankName = v.merchant?.bankName || 'Unknown Bank';
@@ -1035,16 +1044,16 @@ export class PosSessionService {
                 commission: 0,
               };
             }
-            cardVoucherGroup[bankName].amount += faceValue;
-            cardVoucherGroup[bankName].commission += faceValue * rateDecimal;
+            cardVoucherGroup[bankName].amount += netAmount;
+            cardVoucherGroup[bankName].commission += netAmount * rateDecimal;
           }
         } else if (isCash) {
-          cashGiftVouchersAmt += faceValue;
+          cashGiftVouchersAmt += netAmount;
 
           const isLinkedToOrder =
             v.sourceOrderId && orders.some((o) => o.id === v.sourceOrderId);
           if (!isLinkedToOrder) {
-            totalCashReceived += faceValue;
+            totalCashReceived += netAmount;
             cashSalesCount++;
           }
         }
@@ -1301,6 +1310,7 @@ export class PosSessionService {
         creditVouchers,
         giftVouchers,
         refundVouchers,
+        totalGiftVoucherDiscount,
       },
       fbrCharges,
       financials,
