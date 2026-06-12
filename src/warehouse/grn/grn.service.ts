@@ -270,8 +270,8 @@ export class GrnService {
     }
 
     const currentStatus = grn.status;
-    const isChecker = ctx.permissions.includes('erp.procurement.grn.check') || ctx.roleName === 'Admin';
-    const isAuthorizer = ctx.permissions.includes('erp.procurement.grn.authorize') || ctx.roleName === 'Admin';
+    const isChecker = ctx.permissions.includes('erp.procurement.grn.check') || ctx.permissions.includes('*') || ctx.roleName?.toLowerCase() === 'admin';
+    const isAuthorizer = ctx.permissions.includes('erp.procurement.grn.authorize') || ctx.permissions.includes('*') || ctx.roleName?.toLowerCase() === 'admin';
 
     if (currentStatus === 'PENDING_CHECKER') {
       if (!isChecker) {
