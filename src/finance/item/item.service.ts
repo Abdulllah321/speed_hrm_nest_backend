@@ -59,7 +59,7 @@ export class ItemService {
       take: 100,
       select: { itemId: true },
     });
-    const last = itemsList.find((i) => /^\d{6}$/.test(i.itemId));
+    const last = itemsList.find((i) => /^\d+$/.test(i.itemId));
     const lastNum = last ? parseInt(last.itemId, 10) : 0;
     const next = lastNum + 1;
     if (next > 99999999) {
