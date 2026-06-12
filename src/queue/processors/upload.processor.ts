@@ -584,19 +584,19 @@ export class UploadProcessor {
         // ── Auto-generate itemIds for new records ────────────────────────────
         if (recordsNeedingId.length > 0) {
             // Find the current highest numeric itemId by fetching the top 100 items desc
-            // filtering to match lexicographically within 6-digit numeric bounds.
+            // filtering to match lexicographically within numeric bounds.
             const itemsList = await prisma.item.findMany({
                 where: {
                     itemId: {
                         gte: '000000',
-                        lte: '999999',
+                        lte: '99999999',
                     }
                 },
                 orderBy: { itemId: 'desc' },
                 take: 100,
                 select: { itemId: true },
             });
-            const last = itemsList.find(i => /^\d{6}$/.test(i.itemId));
+            const last = itemsList.find(i => /^\d+$/.test(i.itemId));
             const lastNum = last ? parseInt(last.itemId, 10) : 0;
 
             let counter = lastNum;
