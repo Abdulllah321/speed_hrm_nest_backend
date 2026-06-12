@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateItemDto, UpdateItemDto, BulkDiscountDto, RollbackCampaignDto, BulkSalePriceDto } from './dto/item.dto';
+import {
+  CreateItemDto,
+  UpdateItemDto,
+  BulkDiscountDto,
+  RollbackCampaignDto,
+  BulkSalePriceDto,
+} from './dto/item.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
@@ -24,7 +30,7 @@ export class ItemService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async create(createItemDto: CreateItemDto) {
     try {
@@ -43,6 +49,12 @@ export class ItemService {
 
   private async generateNextItemId(): Promise<string> {
     const itemsList = await this.prisma.item.findMany({
+      where: {
+        itemId: {
+          gte: '000000',
+          lte: '99999999',
+        },
+      },
       orderBy: { itemId: 'desc' },
       take: 100,
       select: { itemId: true },
@@ -50,8 +62,8 @@ export class ItemService {
     const last = itemsList.find((i) => /^\d{6}$/.test(i.itemId));
     const lastNum = last ? parseInt(last.itemId, 10) : 0;
     const next = lastNum + 1;
-    if (next > 999999) {
-      throw new Error('Item ID sequence exceeded maximum 999999');
+    if (next > 99999999) {
+      throw new Error('Item ID sequence exceeded maximum 99999999');
     }
     return String(next).padStart(6, '0');
   }
@@ -108,8 +120,15 @@ export class ItemService {
 
     // ── Allowed sortable columns (direct item fields) ──────────────────
     const directSortFields = new Set([
-      'itemId', 'sku', 'unitPrice', 'isActive', 'createdAt',
-      'updatedAt', 'description', 'barCode', 'hsCode',
+      'itemId',
+      'sku',
+      'unitPrice',
+      'isActive',
+      'createdAt',
+      'updatedAt',
+      'description',
+      'barCode',
+      'hsCode',
     ]);
 
     const relationalSortFields: Record<string, string> = {
@@ -167,7 +186,13 @@ export class ItemService {
 
     // ── Query ──────────────────────────────────────────────────────────
     const [items, total] = await Promise.all([
-      this.prisma.item.findMany({ where, skip, take: limit, orderBy, include: includeMasterData }),
+      this.prisma.item.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: includeMasterData,
+      }),
       this.prisma.item.count({ where }),
     ]);
 
@@ -256,19 +281,34 @@ export class ItemService {
             discountEndDate: null,
           }
         : {
-            ...(dto.discountRate !== undefined && { discountRate: dto.discountRate }),
-            ...(dto.discountAmount !== undefined && { discountAmount: dto.discountAmount }),
-            ...(dto.discountStartDate !== undefined && { discountStartDate: dto.discountStartDate }),
-            ...(dto.discountEndDate !== undefined && { discountEndDate: dto.discountEndDate }),
+            ...(dto.discountRate !== undefined && {
+              discountRate: dto.discountRate,
+            }),
+            ...(dto.discountAmount !== undefined && {
+              discountAmount: dto.discountAmount,
+            }),
+            ...(dto.discountStartDate !== undefined && {
+              discountStartDate: dto.discountStartDate,
+            }),
+            ...(dto.discountEndDate !== undefined && {
+              discountEndDate: dto.discountEndDate,
+            }),
           };
 
       // ── 3. Build per-item override map ─────────────────────────────────
-      const overrideMap = new Map<string, { discountRate?: number; discountAmount?: number }>();
+      const overrideMap = new Map<
+        string,
+        { discountRate?: number; discountAmount?: number }
+      >();
       if (!dto.clearDiscount && dto.overrides?.length) {
         for (const ov of dto.overrides) {
           overrideMap.set(ov.id, {
-            ...(ov.discountRate !== undefined && { discountRate: ov.discountRate }),
-            ...(ov.discountAmount !== undefined && { discountAmount: ov.discountAmount }),
+            ...(ov.discountRate !== undefined && {
+              discountRate: ov.discountRate,
+            }),
+            ...(ov.discountAmount !== undefined && {
+              discountAmount: ov.discountAmount,
+            }),
           });
         }
       }
@@ -276,8 +316,14 @@ export class ItemService {
       // ── 4. Apply item updates + persist campaign atomically ───────────
       const overriddenIds = new Set(overrideMap.keys());
       const bulkIds = dto.itemIds.filter((id) => !overriddenIds.has(id));
-      const overriddenItemIds = dto.itemIds.filter((id) => overriddenIds.has(id));
-      const discountType = dto.clearDiscount ? 'clear' : dto.discountRate !== undefined ? 'percent' : 'fixed';
+      const overriddenItemIds = dto.itemIds.filter((id) =>
+        overriddenIds.has(id),
+      );
+      const discountType = dto.clearDiscount
+        ? 'clear'
+        : dto.discountRate !== undefined
+          ? 'percent'
+          : 'fixed';
 
       const campaign = await this.prisma.$transaction(async (tx) => {
         // Fast path: single updateMany for items with no override
@@ -362,11 +408,17 @@ export class ItemService {
       });
 
       if (!campaign) {
-        return { status: false, message: `Campaign ${dto.campaignId} not found` };
+        return {
+          status: false,
+          message: `Campaign ${dto.campaignId} not found`,
+        };
       }
 
       if (!campaign.items.length) {
-        return { status: false, message: 'No snapshot data available for rollback' };
+        return {
+          status: false,
+          message: 'No snapshot data available for rollback',
+        };
       }
 
       // Restore each item to its pre-campaign discount state, then delete campaign — atomically
@@ -404,8 +456,14 @@ export class ItemService {
       if (!dto.itemIds || dto.itemIds.length === 0) {
         return { status: false, message: 'No item IDs provided' };
       }
-      if (dto.unitPrice === undefined && (!dto.overrides || dto.overrides.length === 0)) {
-        return { status: false, message: 'Provide a unitPrice or per-item overrides' };
+      if (
+        dto.unitPrice === undefined &&
+        (!dto.overrides || dto.overrides.length === 0)
+      ) {
+        return {
+          status: false,
+          message: 'Provide a unitPrice or per-item overrides',
+        };
       }
 
       // Build override map for O(1) lookup
@@ -416,7 +474,9 @@ export class ItemService {
 
       const overriddenIds = new Set(overrideMap.keys());
       const bulkIds = dto.itemIds.filter((id) => !overriddenIds.has(id));
-      const overriddenItemIds = dto.itemIds.filter((id) => overriddenIds.has(id));
+      const overriddenItemIds = dto.itemIds.filter((id) =>
+        overriddenIds.has(id),
+      );
 
       await this.prisma.$transaction(async (tx) => {
         // Single updateMany for items with no override
@@ -513,7 +573,7 @@ export class ItemService {
           OR: [
             { barCode: { in: barcodes } },
             { sku: { in: barcodes } },
-            { itemId: { in: barcodes } }
+            { itemId: { in: barcodes } },
           ],
         },
         include: includeMasterData,
@@ -561,7 +621,6 @@ export class ItemService {
       ...new Set(items.map((i) => i.hsCodeId).filter(Boolean)),
     ];
 
-
     const [
       brands,
       divisions,
@@ -577,87 +636,86 @@ export class ItemService {
       itemSubclasses,
       hsCodes,
     ]: [
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-        any[],
-      ] = await Promise.all([
-        brandIds.length
-          ? this.prisma.brand.findMany({
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+      any[],
+    ] = await Promise.all([
+      brandIds.length
+        ? this.prisma.brand.findMany({
             where: { id: { in: brandIds as string[] } },
           })
-          : [],
-        divisionIds.length
-          ? this.prisma.division.findMany({
+        : [],
+      divisionIds.length
+        ? this.prisma.division.findMany({
             where: { id: { in: divisionIds as string[] } },
           })
-          : [],
-        categoryIds.length
-          ? this.prisma.category.findMany({
+        : [],
+      categoryIds.length
+        ? this.prisma.category.findMany({
             where: { id: { in: categoryIds as string[] } },
           })
-          : [],
-        subCategoryIds.length
-          ? this.prisma.category.findMany({
+        : [],
+      subCategoryIds.length
+        ? this.prisma.category.findMany({
             where: { id: { in: subCategoryIds as string[] } },
           })
-          : [],
-        seasonIds.length
-          ? this.prisma.season.findMany({
+        : [],
+      seasonIds.length
+        ? this.prisma.season.findMany({
             where: { id: { in: seasonIds as string[] } },
           })
-          : [],
-        genderIds.length
-          ? this.prisma.gender.findMany({
+        : [],
+      genderIds.length
+        ? this.prisma.gender.findMany({
             where: { id: { in: genderIds as string[] } },
           })
-          : [],
-        sizeIds.length
-          ? this.prisma.size.findMany({
+        : [],
+      sizeIds.length
+        ? this.prisma.size.findMany({
             where: { id: { in: sizeIds as string[] } },
           })
-          : [],
-        silhouetteIds.length
-          ? this.prisma.silhouette.findMany({
+        : [],
+      silhouetteIds.length
+        ? this.prisma.silhouette.findMany({
             where: { id: { in: silhouetteIds as string[] } },
           })
-          : [],
-        channelClassIds.length
-          ? this.prisma.channelClass.findMany({
+        : [],
+      channelClassIds.length
+        ? this.prisma.channelClass.findMany({
             where: { id: { in: channelClassIds as string[] } },
           })
-          : [],
-        colorIds.length
-          ? this.prisma.color.findMany({
+        : [],
+      colorIds.length
+        ? this.prisma.color.findMany({
             where: { id: { in: colorIds as string[] } },
           })
-          : [],
-        itemClassIds.length
-          ? this.prisma.itemClass.findMany({
+        : [],
+      itemClassIds.length
+        ? this.prisma.itemClass.findMany({
             where: { id: { in: itemClassIds as string[] } },
           })
-          : [],
-        itemSubclassIds.length
-          ? this.prisma.itemSubclass.findMany({
+        : [],
+      itemSubclassIds.length
+        ? this.prisma.itemSubclass.findMany({
             where: { id: { in: itemSubclassIds as string[] } },
           })
-          : [],
-        hsCodeIds.length
-          ? this.prisma.hsCode.findMany({
+        : [],
+      hsCodeIds.length
+        ? this.prisma.hsCode.findMany({
             where: { id: { in: hsCodeIds as string[] } },
           })
-          : [],
-
-      ]);
+        : [],
+    ]);
 
     return items.map((item) => ({
       ...item,
@@ -677,7 +735,6 @@ export class ItemService {
       itemSubclass:
         itemSubclasses.find((x) => x.id === item.itemSubclassId) || null,
       hsCode: hsCodes.find((x) => x.id === item.hsCodeId) || null,
-
     }));
   }
 }
