@@ -37,10 +37,11 @@ export class CustomerBulkUploadService {
             mode: 'validate',
         } as any, { removeOnComplete: false, removeOnFail: false });
 
-        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: String(job.id) } });
+        const uniqueJobId = `${upload.id}:${job.id}`;
+        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: uniqueJobId } });
 
         this.logger.log(`Customer validation initiated: ${upload.id} (Job: ${job.id})`);
-        return { uploadId: upload.id, jobId: String(job.id) };
+        return { uploadId: upload.id, jobId: uniqueJobId };
     }
 
     async confirmUpload(uploadId: string, userId: string): Promise<{ uploadId: string; jobId: string }> {
@@ -66,10 +67,11 @@ export class CustomerBulkUploadService {
             mode: 'import',
         } as any, { removeOnComplete: false, removeOnFail: false });
 
-        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: String(job.id) } });
+        const uniqueJobId = `${upload.id}:${job.id}`;
+        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: uniqueJobId } });
 
         this.logger.log(`Customer import confirmed: ${upload.id} (Job: ${job.id})`);
-        return { uploadId, jobId: String(job.id) };
+        return { uploadId, jobId: uniqueJobId };
     }
 
     async getUploadStatus(uploadId: string) {
@@ -79,7 +81,10 @@ export class CustomerBulkUploadService {
         let jobProgress = 0;
         let jobState = 'unknown';
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            const bullJobId = upload.jobId.includes(':')
+                ? upload.jobId.split(':').slice(1).join(':')
+                : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) { jobProgress = await job.progress(); jobState = await job.getState(); }
         } catch (e) {
             this.logger.warn(`Failed to get job status: ${e.message}`);
@@ -100,7 +105,10 @@ export class CustomerBulkUploadService {
         if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
 
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            const bullJobId = upload.jobId.includes(':')
+                ? upload.jobId.split(':').slice(1).join(':')
+                : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) await job.remove();
         } catch (e) {
             this.logger.warn(`Failed to remove job: ${e.message}`);
