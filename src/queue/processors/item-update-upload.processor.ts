@@ -139,51 +139,55 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
             progress.processedRecords++;
         }
 
-        // 3. Batch Update Operations inside a database Transaction
+        // 3. Batch Update Operations inside database Transactions (chunked to avoid timeouts)
         if (validRecordsInBatch.length > 0) {
-            try {
-                const transactionPromises = validRecordsInBatch.map(item =>
-                    prisma.item.update({
-                        where: { id: item.itemId },
-                        data: item.payload,
-                    })
-                );
-                await prisma.$transaction(transactionPromises);
-                
-                // Since multiple updates can belong to the same CSV row, count unique rows successfully updated
-                const uniqueRowNumbers = new Set(validRecordsInBatch.map(x => x.record.row));
-                progress.successRecords += uniqueRowNumbers.size;
-            } catch (error) {
-                this.logger.error(`Batch transaction update failed: ${error.message}. Retrying individually...`);
-                // Fallback to row-by-row updates for isolation of errors
-                // Group the valid item updates by their original CSV row
-                const rowsGrouped = new Map<number, typeof validRecordsInBatch>();
-                for (const item of validRecordsInBatch) {
-                    const row = item.record.row;
-                    if (!rowsGrouped.has(row)) {
-                        rowsGrouped.set(row, []);
+            const chunkSize = 200;
+            for (let i = 0; i < validRecordsInBatch.length; i += chunkSize) {
+                const chunk = validRecordsInBatch.slice(i, i + chunkSize);
+                try {
+                    const transactionPromises = chunk.map(item =>
+                        prisma.item.update({
+                            where: { id: item.itemId },
+                            data: item.payload,
+                        })
+                    );
+                    await prisma.$transaction(transactionPromises);
+                    
+                    // Since multiple updates can belong to the same CSV row, count unique rows successfully updated in this chunk
+                    const uniqueRowNumbers = new Set(chunk.map(x => x.record.row));
+                    progress.successRecords += uniqueRowNumbers.size;
+                } catch (error) {
+                    this.logger.error(`Batch transaction update failed for chunk ${i / chunkSize + 1}: ${error.message}. Retrying chunk individually...`);
+                    // Fallback to row-by-row updates for isolation of errors
+                    // Group the chunk's valid item updates by their original CSV row
+                    const rowsGrouped = new Map<number, typeof chunk>();
+                    for (const item of chunk) {
+                        const row = item.record.row;
+                        if (!rowsGrouped.has(row)) {
+                            rowsGrouped.set(row, []);
+                        }
+                        rowsGrouped.get(row)!.push(item);
                     }
-                    rowsGrouped.get(row)!.push(item);
-                }
 
-                for (const [row, items] of rowsGrouped) {
-                    try {
-                        const promises = items.map(item =>
-                            prisma.item.update({
-                                where: { id: item.itemId },
-                                data: item.payload,
-                            })
-                        );
-                        await prisma.$transaction(promises);
-                        progress.successRecords++;
-                    } catch (err) {
-                        this.logger.error(`Individual update failed for row ${row}: ${err.message}`);
-                        progress.failedRecords++;
-                        progress.errors.push({
-                            row: row,
-                            reason: `Update failed: ${err.message}`,
-                            data: items[0].record.data,
-                        });
+                    for (const [row, items] of rowsGrouped) {
+                        try {
+                            const promises = items.map(item =>
+                                prisma.item.update({
+                                    where: { id: item.itemId },
+                                    data: item.payload,
+                                })
+                            );
+                            await prisma.$transaction(promises);
+                            progress.successRecords++;
+                        } catch (err) {
+                            this.logger.error(`Individual update failed for row ${row}: ${err.message}`);
+                            progress.failedRecords++;
+                            progress.errors.push({
+                                row: row,
+                                reason: `Update failed: ${err.message}`,
+                                data: items[0].record.data,
+                            });
+                        }
                     }
                 }
             }

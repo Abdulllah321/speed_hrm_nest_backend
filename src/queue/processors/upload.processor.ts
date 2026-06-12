@@ -493,26 +493,30 @@ export class UploadProcessor {
             }
         }
 
-        // Batch updates via $transaction — one round trip instead of N sequential awaits
+        // Batch updates via $transaction — chunked to avoid transaction timeouts (default 5s)
         if (toUpdate.length > 0) {
-            try {
-                await prisma.$transaction(
-                    toUpdate.map(item => prisma.item.update({ where: { id: item.id }, data: item.data }))
-                );
-                progress.successRecords += toUpdate.length;
-                progress.processedRecords += toUpdate.length;
-            } catch (error) {
-                // Transaction failed — fall back to individual so we can isolate which rows failed
-                this.logger.warn(`Batch update transaction failed, falling back to individual: ${error.message}`);
-                for (const item of toUpdate) {
-                    try {
-                        await prisma.item.update({ where: { id: item.id }, data: item.data });
-                        progress.successRecords++;
-                    } catch (e) {
-                        progress.failedRecords++;
-                        progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
+            const chunkSize = 200;
+            for (let i = 0; i < toUpdate.length; i += chunkSize) {
+                const chunk = toUpdate.slice(i, i + chunkSize);
+                try {
+                    await prisma.$transaction(
+                        chunk.map(item => prisma.item.update({ where: { id: item.id }, data: item.data }))
+                    );
+                    progress.successRecords += chunk.length;
+                    progress.processedRecords += chunk.length;
+                } catch (error) {
+                    // Transaction failed — fall back to individual so we can isolate which rows failed
+                    this.logger.warn(`Batch update transaction failed for chunk ${i / chunkSize + 1}, falling back to individual: ${error.message}`);
+                    for (const item of chunk) {
+                        try {
+                            await prisma.item.update({ where: { id: item.id }, data: item.data });
+                            progress.successRecords++;
+                        } catch (e) {
+                            progress.failedRecords++;
+                            progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
+                        }
+                        progress.processedRecords++;
                     }
-                    progress.processedRecords++;
                 }
             }
         }
