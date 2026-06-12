@@ -274,8 +274,10 @@ export class CustomerUploadProcessor {
 
         if (toCreate.length > 0) {
             try {
-                await prisma.customer.createMany({ data: toCreate, skipDuplicates: true });
-                progress.successRecords += toCreate.length;
+                const result = await prisma.customer.createMany({ data: toCreate, skipDuplicates: true });
+                const insertedCount = result?.count ?? 0;
+                progress.successRecords += insertedCount;
+                progress.skippedRecords += (toCreate.length - insertedCount);
             } catch (error) {
                 this.logger.error(`Bulk create failed: ${error.message}`);
                 for (const item of toCreate) {
