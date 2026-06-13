@@ -22,6 +22,63 @@ export class PurchaseOrderService {
     private prismaMaster: PrismaMasterService,
   ) {}
 
+  /**
+   * Generates the next sequential PO number for the current fiscal year.
+   * Fiscal year runs July 1 – June 30 (Pakistan standard).
+   * Format: PO-YY-YY-NNNNN  e.g. PO-25-26-00001
+   *
+   * @param tx  Optional Prisma transaction client (use when called inside $transaction)
+   */
+  private async generatePoNumber(tx?: any): Promise<string> {
+    const client = tx || this.prisma;
+
+    // Determine current fiscal year bounds
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed; July = 6
+    const startYear = month >= 6 ? year : year - 1;
+    const endYear = startYear + 1;
+    const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
+    const prefix = `PO-${fy}-`;
+
+    // Find the last PO issued in this fiscal year
+    const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+    const lastPo = await client.purchaseOrder.findFirst({
+      where: {
+        poNumber: { startsWith: prefix },
+        createdAt: { gte: fiscalYearStartDate },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { poNumber: true },
+    });
+
+    let seq = 1;
+    if (lastPo?.poNumber) {
+      const parts = lastPo.poNumber.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSeq)) {
+        seq = lastSeq + 1;
+      }
+    }
+
+    // Collision guard — loop until we find an unused number
+    let poNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+    let exists = await client.purchaseOrder.findUnique({
+      where: { poNumber },
+      select: { id: true },
+    });
+    while (exists) {
+      seq++;
+      poNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+      exists = await client.purchaseOrder.findUnique({
+        where: { poNumber },
+        select: { id: true },
+      });
+    }
+
+    return poNumber;
+  }
+
   async findAll() {
     const list = await this.prisma.purchaseOrder.findMany({
       include: {
@@ -96,7 +153,7 @@ export class PurchaseOrderService {
         );
       }
 
-      const poNumber = `PO-${Date.now()}`;
+      const poNumber = await this.generatePoNumber();
 
       let subtotal = new Decimal(0);
 
@@ -241,7 +298,7 @@ export class PurchaseOrderService {
         );
       }
 
-      const poNumber = `PO-${Date.now()}`; // Simple PO number generation
+      const poNumber = await this.generatePoNumber();
 
       const po = await this.prisma.$transaction(async (tx) => {
         return tx.purchaseOrder.create({
@@ -506,7 +563,7 @@ export class PurchaseOrderService {
           });
 
           const totalAmount = subtotal.add(taxAmount).sub(discountAmount);
-          const poNumber = `PO-${Date.now()}`;
+          const poNumber = await this.generatePoNumber(tx);
 
           const po = await tx.purchaseOrder.create({
             data: {
@@ -615,7 +672,7 @@ export class PurchaseOrderService {
           });
 
           const totalAmount = subtotal;
-          const poNumber = `PO-${Date.now()}`;
+          const poNumber = await this.generatePoNumber(tx);
 
           const po = await tx.purchaseOrder.create({
             data: {
