@@ -21,7 +21,64 @@ export class GrnService {
     private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
-  ) { }
+  ) {}
+
+  /**
+   * Generates the next sequential GRN number for the current fiscal year.
+   * Fiscal year runs July 1 – June 30 (Pakistan standard).
+   * Format: GRN-YY-YY-NNNNN  e.g. GRN-25-26-00001
+   *
+   * @param tx  Optional Prisma transaction client (use when called inside $transaction)
+   */
+  private async generateGrnNumber(tx?: any): Promise<string> {
+    const client = tx || this.prisma;
+
+    // Determine current fiscal year bounds
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed; July = 6
+    const startYear = month >= 6 ? year : year - 1;
+    const endYear = startYear + 1;
+    const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
+    const prefix = `GRN-${fy}-`;
+
+    // Find the last GRN issued in this fiscal year
+    const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+    const lastGrn = await client.goodsReceiptNote.findFirst({
+      where: {
+        grnNumber: { startsWith: prefix },
+        createdAt: { gte: fiscalYearStartDate },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { grnNumber: true },
+    });
+
+    let seq = 1;
+    if (lastGrn?.grnNumber) {
+      const parts = lastGrn.grnNumber.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSeq)) {
+        seq = lastSeq + 1;
+      }
+    }
+
+    // Collision guard — loop until we find an unused number
+    let grnNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+    let exists = await client.goodsReceiptNote.findUnique({
+      where: { grnNumber },
+      select: { id: true },
+    });
+    while (exists) {
+      seq++;
+      grnNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+      exists = await client.goodsReceiptNote.findUnique({
+        where: { grnNumber },
+        select: { id: true },
+      });
+    }
+
+    return grnNumber;
+  }
 
   private async calculateAndApplyWeightedAverage(
     tx: Prisma.TransactionClient,
@@ -139,7 +196,10 @@ export class GrnService {
     return this.resolveUserNames(grn);
   }
 
-  async create(dto: CreateGrnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    dto: CreateGrnDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     this.logger.log(`Starting GRN creation for PO: ${dto.purchaseOrderId}`);
     this.logger.debug(`GRN DTO: ${JSON.stringify(dto)}`);
 
@@ -148,7 +208,7 @@ export class GrnService {
       include: {
         items: true,
         vendorQuotation: true,
-        purchaseRequisition: true
+        purchaseRequisition: true,
       },
     });
 
@@ -159,17 +219,14 @@ export class GrnService {
 
     this.logger.log(`Found PO: ${po.poNumber}, Status: ${po.status}`);
 
-    if (
-      po.status !== 'OPEN' &&
-      po.status !== 'PARTIALLY_RECEIVED'
-    ) {
+    if (po.status !== 'OPEN' && po.status !== 'PARTIALLY_RECEIVED') {
       this.logger.error(`Cannot receive goods for PO in ${po.status} status`);
       throw new BadRequestException(
         `Cannot receive goods for PO in ${po.status} status`,
       );
     }
 
-    const grnNumber = `GRN-${Date.now()}`;
+    const grnNumber = await this.generateGrnNumber();
     this.logger.log(`Generated GRN Number: ${grnNumber}`);
 
     // Resolve items to UUIDs and validate quantities
@@ -188,11 +245,11 @@ export class GrnService {
           );
         }
 
-        const poItem = po.items.find((i) => i.itemId === itemRecord.id || i.id === itemRecord.id);
+        const poItem = po.items.find(
+          (i) => i.itemId === itemRecord.id || i.id === itemRecord.id,
+        );
         if (!poItem) {
-          throw new BadRequestException(
-            `Item ${item.itemId} not found in PO`,
-          );
+          throw new BadRequestException(`Item ${item.itemId} not found in PO`);
         }
 
         const remainingQty = new Prisma.Decimal(poItem.quantity).minus(
@@ -256,7 +313,13 @@ export class GrnService {
   async updateStatus(
     id: string,
     targetStatus: string,
-    ctx: { userId: string; permissions: string[]; roleName: string; ipAddress?: string; userAgent?: string },
+    ctx: {
+      userId: string;
+      permissions: string[];
+      roleName: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
   ) {
     this.logger.log(`Updating GRN ${id} status to ${targetStatus}`);
 
@@ -270,15 +333,32 @@ export class GrnService {
     }
 
     const currentStatus = grn.status;
-    const isChecker = ctx.permissions.includes('erp.procurement.grn.check') || ctx.permissions.includes('*') || ctx.roleName?.toLowerCase() === 'admin';
-    const isAuthorizer = ctx.permissions.includes('erp.procurement.grn.authorize') || ctx.permissions.includes('*') || ctx.roleName?.toLowerCase() === 'admin';
+    const isSuperAdmin =
+      ctx.permissions.includes('*') ||
+      ctx?.roleName?.toLowerCase() === 'super_admin' ||
+      ctx?.roleName?.toLowerCase() === 'admin';
+    const isChecker =
+      ctx.permissions.includes('erp.procurement.grn.check') ||
+      ctx.permissions.includes('*') ||
+      isSuperAdmin;
+    const isAuthorizer =
+      ctx.permissions.includes('erp.procurement.grn.authorize') ||
+      ctx.permissions.includes('*') ||
+      isSuperAdmin;
 
     if (currentStatus === 'PENDING_CHECKER') {
       if (!isChecker) {
-        throw new BadRequestException('User does not have permission to check/verify this GRN.');
+        throw new BadRequestException(
+          'User does not have permission to check/verify this GRN.',
+        );
       }
-      if (targetStatus !== 'PENDING_AUTHORIZER' && targetStatus !== 'REJECTED') {
-        throw new BadRequestException(`Invalid status transition from PENDING_CHECKER to ${targetStatus}`);
+      if (
+        targetStatus !== 'PENDING_AUTHORIZER' &&
+        targetStatus !== 'REJECTED'
+      ) {
+        throw new BadRequestException(
+          `Invalid status transition from PENDING_CHECKER to ${targetStatus}`,
+        );
       }
 
       const updatedGrn = await this.prisma.goodsReceiptNote.update({
@@ -310,10 +390,14 @@ export class GrnService {
 
     if (currentStatus === 'PENDING_AUTHORIZER') {
       if (!isAuthorizer) {
-        throw new BadRequestException('User does not have permission to authorize this GRN.');
+        throw new BadRequestException(
+          'User does not have permission to authorize this GRN.',
+        );
       }
       if (targetStatus !== 'APPROVED' && targetStatus !== 'REJECTED') {
-        throw new BadRequestException(`Invalid status transition from PENDING_AUTHORIZER to ${targetStatus}`);
+        throw new BadRequestException(
+          `Invalid status transition from PENDING_AUTHORIZER to ${targetStatus}`,
+        );
       }
 
       if (targetStatus === 'REJECTED') {
@@ -357,13 +441,19 @@ export class GrnService {
         }
 
         if (po.status !== 'OPEN' && po.status !== 'PARTIALLY_RECEIVED') {
-          throw new BadRequestException(`Cannot receive goods for PO in ${po.status} status`);
+          throw new BadRequestException(
+            `Cannot receive goods for PO in ${po.status} status`,
+          );
         }
 
         // Determine stock update properties
         const isRfqVqFlow = Boolean(po.vendorQuotationId || po.rfqId);
-        const isPrDirectFlow = Boolean(po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId);
-        const isDirectPoFlow = Boolean(!po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId);
+        const isPrDirectFlow = Boolean(
+          po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId,
+        );
+        const isDirectPoFlow = Boolean(
+          !po.purchaseRequisitionId && !po.vendorQuotationId && !po.rfqId,
+        );
 
         let shouldUpdateInventory = false;
         let finalGrnStatus = 'RECEIVED_UNVALUED';
@@ -385,9 +475,13 @@ export class GrnService {
 
         // Process items
         for (const grnItem of grn.items) {
-          const poItem = po.items.find((i) => i.itemId === grnItem.itemId || i.id === grnItem.itemId);
+          const poItem = po.items.find(
+            (i) => i.itemId === grnItem.itemId || i.id === grnItem.itemId,
+          );
           if (!poItem) {
-            throw new BadRequestException(`Item ${grnItem.itemId} not found in PO`);
+            throw new BadRequestException(
+              `Item ${grnItem.itemId} not found in PO`,
+            );
           }
 
           const remainingQty = new Prisma.Decimal(poItem.quantity).minus(
@@ -404,13 +498,17 @@ export class GrnService {
           await tx.purchaseOrderItem.update({
             where: { id: poItem.id },
             data: {
-              receivedQty: { increment: new Prisma.Decimal(grnItem.receivedQty) },
+              receivedQty: {
+                increment: new Prisma.Decimal(grnItem.receivedQty),
+              },
             },
           });
 
           // Stock update if consumable
           if (shouldUpdateInventory) {
-            const incomingRate = poItem.unitPrice ? new Prisma.Decimal(poItem.unitPrice) : new Prisma.Decimal(0);
+            const incomingRate = poItem.unitPrice
+              ? new Prisma.Decimal(poItem.unitPrice)
+              : new Prisma.Decimal(0);
             const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
               tx,
               grnItem.itemId,
@@ -445,7 +543,9 @@ export class GrnService {
               await tx.inventoryItem.update({
                 where: { id: existingStock.id },
                 data: {
-                  quantity: { increment: new Prisma.Decimal(grnItem.receivedQty) },
+                  quantity: {
+                    increment: new Prisma.Decimal(grnItem.receivedQty),
+                  },
                 },
               });
             } else {
@@ -469,11 +569,15 @@ export class GrnService {
         });
 
         if (!updatedPo) {
-          throw new BadRequestException('Failed to retrieve updated Purchase Order');
+          throw new BadRequestException(
+            'Failed to retrieve updated Purchase Order',
+          );
         }
 
         const allReceived = updatedPo.items.every((item) =>
-          new Prisma.Decimal(item.receivedQty).gte(new Prisma.Decimal(item.quantity)),
+          new Prisma.Decimal(item.receivedQty).gte(
+            new Prisma.Decimal(item.quantity),
+          ),
         );
 
         let poStatus = 'PARTIALLY_RECEIVED';
@@ -515,12 +619,18 @@ export class GrnService {
       });
     }
 
-    throw new BadRequestException(`Cannot update status from ${currentStatus} to ${targetStatus}`);
+    throw new BadRequestException(
+      `Cannot update status from ${currentStatus} to ${targetStatus}`,
+    );
   }
 
   private async resolveUserNames(grn: any) {
     if (!grn) return grn;
-    const userIds = [grn.createdById, grn.checkedById, grn.authorizedById].filter(Boolean) as string[];
+    const userIds = [
+      grn.createdById,
+      grn.checkedById,
+      grn.authorizedById,
+    ].filter(Boolean) as string[];
     if (userIds.length === 0) return grn;
 
     const users = await this.prismaMaster.user.findMany({
@@ -528,20 +638,28 @@ export class GrnService {
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    const userMap = new Map(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]),
+    );
 
     return {
       ...grn,
-      creatorName: grn.createdById ? userMap.get(grn.createdById) || 'Unknown User' : null,
-      checkerName: grn.checkedById ? userMap.get(grn.checkedById) || 'Unknown User' : null,
-      authorizerName: grn.authorizedById ? userMap.get(grn.authorizedById) || 'Unknown User' : null,
+      creatorName: grn.createdById
+        ? userMap.get(grn.createdById) || 'Unknown User'
+        : null,
+      checkerName: grn.checkedById
+        ? userMap.get(grn.checkedById) || 'Unknown User'
+        : null,
+      authorizerName: grn.authorizedById
+        ? userMap.get(grn.authorizedById) || 'Unknown User'
+        : null,
     };
   }
 
   private async resolveUserNamesForList(grns: any[]) {
     if (!grns || grns.length === 0) return grns;
     const userIdsSet = new Set<string>();
-    grns.forEach(grn => {
+    grns.forEach((grn) => {
       if (grn.createdById) userIdsSet.add(grn.createdById);
       if (grn.checkedById) userIdsSet.add(grn.checkedById);
       if (grn.authorizedById) userIdsSet.add(grn.authorizedById);
@@ -554,13 +672,21 @@ export class GrnService {
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    const userMap = new Map(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]),
+    );
 
-    return grns.map(grn => ({
+    return grns.map((grn) => ({
       ...grn,
-      creatorName: grn.createdById ? userMap.get(grn.createdById) || 'Unknown User' : null,
-      checkerName: grn.checkedById ? userMap.get(grn.checkedById) || 'Unknown User' : null,
-      authorizerName: grn.authorizedById ? userMap.get(grn.authorizedById) || 'Unknown User' : null,
+      creatorName: grn.createdById
+        ? userMap.get(grn.createdById) || 'Unknown User'
+        : null,
+      checkerName: grn.checkedById
+        ? userMap.get(grn.checkedById) || 'Unknown User'
+        : null,
+      authorizerName: grn.authorizedById
+        ? userMap.get(grn.authorizedById) || 'Unknown User'
+        : null,
     }));
   }
 }

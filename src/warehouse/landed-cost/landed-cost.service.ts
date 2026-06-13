@@ -19,6 +19,58 @@ export class LandedCostService {
     private activityLogs: ActivityLogsService,
   ) { }
 
+  /**
+   * Generates the next sequential Landed Cost number for the current fiscal year.
+   * Fiscal year runs July 1 – June 30 (Pakistan standard).
+   * Format: LC-YY-YY-NNNNN  e.g. LC-25-26-00001
+   */
+  private async generateLcNumber(): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed; July = 6
+    const startYear = month >= 6 ? year : year - 1;
+    const endYear = startYear + 1;
+    const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
+    const prefix = `LC-${fy}-`;
+
+    // Find the last LC issued in this fiscal year
+    const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+    const lastLc = await this.prisma.landedCost.findFirst({
+      where: {
+        landedCostNumber: { startsWith: prefix },
+        createdAt: { gte: fiscalYearStartDate },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { landedCostNumber: true },
+    });
+
+    let seq = 1;
+    if (lastLc?.landedCostNumber) {
+      const parts = lastLc.landedCostNumber.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSeq)) {
+        seq = lastSeq + 1;
+      }
+    }
+
+    // Collision guard — loop until we find an unused number
+    let landedCostNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+    let exists = await this.prisma.landedCost.findUnique({
+      where: { landedCostNumber },
+      select: { id: true },
+    });
+    while (exists) {
+      seq++;
+      landedCostNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+      exists = await this.prisma.landedCost.findUnique({
+        where: { landedCostNumber },
+        select: { id: true },
+      });
+    }
+
+    return landedCostNumber;
+  }
+
   private resolveInboundUnitRate(data: {
     qty: number | Prisma.Decimal;
     unitCostPKR?: number | Prisma.Decimal | null;
@@ -160,8 +212,7 @@ export class LandedCostService {
       );
 
       // Generate Landed Cost Number
-      const count = await this.prisma.landedCost.count();
-      const landedCostNumber = `LC-${(count + 1).toString().padStart(6, '0')}`;
+      const landedCostNumber = await this.generateLcNumber();
 
       const landedCost = await this.prisma.$transaction(async (tx) => {
         // 2) Create Landed Cost Header and Items
