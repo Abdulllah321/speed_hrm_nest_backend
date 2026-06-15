@@ -352,40 +352,56 @@ export class GrnService {
           'User does not have permission to check/verify this GRN.',
         );
       }
-      if (
-        targetStatus !== 'PENDING_AUTHORIZER' &&
-        targetStatus !== 'REJECTED'
-      ) {
-        throw new BadRequestException(
-          `Invalid status transition from PENDING_CHECKER to ${targetStatus}`,
+
+      // Super-admin/admin can directly approve, bypassing the checker step
+      if (isSuperAdmin && targetStatus === 'APPROVED') {
+        // Auto-stamp checker fields and fall through to the authorizer approval flow below
+        await this.prisma.goodsReceiptNote.update({
+          where: { id },
+          data: {
+            status: 'PENDING_AUTHORIZER',
+            checkedById: ctx.userId,
+            checkedAt: new Date(),
+          },
+        });
+        // Reload so the authorizer block sees PENDING_AUTHORIZER
+        grn.status = 'PENDING_AUTHORIZER';
+      } else {
+        if (
+          targetStatus !== 'PENDING_AUTHORIZER' &&
+          targetStatus !== 'REJECTED'
+        ) {
+          throw new BadRequestException(
+            `Invalid status transition from PENDING_CHECKER to ${targetStatus}`,
+          );
+        }
+
+        const updatedGrn = await this.prisma.goodsReceiptNote.update({
+          where: { id },
+          data: {
+            status: targetStatus,
+            checkedById: ctx.userId,
+            checkedAt: new Date(),
+          },
+        });
+
+        runInBackground(
+          'Check GRN',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'warehouse-grn',
+            entity: 'GoodsReceiptNote',
+            entityId: id,
+            description: `Checked GRN ${grn.grnNumber}: targetStatus ${targetStatus}`,
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
         );
+
+        return updatedGrn;
       }
-
-      const updatedGrn = await this.prisma.goodsReceiptNote.update({
-        where: { id },
-        data: {
-          status: targetStatus,
-          checkedById: ctx.userId,
-          checkedAt: new Date(),
-        },
-      });
-
-      runInBackground(
-        'Check GRN',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'warehouse-grn',
-          entity: 'GoodsReceiptNote',
-          entityId: id,
-          description: `Checked GRN ${grn.grnNumber}: targetStatus ${targetStatus}`,
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
-
-      return updatedGrn;
     }
 
     if (currentStatus === 'PENDING_AUTHORIZER') {
