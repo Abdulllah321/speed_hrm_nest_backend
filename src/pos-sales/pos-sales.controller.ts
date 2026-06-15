@@ -213,8 +213,8 @@ export class PosSalesController {
     // IMPORTANT: This must come BEFORE @Get('orders/:id') to avoid route conflict
     @Get('orders/:id/return-details')
     @ApiOperation({ summary: 'Get return details for printing return slip' })
-    async getReturnDetails(@Param('id') id: string) {
-        return this.posSalesService.getReturnDetails(id);
+    async getReturnDetails(@Param('id') id: string, @Query('type') type?: 'return' | 'refund') {
+        return this.posSalesService.getReturnDetails(id, type);
     }
 
     // ─── List hold orders ─────────────────────────────────────────────

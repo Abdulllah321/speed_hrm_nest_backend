@@ -897,11 +897,12 @@ export class PosSalesService implements OnModuleInit {
                 referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
                 referenceId: { in: orderIds },
             },
-            select: { referenceId: true, itemId: true, qty: true },
+            select: { referenceId: true, itemId: true, qty: true, referenceType: true },
         });
 
         // Build map: orderId -> itemId -> returnedQty
         const returnedQtyMap = new Map<string, Map<string, number>>();
+        const orderReturnFlags = new Map<string, { hasReturn: boolean; hasRefund: boolean }>();
         for (const entry of returnEntries) {
             if (!returnedQtyMap.has(entry.referenceId)) {
                 returnedQtyMap.set(entry.referenceId, new Map());
@@ -909,6 +910,13 @@ export class PosSalesService implements OnModuleInit {
             const itemMap = returnedQtyMap.get(entry.referenceId)!;
             const current = itemMap.get(entry.itemId) || 0;
             itemMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+
+            if (!orderReturnFlags.has(entry.referenceId)) {
+                orderReturnFlags.set(entry.referenceId, { hasReturn: false, hasRefund: false });
+            }
+            const flags = orderReturnFlags.get(entry.referenceId)!;
+            if (entry.referenceType === 'POS_RETURN') flags.hasReturn = true;
+            if (entry.referenceType === 'POS_REFUND') flags.hasRefund = true;
         }
 
         // ── Fetch claims for ALL orders ──
@@ -1012,11 +1020,14 @@ export class PosSalesService implements OnModuleInit {
                 approvedClaimQty: claimedQtyMap.get(oi.itemId)?.approved || 0,
             }));
 
+            const returnFlags = orderReturnFlags.get(order.id) || { hasReturn: false, hasRefund: false };
             return { 
                 ...order, 
                 tenders, 
                 items: enrichedItems,
                 claims: orderClaims,
+                hasReturn: returnFlags.hasReturn,
+                hasRefund: returnFlags.hasRefund,
             };
         });
 
@@ -1058,13 +1069,17 @@ export class PosSalesService implements OnModuleInit {
                 referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
                 referenceId: id,
             },
-            select: { itemId: true, qty: true },
+            select: { itemId: true, qty: true, referenceType: true },
         });
 
+        let hasReturn = false;
+        let hasRefund = false;
         const returnedQtyMap = new Map<string, number>();
         for (const entry of returnEntries) {
             const current = returnedQtyMap.get(entry.itemId) || 0;
             returnedQtyMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+            if (entry.referenceType === 'POS_RETURN') hasReturn = true;
+            if (entry.referenceType === 'POS_REFUND') hasRefund = true;
         }
 
         // Attach returnedQty to each item
@@ -1110,7 +1125,7 @@ export class PosSalesService implements OnModuleInit {
             select: { code: true, faceValue: true, expiresAt: true },
         });
 
-        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers } };
+        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers, hasReturn, hasRefund } };
     }
 
     // ─── Partial return ───────────────────────────────────────────────
@@ -1419,7 +1434,7 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // ─── Get return details for printing return slip ──────────────────
-    async getReturnDetails(orderId: string) {
+    async getReturnDetails(orderId: string, type?: 'return' | 'refund') {
         try {
             const order = await this.prisma.salesOrder.findUnique({
                 where: { id: orderId },
@@ -1453,7 +1468,7 @@ export class PosSalesService implements OnModuleInit {
             // Fetch ALREADY-RETURNED quantities from stock ledger
             const returnEntries = await this.prisma.stockLedger.findMany({
                 where: {
-                    referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+                    referenceType: type === 'return' ? 'POS_RETURN' : type === 'refund' ? 'POS_REFUND' : { in: ['POS_RETURN', 'POS_REFUND'] },
                     referenceId: orderId,
                 },
                 select: { itemId: true, qty: true, referenceType: true },
@@ -1585,11 +1600,13 @@ export class PosSalesService implements OnModuleInit {
                 discountNotes.push(`Alliance: ${(order as any).alliance.partnerName || (order as any).alliance.code}`);
             }
 
-            const exchangeVoucher = await this.prisma.voucher.findFirst({
-                where: { sourceOrderId: order.id, voucherType: 'EXCHANGE', isDeleted: false },
-                select: { code: true, faceValue: true, expiresAt: true },
-                orderBy: { createdAt: 'desc' }
-            });
+            const exchangeVoucher = type === 'refund'
+                ? null
+                : await this.prisma.voucher.findFirst({
+                    where: { sourceOrderId: order.id, voucherType: 'EXCHANGE', isDeleted: false },
+                    select: { code: true, faceValue: true, expiresAt: true },
+                    orderBy: { createdAt: 'desc' }
+                });
 
             return {
                 status: true,
