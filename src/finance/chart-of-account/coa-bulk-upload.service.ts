@@ -59,16 +59,17 @@ export class CoaBulkUploadService {
             removeOnFail: false,
         });
 
+        const uniqueJobId = `${upload.id}:${job.id}`;
         await this.prisma.bulkUpload.update({
             where: { id: upload.id },
-            data: { jobId: String(job.id) },
+            data: { jobId: uniqueJobId },
         });
 
         this.logger.log(`COA validation initiated: ${upload.id} (Job ID: ${job.id}), File saved to ${filePath}`);
 
         return {
             uploadId: upload.id,
-            jobId: String(job.id),
+            jobId: uniqueJobId,
         };
     }
 
@@ -119,16 +120,17 @@ export class CoaBulkUploadService {
             removeOnFail: false,
         });
 
+        const uniqueJobId = `${upload.id}:${job.id}`;
         await this.prisma.bulkUpload.update({
             where: { id: upload.id },
-            data: { jobId: String(job.id) },
+            data: { jobId: uniqueJobId },
         });
 
         this.logger.log(`COA import confirmed: ${upload.id} (Job ID: ${job.id})`);
 
         return {
             uploadId,
-            jobId: String(job.id),
+            jobId: uniqueJobId,
         };
     }
 
@@ -148,7 +150,10 @@ export class CoaBulkUploadService {
         let jobState = 'unknown';
 
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            const bullJobId = upload.jobId.includes(':')
+                ? upload.jobId.split(':').slice(1).join(':')
+                : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) {
                 jobProgress = await job.progress();
                 jobState = await job.getState();
@@ -188,7 +193,10 @@ export class CoaBulkUploadService {
         }
 
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            const bullJobId = upload.jobId.includes(':')
+                ? upload.jobId.split(':').slice(1).join(':')
+                : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) {
                 await job.remove();
             }
