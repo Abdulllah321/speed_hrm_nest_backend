@@ -61,6 +61,54 @@ export class CreatePurchaseOrderDto {
   goodsType?: string; // CONSUMABLE, FRESH
 }
 
+export class UpdatePurchaseOrderItemDto {
+  @IsString()
+  @IsOptional()
+  id?: string; // existing item id (omit to create new)
+
+  @IsString()
+  @IsNotEmpty()
+  itemId: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsNumber()
+  quantity: number;
+
+  @IsNumber()
+  unitPrice: number;
+}
+
+export class UpdatePurchaseOrderDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdatePurchaseOrderItemDto)
+  @IsOptional()
+  items?: UpdatePurchaseOrderItemDto[];
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsDateString()
+  @IsOptional()
+  expectedDeliveryDate?: string;
+
+  @IsString()
+  @IsOptional()
+  orderType?: string;
+
+  @IsString()
+  @IsOptional()
+  goodsType?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorId?: string;
+}
+
 export class PurchaseOrderResponseDto {
   id: string;
   poNumber: string;

@@ -147,7 +147,7 @@ export class ItemBulkUploadController {
     }
 
     @Get(':uploadId/success-report')
-    @ApiOperation({ summary: 'Download success export report (CSV)' })
+    @ApiOperation({ summary: 'Download success export report (XLSX)' })
     async downloadSuccessReport(
         @Param('uploadId') uploadId: string,
         @Res() res: any,
