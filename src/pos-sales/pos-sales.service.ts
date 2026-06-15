@@ -136,36 +136,41 @@ export class PosSalesService implements OnModuleInit {
 
         const shortCode = await this.getShortCode(scope.type, targetId, prismaClient);
 
-        // Derive compound unique constraint fields
-        const uniqueWhere = {
-            prefix_fiscalYear_locationId_warehouseId_companyId: {
-                prefix,
-                fiscalYear,
-                locationId: scope.type === 'location' ? scope.locationId : null,
-                warehouseId: scope.type === 'warehouse' ? scope.warehouseId : null,
-                companyId: scope.type === 'company' ? scope.companyId : null,
-            }
-        };
+        // Prisma's upsert cannot match rows via a compound unique constraint when
+        // nullable columns are null — PostgreSQL NULL != NULL means the unique index
+        // never finds the existing row. Use findFirst with explicit null filters instead.
+        const locationId  = scope.type === 'location'  ? scope.locationId  : null;
+        const warehouseId = scope.type === 'warehouse' ? scope.warehouseId : null;
+        const companyId   = scope.type === 'company'   ? scope.companyId   : null;
 
-        const result = await prismaClient.orderSequence.upsert({
-            // Cast to any is forced because Prisma's generated type definitions for compound unique
-            // constraints with nullable columns do not properly allow assignability of optional properties.
-            where: uniqueWhere as any,
-            update: {
-                lastSeq: { increment: 1 }
-            },
-            create: {
+        const existing = await prismaClient.orderSequence.findFirst({
+            where: {
                 prefix,
                 fiscalYear,
-                locationId: scope.type === 'location' ? scope.locationId : null,
-                warehouseId: scope.type === 'warehouse' ? scope.warehouseId : null,
-                companyId: scope.type === 'company' ? scope.companyId : null,
-                lastSeq: 1
+                locationId:  locationId  ?? null,
+                warehouseId: warehouseId ?? null,
+                companyId:   companyId   ?? null,
             },
-            select: { lastSeq: true }
+            select: { id: true, lastSeq: true },
         });
 
-        return `${prefix}-${shortCode}-${String(result.lastSeq).padStart(5, '0')}`;
+        let lastSeq: number;
+        if (existing) {
+            const updated = await prismaClient.orderSequence.update({
+                where: { id: existing.id },
+                data: { lastSeq: { increment: 1 } },
+                select: { lastSeq: true },
+            });
+            lastSeq = updated.lastSeq;
+        } else {
+            const created = await prismaClient.orderSequence.create({
+                data: { prefix, fiscalYear, locationId, warehouseId, companyId, lastSeq: 1 },
+                select: { lastSeq: true },
+            });
+            lastSeq = created.lastSeq;
+        }
+
+        return `${prefix}-${shortCode}-${String(lastSeq).padStart(5, '0')}`;
     }
 
     private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
