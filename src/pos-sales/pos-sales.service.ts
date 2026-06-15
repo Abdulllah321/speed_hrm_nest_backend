@@ -9,15 +9,9 @@ import { VoucherService } from '../pos-config/voucher.service';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
-export type SequenceScope =
-    | { type: 'location'; locationId: string; warehouseId?: null; companyId?: null }
-    | { type: 'warehouse'; warehouseId: string; locationId?: null; companyId?: null }
-    | { type: 'company'; companyId: string; locationId?: null; warehouseId?: null };
-
 @Injectable()
 export class PosSalesService implements OnModuleInit {
     private readonly logger = new Logger(PosSalesService.name);
-    private shortCodeCache = new Map<string, string>();
 
     constructor(
         private prisma: PrismaService,
@@ -46,143 +40,95 @@ export class PosSalesService implements OnModuleInit {
         }, msUntilMidnight);
     }
 
-    // ─── Pakistan Fiscal Year synchronous pure helper ──────────────────────────
-    private getFiscalYear(): number {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth(); // 0-indexed, July is 6
-        return month >= 6 ? year : year - 1;
-    }
-
-    // ─── Cached lookup for location/warehouse/company short codes ─────────────
-    private async getShortCode(
-        type: 'location' | 'warehouse' | 'company',
-        id: string,
-        prismaClient: any
-    ): Promise<string> {
-        const cacheKey = `${type}:${id}`;
-        if (this.shortCodeCache.has(cacheKey)) {
-            return this.shortCodeCache.get(cacheKey)!;
-        }
-
-        let shortCode = '';
-        if (type === 'location') {
-            const location = await prismaClient.location.findUnique({
-                where: { id },
-                select: { name: true, shortCode: true }
-            });
-            if (location) {
-                shortCode = location.shortCode?.trim() || location.name
-                    .split(/[\s\-_]+/)
-                    .map((word: string) => word.replace(/[^a-zA-Z0-9]/g, ''))
-                    .filter((word: string) => word.length > 0)
-                    .map((word: string) => word[0].toUpperCase())
-                    .join('') || 'LOC';
-            }
-        } else if (type === 'warehouse') {
-            const warehouse = await prismaClient.warehouse.findUnique({
-                where: { id },
-                select: { name: true, code: true }
-            });
-            if (warehouse) {
-                shortCode = warehouse.code?.trim() || warehouse.name
-                    .split(/[\s\-_]+/)
-                    .map((word: string) => word.replace(/[^a-zA-Z0-9]/g, ''))
-                    .filter((word: string) => word.length > 0)
-                    .map((word: string) => word[0].toUpperCase())
-                    .join('') || 'WH';
-            }
-        } else if (type === 'company') {
-            if (prismaClient.company) {
-                const company = await prismaClient.company.findUnique({
-                    where: { id },
-                    select: { name: true, code: true }
-                });
-                if (company) {
-                    shortCode = company.code?.trim() || company.name
-                        .split(/[\s\-_]+/)
-                        .map((word: string) => word.replace(/[^a-zA-Z0-9]/g, ''))
-                        .filter((word: string) => word.length > 0)
-                        .map((word: string) => word[0].toUpperCase())
-                        .join('') || 'CO';
-                }
-            } else {
-                shortCode = 'CO';
-            }
-        }
-
-        if (!shortCode) {
-            shortCode = type === 'location' ? 'LOC' : type === 'warehouse' ? 'WH' : 'CO';
-        }
-
-        // If running multiple Node.js instances, replace with Redis cache
-        this.shortCodeCache.set(cacheKey, shortCode);
-        return shortCode;
-    }
-
-    // ─── Generic sequential document number generator ───────────────────────
+    // ─── Generate sequential numbers per location and Pakistan fiscal year ───
     private async generateSequentialNumber(
         prefix: string,
-        scope: SequenceScope,
+        fieldName: 'orderNumber' | 'returnNumber' | 'refundNumber',
+        locationId: string,
         tx?: Prisma.TransactionClient
     ): Promise<string> {
         const prismaClient = tx || this.prisma;
-        const fiscalYear = this.getFiscalYear();
 
-        let targetId = '';
-        if (scope.type === 'location') targetId = scope.locationId;
-        else if (scope.type === 'warehouse') targetId = scope.warehouseId;
-        else if (scope.type === 'company') targetId = scope.companyId;
-
-        const shortCode = await this.getShortCode(scope.type, targetId, prismaClient);
-
-        // Prisma's upsert cannot match rows via a compound unique constraint when
-        // nullable columns are null — PostgreSQL NULL != NULL means the unique index
-        // never finds the existing row. Use findFirst with explicit null filters instead.
-        const locationId  = scope.type === 'location'  ? scope.locationId  : null;
-        const warehouseId = scope.type === 'warehouse' ? scope.warehouseId : null;
-        const companyId   = scope.type === 'company'   ? scope.companyId   : null;
-
-        const existing = await prismaClient.orderSequence.findFirst({
-            where: {
-                prefix,
-                fiscalYear,
-                locationId:  locationId  ?? null,
-                warehouseId: warehouseId ?? null,
-                companyId:   companyId   ?? null,
-            },
-            select: { id: true, lastSeq: true },
+        // Find the location name and configured shortCode
+        const location = await prismaClient.location.findUnique({
+            where: { id: locationId },
+            select: { name: true, shortCode: true }
         });
 
-        let lastSeq: number;
-        if (existing) {
-            const updated = await prismaClient.orderSequence.update({
-                where: { id: existing.id },
-                data: { lastSeq: { increment: 1 } },
-                select: { lastSeq: true },
-            });
-            lastSeq = updated.lastSeq;
-        } else {
-            const created = await prismaClient.orderSequence.create({
-                data: { prefix, fiscalYear, locationId, warehouseId, companyId, lastSeq: 1 },
-                select: { lastSeq: true },
-            });
-            lastSeq = created.lastSeq;
+        if (!location) {
+            throw new Error(`Location not found for ID: ${locationId}`);
         }
 
-        return `${prefix}-${shortCode}-${String(lastSeq).padStart(5, '0')}`;
+        // Determine shortCode: use custom configured shortCode or generate dynamically
+        let shortCode = location.shortCode?.trim();
+        if (!shortCode) {
+            shortCode = location.name
+                .split(/[\s\-_]+/)
+                .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                .filter((word) => word.length > 0)
+                .map((word) => word[0].toUpperCase())
+                .join('');
+        }
+        if (!shortCode) {
+            shortCode = 'LOC';
+        }
+
+        // Fiscal Year Start (Pakistan: July 1st)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-indexed, July is 6
+        const fiscalYearStartYear = month >= 6 ? year : year - 1;
+        const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
+
+        // Find the latest order/return/refund for this location/fiscal year, ordering by the field itself descending to get the highest suffix directly!
+        const lastOrder = await prismaClient.salesOrder.findFirst({
+            where: {
+                locationId,
+                createdAt: { gte: fiscalYearStartDate },
+                [fieldName]: { startsWith: `${prefix}-${shortCode}-` }
+            },
+            orderBy: { [fieldName]: 'desc' },
+            select: { [fieldName]: true }
+        });
+
+        let seq = 1;
+        const lastVal = lastOrder ? ((lastOrder as any)[fieldName] as string | null) : null;
+        if (lastVal) {
+            const parts = lastVal.split('-');
+            const lastPart = parts[parts.length - 1];
+            if (/^\d+$/.test(lastPart)) {
+                seq = parseInt(lastPart, 10) + 1;
+            }
+        }
+
+        let nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
+        let exists = await prismaClient.salesOrder.findUnique({
+            where: { [fieldName]: nextNumber } as any,
+            select: { id: true }
+        });
+
+        while (exists) {
+            seq++;
+            nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
+            exists = await prismaClient.salesOrder.findUnique({
+                where: { [fieldName]: nextNumber } as any,
+                select: { id: true }
+            });
+        }
+
+        return nextNumber;
     }
 
     private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
-        return this.generateSequentialNumber('SI', { type: 'location', locationId }, tx);
+        return this.generateSequentialNumber('SI', 'orderNumber', locationId, tx);
     }
 
     private async generateReturnNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
-        return this.generateSequentialNumber('SR', { type: 'location', locationId }, tx);
+        return this.generateSequentialNumber('SR', 'returnNumber', locationId, tx);
     }
 
     private async generateRefundNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
-        return this.generateSequentialNumber('RF', { type: 'location', locationId }, tx);
+        return this.generateSequentialNumber('RF', 'refundNumber', locationId, tx);
     }
 
     // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
