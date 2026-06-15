@@ -83,7 +83,10 @@ export class PoBulkUploadService {
 
         let jobProgress = 0, jobState = 'unknown';
         try {
-            const job = await this.uploadQueue.getJob(upload.jobId);
+            const bullJobId = upload.jobId.includes(':')
+                ? upload.jobId.split(':').slice(1).join(':')
+                : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
             if (job) { jobProgress = await job.progress(); jobState = await job.getState(); }
         } catch (e) { this.logger.warn(`Failed to get job status: ${e.message}`); }
 
@@ -100,7 +103,13 @@ export class PoBulkUploadService {
     async cancelUpload(uploadId: string): Promise<void> {
         const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
         if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
-        try { const job = await this.uploadQueue.getJob(upload.jobId); if (job) await job.remove(); } catch (e) { }
+        try {
+            const bullJobId = upload.jobId.includes(':')
+                ? upload.jobId.split(':').slice(1).join(':')
+                : upload.jobId;
+            const job = await this.uploadQueue.getJob(bullJobId);
+            if (job) await job.remove();
+        } catch (e) { }
         await this.prisma.bulkUpload.update({ where: { id: uploadId }, data: { status: 'cancelled', completedAt: new Date() } });
     }
 
