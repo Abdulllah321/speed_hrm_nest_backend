@@ -586,7 +586,7 @@ export class PurchaseInvoiceService {
         throw new BadRequestException('Landed Cost not found');
       }
 
-      if (!landedCost.status || !['APPROVED', 'POSTED', 'SUBMITTED', 'DRAFT'].includes(landedCost.status)) {
+      if (!landedCost.status || !['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED', 'VALUED'].includes(landedCost.status)) {
         throw new BadRequestException('Landed Cost must have a valid status to create invoice');
       }
 
