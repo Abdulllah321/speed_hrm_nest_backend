@@ -574,7 +574,7 @@ export class LandedCostService {
             date: new Date(),
             grnId: dto.grnId,
             purchaseOrderId: po?.id,
-            supplierId: dto.supplierId,
+            supplierId: dto.supplierId || po?.vendorId,
             lcNo: dto.lcNo,
             blNo: dto.blNo,
             blDate: dto.blDate ? new Date(dto.blDate) : null,
@@ -583,8 +583,8 @@ export class LandedCostService {
             season: dto.season,
             category: dto.category,
             shippingInvoiceNo: dto.shippingInvoiceNo,
-            currency: dto.currency || 'PKR',
-            exchangeRate: dto.exchangeRate || 1,
+            currency: 'PKR',
+            exchangeRate: 1,
             status: 'VALUED',
             items: {
               create: resolvedItems.map((item) => ({
@@ -596,8 +596,8 @@ export class LandedCostService {
                 unitFob: item.unitFob,
                 invoiceForeign: item.qty * item.unitFob,
                 freightForeign: item.freightForeign || 0,
-                exchangeRate: dto.exchangeRate || 1,
-                invoicePKR: item.qty * item.unitFob * (dto.exchangeRate || 1),
+                exchangeRate: 1,
+                invoicePKR: item.qty * item.unitFob,
                 insuranceCharges: item.insuranceCharges || 0,
                 landingCharges: item.landingCharges || 0,
                 assessableValue: item.assessableValue || item.qty * item.unitFob,
@@ -633,7 +633,7 @@ export class LandedCostService {
           data: {
             totalQuantity,
             totalInvoiceForeign,
-            totalInvoicePKR: totalInvoiceForeign * (dto.exchangeRate || 1),
+            totalInvoicePKR: totalInvoiceForeign,
             totalLandedCost,
           },
         });
