@@ -521,32 +521,31 @@ export class UploadProcessor {
         carryOverItemIds: Set<string>,
         newItemIds: Set<string>
     ): Promise<void> {
-        // ── Bulk existence check by ItemID, Barcode, and SKU ─────────────────
+        // ── Bulk existence check by ItemID and Barcode only ──────────────────
+        // NOTE: SKU is NOT unique — the same SKU can exist across multiple sizes/colors.
+        // Using SKU as a match key caused items with the same SKU (e.g. size 8 & size 9)
+        // to collide: the second row would update the first item instead of creating a new one.
         const itemIds = batch.map(r => r.data.itemId ? String(r.data.itemId).trim() : '').filter(Boolean);
         const barcodes = batch.map(r => r.data.barCode ? String(r.data.barCode).trim() : '').filter(Boolean);
-        const skus = batch.map(r => r.data.sku ? String(r.data.sku).trim() : '').filter(Boolean);
 
         const orConditions: any[] = [];
         if (itemIds.length > 0) orConditions.push({ itemId: { in: itemIds } });
         if (barcodes.length > 0) orConditions.push({ barCode: { in: barcodes } });
-        if (skus.length > 0) orConditions.push({ sku: { in: skus } });
 
         const existingItems = orConditions.length > 0
             ? await prisma.item.findMany({
                 where: { OR: orConditions },
-                select: { id: true, itemId: true, barCode: true, sku: true }
+                select: { id: true, itemId: true, barCode: true }
               })
             : [];
 
-        // Build lookup maps
+        // Build lookup maps — only truly unique fields
         const itemIdMap = new Map<string, string>();
         const barcodeMap = new Map<string, { id: string; itemId: string }>();
-        const skuMap = new Map<string, { id: string; itemId: string }>();
 
         for (const item of existingItems) {
             itemIdMap.set(item.itemId, item.id);
             if (item.barCode) barcodeMap.set(item.barCode.trim(), { id: item.id, itemId: item.itemId });
-            if (item.sku) skuMap.set(item.sku.trim(), { id: item.id, itemId: item.itemId });
         }
 
         // Determine which records already exist and which ones need auto-generated IDs
@@ -560,12 +559,12 @@ export class UploadProcessor {
 
             let match: { id: string; itemId: string } | undefined = undefined;
 
+            // Match priority: itemId first (explicit), then barCode (unique per variant).
+            // SKU is intentionally excluded — it is NOT unique across sizes/colors.
             if (itemId && itemIdMap.has(itemId)) {
                 match = { id: itemIdMap.get(itemId)!, itemId };
             } else if (barCode && barcodeMap.has(barCode)) {
                 match = barcodeMap.get(barCode);
-            } else if (sku && skuMap.has(sku)) {
-                match = skuMap.get(sku);
             }
 
             if (match) {
