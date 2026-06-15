@@ -9,9 +9,15 @@ import { VoucherService } from '../pos-config/voucher.service';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
+export type SequenceScope =
+    | { type: 'location'; locationId: string; warehouseId?: null; companyId?: null }
+    | { type: 'warehouse'; warehouseId: string; locationId?: null; companyId?: null }
+    | { type: 'company'; companyId: string; locationId?: null; warehouseId?: null };
+
 @Injectable()
 export class PosSalesService implements OnModuleInit {
     private readonly logger = new Logger(PosSalesService.name);
+    private shortCodeCache = new Map<string, string>();
 
     constructor(
         private prisma: PrismaService,
@@ -40,78 +46,138 @@ export class PosSalesService implements OnModuleInit {
         }, msUntilMidnight);
     }
 
-    // ─── Generate next SO number per location ──────────────────────────
-    private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
-        const prismaClient = tx || this.prisma;
-        
-        // Find the location name and configured shortCode
-        const location = await prismaClient.location.findUnique({
-            where: { id: locationId },
-            select: { name: true, shortCode: true }
-        });
-
-        if (!location) {
-            throw new Error(`Location not found for ID: ${locationId}`);
-        }
-
-        // Determine shortCode: use custom configured shortCode or generate dynamically
-        let shortCode = location.shortCode?.trim();
-        if (!shortCode) {
-            // Helper logic matching generateShortCode from location.service.ts
-            shortCode = location.name
-                .split(/[\s\-_]+/)
-                .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
-                .filter((word) => word.length > 0)
-                .map((word) => word[0].toUpperCase())
-                .join('');
-        }
-        if (!shortCode) {
-            shortCode = 'LOC';
-        }
-
-        // Fiscal Year Start (Pakistan: July 1st)
+    // ─── Pakistan Fiscal Year synchronous pure helper ──────────────────────────
+    private getFiscalYear(): number {
         const now = new Date();
         const year = now.getFullYear();
         const month = now.getMonth(); // 0-indexed, July is 6
-        const fiscalYearStartYear = month >= 6 ? year : year - 1;
-        const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
+        return month >= 6 ? year : year - 1;
+    }
 
-        // Find the latest sales order for this location created during the current fiscal year
-        const lastOrder = await prismaClient.salesOrder.findFirst({
-            where: {
-                locationId,
-                createdAt: { gte: fiscalYearStartDate },
-                orderNumber: { startsWith: `SI-${shortCode}-` }
-            },
-            orderBy: { createdAt: 'desc' },
-            select: { orderNumber: true }
-        });
+    // ─── Cached lookup for location/warehouse/company short codes ─────────────
+    private async getShortCode(
+        type: 'location' | 'warehouse' | 'company',
+        id: string,
+        prismaClient: any
+    ): Promise<string> {
+        const cacheKey = `${type}:${id}`;
+        if (this.shortCodeCache.has(cacheKey)) {
+            return this.shortCodeCache.get(cacheKey)!;
+        }
 
-        let seq = 1;
-        if (lastOrder && lastOrder.orderNumber) {
-            const parts = lastOrder.orderNumber.split('-');
-            const lastPart = parts[parts.length - 1];
-            if (/^\d+$/.test(lastPart)) {
-                seq = parseInt(lastPart, 10) + 1;
+        let shortCode = '';
+        if (type === 'location') {
+            const location = await prismaClient.location.findUnique({
+                where: { id },
+                select: { name: true, shortCode: true }
+            });
+            if (location) {
+                shortCode = location.shortCode?.trim() || location.name
+                    .split(/[\s\-_]+/)
+                    .map((word: string) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                    .filter((word: string) => word.length > 0)
+                    .map((word: string) => word[0].toUpperCase())
+                    .join('') || 'LOC';
+            }
+        } else if (type === 'warehouse') {
+            const warehouse = await prismaClient.warehouse.findUnique({
+                where: { id },
+                select: { name: true, code: true }
+            });
+            if (warehouse) {
+                shortCode = warehouse.code?.trim() || warehouse.name
+                    .split(/[\s\-_]+/)
+                    .map((word: string) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                    .filter((word: string) => word.length > 0)
+                    .map((word: string) => word[0].toUpperCase())
+                    .join('') || 'WH';
+            }
+        } else if (type === 'company') {
+            if (prismaClient.company) {
+                const company = await prismaClient.company.findUnique({
+                    where: { id },
+                    select: { name: true, code: true }
+                });
+                if (company) {
+                    shortCode = company.code?.trim() || company.name
+                        .split(/[\s\-_]+/)
+                        .map((word: string) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                        .filter((word: string) => word.length > 0)
+                        .map((word: string) => word[0].toUpperCase())
+                        .join('') || 'CO';
+                }
+            } else {
+                shortCode = 'CO';
             }
         }
 
-        let nextOrderNumber = `SI-${shortCode}-${String(seq).padStart(5, '0')}`;
-        let exists = await prismaClient.salesOrder.findUnique({
-            where: { orderNumber: nextOrderNumber },
-            select: { id: true }
-        });
-
-        while (exists) {
-            seq++;
-            nextOrderNumber = `SI-${shortCode}-${String(seq).padStart(5, '0')}`;
-            exists = await prismaClient.salesOrder.findUnique({
-                where: { orderNumber: nextOrderNumber },
-                select: { id: true }
-            });
+        if (!shortCode) {
+            shortCode = type === 'location' ? 'LOC' : type === 'warehouse' ? 'WH' : 'CO';
         }
 
-        return nextOrderNumber;
+        // If running multiple Node.js instances, replace with Redis cache
+        this.shortCodeCache.set(cacheKey, shortCode);
+        return shortCode;
+    }
+
+    // ─── Generic sequential document number generator ───────────────────────
+    private async generateSequentialNumber(
+        prefix: string,
+        scope: SequenceScope,
+        tx?: Prisma.TransactionClient
+    ): Promise<string> {
+        const prismaClient = tx || this.prisma;
+        const fiscalYear = this.getFiscalYear();
+
+        let targetId = '';
+        if (scope.type === 'location') targetId = scope.locationId;
+        else if (scope.type === 'warehouse') targetId = scope.warehouseId;
+        else if (scope.type === 'company') targetId = scope.companyId;
+
+        const shortCode = await this.getShortCode(scope.type, targetId, prismaClient);
+
+        // Derive compound unique constraint fields
+        const uniqueWhere = {
+            prefix_fiscalYear_locationId_warehouseId_companyId: {
+                prefix,
+                fiscalYear,
+                locationId: scope.type === 'location' ? scope.locationId : null,
+                warehouseId: scope.type === 'warehouse' ? scope.warehouseId : null,
+                companyId: scope.type === 'company' ? scope.companyId : null,
+            }
+        };
+
+        const result = await prismaClient.orderSequence.upsert({
+            // Cast to any is forced because Prisma's generated type definitions for compound unique
+            // constraints with nullable columns do not properly allow assignability of optional properties.
+            where: uniqueWhere as any,
+            update: {
+                lastSeq: { increment: 1 }
+            },
+            create: {
+                prefix,
+                fiscalYear,
+                locationId: scope.type === 'location' ? scope.locationId : null,
+                warehouseId: scope.type === 'warehouse' ? scope.warehouseId : null,
+                companyId: scope.type === 'company' ? scope.companyId : null,
+                lastSeq: 1
+            },
+            select: { lastSeq: true }
+        });
+
+        return `${prefix}-${shortCode}-${String(result.lastSeq).padStart(5, '0')}`;
+    }
+
+    private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        return this.generateSequentialNumber('SI', { type: 'location', locationId }, tx);
+    }
+
+    private async generateReturnNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        return this.generateSequentialNumber('SR', { type: 'location', locationId }, tx);
+    }
+
+    private async generateRefundNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        return this.generateSequentialNumber('RF', { type: 'location', locationId }, tx);
     }
 
     // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
@@ -1130,6 +1196,12 @@ export class PosSalesService implements OnModuleInit {
                 // Determine effective location for return (where stock goes back)
                 const effectiveLocationId = returnLocationId || order.locationId;
 
+                // Generate sequential return number if not set
+                let returnNumber = (order as any).returnNumber;
+                if (!returnNumber) {
+                    returnNumber = await this.generateReturnNumber(effectiveLocationId || '', tx);
+                }
+
                 // ── Fetch already-returned quantities BEFORE creating new entries ──
                 const existingReturnEntries = await tx.stockLedger.findMany({
                     where: {
@@ -1299,7 +1371,11 @@ export class PosSalesService implements OnModuleInit {
                 const newStatus = allItemsReturned ? 'returned' : 'partially_returned';
                 const updatedOrder = await tx.salesOrder.update({
                     where: { id },
-                    data: { status: newStatus, notes: reason ? `Return (${newStatus}): ${reason}` : order.notes },
+                    data: {
+                        status: newStatus,
+                        returnNumber,
+                        notes: reason ? `Return (${newStatus}): ${reason}` : order.notes,
+                    },
                 });
 
                 // ── Restore Voucher / Coupon ────────────────────────────
@@ -1367,6 +1443,7 @@ export class PosSalesService implements OnModuleInit {
                 return { 
                     status: true, 
                     data: updatedOrder, 
+                    returnRef: returnNumber,
                     refundAmount: Math.round(totalRefundAmount * 100) / 100, 
                     itemRefundDetails, 
                     exchangeVoucher: exchangeVoucher ? {
@@ -1476,6 +1553,8 @@ export class PosSalesService implements OnModuleInit {
                     data: {
                         orderId: order.id,
                         orderNumber: order.orderNumber,
+                        returnNumber: (order as any).returnNumber,
+                        refundNumber: (order as any).refundNumber,
                         items: [],
                         reason: order.notes,
                         discountNotes: [],
@@ -1596,6 +1675,8 @@ export class PosSalesService implements OnModuleInit {
                 data: {
                     orderId: order.id,
                     orderNumber: order.orderNumber,
+                    returnNumber: (order as any).returnNumber,
+                    refundNumber: (order as any).refundNumber,
                     items: enrichedItems,
                     reason: order.notes,
                     discountNotes,
@@ -1929,6 +2010,12 @@ export class PosSalesService implements OnModuleInit {
 
                 const effectiveLocationId = order.locationId;
 
+                // Generate sequential refund number if not set
+                let refundNumber = (order as any).refundNumber;
+                if (!refundNumber) {
+                    refundNumber = await this.generateRefundNumber(effectiveLocationId || '', tx);
+                }
+
                 // Fetch ALREADY-RETURNED quantities from stock ledger (to determine status later)
                 const previousReturns = await tx.stockLedger.findMany({
                     where: { referenceType: { in: ['POS_RETURN', 'POS_REFUND'] }, referenceId: id },
@@ -2023,13 +2110,14 @@ export class PosSalesService implements OnModuleInit {
                     where: { id },
                     data: { 
                         status: newStatus, 
+                        refundNumber,
                         notes: refundVoucher 
                             ? `Cash refunded Rs.${refundAmount} (${newStatus}) - Refund voucher ${refundVoucher.code} (Record only) - Inventory restored${reason ? `: ${reason}` : ''}`
                             : (reason ? `Cash refund Rs.${refundAmount} (${newStatus}) - Inventory restored: ${reason}` : `Cash refund Rs.${refundAmount} (${newStatus}) - Inventory restored`)
                     },
                 });
 
-                return { updatedOrder, refundVoucher };
+                return { updatedOrder, refundVoucher, refundNumber };
             });
 
             runInBackground(
@@ -2053,6 +2141,8 @@ export class PosSalesService implements OnModuleInit {
             return { 
                 status: true, 
                 data: result.updatedOrder, 
+                refundRef: result.refundNumber,
+                returnRef: result.refundNumber,
                 refundVoucher: result.refundVoucher ? {
                     code: result.refundVoucher.code,
                     faceValue: result.refundVoucher.faceValue,

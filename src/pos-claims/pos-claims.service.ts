@@ -29,16 +29,68 @@ export class PosClaimsService {
         return Number(item?.unitCost || 0);
     }
 
-    private async generateClaimNumber(): Promise<string> {
-        const today = new Date();
-        const prefix = `CLM-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-        const last = await this.prisma.posClaim.findFirst({
-            where: { claimNumber: { startsWith: prefix } },
+    private async generateClaimNumber(locationId?: string | null, tx?: any): Promise<string> {
+        const prismaClient = tx || this.prisma;
+        
+        let shortCode = 'LOC';
+        if (locationId) {
+            const location = await prismaClient.location.findUnique({
+                where: { id: locationId },
+                select: { name: true, shortCode: true }
+            });
+            if (location) {
+                shortCode = location.shortCode?.trim() || location.name
+                    .split(/[\s\-_]+/)
+                    .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                    .filter((word) => word.length > 0)
+                    .map((word) => word[0].toUpperCase())
+                    .join('') || 'LOC';
+            }
+        }
+
+        // Fiscal Year Start (Pakistan: July 1st)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-indexed, July is 6
+        const fiscalYearStartYear = month >= 6 ? year : year - 1;
+        const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
+
+        // Find the latest claim for this location created during the current fiscal year, ordered by claimNumber desc to get the highest suffix directly
+        const lastClaim = await prismaClient.posClaim.findFirst({
+            where: {
+                salesOrder: { locationId },
+                createdAt: { gte: fiscalYearStartDate },
+                claimNumber: { startsWith: `CLM-${shortCode}-` }
+            },
             orderBy: { claimNumber: 'desc' },
-            select: { claimNumber: true },
+            select: { claimNumber: true }
         });
-        const seq = last ? parseInt(last.claimNumber.split('-').pop() || '0', 10) + 1 : 1;
-        return `${prefix}-${String(seq).padStart(4, '0')}`;
+
+        let seq = 1;
+        if (lastClaim && lastClaim.claimNumber) {
+            const parts = lastClaim.claimNumber.split('-');
+            const lastPart = parts[parts.length - 1];
+            if (/^\d+$/.test(lastPart)) {
+                seq = parseInt(lastPart, 10) + 1;
+            }
+        }
+
+        let nextClaimNumber = `CLM-${shortCode}-${String(seq).padStart(5, '0')}`;
+        let exists = await prismaClient.posClaim.findUnique({
+            where: { claimNumber: nextClaimNumber },
+            select: { id: true }
+        });
+
+        while (exists) {
+            seq++;
+            nextClaimNumber = `CLM-${shortCode}-${String(seq).padStart(5, '0')}`;
+            exists = await prismaClient.posClaim.findUnique({
+                where: { claimNumber: nextClaimNumber },
+                select: { id: true }
+            });
+        }
+
+        return nextClaimNumber;
     }
 
     async create(dto: any, createdBy?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
@@ -49,7 +101,7 @@ export class PosClaimsService {
             if (!order) throw new NotFoundException('Sales order not found');
             if (order.status === 'voided') throw new BadRequestException('Cannot claim a voided order');
 
-            const claimNumber = await this.generateClaimNumber();
+            const claimNumber = await this.generateClaimNumber(order.locationId);
             const claimedAmount = items.reduce((s: number, i: any) => s + Number(i.unitPaidPrice) * Number(i.claimedQty), 0);
 
             const claim = await this.prisma.posClaim.create({
