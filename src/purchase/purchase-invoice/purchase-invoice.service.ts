@@ -26,7 +26,7 @@ export class PurchaseInvoiceService {
       await this.validateBusinessRules(createDto);
 
       // Calculate totals
-      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+      const { subtotal, taxAmount, advanceTaxRate, advanceTaxAmount, totalAmount } = this.calculateTotals(createDto);
 
       // Derive invoiceType if not explicitly provided
       const invoiceType = createDto.invoiceType
@@ -61,6 +61,8 @@ export class PurchaseInvoiceService {
           invoiceType,
           subtotal,
           taxAmount,
+          advanceTaxRate,
+          advanceTaxAmount,
           discountAmount: createDto.discountAmount || 0,
           totalAmount,
           remainingAmount: totalAmount,
@@ -236,23 +238,39 @@ export class PurchaseInvoiceService {
         throw new BadRequestException('Cannot modify approved invoice');
       }
 
-      // If updating items, recalculate totals
+      // If updating items, advanceTaxRate, or discountAmount, recalculate totals
       let updateData: any = { ...updateDto };
       
-      if (updateDto.items) {
-        const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto as CreatePurchaseInvoiceDto);
+      if (updateDto.items || updateDto.advanceTaxRate !== undefined || updateDto.discountAmount !== undefined) {
+        const dtoForCalc = {
+          items: updateDto.items || existingInvoice.items.map(item => ({
+            itemId: item.itemId,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+            taxRate: Number(item.taxRate),
+            discountRate: Number(item.discountRate),
+          })),
+          discountAmount: updateDto.discountAmount !== undefined ? updateDto.discountAmount : Number(existingInvoice.discountAmount),
+          advanceTaxRate: updateDto.advanceTaxRate !== undefined ? updateDto.advanceTaxRate : Number(existingInvoice.advanceTaxRate),
+        } as CreatePurchaseInvoiceDto;
+
+        const { subtotal, taxAmount, advanceTaxRate, advanceTaxAmount, totalAmount } = this.calculateTotals(dtoForCalc);
         updateData = {
           ...updateData,
           subtotal,
           taxAmount,
+          advanceTaxRate,
+          advanceTaxAmount,
           totalAmount,
           remainingAmount: totalAmount - Number(existingInvoice.paidAmount),
         };
 
-        // Delete existing items and create new ones
-        await this.prisma.purchaseInvoiceItem.deleteMany({
-          where: { purchaseInvoiceId: id },
-        });
+        if (updateDto.items) {
+          // Delete existing items and create new ones
+          await this.prisma.purchaseInvoiceItem.deleteMany({
+            where: { purchaseInvoiceId: id },
+          });
+        }
       }
 
       let finalUpdateData = { ...updateData };
@@ -432,6 +450,7 @@ export class PurchaseInvoiceService {
         items: {
           include: {
             purchaseInvoiceItems: true,
+            item: true,
           },
         },
         purchaseOrder: {
@@ -465,6 +484,10 @@ export class PurchaseInvoiceService {
           ...item,
           availableQty: Math.max(0, availableQty), // Ensure non-negative
           unitPrice, // Add unit price from PO
+          item: {
+            sku: item.item.sku,
+            taxRate1: item.item.taxRate1,
+          },
         };
       }).filter(item => item.availableQty > 0), // Only return items with available quantity
     })).filter(grn => grn.items.length > 0); // Only return GRNs with available items
@@ -481,7 +504,11 @@ export class PurchaseInvoiceService {
         },
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            item: true,
+          },
+        },
         supplier: true,
         grn: {
           include: {
@@ -501,6 +528,10 @@ export class PurchaseInvoiceService {
       items: lc.items.map(item => ({
         ...item,
         availableQty: Number(item.qty),
+        item: {
+          sku: item.item.sku,
+          taxRate1: item.item.taxRate1,
+        },
       })),
     }));
 
@@ -632,11 +663,12 @@ export class PurchaseInvoiceService {
     return Number(result._sum.quantity) || 0;
   }
 
-  private calculateTotals(dto: CreatePurchaseInvoiceDto) {
+  private calculateTotals(dto: CreatePurchaseInvoiceDto | UpdatePurchaseInvoiceDto, existingAdvanceTaxRate?: number) {
     let subtotal = 0;
     let taxAmount = 0;
 
-    for (const item of dto.items) {
+    const items = dto.items || [];
+    for (const item of items) {
       const lineTotal = item.quantity * item.unitPrice;
       const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
       const discountedAmount = lineTotal - itemDiscountAmount;
@@ -646,12 +678,24 @@ export class PurchaseInvoiceService {
       taxAmount = taxAmount + itemTaxAmount;
     }
 
-    const totalDiscountAmount = dto.discountAmount || 0;
-    const totalAmount = subtotal + taxAmount - totalDiscountAmount;
+    const totalDiscountAmount = dto.discountAmount !== undefined ? dto.discountAmount : 0;
+    const baseTotal = subtotal + taxAmount - totalDiscountAmount;
+
+    let advanceTaxRate = 0.5;
+    if (dto.advanceTaxRate !== undefined && dto.advanceTaxRate !== null) {
+      advanceTaxRate = dto.advanceTaxRate;
+    } else if (existingAdvanceTaxRate !== undefined && existingAdvanceTaxRate !== null) {
+      advanceTaxRate = existingAdvanceTaxRate;
+    }
+    const advanceTaxAmount = baseTotal * advanceTaxRate / 100;
+
+    const totalAmount = baseTotal + advanceTaxAmount;
 
     return {
       subtotal,
       taxAmount,
+      advanceTaxRate,
+      advanceTaxAmount,
       totalAmount,
     };
   }

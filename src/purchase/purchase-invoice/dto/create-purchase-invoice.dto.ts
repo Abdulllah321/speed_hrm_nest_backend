@@ -79,6 +79,11 @@ export class CreatePurchaseInvoiceDto {
   discountAmount?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => parseFloat(value))
+  advanceTaxRate?: number;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 
