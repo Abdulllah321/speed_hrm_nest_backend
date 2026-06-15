@@ -4,6 +4,7 @@ import {
   CreatePurchaseOrderDto,
   AwardFromRfqDto,
   CreateMultiDirectPurchaseOrderDto,
+  UpdatePurchaseOrderDto,
 } from './dto/purchase-order.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -56,6 +57,16 @@ export class PurchaseOrderController {
   @Permissions('erp.procurement.po.create')
   createMultiDirect(@Body() body: CreateMultiDirectPurchaseOrderDto, @Req() req: any) {
     return this.purchaseOrderService.createMultiDirect(body, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Patch(':id')
+  @Permissions('erp.procurement.po.update')
+  updatePo(@Param('id') id: string, @Body() dto: UpdatePurchaseOrderDto, @Req() req: any) {
+    return this.purchaseOrderService.update(id, dto, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
