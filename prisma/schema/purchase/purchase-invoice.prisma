@@ -9,6 +9,8 @@ model PurchaseInvoice {
   warehouseId     String?                   @map("warehouse_id")
   subtotal        Decimal                   @default(0.0) @db.Decimal(15, 2)
   taxAmount       Decimal                   @default(0.0) @map("tax_amount") @db.Decimal(15, 2)
+  advanceTaxRate  Decimal                   @default(0.50) @map("advance_tax_rate") @db.Decimal(10, 2)
+  advanceTaxAmount Decimal                  @default(0.0) @map("advance_tax_amount") @db.Decimal(15, 2)
   discountAmount  Decimal                   @default(0.0) @map("discount_amount") @db.Decimal(15, 2)
   totalAmount     Decimal                   @default(0.0) @map("total_amount") @db.Decimal(15, 2)
   paidAmount      Decimal                   @default(0.0) @map("paid_amount") @db.Decimal(15, 2)
