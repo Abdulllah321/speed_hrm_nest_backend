@@ -1514,16 +1514,24 @@ export class PosSessionService {
           where: { id: sessionId },
           include: { pos: { include: { location: true } } },
         });
-        const cashGl = sessionData?.pos?.location?.cashGLCode;
+        const cashGl = sessionData?.pos?.location?.cashGLCode || '31090001';
         if (cashGl) {
-          const totalCash =
-            metrics.cashBreakdown.sale + metrics.cashBreakdown.giftVouchers;
+          // Cash Sales entry
           await addLine(
             cashGl,
             locationCode,
-            totalCash,
+            metrics.cashBreakdown.sale,
             0,
-            `Received Cash ag. Gift Vouchers Issued | ${jvDateStr}`,
+            `CASH SALES | ${jvDateStr}`,
+          );
+
+          // Cash - Gift Vouchers Issued entry
+          await addLine(
+            cashGl,
+            locationCode,
+            metrics.cashBreakdown.giftVouchers,
+            0,
+            `Cash - Gift Vouchers Issued | ${jvDateStr}`,
           );
         }
 
@@ -1637,6 +1645,15 @@ export class PosSessionService {
               `Gift Voucher Issued | GV#${gv.to} | ${jvDateStr}`,
             );
           }
+        }
+        for (const rv of metrics.issuedVouchers.refundVouchers) {
+          await addLine(
+            '12070002',
+            locationCode,
+            0,
+            rv.amount,
+            `Refund Voucher Issued | ${rv.from} | ${jvDateStr}`,
+          );
         }
 
         // 14. FBR POS
