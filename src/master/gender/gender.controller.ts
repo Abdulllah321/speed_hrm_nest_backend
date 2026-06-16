@@ -28,14 +28,14 @@ export class GenderController {
 
   @Get('genders')
   @ApiOperation({ summary: 'Get all genders' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.gender.read'))
+  @UseGuards(JwtAuthGuard)
   async getAllGenders() {
     return this.genderService.getAllGenders();
   }
 
   @Get('genders/:id')
   @ApiOperation({ summary: 'Get gender by ID' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.gender.read'))
+  @UseGuards(JwtAuthGuard)
   async getGenderById(@Param('id') id: string) {
     return this.genderService.getGenderById(id);
   }
