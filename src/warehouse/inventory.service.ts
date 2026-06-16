@@ -98,6 +98,7 @@ export class InventoryService {
           ? [
               { sku: { contains: query, mode: 'insensitive' } },
               { description: { contains: query, mode: 'insensitive' } },
+              { barCode: { contains: query, mode: 'insensitive' } },
             ]
           : undefined,
         isActive: true,
@@ -107,9 +108,9 @@ export class InventoryService {
       select: {
         id: true,
         sku: true,
+        barCode: true,
         description: true,
         unitPrice: true,
-        unitCost: true, // Added unitCost field
         imageUrl: true,
         brand: { select: { id: true, name: true } },
         category: { select: { id: true, name: true } },
