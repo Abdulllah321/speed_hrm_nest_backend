@@ -635,7 +635,7 @@ export class PosSessionService {
    * Computes all drawer totals, tax/discount and payment method aggregates,
    * and fetches the cashier user profile from the master database.
    */
-  async getReconciliationDetails(sessionId: string, date?: string) {
+  async getReconciliationDetails(sessionId: string, date?: string, skipJvRegen = false) {
     const session = await this.prisma.posSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -649,6 +649,18 @@ export class PosSessionService {
 
     if (!session) {
       throw new NotFoundException('POS Session not found.');
+    }
+
+    if (session.status === 'closed' && !skipJvRegen) {
+      runInBackground(
+        'Regenerate POS Journal Voucher on fetch',
+        this.generateReconciliationVoucher(session.id, session.posId).catch((err) =>
+          this.logger.error(
+            `Failed to regenerate JV for session ${session.id}`,
+            err,
+          ),
+        ),
+      );
     }
 
     // Fetch Cashier Profile from Central/Master DB
@@ -1340,6 +1352,31 @@ export class PosSessionService {
       });
       if (!session) return;
 
+      // Clean up all existing pending JVs for this session first (both old format and new format)
+      const sessionPrefix = `RS RV-${sessionId.substring(0, 8).toUpperCase()}`;
+      const existingJvs = await this.prisma.journalVoucher.findMany({
+        where: {
+          OR: [
+            { jvNo: { startsWith: sessionPrefix } },
+            { jvNo: sessionPrefix }
+          ]
+        }
+      });
+
+      for (const existingJv of existingJvs) {
+        if (existingJv.status === 'pending') {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.journalVoucherDetail.deleteMany({
+              where: { journalVoucherId: existingJv.id },
+            });
+            await tx.journalVoucher.delete({
+              where: { id: existingJv.id },
+            });
+          });
+          this.logger.log(`Cleaned up existing pending JV: ${existingJv.jvNo}`);
+        }
+      }
+
       const toLocalDateString = (d: Date) => {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -1361,7 +1398,7 @@ export class PosSessionService {
       }
 
       for (const dateStr of availableDates) {
-        const metrics = await this.getReconciliationDetails(sessionId, dateStr);
+        const metrics = await this.getReconciliationDetails(sessionId, dateStr, true);
         const date = new Date(dateStr + 'T12:00:00');
         const locationCode = metrics.session.terminal.locationCode;
         const jvDateStr = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
@@ -1423,6 +1460,8 @@ export class PosSessionService {
         };
 
         // 1. Credit / Debit Cards (Merchant)
+        let totalCommission = 0;
+
         for (const card of metrics.cardPayments) {
           // Find bank GL code
           const merchant = await this.prisma.merchantConfig.findFirst({
@@ -1430,10 +1469,13 @@ export class PosSessionService {
             orderBy: { createdAt: 'desc' },
           });
           if (merchant?.bankGlCode) {
+            const comm = Number(card.commission.toFixed(2));
+            totalCommission += comm;
+            const netAmount = Number((card.amount - comm).toFixed(2));
             await addLine(
               merchant.bankGlCode,
               locationCode,
-              card.amount,
+              netAmount,
               0,
               `Credit Card Sales ${card.bank} | ${jvDateStr}`,
             );
@@ -1445,10 +1487,13 @@ export class PosSessionService {
             orderBy: { createdAt: 'desc' },
           });
           if (merchant?.bankGlCode) {
+            const comm = Number(card.commission.toFixed(2));
+            totalCommission += comm;
+            const netAmount = Number((card.amount - comm).toFixed(2));
             await addLine(
               merchant.bankGlCode,
               locationCode,
-              card.amount,
+              netAmount,
               0,
               `Credit Card Sales ${card.bank} | ${jvDateStr}`,
             );
@@ -1456,11 +1501,6 @@ export class PosSessionService {
         }
 
         // 2. Total Credit/Debit Cards Commission
-        let totalCommission = 0;
-        metrics.cardPayments.forEach((c) => (totalCommission += c.commission));
-        metrics.cardGiftVouchers.forEach(
-          (c) => (totalCommission += c.commission),
-        );
         await addLine(
           '80210001',
           locationCode,
@@ -1629,7 +1669,7 @@ export class PosSessionService {
         );
 
         // Final Calculations
-        const netReceivedCash = metrics.cashBreakdown.total;
+        const totalReceived = metrics.cashBreakdown.total + metrics.paymentBreakdown.voucher.amount;
         const netReceivedCard = metrics.cardBreakdown.total;
 
         const creditVouchersAmt = metrics.issuedVouchers.creditVouchers.reduce(
@@ -1644,13 +1684,14 @@ export class PosSessionService {
         );
 
         // AC: 12070002 -> Transfer Current A/c Cash
-        // Credit = Net Recieved(Cash) + Recievables - Credit Vouchers - Cash Gift Vouchers - On Cash FBR
+        // Credit = Total Received + Receivables - Credit Vouchers - Cash Gift Vouchers - On Cash FBR
         const transferCash =
-          netReceivedCash +
+          totalReceived +
           receivablesAmt -
           creditVouchersAmt -
           cashGiftVouchersAmt -
           fbrCash;
+
         await addLine(
           '12070002',
           locationCode,
@@ -1660,9 +1701,8 @@ export class PosSessionService {
         );
 
         // AC: 12070003 -> Transfer Current A/c Card
-        // Credit = Net Card Total + Credit Card Gift Vouchers + Total Credit Card Commision - Credit Card Gift Vouchers - Card FBR Charges
-        // Which simplifies to: Net Card Total + Total Commision - Card FBR Charges
-        const transferCard = netReceivedCard + totalCommission - fbrCard;
+        // Credit = Net Card Total - Card FBR Charges (since bank commission is subtracted from Credit Card Sales bank GL entry)
+        const transferCard = Number((netReceivedCard - fbrCard).toFixed(2));
         await addLine(
           '12070003',
           locationCode,
@@ -1714,6 +1754,16 @@ export class PosSessionService {
             narration: `[AUTO-BALANCING LINE] To balance JV. Total Debit was ${totalDebit.toFixed(2)}, Total Credit was ${totalCredit.toFixed(2)}`,
           });
           description += `\n\nATTENTION: Voucher was unbalanced by ${diff.toFixed(2)}. An auto-balancing line was added. Please review and correct.`;
+        }
+
+        // Check if JV already exists (it would only exist if it's approved and was not deleted)
+        const approvedJv = await this.prisma.journalVoucher.findUnique({
+          where: { jvNo },
+        });
+
+        if (approvedJv) {
+          this.logger.log(`Journal Voucher ${jvNo} already exists and is not pending. Skipping.`);
+          continue;
         }
 
         await this.journalVoucherService.create(
