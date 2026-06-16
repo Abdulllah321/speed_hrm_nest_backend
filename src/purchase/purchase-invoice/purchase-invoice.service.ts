@@ -796,13 +796,47 @@ export class PurchaseInvoiceService {
           // Gracefully ignore if not configured
         }
 
-        const payableAccounts = supplier?.chartOfAccounts || [];
+        let apPartiesAccountId: string | null = null;
+        try {
+          apPartiesAccountId = await this.financeConfig.resolveAccount(
+            AccountRoleKey.AP_PARTIES,
+          );
+        } catch (error) {
+          // Gracefully ignore if not configured
+        }
+
+        let payableAccounts: { accountId: string; tagAccountId?: string }[] = [];
+
+        if (apPartiesAccountId && supplier) {
+          const tagAccount = await tx.chartOfAccount.findFirst({
+            where: {
+              parentId: apPartiesAccountId,
+              code: supplier.code,
+            },
+            select: { id: true },
+          });
+          if (tagAccount) {
+            payableAccounts.push({
+              accountId: apPartiesAccountId,
+              tagAccountId: tagAccount.id,
+            });
+          } else {
+            throw new BadRequestException(
+              `Tag account with code "${supplier.code}" not found under the configured Accounts Payable Parties account.`,
+            );
+          }
+        } else if (supplier?.chartOfAccounts?.length) {
+          payableAccounts = supplier.chartOfAccounts.map(acc => ({
+            accountId: acc.id,
+          }));
+        }
 
         // Build and post journal lines only if finance configuration is present
         if (purchasesAccountId && payableAccounts.length > 0) {
           const creditPerAccount = totalAmount / payableAccounts.length;
           const creditLines = payableAccounts.map(acc => ({
-            accountId: acc.id,
+            accountId: acc.accountId,
+            tagAccountId: acc.tagAccountId,
             debit: 0,
             credit: creditPerAccount,
           }));
@@ -953,14 +987,52 @@ export class PurchaseInvoiceService {
             // Gracefully ignore if not configured
           }
 
-          if (purchasesAccount && supplier?.chartOfAccounts?.length) {
+          let apPartiesAccountId: string | null = null;
+          try {
+            apPartiesAccountId = await this.financeConfig.resolveAccount(
+              AccountRoleKey.AP_PARTIES,
+            );
+          } catch (error) {
+            // Gracefully ignore if not configured
+          }
+
+          let payableAccounts: { accountId: string; tagAccountId?: string }[] = [];
+
+          if (apPartiesAccountId && supplier) {
+            const tagAccount = await tx.chartOfAccount.findFirst({
+              where: {
+                parentId: apPartiesAccountId,
+                code: supplier.code,
+              },
+              select: { id: true },
+            });
+            if (tagAccount) {
+              payableAccounts.push({
+                accountId: apPartiesAccountId,
+                tagAccountId: tagAccount.id,
+              });
+            } else {
+              throw new BadRequestException(
+                `Tag account with code "${supplier.code}" not found under the configured Accounts Payable Parties account.`,
+              );
+            }
+          } else if (supplier?.chartOfAccounts?.length) {
+            payableAccounts = supplier.chartOfAccounts.map(acc => ({
+              accountId: acc.id,
+            }));
+          }
+
+          if (purchasesAccount && payableAccounts.length > 0) {
             const totalAmount = Number(invoice.totalAmount);
-            const creditPerAccount = totalAmount / supplier.chartOfAccounts.length;
+            const creditPerAccount = totalAmount / payableAccounts.length;
 
             const originalLines = [
               { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
-              ...supplier.chartOfAccounts.map(acc => ({
-                accountId: acc.id, debit: 0, credit: creditPerAccount,
+              ...payableAccounts.map(acc => ({
+                accountId: acc.accountId,
+                tagAccountId: acc.tagAccountId,
+                debit: 0,
+                credit: creditPerAccount,
               })),
             ];
 
