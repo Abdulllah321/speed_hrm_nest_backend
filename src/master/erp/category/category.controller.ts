@@ -33,21 +33,18 @@ export class CategoryController {
   }
 
   @Get()
-  @Permissions('master.category.read', 'master.sub-category.read')
   async findAll(@Query('parentId') parentId?: string) {
     const result = await this.categoryService.findAll(parentId);
     return { status: true, data: result };
   }
 
   @Get('tree')
-  @Permissions('master.category.read', 'master.sub-category.read')
   async findTree() {
     const result = await this.categoryService.findTree();
     return { status: true, data: result };
   }
 
   @Get(':id')
-  @Permissions('master.category.read', 'master.sub-category.read')
   async findOne(@Param('id') id: string) {
     const result = await this.categoryService.findOne(id);
     return { status: true, data: result };

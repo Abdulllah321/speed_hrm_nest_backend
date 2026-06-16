@@ -27,7 +27,7 @@ export class SilhouetteController {
 
   @Get('silhouettes')
   @ApiOperation({ summary: 'Get all silhouettes' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.silhouette.read'))
+  @UseGuards(JwtAuthGuard)
   async getAllSilhouettes() {
     return this.silhouetteService.getAllSilhouettes();
   }
