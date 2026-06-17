@@ -212,7 +212,12 @@ export class PurchaseInvoiceService {
         },
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                size: true,
+                color: true,
+              },
+            },
           },
         },
         paymentVouchers: {
