@@ -415,7 +415,7 @@ export class PurchaseReturnService {
           },
         },
         warehouse: true,
-        items: { include: { item: true } },
+        items: { include: { item: { include: { size: true } } } },
       },
       orderBy: { receivedDate: 'desc' },
     });
@@ -434,6 +434,7 @@ export class PurchaseReturnService {
           unitPrice: poItem?.unitPrice || 0,
           description: (grnItem as any).item?.description || poItem?.description || grnItem.description,
           displayCode: (grnItem as any).item?.itemId || grnItem.itemId,
+          size: (grnItem as any).item?.size?.name || null,
         };
       }),
     }));
@@ -456,7 +457,7 @@ export class PurchaseReturnService {
           },
         },
         supplier: true,
-        items: { include: { item: true } },
+        items: { include: { item: { include: { size: true } } } },
       },
       orderBy: { date: 'desc' },
     });
@@ -471,6 +472,7 @@ export class PurchaseReturnService {
         ...lcItem,
         description: (lcItem as any).item?.description || lcItem.description,
         displayCode: (lcItem as any).item?.itemId || lcItem.itemId,
+        size: (lcItem as any).item?.size?.name || null,
       })),
     }));
   }
