@@ -35,7 +35,20 @@ export class PermissionsGuard implements CanActivate {
 
     // Fast path: JwtAuthGuard already resolved permissions onto req.user
     if (Array.isArray(user.permissions)) {
-      if (user.permissions.includes('*')) return true;
+      const role = (
+        typeof user.roleName === 'string' ? user.roleName :
+        typeof user.role === 'string' ? user.role :
+        user.role?.name || ''
+      ).toLowerCase();
+
+      if (
+        role === 'admin' ||
+        role === 'super-admin' ||
+        role === 'super_admin' ||
+        user.permissions.includes('*')
+      ) {
+        return true;
+      }
       return requiredPermissions.some((p) => user.permissions.includes(p));
     }
 
@@ -100,7 +113,7 @@ export class PermissionsGuard implements CanActivate {
     const isRoleActive = user.roleId && user.role && (!user.roleExpiresAt || user.roleExpiresAt > new Date());
 
     if (isRoleActive && user.role) {
-      if (roleName === 'super_admin' || roleName === 'admin') {
+      if (roleName === 'super_admin' || roleName === 'super-admin' || roleName === 'admin') {
         permissionsSet.add('*');
       } else {
         user.role.permissions.forEach((rp) => {
@@ -151,7 +164,7 @@ export class PermissionsGuard implements CanActivate {
 
     // Super Admin and Admin bypass
     const name = role.name.toLowerCase();
-    if (name === 'super_admin' || name === 'admin') {
+    if (name === 'super_admin' || name === 'super-admin' || name === 'admin') {
       const allPermissions = ['*'];
       await this.cacheManager.set(cacheKey, allPermissions, 3600000);
       return allPermissions;
