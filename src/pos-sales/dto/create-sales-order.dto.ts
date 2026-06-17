@@ -42,6 +42,11 @@ export class SalesOrderItemDto {
     @Max(50)
     overrideDiscountPercent?: number;
 
+    @ApiPropertyOptional({ description: 'Reason/Note for override discount' })
+    @IsOptional()
+    @IsString()
+    overrideDiscountNote?: string;
+
     @ApiPropertyOptional({ description: 'Tax percentage', default: 0 })
     @IsOptional()
     @IsNumber()
@@ -161,12 +166,17 @@ export class CreateSalesOrderDto {
     @IsString()
     notes?: string;
 
+    @ApiPropertyOptional({ description: 'Manual discount / item override note' })
+    @IsOptional()
+    @IsString()
+    manualDiscountNote?: string;
+
     // ── Discount fields ──────────────────────────────────────────────────
-    @ApiPropertyOptional({ description: 'Global discount percentage (0-100)' })
+    @ApiPropertyOptional({ description: 'Global discount percentage (0-50)' })
     @IsOptional()
     @IsNumber()
     @Min(0)
-    @Max(100)
+    @Max(50)
     globalDiscountPercent?: number;
 
     @ApiPropertyOptional({ description: 'Global discount flat amount' })
