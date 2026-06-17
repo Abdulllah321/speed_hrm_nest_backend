@@ -66,6 +66,11 @@ const ROLES = [
     description: 'Product / Item information management. Assigned to Mustufa & Imran Khalid.',
     isSystem: false,
   },
+  {
+    name: 'plm',
+    description: 'PLM User with access to PLM claims and return claims.',
+    isSystem: false,
+  },
 ];
 
 // ─── Base employee self-service permissions (assigned to ALL non-super-admin roles) ──
@@ -183,6 +188,19 @@ const PRODUCT_INFO_PATTERNS = [
   'master.sub-category.*',
 ];
 
+// PLM User patterns
+const PLM_PATTERNS = [
+  'erp.dashboard.view',
+  'erp.inventory.view',
+  'erp.inventory.explorer.view',
+  'erp.inventory.stock-transfer.read',
+  'erp.inventory.warehouse.view',
+  'erp.inventory.warehouse.inventory.view',
+  'erp.inventory.claims.acknowledge',
+  'erp.item.read',
+  'erp.claims.*',
+];
+
 // ─── Map role name → permission filter function ───────────────────────────────
 
 function permissionsForRole(roleName: string, allPermNames: string[]): string[] {
@@ -220,6 +238,10 @@ function permissionsForRole(roleName: string, allPermNames: string[]): string[] 
 
     case 'product-info':
       rolePerms = allPermNames.filter((n) => matches(n, PRODUCT_INFO_PATTERNS));
+      break;
+
+    case 'plm':
+      rolePerms = allPermNames.filter((n) => matches(n, PLM_PATTERNS));
       break;
 
     default:
@@ -325,6 +347,7 @@ async function main() {
     console.log('  pos-inventory-mgmt → Hasan Tanveer, Sheheryar        [POS + full inventory + employee base]');
     console.log('  pos-only           → Moid Khan, Ahmed, Shakeel, Ahsan, Shayan Rehman [POS + employee base]');
     console.log('  product-info       → Mustufa, Imran Khalid           [Item/product masters + employee base]');
+    console.log('  plm                → PLM User                        [Claims + PLM Claims + employee base]');
     console.log('\n  ℹ️  Assign roles to users manually via the admin panel.');
 
   } catch (error) {
