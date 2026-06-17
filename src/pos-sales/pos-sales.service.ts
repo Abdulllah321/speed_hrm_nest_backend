@@ -275,6 +275,8 @@ export class PosSalesService implements OnModuleInit {
                         unitPrice: lineItem.unitPrice,
                         discountPercent: discPct,
                         discountAmount: discAmt + promoDisc,
+                        overrideDiscountPercent: lineItem.overrideDiscountPercent || undefined,
+                        overrideDiscountNote: lineItem.overrideDiscountNote || undefined,
                         taxPercent: taxPct,
                         taxAmount: taxAmt,
                         lineTotal: Math.max(0, lineTotal),
@@ -301,11 +303,15 @@ export class PosSalesService implements OnModuleInit {
                 let allianceDiscount = 0;
                 let couponDiscount = 0;
                 
-                // 1. Manual discount (from UI)
+                // 1. Manual discount (from UI) — calculated on full subtotal (replaces item discounts)
+                //    Max 50% allowed; flat amount capped at 50% of Grand Total before manual discount
+                const grandTotalBeforeManual = Math.round((subtotal - lineItemDiscount + recalculatedTotalTax + 1) * 100) / 100;
                 if (dto.globalDiscountPercent) {
-                    manualDiscount = Math.round(subtotalAfterItemDiscount * (dto.globalDiscountPercent / 100) * 100) / 100;
+                    const cappedPercent = Math.min(dto.globalDiscountPercent, 50);
+                    manualDiscount = Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
                 } else if (dto.globalDiscountAmount) {
-                    manualDiscount = Math.min(dto.globalDiscountAmount, subtotalAfterItemDiscount);
+                    const maxFlatDiscount = Math.round(grandTotalBeforeManual * 0.5 * 100) / 100;
+                    manualDiscount = Math.min(dto.globalDiscountAmount, maxFlatDiscount);
                 }
                 // 2. Alliance discount (calculated on subtotal AFTER item discounts)
                 if (dto.allianceId) {
@@ -361,8 +367,9 @@ export class PosSalesService implements OnModuleInit {
                     globalDiscAmt = couponDiscount;
                     appliedDiscountType = 'coupon';
                 } else if (manualDiscount > 0) {
-                    // Manual discount
+                    // Manual discount — replaces item-level discounts
                     globalDiscAmt = manualDiscount;
+                    finalLineItemDiscount = 0; // Remove item discounts when manual discount is applied
                     appliedDiscountType = 'manual';
                 }
 
@@ -482,6 +489,7 @@ export class PosSalesService implements OnModuleInit {
                         cashierUserId,
                         paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                         notes: notesParts.join(' | ') || undefined,
+                        manualDiscountNote: dto.manualDiscountNote || undefined,
                         subtotal,
                         discountAmount: totalDiscount,
                         taxAmount: finalTotalTax,
@@ -2111,7 +2119,7 @@ export class PosSalesService implements OnModuleInit {
 
             const itemsData = dto.items.map((lineItem) => {
                 const subtotal = lineItem.unitPrice * lineItem.quantity;
-                const discPct = lineItem.discountPercent || 0;
+                const discPct = lineItem.overrideDiscountPercent ?? lineItem.discountPercent ?? 0;
                 const discAmt = Math.round(subtotal * (discPct / 100));
                 const afterDisc = subtotal - discAmt;
                 const taxPct = lineItem.taxPercent || 0;
@@ -2123,6 +2131,8 @@ export class PosSalesService implements OnModuleInit {
                     unitPrice: lineItem.unitPrice,
                     discountPercent: discPct,
                     discountAmount: discAmt,
+                    overrideDiscountPercent: lineItem.overrideDiscountPercent || undefined,
+                    overrideDiscountNote: lineItem.overrideDiscountNote || undefined,
                     taxPercent: taxPct,
                     taxAmount: taxAmt,
                     lineTotal: Math.max(0, lineTotal),
