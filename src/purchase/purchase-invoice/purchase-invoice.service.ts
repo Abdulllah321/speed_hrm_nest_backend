@@ -502,6 +502,13 @@ export class PurchaseInvoiceService {
         status: {
           in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED', 'VALUED'],
         },
+        purchaseInvoices: {
+          none: {
+            status: {
+              not: 'CANCELLED',
+            },
+          },
+        },
       },
       include: {
         items: {
