@@ -28,8 +28,19 @@ export const PermissionGuard = (
         ? requiredPermissions
         : [requiredPermissions];
 
-      // If user has '*' permission, they are super admin/admin and bypass checks
-      if (user.permissions.includes('*')) {
+      // If user is admin/super-admin, or has '*' permission, bypass checks
+      const role = (
+        typeof user.roleName === 'string' ? user.roleName :
+        typeof user.role === 'string' ? user.role :
+        user.role?.name || ''
+      ).toLowerCase();
+
+      if (
+        role === 'admin' ||
+        role === 'super-admin' ||
+        role === 'super_admin' ||
+        user.permissions.includes('*')
+      ) {
         return true;
       }
 
