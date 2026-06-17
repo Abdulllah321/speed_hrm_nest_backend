@@ -128,7 +128,7 @@ export class JwtAuthGuard implements CanActivate {
 
       if (isRoleActive && user.role) {
         // Super Admin and Admin bypass
-        if (roleName === 'super_admin' || roleName === 'admin') {
+        if (roleName === 'super_admin' || roleName === 'super-admin' || roleName === 'admin') {
           permissionsSet.add('*');
         } else if (user.role.permissions) {
           user.role.permissions.forEach((p) => {

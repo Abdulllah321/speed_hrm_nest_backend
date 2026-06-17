@@ -426,14 +426,17 @@ export class ChartOfAccountService {
 
       for (const item of items) {
         const existing = await this.prisma.chartOfAccount.findFirst({
-          where: { code: item.code },
+          where: {
+            code: item.code,
+            parentId: parent.id,
+          },
         });
 
         if (existing) {
           skipped.push({
             name: item.name,
             code: item.code,
-            reason: 'Account code already exists',
+            reason: 'Account code already exists under this parent',
           });
           continue;
         }

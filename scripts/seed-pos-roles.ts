@@ -19,7 +19,10 @@
  *                        master.season.*, master.segment.*, master.item-class.*, master.item-subclass.*
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 import { PrismaClient } from '@prisma/management-client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';

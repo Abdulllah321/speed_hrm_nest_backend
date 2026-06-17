@@ -9,6 +9,7 @@ import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as XLSX from 'xlsx';
 
 export interface UploadJobData {
     uploadId: string;
@@ -92,7 +93,9 @@ export class UploadProcessor {
             let totalRecordsCount = 0;
             let successRecordsCount = 0;
             let lastEmitTime = Date.now();
-            const itemIdSet = new Set<string>(); // For duplicate detection (memory intensive but better than full records)
+            const itemIdSet = new Set<string>();
+            const carryOverItemIds = new Set<string>();
+            const newItemIds = new Set<string>();
 
             if (mode === 'import') {
                 // Stage 2: Streaming Batch Import
@@ -129,7 +132,7 @@ export class UploadProcessor {
                     importBatch.push(record);
 
                     if (importBatch.length >= 1000) {
-                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
+                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, carryOverItemIds, newItemIds);
                         importBatch = []; // Clear memory
 
                         // Yield to event loop to prevent blocking other requests
@@ -177,7 +180,117 @@ export class UploadProcessor {
 
                 // Final small batch
                 if (importBatch.length > 0) {
-                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
+                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, carryOverItemIds, newItemIds);
+                }
+
+                // Generate success report if we had successes (100% backend/DB data in multi-sheet Excel format)
+                if (carryOverItemIds.size > 0 || newItemIds.size > 0) {
+                    this.logger.log(`[Job ${job.id}] Generating success export report for ${carryOverItemIds.size} carry overs and ${newItemIds.size} new items...`);
+                    const successReportPath = path.join(process.cwd(), 'uploads', 'bulk', `success-${uploadId}.xlsx`);
+                    const errorReportDir = path.dirname(successReportPath);
+                    if (!fs.existsSync(errorReportDir)) {
+                        fs.mkdirSync(errorReportDir, { recursive: true });
+                    }
+
+                    const mapItemToExcelRow = (item: any) => ({
+                        'Item ID': item.itemId,
+                        'SKU': item.sku,
+                        'Barcode': item.barCode,
+                        'Description': item.description,
+                        'Unit Price': item.unitPrice,
+                        'Unit Cost': item.unitCost,
+                        'FOB': item.fob,
+                        'Sale Tax Rate': item.taxRate1 ?? 0,
+                        'Additional Sales Tax': item.taxRate2 ?? 0,
+                        'Discount %': item.discountRate ?? 0,
+                        'Discount Amount': item.discountAmount ?? 0,
+                        'Status': item.status,
+                        'Is Active': item.isActive ? 'Yes' : 'No',
+                        'Brand': item.brand?.name || '',
+                        'Division': item.division?.name || '',
+                        'Gender': item.gender?.name || '',
+                        'Size': item.size?.name || '',
+                        'Silhouette': item.silhouette?.name || '',
+                        'Channel Class': item.channelClass?.name || '',
+                        'Color': item.color?.name || '',
+                        'Category': item.category?.name || '',
+                        'Sub Category': item.subCategory?.name || '',
+                        'Item Class': item.itemClass?.name || '',
+                        'Item Subclass': item.itemSubclass?.name || '',
+                        'Season': item.season?.name || '',
+                        'Segment': item.segment?.name || '',
+                        'HS Code': item.hsCode?.hsCode || '',
+                        'UOM': item.uom || '',
+                        'Currency': item.currency || '',
+                        'Launch Date': item.launchDate ? item.launchDate.toISOString().split('T')[0] : '',
+                        'Old Season': item.oldSeason || '',
+                        'Case Material': item.case || '',
+                        'Band': item.band || '',
+                        'Movement Type': item.movementType || '',
+                        'Movement Name': item.movementName || '',
+                        'Heel Height': item.heelHeight || '',
+                        'Width': item.width || '',
+                        'Created At': item.createdAt ? item.createdAt.toISOString() : '',
+                        'Updated At': item.updatedAt ? item.updatedAt.toISOString() : ''
+                    });
+
+                    let carryOversRows: any[] = [];
+                    if (carryOverItemIds.size > 0) {
+                        const carryOverItems = await prisma.item.findMany({
+                            where: { itemId: { in: Array.from(carryOverItemIds) } },
+                            include: {
+                                brand: true,
+                                division: true,
+                                gender: true,
+                                size: true,
+                                silhouette: true,
+                                channelClass: true,
+                                color: true,
+                                category: true,
+                                subCategory: true,
+                                itemClass: true,
+                                itemSubclass: true,
+                                season: true,
+                                segment: true,
+                                hsCode: true,
+                            }
+                        });
+                        carryOversRows = carryOverItems.map(mapItemToExcelRow);
+                    }
+
+                    let newItemsRows: any[] = [];
+                    if (newItemIds.size > 0) {
+                        const newItems = await prisma.item.findMany({
+                            where: { itemId: { in: Array.from(newItemIds) } },
+                            include: {
+                                brand: true,
+                                division: true,
+                                gender: true,
+                                size: true,
+                                silhouette: true,
+                                channelClass: true,
+                                color: true,
+                                category: true,
+                                subCategory: true,
+                                itemClass: true,
+                                itemSubclass: true,
+                                season: true,
+                                segment: true,
+                                hsCode: true,
+                            }
+                        });
+                        newItemsRows = newItems.map(mapItemToExcelRow);
+                    }
+
+                    const wb = XLSX.utils.book_new();
+                    const wsCarryOvers = XLSX.utils.json_to_sheet(carryOversRows);
+                    const wsNewItems = XLSX.utils.json_to_sheet(newItemsRows);
+
+                    XLSX.utils.book_append_sheet(wb, wsCarryOvers, 'Carry Overs');
+                    XLSX.utils.book_append_sheet(wb, wsNewItems, 'New Items');
+
+                    XLSX.writeFile(wb, successReportPath);
+                    this.logger.log(`[Job ${job.id}] Success export report generated successfully at ${successReportPath}`);
                 }
             } else {
                 // Stage 1: Validation Mode
@@ -225,11 +338,15 @@ export class UploadProcessor {
                     return Promise.resolve();
                 };
 
+                    const itemIdSet = new Set<string>();
+                    const barCodeSet = new Set<string>();
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
 
                     const itemId = record.data.itemId ? String(record.data.itemId).trim() : undefined;
                     const barCode = record.data.barCode ? String(record.data.barCode).trim() : undefined;
+
+
 
                     if (record.data.itemId) {
                         const normalized = String(record.data.itemId).trim().toLowerCase();
@@ -395,58 +512,114 @@ export class UploadProcessor {
         }
     }
 
-    /**
-     * Process a batch of records with individual error isolation and bulk operations
-     */
-    private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
-        // ── Auto-generate itemIds for rows that don't have one ────────────────
-        // Count how many rows need a generated ID
-        const rowsNeedingId = batch.filter(r => !r.data.itemId || String(r.data.itemId).trim() === '');
+    private async processBatch(
+        batch: ParsedRecord[],
+        progress: UploadProgress,
+        uploadId: string,
+        prisma: PrismaService,
+        tenantMasterData: MasterDataService,
+        carryOverItemIds: Set<string>,
+        newItemIds: Set<string>
+    ): Promise<void> {
+        // ── Bulk existence check by ItemID and Barcode only ──────────────────
+        // NOTE: SKU is NOT unique — the same SKU can exist across multiple sizes/colors.
+        // Using SKU as a match key caused items with the same SKU (e.g. size 8 & size 9)
+        // to collide: the second row would update the first item instead of creating a new one.
+        const itemIds = batch.map(r => r.data.itemId ? String(r.data.itemId).trim() : '').filter(Boolean);
+        const barcodes = batch.map(r => r.data.barCode ? String(r.data.barCode).trim() : '').filter(Boolean);
 
-        if (rowsNeedingId.length > 0) {
-            // Find the current highest numeric itemId in one query, then assign a
-            // contiguous block — avoids N round-trips and is race-condition safe
-            // because createMany with skipDuplicates handles any collision.
-            const last = await prisma.item.findFirst({
-                orderBy: { itemId: 'desc' },
-                select: { itemId: true },
-            });
-            const lastNum = last && /^\d{6}$/.test(last.itemId) ? parseInt(last.itemId, 10) : 0;
+        const orConditions: any[] = [];
+        if (itemIds.length > 0) orConditions.push({ itemId: { in: itemIds } });
+        if (barcodes.length > 0) orConditions.push({ barCode: { in: barcodes } });
 
-            let counter = lastNum;
-            for (const record of rowsNeedingId) {
-                counter++;
-                if (counter > 9999999) throw new Error('Item ID sequence exceeded maximum 9999999');
-                record.data.itemId = String(counter).padStart(6, '0');
+        const existingItems = orConditions.length > 0
+            ? await prisma.item.findMany({
+                where: { OR: orConditions },
+                select: { id: true, itemId: true, barCode: true }
+              })
+            : [];
+
+        // Build lookup maps — only truly unique fields
+        const itemIdMap = new Map<string, string>();
+        const barcodeMap = new Map<string, { id: string; itemId: string }>();
+
+        for (const item of existingItems) {
+            itemIdMap.set(item.itemId, item.id);
+            if (item.barCode) barcodeMap.set(item.barCode.trim(), { id: item.id, itemId: item.itemId });
+        }
+
+        // Determine which records already exist and which ones need auto-generated IDs
+        const matchedRecordMap = new Map<number, { id: string; itemId: string }>();
+        const recordsNeedingId: ParsedRecord[] = [];
+
+        for (const record of batch) {
+            const itemId = record.data.itemId ? String(record.data.itemId).trim() : undefined;
+            const barCode = record.data.barCode ? String(record.data.barCode).trim() : undefined;
+            const sku = record.data.sku ? String(record.data.sku).trim() : undefined;
+
+            let match: { id: string; itemId: string } | undefined = undefined;
+
+            // Match priority: itemId first (explicit), then barCode (unique per variant).
+            // SKU is intentionally excluded — it is NOT unique across sizes/colors.
+            if (itemId && itemIdMap.has(itemId)) {
+                match = { id: itemIdMap.get(itemId)!, itemId };
+            } else if (barCode && barcodeMap.has(barCode)) {
+                match = barcodeMap.get(barCode);
+            }
+
+            if (match) {
+                this.logger.log(`[UploadProcessor] Row ${record.row}: Match found - Carry Over Item. SKU: ${sku || 'N/A'}, Barcode: ${barCode || 'N/A'}, matched to existing database ItemID: ${match.itemId}`);
+                matchedRecordMap.set(record.row, match);
+                // Sync the matched ID back to record data so prepareItemData gets the correct mapped context
+                record.data.itemId = match.itemId;
+            } else {
+                this.logger.log(`[UploadProcessor] Row ${record.row}: No match found - Outstanding (New) Item. SKU: ${sku || 'N/A'}, Barcode: ${barCode || 'N/A'}`);
+                if (!itemId) {
+                    recordsNeedingId.push(record);
+                }
             }
         }
 
-        // Bulk existence check
-        const itemIds = batch.map(r => String(r.data.itemId)).filter(Boolean);
-        const existingItems = await prisma.item.findMany({
-            where: { itemId: { in: itemIds } },
-            select: { id: true, itemId: true }
-        });
-        const existingMap = new Map(existingItems.map(i => [i.itemId, i.id]));
+        // ── Auto-generate itemIds for new records ────────────────────────────
+        if (recordsNeedingId.length > 0) {
+            // Use raw SQL MAX(CAST) so we get the true numeric maximum regardless
+            // of string padding differences that fool Postgres lexicographic ordering.
+            const maxResult = await prisma.$queryRaw<{ max_id: number | null }[]>`
+                SELECT MAX(CAST("itemId" AS BIGINT)) AS max_id
+                FROM "Item"
+                WHERE "itemId" ~ '^[0-9]+$'
+            `;
+            const lastNum = maxResult[0]?.max_id ? Number(maxResult[0].max_id) : 0;
+            this.logger.log(`[UploadProcessor] Current max numeric itemId: ${lastNum}. Generating ${recordsNeedingId.length} new IDs starting from ${lastNum + 1}.`);
+
+            let counter = lastNum;
+            for (const record of recordsNeedingId) {
+                counter++;
+                if (counter > 9999999) throw new Error('Item ID sequence exceeded maximum 9999999');
+                record.data.itemId = String(counter).padStart(6, '0');
+                this.logger.log(`[UploadProcessor] Row ${record.row}: Assigned new itemId: ${record.data.itemId}`);
+            }
+        }
 
         const toCreate: any[] = [];
-        const toUpdate: Array<{ id: string, data: any, row: number }> = [];
+        const toUpdate: Array<{ id: string, data: any, row: number, itemId: string }> = [];
 
         for (const record of batch) {
             try {
                 const itemData = await this.prepareItemData(record, tenantMasterData);
-                const itemId = String(record.data.itemId);
+                const match = matchedRecordMap.get(record.row);
 
-                if (existingMap.has(itemId)) {
+                if (match) {
                     toUpdate.push({
-                        id: existingMap.get(itemId) as string,
+                        id: match.id,
                         data: itemData,
-                        row: record.row
+                        row: record.row,
+                        itemId: match.itemId
                     });
                 } else {
                     toCreate.push({
                         ...itemData,
-                        itemId: itemId, // Required for creation
+                        itemId: String(record.data.itemId),
                     });
                 }
             } catch (error) {
@@ -461,50 +634,62 @@ export class UploadProcessor {
             }
         }
 
-        // Execute Bulk Creation
+        // Execute Bulk Creation — use upsert per record so nothing is ever silently skipped.
+        // createMany+skipDuplicates returns 0 when it perceives ANY duplicate in the batch,
+        // causing entire batches to be discarded. Upsert guarantees every row is handled.
         if (toCreate.length > 0) {
-            try {
-                await prisma.item.createMany({
-                    data: toCreate,
-                    skipDuplicates: true
-                });
-                progress.successRecords += toCreate.length;
-                progress.processedRecords += toCreate.length;
-            } catch (error) {
-                this.logger.error(`Bulk create failed, falling back to individual processing: ${error.message}`);
-                // Fallback to individual for this specific subset if bulk fails (rare)
-                for (const item of toCreate) {
-                    try {
-                        await prisma.item.create({ data: item });
-                        progress.successRecords++;
-                    } catch (e) {
-                        progress.failedRecords++;
-                    }
-                    progress.processedRecords++;
+            this.logger.log(`[UploadProcessor] Creating ${toCreate.length} new items via upsert...`);
+            for (const item of toCreate) {
+                try {
+                    await prisma.item.upsert({
+                        where: { itemId: item.itemId },
+                        update: item,   // Overwrite if somehow the ID already exists
+                        create: item,
+                    });
+                    progress.successRecords++;
+                    newItemIds.add(item.itemId);   // Only track confirmed inserts/upserts
+                    this.logger.log(`[UploadProcessor] Created/upserted new item: itemId=${item.itemId}, sku=${item.sku}, barCode=${item.barCode}`);
+                } catch (e) {
+                    this.logger.error(`[UploadProcessor] Failed to upsert new item itemId=${item.itemId} sku=${item.sku}: ${e.message}`);
+                    progress.failedRecords++;
+                    progress.errors.push({
+                        row: -1,
+                        reason: `Create failed for itemId ${item.itemId}: ${e.message}`,
+                        data: { itemId: item.itemId, sku: item.sku },
+                    });
                 }
+                progress.processedRecords++;
             }
         }
 
-        // Batch updates via $transaction — one round trip instead of N sequential awaits
+        // Batch updates via $transaction — chunked to avoid transaction timeouts (default 5s)
         if (toUpdate.length > 0) {
-            try {
-                await prisma.$transaction(
-                    toUpdate.map(item => prisma.item.update({ where: { id: item.id }, data: item.data }))
-                );
-                progress.successRecords += toUpdate.length;
-                progress.processedRecords += toUpdate.length;
-            } catch (error) {
-                // Transaction failed — fall back to individual so we can isolate which rows failed
-                this.logger.warn(`Batch update transaction failed, falling back to individual: ${error.message}`);
-                for (const item of toUpdate) {
-                    try {
-                        await prisma.item.update({ where: { id: item.id }, data: item.data });
-                        progress.successRecords++;
-                    } catch (e) {
-                        progress.failedRecords++;
-                        progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
+            const chunkSize = 200;
+            for (let i = 0; i < toUpdate.length; i += chunkSize) {
+                const chunk = toUpdate.slice(i, i + chunkSize);
+                try {
+                    await prisma.$transaction(
+                        chunk.map(item => prisma.item.update({ where: { id: item.id }, data: item.data }))
+                    );
+                    progress.successRecords += chunk.length;
+                    progress.processedRecords += chunk.length;
+                    for (const item of chunk) {
+                        carryOverItemIds.add(item.itemId);
                     }
-                    progress.processedRecords++;
+                } catch (error) {
+                    // Transaction failed — fall back to individual so we can isolate which rows failed
+                    this.logger.warn(`Batch update transaction failed for chunk ${i / chunkSize + 1}, falling back to individual: ${error.message}`);
+                    for (const item of chunk) {
+                        try {
+                            await prisma.item.update({ where: { id: item.id }, data: item.data });
+                            progress.successRecords++;
+                            carryOverItemIds.add(item.itemId);
+                        } catch (e) {
+                            progress.failedRecords++;
+                            progress.errors.push({ row: item.row, reason: `Update failed: ${e.message}`, data: { id: item.id } });
+                        }
+                        progress.processedRecords++;
+                    }
                 }
             }
         }

@@ -724,7 +724,7 @@ export class PosSessionService {
     const orders = await this.prisma.salesOrder.findMany({
       where: {
         locationId: session.pos.locationId, // Change: Location-based reconciliation
-        status: 'completed',
+        // status: 'completed',
         createdAt: timeFilter,
       },
       include: {

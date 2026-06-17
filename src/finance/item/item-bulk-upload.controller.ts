@@ -116,8 +116,8 @@ export class ItemBulkUploadController {
     @ApiOperation({ summary: 'Download CSV template' })
     async downloadTemplate(@Res() res: any) {
         const template = [
-            'Brand,Division,SKU,Description,Size,Unique No.,Color,Product Category/Series,Silhouette/Product Type,Channel Class,Department,Class,Sub Class,Heel Height,Season,Old Season,Gender,Width,Case Material,Band,Movement Type,Movement Name,HS Code,UOM,Item ID,Currency,FOB,Unit Cost,Unit Price,Sale Tax Rate,Additional Sales Tax,Discount Start Date,Discount End Date,Discount %,BarCode,Launch Date',
-            'BrandX,Mens,SKU-001,Sample Description,M,ITEM-001,Red,Shoes,Casual,Retail,Footwear,ClassA,Subclass1,Low,Summer 2026,,Male,Medium,Steel,Leather,Automatic,ETA 5001,1234,PC,ITEM-001,PKR,12.50,150,200,5,0,,,0,BAR-001,',
+            'Brand,Division,SKU,Description,Size,Color,Product Category/Series,Silhouette/Product Type,Channel Class,Department,Class,Sub Class,Heel Height,Season,Old Season,Gender,Width,Case Material,Band,Movement Type,Movement Name,HS Code,UOM,Currency,FOB,Unit Cost,Unit Price,Sale Tax Rate,Additional Sales Tax,Discount Start Date,Discount End Date,Discount %,BarCode,Launch Date',
+            'BrandX,Mens,SKU-001,Sample Description,M,Red,Shoes,Casual,Retail,Footwear,ClassA,Subclass1,Low,Summer 2026,,Male,Medium,Steel,Leather,Automatic,ETA 5001,1234,PC,PKR,12.50,150,200,5,0,,,0,BAR-001,',
         ].join('\n');
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="item-upload-template.csv"');
@@ -144,6 +144,20 @@ export class ItemBulkUploadController {
             status: true,
             message: 'Upload cancelled successfully',
         };
+    }
+
+    @Get(':uploadId/success-report')
+    @ApiOperation({ summary: 'Download success export report (XLSX)' })
+    async downloadSuccessReport(
+        @Param('uploadId') uploadId: string,
+        @Res() res: any,
+    ) {
+        const result = await this.bulkUploadService.prepareSuccessReport(uploadId);
+        if (!result.ready) {
+            throw new BadRequestException('Success report not found or not generated yet.');
+        }
+
+        await this.bulkUploadService.streamSuccessReport(uploadId, res);
     }
 
     // More specific sub-paths before less specific ones

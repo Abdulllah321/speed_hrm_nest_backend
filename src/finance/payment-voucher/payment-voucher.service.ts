@@ -419,9 +419,29 @@ export class PaymentVoucherService {
         // Journal: Dr A/P PARTIES (supplier payable) / Cr ADVANCE TO SUPPLIERS
         const apParties = details.find(d => Number(d.debit) > 0);
         const apPartiesAccountId = apParties?.accountId ?? voucher.creditAccountId;
+        let apPartiesTagAccountId = apParties?.tagAccountId;
+
+        if (!apPartiesTagAccountId && voucher.supplierId) {
+          const supplier = await prisma.supplier.findUnique({
+            where: { id: voucher.supplierId },
+            select: { code: true },
+          });
+          if (supplier) {
+            const tagAccount = await prisma.chartOfAccount.findFirst({
+              where: {
+                parentId: apPartiesAccountId,
+                code: supplier.code,
+              },
+              select: { id: true },
+            });
+            if (tagAccount) {
+              apPartiesTagAccountId = tagAccount.id;
+            }
+          }
+        }
 
         await this.accounting.postLines([
-          { accountId: apPartiesAccountId, debit: Number(app.appliedAmount), credit: 0 },
+          { accountId: apPartiesAccountId, tagAccountId: apPartiesTagAccountId ?? undefined, debit: Number(app.appliedAmount), credit: 0 },
           { accountId: advanceAccountId, debit: 0, credit: Number(app.appliedAmount) },
         ], {
           sourceType: 'ADVANCE_APPLICATION',

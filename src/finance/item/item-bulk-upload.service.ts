@@ -429,6 +429,36 @@ export class ItemBulkUploadService {
     }
 
     /**
+     * Check if success report CSV is ready on disk.
+     */
+    async prepareSuccessReport(uploadId: string): Promise<{ ready: boolean }> {
+        const successFilePath = path.join(process.cwd(), 'uploads', 'bulk', `success-${uploadId}.xlsx`);
+        return { ready: fs.existsSync(successFilePath) };
+    }
+
+    /**
+     * Stream success report as CSV directly from the on-disk file.
+     */
+    async streamSuccessReport(uploadId: string, res: any): Promise<void> {
+        const successFilePath = path.join(process.cwd(), 'uploads', 'bulk', `success-${uploadId}.xlsx`);
+        if (!fs.existsSync(successFilePath)) {
+            res.code(404).send({ status: false, message: 'Success report not found' });
+            return;
+        }
+
+        const raw = res.raw;
+        raw.writeHead(200, {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="success-report-${uploadId}.xlsx"`,
+            'Transfer-Encoding': 'chunked',
+            'Cache-Control': 'no-cache',
+        });
+
+        const readStream = fs.createReadStream(successFilePath);
+        readStream.pipe(raw);
+    }
+
+    /**
      * Generate error report CSV (legacy — kept for compatibility)
      */
     generateErrorReport(errors: any[]): string {
