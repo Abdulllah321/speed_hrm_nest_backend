@@ -234,12 +234,8 @@ export class CsvParserService {
                 this.getValue(row, 'HS Code') || this.getValue(row, 'HSCode'),
             ),
 
-            // Item ID — new header: "Item ID" (with space) or "Unique No.", legacy: "ItemID"
-            itemId: this.normalizeValue(
-                this.getValue(row, 'Item ID') ||
-                this.getValue(row, 'Unique No.') ||
-                this.getValue(row, 'ItemID'),
-            ),
+            // Item ID — Ignored from the sheet completely (auto-assigned for new items, matched by barcode/SKU for existing)
+            itemId: null,
 
             barCode: this.normalizeValue(this.getValue(row, 'BarCode')),
             segment: this.normalizeValue(this.getValue(row, 'Segment')),

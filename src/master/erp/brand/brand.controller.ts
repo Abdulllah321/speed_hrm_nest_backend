@@ -32,7 +32,7 @@ export class BrandController {
   // --- BRANDS ---
 
   @Get('brands')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.brand.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all brands' })
   async list() {

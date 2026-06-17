@@ -5,6 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class PoBulkUploadService {
@@ -22,28 +23,30 @@ export class PoBulkUploadService {
         userId: string,
         metadata?: { vendorId?: string; orderType?: string; goodsType?: string; expectedDeliveryDate?: string; notes?: string }
     ): Promise<{ uploadId: string; jobId: string }> {
-        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const upload = await this.prisma.bulkUpload.create({
-            data: { jobId: tempJobId, filename, totalRecords: 0, uploadedBy: userId, status: 'validating' },
-        });
-
         const uploadDir = path.join(process.cwd(), 'uploads', 'bulk', 'po');
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+        // Pre-generate a UUID so we can use it as both the DB id/jobId and the Bull jobId
+        // in a single create call — no update, no placeholder, no collision possible
+        const uploadId = randomUUID();
+
+        const upload = await this.prisma.bulkUpload.create({
+            data: { id: uploadId, jobId: uploadId, filename, totalRecords: 0, uploadedBy: userId, status: 'validating' },
+        });
 
         const ext = filename.split('.').pop();
         fs.writeFileSync(path.join(uploadDir, `po-upload-${upload.id}.${ext}`), fileBuffer);
 
-        const job = await this.uploadQueue.add({
+        // Enqueue with the UUID as a custom Bull jobId — UUIDs never collide
+        await this.uploadQueue.add({
             uploadId: upload.id, fileBuffer, filename, userId,
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'validate',
             metadata,
-        } as any, { removeOnComplete: false, removeOnFail: false });
+        } as any, { jobId: upload.id, removeOnComplete: false, removeOnFail: false });
 
-        const uniqueJobId = `${upload.id}:${job.id}`;
-        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: uniqueJobId } });
-        return { uploadId: upload.id, jobId: uniqueJobId };
+        return { uploadId: upload.id, jobId: upload.id };
     }
 
     async confirmUpload(
@@ -59,17 +62,19 @@ export class PoBulkUploadService {
         this.eventsService.emit({ uploadId, type: 'status', data: { status: 'pending', message: 'Import confirmation received...' } });
         await this.prisma.bulkUpload.update({ where: { id: uploadId }, data: { status: 'pending', message: 'Confirming upload...' } });
 
-        const job = await this.uploadQueue.add({
+        // Use a namespaced jobId to avoid collision with the validate job (same uploadId)
+        const importJobId = `import-${upload.id}`;
+        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: importJobId } });
+
+        await this.uploadQueue.add({
             uploadId: upload.id, filename: upload.filename, userId,
             tenantId: this.prisma.getTenantId() || '',
             tenantDbUrl: this.prisma.getTenantDbUrl() || '',
             mode: 'import',
             metadata,
-        } as any, { removeOnComplete: false, removeOnFail: false });
+        } as any, { jobId: importJobId, removeOnComplete: false, removeOnFail: false });
 
-        const uniqueJobId = `${upload.id}:${job.id}`;
-        await this.prisma.bulkUpload.update({ where: { id: upload.id }, data: { jobId: uniqueJobId } });
-        return { uploadId, jobId: uniqueJobId };
+        return { uploadId, jobId: importJobId };
     }
 
     async getUploadStatus(uploadId: string) {

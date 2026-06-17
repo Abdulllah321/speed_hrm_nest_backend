@@ -40,10 +40,15 @@ export class PosSalesService implements OnModuleInit {
         }, msUntilMidnight);
     }
 
-    // ─── Generate next SO number per location ──────────────────────────
-    private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+    // ─── Generate sequential numbers per location and Pakistan fiscal year ───
+    private async generateSequentialNumber(
+        prefix: string,
+        fieldName: 'orderNumber' | 'returnNumber' | 'refundNumber',
+        locationId: string,
+        tx?: Prisma.TransactionClient
+    ): Promise<string> {
         const prismaClient = tx || this.prisma;
-        
+
         // Find the location name and configured shortCode
         const location = await prismaClient.location.findUnique({
             where: { id: locationId },
@@ -57,7 +62,6 @@ export class PosSalesService implements OnModuleInit {
         // Determine shortCode: use custom configured shortCode or generate dynamically
         let shortCode = location.shortCode?.trim();
         if (!shortCode) {
-            // Helper logic matching generateShortCode from location.service.ts
             shortCode = location.name
                 .split(/[\s\-_]+/)
                 .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
@@ -76,42 +80,55 @@ export class PosSalesService implements OnModuleInit {
         const fiscalYearStartYear = month >= 6 ? year : year - 1;
         const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
 
-        // Find the latest sales order for this location created during the current fiscal year
+        // Find the latest order/return/refund for this location/fiscal year, ordering by the field itself descending to get the highest suffix directly!
         const lastOrder = await prismaClient.salesOrder.findFirst({
             where: {
                 locationId,
                 createdAt: { gte: fiscalYearStartDate },
-                orderNumber: { startsWith: `SI-${shortCode}-` }
+                [fieldName]: { startsWith: `${prefix}-${shortCode}-` }
             },
-            orderBy: { createdAt: 'desc' },
-            select: { orderNumber: true }
+            orderBy: { [fieldName]: 'desc' },
+            select: { [fieldName]: true }
         });
 
         let seq = 1;
-        if (lastOrder && lastOrder.orderNumber) {
-            const parts = lastOrder.orderNumber.split('-');
+        const lastVal = lastOrder ? ((lastOrder as any)[fieldName] as string | null) : null;
+        if (lastVal) {
+            const parts = lastVal.split('-');
             const lastPart = parts[parts.length - 1];
             if (/^\d+$/.test(lastPart)) {
                 seq = parseInt(lastPart, 10) + 1;
             }
         }
 
-        let nextOrderNumber = `SI-${shortCode}-${String(seq).padStart(5, '0')}`;
+        let nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
         let exists = await prismaClient.salesOrder.findUnique({
-            where: { orderNumber: nextOrderNumber },
+            where: { [fieldName]: nextNumber } as any,
             select: { id: true }
         });
 
         while (exists) {
             seq++;
-            nextOrderNumber = `SI-${shortCode}-${String(seq).padStart(5, '0')}`;
+            nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
             exists = await prismaClient.salesOrder.findUnique({
-                where: { orderNumber: nextOrderNumber },
+                where: { [fieldName]: nextNumber } as any,
                 select: { id: true }
             });
         }
 
-        return nextOrderNumber;
+        return nextNumber;
+    }
+
+    private async generateOrderNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        return this.generateSequentialNumber('SI', 'orderNumber', locationId, tx);
+    }
+
+    private async generateReturnNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        return this.generateSequentialNumber('SR', 'returnNumber', locationId, tx);
+    }
+
+    private async generateRefundNumber(locationId: string, tx?: Prisma.TransactionClient): Promise<string> {
+        return this.generateSequentialNumber('RF', 'refundNumber', locationId, tx);
     }
 
     // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
@@ -1153,6 +1170,12 @@ export class PosSalesService implements OnModuleInit {
                 // Determine effective location for return (where stock goes back)
                 const effectiveLocationId = returnLocationId || order.locationId;
 
+                // Generate sequential return number if not set
+                let returnNumber = (order as any).returnNumber;
+                if (!returnNumber) {
+                    returnNumber = await this.generateReturnNumber(effectiveLocationId || '', tx);
+                }
+
                 // ── Fetch already-returned quantities BEFORE creating new entries ──
                 const existingReturnEntries = await tx.stockLedger.findMany({
                     where: {
@@ -1322,7 +1345,11 @@ export class PosSalesService implements OnModuleInit {
                 const newStatus = allItemsReturned ? 'returned' : 'partially_returned';
                 const updatedOrder = await tx.salesOrder.update({
                     where: { id },
-                    data: { status: newStatus, notes: reason ? `Return (${newStatus}): ${reason}` : order.notes },
+                    data: {
+                        status: newStatus,
+                        returnNumber,
+                        notes: reason ? `Return (${newStatus}): ${reason}` : order.notes,
+                    },
                 });
 
                 // ── Restore Voucher / Coupon ────────────────────────────
@@ -1390,6 +1417,7 @@ export class PosSalesService implements OnModuleInit {
                 return { 
                     status: true, 
                     data: updatedOrder, 
+                    returnRef: returnNumber,
                     refundAmount: Math.round(totalRefundAmount * 100) / 100, 
                     itemRefundDetails, 
                     exchangeVoucher: exchangeVoucher ? {
@@ -1499,6 +1527,8 @@ export class PosSalesService implements OnModuleInit {
                     data: {
                         orderId: order.id,
                         orderNumber: order.orderNumber,
+                        returnNumber: (order as any).returnNumber,
+                        refundNumber: (order as any).refundNumber,
                         items: [],
                         reason: order.notes,
                         discountNotes: [],
@@ -1621,6 +1651,8 @@ export class PosSalesService implements OnModuleInit {
                 data: {
                     orderId: order.id,
                     orderNumber: order.orderNumber,
+                    returnNumber: (order as any).returnNumber,
+                    refundNumber: (order as any).refundNumber,
                     items: enrichedItems,
                     reason: order.notes,
                     discountNotes,
@@ -1954,6 +1986,12 @@ export class PosSalesService implements OnModuleInit {
 
                 const effectiveLocationId = order.locationId;
 
+                // Generate sequential refund number if not set
+                let refundNumber = (order as any).refundNumber;
+                if (!refundNumber) {
+                    refundNumber = await this.generateRefundNumber(effectiveLocationId || '', tx);
+                }
+
                 // Fetch ALREADY-RETURNED quantities from stock ledger (to determine status later)
                 const previousReturns = await tx.stockLedger.findMany({
                     where: { referenceType: { in: ['POS_RETURN', 'POS_REFUND'] }, referenceId: id },
@@ -2048,13 +2086,14 @@ export class PosSalesService implements OnModuleInit {
                     where: { id },
                     data: { 
                         status: newStatus, 
+                        refundNumber,
                         notes: refundVoucher 
                             ? `Cash refunded Rs.${refundAmount} (${newStatus}) - Refund voucher ${refundVoucher.code} (Record only) - Inventory restored${reason ? `: ${reason}` : ''}`
                             : (reason ? `Cash refund Rs.${refundAmount} (${newStatus}) - Inventory restored: ${reason}` : `Cash refund Rs.${refundAmount} (${newStatus}) - Inventory restored`)
                     },
                 });
 
-                return { updatedOrder, refundVoucher };
+                return { updatedOrder, refundVoucher, refundNumber };
             });
 
             runInBackground(
@@ -2078,6 +2117,8 @@ export class PosSalesService implements OnModuleInit {
             return { 
                 status: true, 
                 data: result.updatedOrder, 
+                refundRef: result.refundNumber,
+                returnRef: result.refundNumber,
                 refundVoucher: result.refundVoucher ? {
                     code: result.refundVoucher.code,
                     faceValue: result.refundVoucher.faceValue,

@@ -9,6 +9,7 @@ import {
   CreatePurchaseOrderDto,
   AwardFromRfqDto,
   CreateMultiDirectPurchaseOrderDto,
+  UpdatePurchaseOrderDto,
 } from './dto/purchase-order.dto';
 import { Decimal } from '@prisma/client/runtime/client';
 
@@ -21,6 +22,63 @@ export class PurchaseOrderService {
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
   ) {}
+
+  /**
+   * Generates the next sequential PO number for the current fiscal year.
+   * Fiscal year runs July 1 – June 30 (Pakistan standard).
+   * Format: PO-YY-YY-NNNNN  e.g. PO-25-26-00001
+   *
+   * @param tx  Optional Prisma transaction client (use when called inside $transaction)
+   */
+  private async generatePoNumber(tx?: any): Promise<string> {
+    const client = tx || this.prisma;
+
+    // Determine current fiscal year bounds
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed; July = 6
+    const startYear = month >= 6 ? year : year - 1;
+    const endYear = startYear + 1;
+    const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
+    const prefix = `PO-${fy}-`;
+
+    // Find the last PO issued in this fiscal year
+    const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+    const lastPo = await client.purchaseOrder.findFirst({
+      where: {
+        poNumber: { startsWith: prefix },
+        createdAt: { gte: fiscalYearStartDate },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { poNumber: true },
+    });
+
+    let seq = 1;
+    if (lastPo?.poNumber) {
+      const parts = lastPo.poNumber.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSeq)) {
+        seq = lastSeq + 1;
+      }
+    }
+
+    // Collision guard — loop until we find an unused number
+    let poNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+    let exists = await client.purchaseOrder.findUnique({
+      where: { poNumber },
+      select: { id: true },
+    });
+    while (exists) {
+      seq++;
+      poNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+      exists = await client.purchaseOrder.findUnique({
+        where: { poNumber },
+        select: { id: true },
+      });
+    }
+
+    return poNumber;
+  }
 
   async findAll() {
     const list = await this.prisma.purchaseOrder.findMany({
@@ -96,7 +154,7 @@ export class PurchaseOrderService {
         );
       }
 
-      const poNumber = `PO-${Date.now()}`;
+      const poNumber = await this.generatePoNumber();
 
       let subtotal = new Decimal(0);
 
@@ -241,7 +299,7 @@ export class PurchaseOrderService {
         );
       }
 
-      const poNumber = `PO-${Date.now()}`; // Simple PO number generation
+      const poNumber = await this.generatePoNumber();
 
       const po = await this.prisma.$transaction(async (tx) => {
         return tx.purchaseOrder.create({
@@ -309,6 +367,108 @@ export class PurchaseOrderService {
           description: 'Failed to create purchase order from quotation',
           errorMessage: error?.message,
           newValues: JSON.stringify(createDto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Update a Purchase Order that is still pending (PENDING_CHECKER or PENDING_AUTHORIZER).
+   * Replaces all items and recalculates totals inside a transaction.
+   */
+  async update(
+    id: string,
+    dto: UpdatePurchaseOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const po = await this.prisma.purchaseOrder.findUnique({ where: { id } });
+      if (!po) throw new NotFoundException('Purchase Order not found');
+
+      if (po.status !== 'PENDING_CHECKER' && po.status !== 'PENDING_AUTHORIZER') {
+        throw new BadRequestException(
+          `Purchase Order cannot be edited in status "${po.status}". Only PENDING_CHECKER or PENDING_AUTHORIZER orders can be edited.`,
+        );
+      }
+
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const updateData: any = {};
+
+        if (dto.notes !== undefined) updateData.notes = dto.notes;
+        if (dto.expectedDeliveryDate !== undefined)
+          updateData.expectedDeliveryDate = dto.expectedDeliveryDate
+            ? new Date(dto.expectedDeliveryDate)
+            : null;
+        if (dto.orderType !== undefined) updateData.orderType = dto.orderType || null;
+        if (dto.goodsType !== undefined) updateData.goodsType = dto.goodsType || null;
+        if (dto.vendorId !== undefined) updateData.vendorId = dto.vendorId;
+
+        if (dto.items && dto.items.length > 0) {
+          // Delete all existing items then recreate
+          await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
+
+          let subtotal = new Decimal(0);
+          const itemsData = dto.items.map((item) => {
+            const qty = new Decimal(item.quantity);
+            const price = new Decimal(item.unitPrice);
+            const lineTotal = qty.mul(price);
+            subtotal = subtotal.add(lineTotal);
+            return {
+              purchaseOrderId: id,
+              itemId: item.itemId,
+              description: item.description,
+              quantity: qty,
+              unitPrice: price,
+              taxPercent: new Decimal(0),
+              discountPercent: new Decimal(0),
+              lineTotal,
+            };
+          });
+
+          await tx.purchaseOrderItem.createMany({ data: itemsData });
+
+          updateData.subtotal = subtotal;
+          updateData.taxAmount = new Decimal(0);
+          updateData.discountAmount = new Decimal(0);
+          updateData.totalAmount = subtotal;
+        }
+
+        return tx.purchaseOrder.update({ where: { id }, data: updateData });
+      });
+
+      runInBackground(
+        'Update Purchase Order',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-order',
+          entity: 'PurchaseOrder',
+          entityId: id,
+          description: `Updated purchase order ${updated.poNumber}`,
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Purchase Order (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'purchase-order',
+          entity: 'PurchaseOrder',
+          entityId: id,
+          description: 'Failed to update purchase order',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(dto),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
@@ -506,7 +666,7 @@ export class PurchaseOrderService {
           });
 
           const totalAmount = subtotal.add(taxAmount).sub(discountAmount);
-          const poNumber = `PO-${Date.now()}`;
+          const poNumber = await this.generatePoNumber(tx);
 
           const po = await tx.purchaseOrder.create({
             data: {
@@ -615,7 +775,7 @@ export class PurchaseOrderService {
           });
 
           const totalAmount = subtotal;
-          const poNumber = `PO-${Date.now()}`;
+          const poNumber = await this.generatePoNumber(tx);
 
           const po = await tx.purchaseOrder.create({
             data: {
