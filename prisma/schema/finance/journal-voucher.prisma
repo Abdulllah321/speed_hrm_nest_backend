@@ -2,7 +2,7 @@ model JournalVoucher {
   id          String                 @id @default(uuid())
   jvNo        String                 @unique
   jvDate      DateTime
-  description String
+  description String?
   status      String                 @default("pending")
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
@@ -18,7 +18,7 @@ model JournalVoucherDetail {
   credit           Decimal         @default(0.0) @db.Decimal(15, 2)
   narration        String?
   refBillNo        String?
-  isTaxApplicable  Boolean         @default(false)
+  taxType          String          @default("Taxable")
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   account          ChartOfAccount  @relation("JVDetailAccount", fields: [accountId], references: [id])

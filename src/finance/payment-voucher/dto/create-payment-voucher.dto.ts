@@ -37,9 +37,9 @@ export class CreatePaymentVoucherDetailDto {
   @IsOptional()
   refBillNo?: string;       // Bill/ref number for this line
 
-  @IsBoolean()
+  @IsString()
   @IsOptional()
-  isTaxApplicable?: boolean;
+  taxType?: string;
 }
 
 export class CreatePaymentVoucherInvoiceDto {
@@ -110,13 +110,13 @@ export class CreatePaymentVoucherDto {
   @IsOptional()
   isAdvance?: boolean;
 
-  @IsBoolean()
+  @IsString()
   @IsOptional()
-  isTaxApplicable?: boolean;
+  taxType?: string;
 
   @IsString()
-  @IsNotEmpty()
-  description: string;
+  @IsOptional()
+  description?: string;
 
   @IsString()
   @IsOptional()
