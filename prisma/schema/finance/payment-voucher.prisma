@@ -12,8 +12,8 @@ model PaymentVoucher {
   creditAmount    Decimal                   @default(0.0) @db.Decimal(15, 2)
   isAdvance       Boolean                   @default(false)
   advanceApplied  Decimal                   @default(0.0) @db.Decimal(15, 2)
-  isTaxApplicable Boolean                   @default(false)
-  description     String
+  taxType         String                    @default("Taxable")
+  description     String?
   status          String                    @default("approved")
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
@@ -48,7 +48,7 @@ model PaymentVoucherDetail {
   credit           Decimal         @default(0.0) @db.Decimal(15, 2)  // Credit lines stored here too
   narration        String?         // Per-line narration (overrides voucher description)
   refBillNo        String?         // Bill/ref number for this specific line
-  isTaxApplicable  Boolean         @default(false)
+  taxType          String          @default("Taxable")
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   account          ChartOfAccount  @relation("PVDetailAccount", fields: [accountId], references: [id])

@@ -108,7 +108,7 @@ export class PaymentVoucherService {
           creditAmount: resolvedCreditAmount,
           isAdvance: data.isAdvance,
           advanceApplied: totalAdvanceApplied,
-          isTaxApplicable: data.isTaxApplicable,
+          taxType: data.taxType ?? 'Taxable',
           description: data.description,
           status: targetStatus,
           details: {
@@ -121,7 +121,7 @@ export class PaymentVoucherService {
                 credit:          Number(d.credit) || 0,
                 narration:       d.narration  || data.description || null,
                 refBillNo:       d.refBillNo  || data.refBillNo   || null,
-                isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+                taxType: d.taxType ?? data.taxType ?? 'Taxable',
               })),
           },
         },
@@ -293,7 +293,7 @@ export class PaymentVoucherService {
             supplierId: data.supplierId,
             creditAmount: data.creditAmount,
             isAdvance: data.isAdvance,
-            isTaxApplicable: data.isTaxApplicable,
+            taxType: data.taxType,
             description: data.description,
             status: data.status,
             details: {
@@ -306,7 +306,7 @@ export class PaymentVoucherService {
                   credit:          Number(d.credit) || 0,
                   narration:       d.narration  || data.description || null,
                   refBillNo:       d.refBillNo  || data.refBillNo   || null,
-                  isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+                  taxType: d.taxType ?? data.taxType ?? 'Taxable',
                 })),
             },
           },
@@ -333,7 +333,7 @@ export class PaymentVoucherService {
         supplierId: data.supplierId,
         creditAmount: data.creditAmount,
         isAdvance: data.isAdvance,
-        isTaxApplicable: data.isTaxApplicable,
+        taxType: data.taxType,
         description: data.description,
         status: data.status,
       },
@@ -464,7 +464,7 @@ export class PaymentVoucherService {
           credit:          Number(d.credit) || 0,
           narration:       d.narration  || voucher.description || undefined,
           refBillNo:       d.refBillNo  || voucher.refBillNo   || undefined,
-          isTaxApplicable: d.isTaxApplicable ?? voucher.isTaxApplicable ?? false,
+          taxType: d.taxType ?? voucher.taxType ?? 'Taxable',
         }));
       await this.accounting.postLines(allLines, {
         sourceType: 'PAYMENT_VOUCHER',

@@ -10,11 +10,11 @@ model ReceiptVoucher {
   debitAccountId String
   debitAmount    Decimal                   @default(0.0) @db.Decimal(15, 2)
   customerId     String?
-  description    String
+  description    String?
   status         String                    @default("approved")
   isAdvance       Boolean                   @default(false)
   advanceApplied  Decimal                   @default(0.0) @db.Decimal(15, 2)
-  isTaxApplicable Boolean                   @default(false)
+  taxType        String                    @default("Taxable")
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
   createdBy      String?
@@ -45,7 +45,7 @@ model ReceiptVoucherDetail {
   credit           Decimal         @default(0.0) @db.Decimal(15, 2)
   narration        String?
   refBillNo        String?
-  isTaxApplicable  Boolean         @default(false)
+  taxType          String          @default("Taxable")
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   account          ChartOfAccount  @relation("RVDetailAccount", fields: [accountId], references: [id])

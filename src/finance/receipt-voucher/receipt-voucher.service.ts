@@ -73,7 +73,7 @@ export class ReceiptVoucherService {
           debitAmount: resolvedDebitAmount,
           customerId: data.customerId || undefined,
           isAdvance: data.isAdvance ?? false,
-          isTaxApplicable: data.isTaxApplicable ?? false,
+          taxType: data.taxType ?? 'Taxable',
           description: data.description,
           status: targetStatus,
           details: { 
@@ -86,7 +86,7 @@ export class ReceiptVoucherService {
                 credit:          Number(d.credit) || 0,
                 narration:       d.narration || data.description || null,
                 refBillNo:       d.refBillNo || data.refBillNo || null,
-                isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+                taxType: d.taxType ?? data.taxType ?? 'Taxable',
               }))
           },
         },
@@ -169,7 +169,7 @@ export class ReceiptVoucherService {
       ...(data.description !== undefined && { description: data.description }),
       ...(data.status !== undefined && { status: data.status }),
       ...(data.isAdvance !== undefined && { isAdvance: data.isAdvance }),
-      ...(data.isTaxApplicable !== undefined && { isTaxApplicable: data.isTaxApplicable }),
+      ...(data.taxType !== undefined && { taxType: data.taxType }),
     };
 
     if (details) {
@@ -189,7 +189,7 @@ export class ReceiptVoucherService {
                   credit:          Number(d.credit) || 0,
                   narration:       d.narration || data.description || null,
                   refBillNo:       d.refBillNo || data.refBillNo || null,
-                  isTaxApplicable: d.isTaxApplicable ?? data.isTaxApplicable ?? false,
+                  taxType: d.taxType ?? data.taxType ?? 'Taxable',
                 })),
             },
           },
@@ -304,7 +304,7 @@ export class ReceiptVoucherService {
           credit:          Number(d.credit) || 0,
           narration:       d.narration || voucher.description || undefined,
           refBillNo:       d.refBillNo || voucher.refBillNo || undefined,
-          isTaxApplicable: d.isTaxApplicable ?? false,
+          taxType: d.taxType ?? 'Taxable',
         }));
 
       await this.accounting.postLines(allLines, {

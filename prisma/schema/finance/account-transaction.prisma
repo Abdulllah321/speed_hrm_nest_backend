@@ -24,7 +24,7 @@ model AccountTransaction {
   /// Bill / reference number tied to this specific line (e.g. CW-M076-2026-05)
   refBillNo       String?
   /// Whether this line is subject to withholding tax
-  isTaxApplicable Boolean         @default(false)
+  taxType         String          @default("Taxable")
 
   // ── Legacy / fallback description ────────────────────────────────────────
   description     String?
