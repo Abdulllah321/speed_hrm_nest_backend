@@ -1031,8 +1031,10 @@ export class PosSalesService implements OnModuleInit {
             for (const claim of orderClaims) {
                 for (const claimItem of claim.items) {
                     const current = claimedQtyMap.get(claimItem.itemId) || { claimed: 0, approved: 0 };
+                    const isRejected = claim.status === 'REJECTED' || claimItem.itemStatus === 'REJECTED';
+                    const claimedToAdd = isRejected ? 0 : Number(claimItem.claimedQty);
                     claimedQtyMap.set(claimItem.itemId, {
-                        claimed: current.claimed + Number(claimItem.claimedQty),
+                        claimed: current.claimed + claimedToAdd,
                         approved: current.approved + Number(claimItem.approvedQty),
                     });
                 }
@@ -1107,10 +1109,42 @@ export class PosSalesService implements OnModuleInit {
             if (entry.referenceType === 'POS_REFUND') hasRefund = true;
         }
 
-        // Attach returnedQty to each item
+        // Fetch claims for this order to compute claimedQty correctly
+        const orderClaims = await this.prisma.posClaim.findMany({
+            where: { salesOrderId: id },
+            select: {
+                status: true,
+                items: {
+                    select: {
+                        itemId: true,
+                        claimedQty: true,
+                        approvedQty: true,
+                        itemStatus: true,
+                    },
+                },
+            },
+        });
+
+        // Build map of itemId -> total claimed/approved quantities across all claims
+        const claimedQtyMap = new Map<string, { claimed: number; approved: number }>();
+        for (const claim of orderClaims) {
+            for (const claimItem of claim.items) {
+                const current = claimedQtyMap.get(claimItem.itemId) || { claimed: 0, approved: 0 };
+                const isRejected = claim.status === 'REJECTED' || claimItem.itemStatus === 'REJECTED';
+                const claimedToAdd = isRejected ? 0 : Number(claimItem.claimedQty);
+                claimedQtyMap.set(claimItem.itemId, {
+                    claimed: current.claimed + claimedToAdd,
+                    approved: current.approved + Number(claimItem.approvedQty),
+                });
+            }
+        }
+
+        // Attach returnedQty, claimedQty, and approvedClaimQty to each item
         const enrichedItems = order.items.map(oi => ({
             ...oi,
             returnedQty: returnedQtyMap.get(oi.itemId) || 0,
+            claimedQty: claimedQtyMap.get(oi.itemId)?.claimed || 0,
+            approvedClaimQty: claimedQtyMap.get(oi.itemId)?.approved || 0,
         }));
 
         const tenders: { method: string; amount: number; slipNo?: string }[] = [];
