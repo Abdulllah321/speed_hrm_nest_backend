@@ -86,6 +86,7 @@ export class ReceiptVoucherService {
                 credit:          Number(d.credit) || 0,
                 narration:       d.narration || data.description || null,
                 refBillNo:       d.refBillNo || data.refBillNo || null,
+                refBillNo2:      d.refBillNo2 || null,
                 taxType: d.taxType ?? data.taxType ?? 'Taxable',
               }))
           },
@@ -189,6 +190,7 @@ export class ReceiptVoucherService {
                   credit:          Number(d.credit) || 0,
                   narration:       d.narration || data.description || null,
                   refBillNo:       d.refBillNo || data.refBillNo || null,
+                  refBillNo2:      d.refBillNo2 || null,
                   taxType: d.taxType ?? data.taxType ?? 'Taxable',
                 })),
             },
@@ -304,6 +306,7 @@ export class ReceiptVoucherService {
           credit:          Number(d.credit) || 0,
           narration:       d.narration || voucher.description || undefined,
           refBillNo:       d.refBillNo || voucher.refBillNo || undefined,
+          refBillNo2:      d.refBillNo2 || undefined,
           taxType: d.taxType ?? 'Taxable',
         }));
 

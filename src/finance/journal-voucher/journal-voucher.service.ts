@@ -42,6 +42,7 @@ export class JournalVoucherService {
                 credit:          d.credit,
                 narration:       d.narration || null,
                 refBillNo:       d.refBillNo || null,
+                refBillNo2:      d.refBillNo2 || null,
                 taxType:         d.taxType ?? 'Taxable',
               })),
             },
@@ -61,6 +62,7 @@ export class JournalVoucherService {
               credit:          Number(d.credit),
               narration:       d.narration       || data.description || undefined,
               refBillNo:       d.refBillNo       || undefined,
+              refBillNo2:      d.refBillNo2      || undefined,
               taxType:         d.taxType ?? 'Taxable',
             })),
             {
@@ -194,6 +196,7 @@ export class JournalVoucherService {
                   credit:          d.credit,
                   narration:       d.narration || null,
                   refBillNo:       d.refBillNo || null,
+                  refBillNo2:      d.refBillNo2 || null,
                   taxType:         d.taxType ?? 'Taxable',
                 })),
               },
@@ -214,6 +217,7 @@ export class JournalVoucherService {
                 credit:          Number(d.credit),
                 narration:       d.narration       || (data as any).description || existing.description || undefined,
                 refBillNo:       d.refBillNo       || undefined,
+                refBillNo2:      d.refBillNo2      || undefined,
                 taxType:         d.taxType ?? 'Taxable',
               })),
               {
@@ -250,6 +254,7 @@ export class JournalVoucherService {
               credit:          Number(d.credit),
               narration:       d.narration || saved.description || undefined,
               refBillNo:       d.refBillNo || undefined,
+              refBillNo2:      d.refBillNo2 || undefined,
               taxType:         d.taxType ?? 'Taxable',
             }));
             await this.accounting.postLines(linesToPost, {

@@ -40,6 +40,10 @@ export class CreateReceiptVoucherDetailDto {
 
   @IsString()
   @IsOptional()
+  refBillNo2?: string;
+
+  @IsString()
+  @IsOptional()
   taxType?: string;
 }
 
