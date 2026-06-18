@@ -98,12 +98,29 @@ export class PosSessionService {
             ? Number(cashSales._sum.cashAmount)
             : 0;
 
+          // Fetch refund vouchers issued during the child active session's timeframe
+          const refundVouchers = await this.prisma.voucher.aggregate({
+            where: {
+              issuedByLocationId: terminal.locationId,
+              voucherType: 'REFUND',
+              createdAt: {
+                gte: childActiveSession.openedAt,
+              },
+            },
+            _sum: {
+              faceValue: true,
+            },
+          });
+          const refundVouchersTotal = refundVouchers._sum.faceValue
+            ? Number(refundVouchers._sum.faceValue)
+            : 0;
+
           return {
             session: childActiveSession,
             metrics: {
               openingFloat: 0,
               cashSales: calculatedCashSales,
-              expectedCash: calculatedCashSales,
+              expectedCash: calculatedCashSales - refundVouchersTotal,
             },
             isDrawerOpen: true,
             authorizedByParent: true,
@@ -144,13 +161,31 @@ export class PosSessionService {
     const calculatedCashSales = cashSales._sum.cashAmount
       ? Number(cashSales._sum.cashAmount)
       : 0;
+
+    // Fetch refund vouchers issued during the active session's timeframe for that location
+    const refundVouchers = await this.prisma.voucher.aggregate({
+      where: {
+        issuedByLocationId: locationId,
+        voucherType: 'REFUND',
+        createdAt: {
+          gte: activeSession.openedAt,
+        },
+      },
+      _sum: {
+        faceValue: true,
+      },
+    });
+    const refundVouchersTotal = refundVouchers._sum.faceValue
+      ? Number(refundVouchers._sum.faceValue)
+      : 0;
+
     const floatAmount =
       activeSession.openingFloat !== null
         ? Number(activeSession.openingFloat)
         : null;
 
-    // The total expected cash = Opening Float + total cash from sales
-    const expectedCash = (floatAmount ?? 0) + calculatedCashSales;
+    // The total expected cash = Opening Float + total cash from sales - refund vouchers
+    const expectedCash = (floatAmount ?? 0) + calculatedCashSales - refundVouchersTotal;
 
     return {
       session: activeSession,
@@ -510,6 +545,24 @@ export class PosSessionService {
         const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
         const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
 
+        // Fetch refund vouchers issued during the day for this location
+        const refundVouchers = await this.prisma.voucher.aggregate({
+          where: {
+            issuedByLocationId: locationId,
+            voucherType: 'REFUND',
+            createdAt: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+          _sum: {
+            faceValue: true,
+          },
+        });
+        const refundVouchersTotal = refundVouchers._sum.faceValue
+          ? Number(refundVouchers._sum.faceValue)
+          : 0;
+
         // Calculate daily expected and actual cash for the location
         const sessionsOnDay = await this.prisma.posSession.findMany({
           where: {
@@ -541,7 +594,7 @@ export class PosSessionService {
           }
         }
 
-        const expectedCash = totalStartingFloat + cashSales;
+        const expectedCash = totalStartingFloat + cashSales - refundVouchersTotal;
 
         let totalActualCash = 0;
         let anySessionOpen = false;
@@ -567,6 +620,24 @@ export class PosSessionService {
               sessionSalesOnDay._sum.cashAmount ?? 0,
             );
 
+            // Fetch session's refund vouchers on this day
+            const sessionRefundVouchers = await this.prisma.voucher.aggregate({
+              where: {
+                issuedByLocationId: locationId,
+                voucherType: 'REFUND',
+                createdAt: {
+                  gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
+                  lte: endOfDay,
+                },
+              },
+              _sum: {
+                faceValue: true,
+              },
+            });
+            const sessionRefundVouchersTotal = sessionRefundVouchers._sum.faceValue
+              ? Number(sessionRefundVouchers._sum.faceValue)
+              : 0;
+
             let sessionStartingCash = 0;
             if (s.openedAt < startOfDay) {
               const priorSales = await this.prisma.salesOrder.aggregate({
@@ -586,7 +657,7 @@ export class PosSessionService {
             } else {
               sessionStartingCash = Number(s.openingFloat);
             }
-            totalActualCash += sessionStartingCash + sessionCashSalesOnDay;
+            totalActualCash += sessionStartingCash + sessionCashSalesOnDay - sessionRefundVouchersTotal;
           }
         }
 
@@ -1205,7 +1276,7 @@ export class PosSessionService {
       }
     }
 
-    const expectedCash = totalStartingFloat + totalCashReceived;
+    const expectedCash = totalStartingFloat + totalCashReceived - refundVouchersTotal;
 
     let totalActualCash = 0;
     let anySessionOpen = false;
@@ -1231,6 +1302,24 @@ export class PosSessionService {
           sessionSalesOnDay._sum.cashAmount ?? 0,
         );
 
+        // Fetch session's refund vouchers on this day
+        const sessionRefundVouchers = await this.prisma.voucher.aggregate({
+          where: {
+            issuedByLocationId: session.pos.locationId,
+            voucherType: 'REFUND',
+            createdAt: {
+              gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
+              lte: endOfDay,
+            },
+          },
+          _sum: {
+            faceValue: true,
+          },
+        });
+        const sessionRefundVouchersTotal = sessionRefundVouchers._sum.faceValue
+          ? Number(sessionRefundVouchers._sum.faceValue)
+          : 0;
+
         let sessionStartingCash = 0;
         if (s.openedAt < startOfDay) {
           const priorSales = await this.prisma.salesOrder.aggregate({
@@ -1249,7 +1338,7 @@ export class PosSessionService {
         } else {
           sessionStartingCash = Number(s.openingFloat);
         }
-        totalActualCash += sessionStartingCash + sessionCashSalesOnDay;
+        totalActualCash += sessionStartingCash + sessionCashSalesOnDay - sessionRefundVouchersTotal;
       }
     }
 
@@ -1329,7 +1418,8 @@ export class PosSessionService {
       cashBreakdown: {
         sale: cashSaleAmt,
         giftVouchers: cashGiftVouchersAmt,
-        total: totalCashReceived,
+        refundVouchers: refundVouchersTotal,
+        total: totalCashReceived - refundVouchersTotal,
       },
       cardBreakdown: {
         sale: cardSaleAmt,

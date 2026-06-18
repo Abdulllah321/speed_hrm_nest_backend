@@ -367,11 +367,13 @@ export class PosClaimsService {
       let totalApproved = new Decimal(0);
       let allApproved = true;
       let anyApproved = false;
-      const approvedItems: {
+      let anyPending = false;
+      const newlyApprovedItems: {
         itemId: string;
         approvedQty: number;
         sku: string;
       }[] = [];
+      let newApprovedAmount = new Decimal(0);
 
       await this.prisma.$transaction(
         async (tx) => {
@@ -381,17 +383,48 @@ export class PosClaimsService {
             );
             if (!claimItem) continue;
 
-            const approvedQty = Math.min(
-              Math.max(0, itemDecision.approvedQty),
-              claimItem.claimedQty,
-            );
-            const approvedAmount = new Decimal(claimItem.unitPaidPrice).mul(
-              approvedQty,
-            );
+            const wasAlreadyDecided = ['APPROVED', 'PARTIALLY_APPROVED', 'REJECTED'].includes(claimItem.itemStatus);
 
-            let itemStatus = 'REJECTED';
-            if (approvedQty === claimItem.claimedQty) itemStatus = 'APPROVED';
-            else if (approvedQty > 0) itemStatus = 'PARTIALLY_APPROVED';
+            let approvedQty = claimItem.approvedQty;
+            let itemStatus = claimItem.itemStatus;
+            let approvedAmount = new Decimal(claimItem.approvedAmount);
+
+            if (wasAlreadyDecided) {
+              if (itemStatus === 'APPROVED' || itemStatus === 'PARTIALLY_APPROVED') {
+                anyApproved = true;
+              }
+              totalApproved = totalApproved.add(approvedAmount);
+              if (itemStatus !== 'APPROVED') {
+                allApproved = false;
+              }
+              continue;
+            }
+
+            // Process decision for pending items
+            itemStatus = (itemDecision as any).status || 'REJECTED';
+
+            if (itemStatus === 'PENDING') {
+              anyPending = true;
+              allApproved = false;
+              approvedQty = 0;
+            } else if (itemStatus === 'REJECTED') {
+              approvedQty = 0;
+            } else {
+              // APPROVED or PARTIALLY_APPROVED
+              approvedQty = Math.min(
+                Math.max(0, itemDecision.approvedQty),
+                claimItem.claimedQty,
+              );
+              if (approvedQty === 0) {
+                itemStatus = 'REJECTED';
+              } else if (approvedQty === claimItem.claimedQty) {
+                itemStatus = 'APPROVED';
+              } else {
+                itemStatus = 'PARTIALLY_APPROVED';
+              }
+            }
+
+            approvedAmount = new Decimal(claimItem.unitPaidPrice).mul(approvedQty);
 
             if (approvedQty > 0) {
               anyApproved = true;
@@ -402,13 +435,17 @@ export class PosClaimsService {
                 select: { sku: true, description: true },
               });
 
-              approvedItems.push({
+              newlyApprovedItems.push({
                 itemId: claimItem.itemId,
                 approvedQty,
                 sku: itemDetails?.sku || 'UNKNOWN',
               });
+
+              newApprovedAmount = newApprovedAmount.add(approvedAmount);
             }
-            if (approvedQty < claimItem.claimedQty) allApproved = false;
+            if (itemStatus !== 'APPROVED') {
+              allApproved = false;
+            }
 
             totalApproved = totalApproved.add(approvedAmount);
 
@@ -423,11 +460,13 @@ export class PosClaimsService {
             });
           }
 
-          const claimStatus = !anyApproved
-            ? 'REJECTED'
-            : allApproved
-              ? 'APPROVED'
-              : 'PARTIALLY_APPROVED';
+          const claimStatus = anyPending
+            ? 'UNDER_REVIEW'
+            : !anyApproved
+              ? 'REJECTED'
+              : allApproved
+                ? 'APPROVED'
+                : 'PARTIALLY_APPROVED';
 
           await tx.posClaim.update({
             where: { id },
@@ -443,11 +482,11 @@ export class PosClaimsService {
           // ── If approved, create transfer request (inventory will be updated when transfer is processed) ──
           console.log('🔍 Starting transfer creation check:', {
             anyApproved,
-            approvedItemsLength: approvedItems.length,
+            newlyApprovedLength: newlyApprovedItems.length,
             claimNumber: claim.claimNumber,
           });
 
-          if (anyApproved && approvedItems.length > 0) {
+          if (newlyApprovedItems.length > 0) {
             const salesOrder = claim.salesOrder;
 
             console.log('🔍 Sales order info:', {
@@ -546,7 +585,7 @@ export class PosClaimsService {
                   notes: `Auto-generated from approved claim ${claim.claimNumber} for order ${salesOrder.orderNumber}. Awaiting PLM acknowledgment before inventory update.`,
                   createdById: reviewedBy || null,
                   items: {
-                    create: approvedItems.map((item) => ({
+                    create: newlyApprovedItems.map((item) => ({
                       itemId: item.itemId,
                       quantity: new Decimal(item.approvedQty),
                     })),
@@ -560,11 +599,6 @@ export class PosClaimsService {
                 status: 'PENDING - Awaiting PLM acknowledgment',
               });
 
-              // ⚡ Inventory update and ledger entries deferred until PLM acknowledgment
-              console.log(
-                '⏳ Ledger entries and inventory updates deferred until PLM acknowledgment',
-              );
-
               // Link transfer request to claim
               await tx.posClaim.update({
                 where: { id },
@@ -573,22 +607,10 @@ export class PosClaimsService {
 
               console.log('✅ Transfer request linked to claim');
 
-              // ── Generate EXCHANGE voucher for approved claim ──
+              // ── Generate EXCHANGE voucher for newly approved items ──
               console.log(
-                '🎫 Generating exchange voucher for approved claim...',
+                '🎫 Generating exchange voucher for newly approved items...',
               );
-
-              // Calculate total approved amount
-              const totalApprovedAmount = approvedItems.reduce((sum, item) => {
-                return (
-                  sum +
-                  item.approvedQty *
-                    Number(
-                      claim.items.find((ci) => ci.itemId === item.itemId)
-                        ?.unitPaidPrice || 0,
-                    )
-                );
-              }, 0);
 
               // Generate voucher code
               const voucherCode = `EXC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -599,7 +621,7 @@ export class PosClaimsService {
                 data: {
                   code: voucherCode,
                   voucherType: 'EXCHANGE',
-                  faceValue: totalApprovedAmount,
+                  faceValue: newApprovedAmount,
                   description: `Exchange voucher for approved claim ${claim.claimNumber}`,
                   customerId: salesOrder.customerId || null,
                   requireCustomerMatch: false,
@@ -627,7 +649,7 @@ export class PosClaimsService {
 
               console.log('✅ Exchange voucher created:', {
                 code: voucherCode,
-                amount: totalApprovedAmount,
+                amount: newApprovedAmount,
                 expiresAt: voucherExpiresAt,
               });
 
@@ -651,11 +673,10 @@ export class PosClaimsService {
                   module: 'transfer-request',
                   entity: 'TransferRequest',
                   entityId: transferRequest.id,
-                  description: `Auto-created and completed transfer request ${transferRequestNo} from approved claim ${claim.claimNumber}. Inventory updated: POS → Warehouse`,
+                  description: `Auto-created transfer request ${transferRequestNo} from approved claim ${claim.claimNumber}. Awaiting PLM acknowledgment before inventory update.`,
                   newValues: JSON.stringify({
                     claimId: claim.id,
                     transferRequestId: transferRequest.id,
-                    autoCompleted: true,
                   }),
                   ipAddress: ctx?.ipAddress,
                   userAgent: ctx?.userAgent,
@@ -668,10 +689,7 @@ export class PosClaimsService {
               });
             }
           } else {
-            console.log('⏭️ Skipping transfer creation:', {
-              anyApproved,
-              approvedItemsLength: approvedItems.length,
-            });
+            console.log('⏭️ Skipping transfer creation: No newly approved items');
           }
         },
         {
