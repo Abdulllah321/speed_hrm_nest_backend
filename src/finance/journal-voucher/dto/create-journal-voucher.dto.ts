@@ -38,6 +38,10 @@ export class CreateJournalVoucherDetailDto {
 
   @IsString()
   @IsOptional()
+  refBillNo2?: string;
+
+  @IsString()
+  @IsOptional()
   taxType?: string;
 }
 

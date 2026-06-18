@@ -48,6 +48,7 @@ model PaymentVoucherDetail {
   credit           Decimal         @default(0.0) @db.Decimal(15, 2)  // Credit lines stored here too
   narration        String?         // Per-line narration (overrides voucher description)
   refBillNo        String?         // Bill/ref number for this specific line
+  refBillNo2       String?
   taxType          String          @default("Taxable")
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
