@@ -256,7 +256,14 @@ export class PosClaimsService {
         salesOrder: { select: { orderNumber: true, grandTotal: true } },
         items: {
           include: {
-            item: { select: { description: true, sku: true, barCode: true } },
+            item: {
+              select: {
+                description: true,
+                sku: true,
+                barCode: true,
+                size: { select: { name: true } },
+              },
+            },
           },
         },
         voucher: {
@@ -449,15 +456,52 @@ export class PosClaimsService {
 
             totalApproved = totalApproved.add(approvedAmount);
 
-            await tx.posClaimItem.update({
-              where: { id: itemDecision.claimItemId },
-              data: {
-                approvedQty,
-                approvedAmount,
-                itemStatus,
-                reviewNotes: itemDecision.reviewNotes || null,
-              },
-            });
+            if (itemStatus === 'PARTIALLY_APPROVED') {
+              const remainingQty = claimItem.claimedQty - approvedQty;
+              const remainingClaimedAmt = new Decimal(claimItem.unitPaidPrice).mul(remainingQty);
+              const remainingStatus = (itemDecision as any).remainingStatus === 'PENDING' ? 'PENDING' : 'REJECTED';
+
+              if (remainingStatus === 'PENDING') {
+                anyPending = true;
+              }
+
+              await tx.posClaimItem.update({
+                where: { id: itemDecision.claimItemId },
+                data: {
+                  claimedQty: approvedQty,
+                  approvedQty,
+                  claimedAmount: approvedAmount,
+                  approvedAmount,
+                  itemStatus: 'APPROVED',
+                  reviewNotes: itemDecision.reviewNotes || null,
+                },
+              });
+
+              await tx.posClaimItem.create({
+                data: {
+                  claimId: claim.id,
+                  salesOrderItemId: claimItem.salesOrderItemId,
+                  itemId: claimItem.itemId,
+                  claimedQty: remainingQty,
+                  approvedQty: 0,
+                  unitPaidPrice: claimItem.unitPaidPrice,
+                  claimedAmount: remainingClaimedAmt,
+                  approvedAmount: 0,
+                  itemStatus: remainingStatus,
+                  reviewNotes: itemDecision.reviewNotes || null,
+                },
+              });
+            } else {
+              await tx.posClaimItem.update({
+                where: { id: itemDecision.claimItemId },
+                data: {
+                  approvedQty,
+                  approvedAmount,
+                  itemStatus,
+                  reviewNotes: itemDecision.reviewNotes || null,
+                },
+              });
+            }
           }
 
           const claimStatus = anyPending
