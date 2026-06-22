@@ -212,6 +212,61 @@ export class PosSalesService implements OnModuleInit {
                 }
                 const orderNumber = await this.generateOrderNumber(locationId, tx);
 
+                // If resuming from hold, reverse the stock deduction and delete old items first
+                const isResumedHold = !!dto.holdOrderId;
+                if (isResumedHold) {
+                    const oldOrder = await tx.salesOrder.findUnique({
+                        where: { id: dto.holdOrderId },
+                        include: { items: true },
+                    });
+                    if (!oldOrder) {
+                        throw new Error('Resumed hold order not found');
+                    }
+
+                    // Reverse stock deduction done at hold time
+                    const warehouse = await tx.warehouse.findFirst({
+                        where: { isActive: true, isDeleted: false },
+                    });
+                    if (warehouse) {
+                        for (const item of oldOrder.items) {
+                            await this.stockLedgerService.createEntry({
+                                itemId: item.itemId,
+                                warehouseId: warehouse.id,
+                                locationId: oldOrder.locationId || locationId,
+                                qty: item.quantity, // Positive to reverse OUTBOUND
+                                movementType: MovementType.INBOUND,
+                                referenceType: 'POS_HOLD_CANCELLED',
+                                referenceId: oldOrder.id,
+                            }, tx);
+
+                            const existing = await tx.inventoryItem.findFirst({
+                                where: { itemId: item.itemId, locationId: oldOrder.locationId || locationId, status: 'AVAILABLE' },
+                            });
+                            if (existing) {
+                                await tx.inventoryItem.update({
+                                    where: { id: existing.id },
+                                    data: { quantity: { increment: item.quantity } },
+                                });
+                            } else {
+                                await tx.inventoryItem.create({
+                                    data: {
+                                        itemId: item.itemId,
+                                        locationId: oldOrder.locationId || locationId,
+                                        warehouseId: warehouse.id,
+                                        quantity: item.quantity,
+                                        status: 'AVAILABLE',
+                                    },
+                                });
+                            }
+                        }
+                    }
+
+                    // Delete old items associated with the hold order
+                    await tx.salesOrderItem.deleteMany({
+                        where: { salesOrderId: dto.holdOrderId },
+                    });
+                }
+
                 // ── Resolve default warehouse ───────────────────────────
                 const warehouse = await tx.warehouse.findFirst({
                     where: { isActive: true, isDeleted: false },
@@ -496,47 +551,93 @@ export class PosSalesService implements OnModuleInit {
                     paymentStatus = 'unpaid';
                 }
 
-                const order = await tx.salesOrder.create({
-                    data: {
-                        orderNumber,
-                        posId: dto.posId,
-                        terminalId: dto.terminalId,
-                        locationId: dto.locationId,
-                        customerId: dto.customerId,
-                        cashierUserId,
-                        paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
-                        notes: notesParts.join(' | ') || undefined,
-                        manualDiscountNote: dto.manualDiscountNote || undefined,
-                        subtotal,
-                        discountAmount: totalDiscount,
-                        taxAmount: finalTotalTax,
-                        grandTotal,
-                        status: 'completed',
-                        paymentStatus,
-                        globalDiscountPercent: dto.globalDiscountPercent,
-                        globalDiscountAmount: globalDiscAmt || undefined,
-                        promoId: dto.promoId,
-                        couponId: dto.couponId,
-                        allianceId: dto.allianceId,
-                        merchantId: dto.merchantId || undefined,
-                        tenderType: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
-                        cashAmount: cashAmount || undefined,
-                        cardAmount: cardAmount || undefined,
-                        voucherAmount: voucherAmount || undefined,
-                        changeAmount: changeAmount || undefined,
-                        isGiftReceipt: dto.isGiftReceipt || false,
-                        items: {
-                            create: itemsData,
+                let order;
+                if (isResumedHold) {
+                    order = await tx.salesOrder.update({
+                        where: { id: dto.holdOrderId },
+                        data: {
+                            orderNumber,
+                            posId: dto.posId,
+                            terminalId: dto.terminalId,
+                            locationId: dto.locationId,
+                            customerId: dto.customerId,
+                            cashierUserId,
+                            paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
+                            notes: notesParts.join(' | ') || undefined,
+                            manualDiscountNote: dto.manualDiscountNote || undefined,
+                            subtotal,
+                            discountAmount: totalDiscount,
+                            taxAmount: finalTotalTax,
+                            grandTotal,
+                            status: 'completed',
+                            paymentStatus,
+                            globalDiscountPercent: dto.globalDiscountPercent,
+                            globalDiscountAmount: globalDiscAmt || undefined,
+                            promoId: dto.promoId,
+                            couponId: dto.couponId,
+                            allianceId: dto.allianceId,
+                            merchantId: dto.merchantId || undefined,
+                            tenderType: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
+                            cashAmount: cashAmount || undefined,
+                            cardAmount: cardAmount || undefined,
+                            voucherAmount: voucherAmount || undefined,
+                            changeAmount: changeAmount || undefined,
+                            isGiftReceipt: dto.isGiftReceipt || false,
+                            items: {
+                                create: itemsData,
+                            },
                         },
-                    },
-                    include: {
-                        items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } }, color: { select: { name: true } } } } } },
-                        promo: { select: { name: true, code: true } },
-                        coupon: { select: { code: true, description: true } },
-                        alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
-                        merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
-                    },
-                });
+                        include: {
+                            items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } }, color: { select: { name: true } } } } } },
+                            promo: { select: { name: true, code: true } },
+                            coupon: { select: { code: true, description: true } },
+                            alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
+                            merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
+                        },
+                    });
+                } else {
+                    order = await tx.salesOrder.create({
+                        data: {
+                            orderNumber,
+                            posId: dto.posId,
+                            terminalId: dto.terminalId,
+                            locationId: dto.locationId,
+                            customerId: dto.customerId,
+                            cashierUserId,
+                            paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
+                            notes: notesParts.join(' | ') || undefined,
+                            manualDiscountNote: dto.manualDiscountNote || undefined,
+                            subtotal,
+                            discountAmount: totalDiscount,
+                            taxAmount: finalTotalTax,
+                            grandTotal,
+                            status: 'completed',
+                            paymentStatus,
+                            globalDiscountPercent: dto.globalDiscountPercent,
+                            globalDiscountAmount: globalDiscAmt || undefined,
+                            promoId: dto.promoId,
+                            couponId: dto.couponId,
+                            allianceId: dto.allianceId,
+                            merchantId: dto.merchantId || undefined,
+                            tenderType: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
+                            cashAmount: cashAmount || undefined,
+                            cardAmount: cardAmount || undefined,
+                            voucherAmount: voucherAmount || undefined,
+                            changeAmount: changeAmount || undefined,
+                            isGiftReceipt: dto.isGiftReceipt || false,
+                            items: {
+                                create: itemsData,
+                            },
+                        },
+                        include: {
+                            items: { include: { item: { select: { description: true, sku: true, barCode: true, size: { select: { name: true } }, color: { select: { name: true } } } } } },
+                            promo: { select: { name: true, code: true } },
+                            coupon: { select: { code: true, description: true } },
+                            alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
+                            merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
+                        },
+                    });
+                }
 
                 // ── Update Customer Balance for Credit Sale ────────────
                 if (isCreditSale && dto.customerId && creditAmount > 0) {
@@ -551,10 +652,6 @@ export class PosSalesService implements OnModuleInit {
                 }
 
                 // ── Update Stock (Deduct) ───────────────────────────────
-                // Skip if this is a resumed hold order — stock was already deducted at hold time
-                const isResumedHold = !!dto.holdOrderId;
-
-                if (!isResumedHold) {
                 for (const item of itemsData) {
                     await this.stockLedgerService.createEntry({
                         itemId: item.itemId,
@@ -596,15 +693,6 @@ export class PosSalesService implements OnModuleInit {
                             }
                         });
                     }
-                }
-                } // end if (!isResumedHold)
-
-                // If resumed from hold, mark the hold order as completed
-                if (isResumedHold) {
-                    await tx.salesOrder.update({
-                        where: { id: dto.holdOrderId },
-                        data: { status: 'completed' },
-                    });
                 }
 
                 if (dto.couponId) {
@@ -861,8 +949,8 @@ export class PosSalesService implements OnModuleInit {
         if (status) {
             where.status = status;
         } else {
-            // Always exclude hold_expired orders from history listing
-            where.status = { not: 'hold_expired' };
+            // Always exclude hold, hold_expired, and hold_cancelled orders from history listing/search
+            where.status = { notIn: ['hold', 'hold_expired', 'hold_cancelled'] };
         }
 
         // ── Handle search (by order number) ──
@@ -2211,7 +2299,6 @@ export class PosSalesService implements OnModuleInit {
                     taxPercent: taxPct,
                     taxAmount: taxAmt,
                     lineTotal: Math.max(0, lineTotal),
-                    isStockInTransit: (lineItem as any).isStockInTransit || false,
                 };
             });
 
@@ -2225,7 +2312,29 @@ export class PosSalesService implements OnModuleInit {
                 if (!locationId) {
                     throw new Error('Location ID is required to hold an order.');
                 }
-                const orderNumber = await this.generateOrderNumber(locationId, tx);
+                
+                // Generate a temporary unique order number for hold that does not consume sequence numbers
+                const location = await tx.location.findUnique({
+                    where: { id: locationId },
+                    select: { name: true, shortCode: true }
+                });
+                if (!location) {
+                    throw new Error(`Location not found for ID: ${locationId}`);
+                }
+                let shortCode = location.shortCode?.trim();
+                if (!shortCode) {
+                    shortCode = location.name
+                        .split(/[\s\-_]+/)
+                        .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
+                        .filter((word) => word.length > 0)
+                        .map((word) => word[0].toUpperCase())
+                        .join('');
+                }
+                if (!shortCode) {
+                    shortCode = 'LOC';
+                }
+                const orderNumber = `HOLD-${shortCode}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
                 const order = await tx.salesOrder.create({
                     data: {
                         orderNumber,

@@ -58,10 +58,6 @@ export class SalesOrderItemDto {
     @IsNumber()
     @Min(0)
     promoDiscountAmount?: number;
-
-    @ApiPropertyOptional({ description: 'Mark item as stock in transit (customer ordered but stock not yet at location)' })
-    @IsOptional()
-    isStockInTransit?: boolean;
 }
 
 // ── Multi-tender item ────────────────────────────────────────────────────
