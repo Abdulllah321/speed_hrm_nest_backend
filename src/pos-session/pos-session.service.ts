@@ -80,47 +80,14 @@ export class PosSessionService {
             });
           }
 
-          // Query sales orders for this child terminal within its active session
-          const cashSales = await this.prisma.salesOrder.aggregate({
-            where: {
-              posId: posId,
-              status: 'completed',
-              createdAt: {
-                gte: childActiveSession.openedAt,
-              },
-            },
-            _sum: {
-              cashAmount: true,
-            },
-          });
-
-          const calculatedCashSales = cashSales._sum.cashAmount
-            ? Number(cashSales._sum.cashAmount)
-            : 0;
-
-          // Fetch refund vouchers issued during the child active session's timeframe
-          const refundVouchers = await this.prisma.voucher.aggregate({
-            where: {
-              issuedByLocationId: terminal.locationId,
-              voucherType: 'REFUND',
-              createdAt: {
-                gte: childActiveSession.openedAt,
-              },
-            },
-            _sum: {
-              faceValue: true,
-            },
-          });
-          const refundVouchersTotal = refundVouchers._sum.faceValue
-            ? Number(refundVouchers._sum.faceValue)
-            : 0;
+          const recon = await this.getReconciliationDetails(childActiveSession.id, undefined, true);
 
           return {
             session: childActiveSession,
             metrics: {
-              openingFloat: 0,
-              cashSales: calculatedCashSales,
-              expectedCash: calculatedCashSales - refundVouchersTotal,
+              openingFloat: recon.session.openingFloat ?? 0,
+              cashSales: recon.paymentBreakdown?.cash?.amount ?? 0,
+              expectedCash: recon.session.expectedCash ?? 0,
             },
             isDrawerOpen: true,
             authorizedByParent: true,
@@ -143,56 +110,19 @@ export class PosSessionService {
       } as any;
     }
 
-    // Now query the Tenant DB for SalesOrders made within this session's timeframe
-    // Important: SalesOrder currently stores terminal CODE (e.g. 001) in posId
-    const cashSales = await this.prisma.salesOrder.aggregate({
-      where: {
-        posId: posId,
-        status: 'completed',
-        createdAt: {
-          gte: activeSession.openedAt,
-        },
-      },
-      _sum: {
-        cashAmount: true,
-      },
-    });
-
-    const calculatedCashSales = cashSales._sum.cashAmount
-      ? Number(cashSales._sum.cashAmount)
-      : 0;
-
-    // Fetch refund vouchers issued during the active session's timeframe for that location
-    const refundVouchers = await this.prisma.voucher.aggregate({
-      where: {
-        issuedByLocationId: locationId,
-        voucherType: 'REFUND',
-        createdAt: {
-          gte: activeSession.openedAt,
-        },
-      },
-      _sum: {
-        faceValue: true,
-      },
-    });
-    const refundVouchersTotal = refundVouchers._sum.faceValue
-      ? Number(refundVouchers._sum.faceValue)
-      : 0;
+    const recon = await this.getReconciliationDetails(activeSession.id, undefined, true);
 
     const floatAmount =
       activeSession.openingFloat !== null
         ? Number(activeSession.openingFloat)
         : null;
 
-    // The total expected cash = Opening Float + total cash from sales - refund vouchers
-    const expectedCash = (floatAmount ?? 0) + calculatedCashSales - refundVouchersTotal;
-
     return {
       session: activeSession,
       metrics: {
-        openingFloat: floatAmount ?? 0,
-        cashSales: calculatedCashSales,
-        expectedCash: expectedCash,
+        openingFloat: recon.session.openingFloat ?? 0,
+        cashSales: recon.paymentBreakdown?.cash?.amount ?? 0,
+        expectedCash: recon.session.expectedCash ?? 0,
       },
       isDrawerOpen: floatAmount !== null,
     };
@@ -452,239 +382,30 @@ export class PosSessionService {
       orderBy: { openedAt: 'desc' },
     });
 
-    const dailyRecords: Array<{
-      dateStr: string;
-      sessionId: string;
-      openedAt: Date;
-      closedAt: Date | null;
-      status: string;
-      openingFloat: number;
-      openingNote: string | null;
-      closingNote: string | null;
-    }> = [];
-
-    const toLocalDateString = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    for (const sess of parentSessions) {
-      const start = new Date(sess.openedAt);
-      const end = sess.closedAt ? new Date(sess.closedAt) : new Date();
-
-      const startDateStr = toLocalDateString(start);
-      const endDateStr = toLocalDateString(end);
-
-      let tempDate = new Date(start);
-      while (toLocalDateString(tempDate) <= endDateStr) {
-        const dateStr = toLocalDateString(tempDate);
-
-        if (!dailyRecords.some((r) => r.dateStr === dateStr)) {
-          dailyRecords.push({
-            dateStr,
-            sessionId: sess.id,
-            openedAt: sess.openedAt,
-            closedAt: sess.closedAt,
-            status: sess.status,
-            openingFloat: Number(sess.openingFloat),
-            openingNote: sess.openingNote,
-            closingNote: sess.closingNote,
-          });
-        }
-        tempDate.setDate(tempDate.getDate() + 1);
-      }
-    }
-
-    dailyRecords.sort((a, b) => b.dateStr.localeCompare(a.dateStr));
-
-    const total = dailyRecords.length;
+    const total = parentSessions.length;
     const skip = (page - 1) * limit;
-    const pageRecords = dailyRecords.slice(skip, skip + limit);
+    const pageSessions = parentSessions.slice(skip, skip + limit);
 
     const enriched = await Promise.all(
-      pageRecords.map(async (record) => {
-        const targetDate = new Date(record.dateStr + 'T00:00:00');
-        const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
-
-        const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        // Fetch sales orders for the entire location on this day
-        const [salesAgg, orderCount] = await Promise.all([
-          this.prisma.salesOrder.aggregate({
-            where: {
-              locationId: locationId,
-              status: 'completed',
-              createdAt: {
-                gte: startOfDay,
-                lte: endOfDay,
-              },
-            },
-            _sum: {
-              grandTotal: true,
-              cashAmount: true,
-              cardAmount: true,
-            },
-          }),
-          this.prisma.salesOrder.count({
-            where: {
-              locationId: locationId,
-              status: 'completed',
-              createdAt: {
-                gte: startOfDay,
-                lte: endOfDay,
-              },
-            },
-          }),
-        ]);
-
-        const totalSales = Number(salesAgg._sum.grandTotal ?? 0);
-        const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
-        const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
-
-        // Fetch refund vouchers issued during the day for this location
-        const refundVouchers = await this.prisma.voucher.aggregate({
-          where: {
-            issuedByLocationId: locationId,
-            voucherType: 'REFUND',
-            createdAt: {
-              gte: startOfDay,
-              lte: endOfDay,
-            },
-          },
-          _sum: {
-            faceValue: true,
-          },
-        });
-        const refundVouchersTotal = refundVouchers._sum.faceValue
-          ? Number(refundVouchers._sum.faceValue)
-          : 0;
-
-        // Calculate daily expected and actual cash for the location
-        const sessionsOnDay = await this.prisma.posSession.findMany({
-          where: {
-            pos: { locationId: locationId },
-            openedAt: { lte: endOfDay },
-            OR: [{ closedAt: null }, { closedAt: { gte: startOfDay } }],
-          },
-          include: { pos: true },
-        });
-
-        let totalStartingFloat = 0;
-        for (const s of sessionsOnDay) {
-          if (s.openedAt < startOfDay) {
-            const priorSales = await this.prisma.salesOrder.aggregate({
-              where: {
-                posId: s.pos.posId,
-                status: 'completed',
-                createdAt: {
-                  gte: s.openedAt,
-                  lt: startOfDay,
-                },
-              },
-              _sum: { cashAmount: true },
-            });
-            totalStartingFloat +=
-              Number(s.openingFloat) + Number(priorSales._sum.cashAmount ?? 0);
-          } else {
-            totalStartingFloat += Number(s.openingFloat);
-          }
-        }
-
-        const expectedCash = totalStartingFloat + cashSales - refundVouchersTotal;
-
-        let totalActualCash = 0;
-        let anySessionOpen = false;
-        for (const s of sessionsOnDay) {
-          if (s.status === 'open') {
-            anySessionOpen = true;
-          }
-          if (s.closedAt && s.closedAt <= endOfDay) {
-            totalActualCash += Number(s.actualCash ?? 0);
-          } else {
-            const sessionSalesOnDay = await this.prisma.salesOrder.aggregate({
-              where: {
-                posId: s.pos.posId,
-                status: 'completed',
-                createdAt: {
-                  gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
-                  lte: endOfDay,
-                },
-              },
-              _sum: { cashAmount: true },
-            });
-            const sessionCashSalesOnDay = Number(
-              sessionSalesOnDay._sum.cashAmount ?? 0,
-            );
-
-            // Fetch session's refund vouchers on this day
-            const sessionRefundVouchers = await this.prisma.voucher.aggregate({
-              where: {
-                issuedByLocationId: locationId,
-                voucherType: 'REFUND',
-                createdAt: {
-                  gte: s.openedAt > startOfDay ? s.openedAt : startOfDay,
-                  lte: endOfDay,
-                },
-              },
-              _sum: {
-                faceValue: true,
-              },
-            });
-            const sessionRefundVouchersTotal = sessionRefundVouchers._sum.faceValue
-              ? Number(sessionRefundVouchers._sum.faceValue)
-              : 0;
-
-            let sessionStartingCash = 0;
-            if (s.openedAt < startOfDay) {
-              const priorSales = await this.prisma.salesOrder.aggregate({
-                where: {
-                  posId: s.pos.posId,
-                  status: 'completed',
-                  createdAt: {
-                    gte: s.openedAt,
-                    lt: startOfDay,
-                  },
-                },
-                _sum: { cashAmount: true },
-              });
-              sessionStartingCash =
-                Number(s.openingFloat) +
-                Number(priorSales._sum.cashAmount ?? 0);
-            } else {
-              sessionStartingCash = Number(s.openingFloat);
-            }
-            totalActualCash += sessionStartingCash + sessionCashSalesOnDay - sessionRefundVouchersTotal;
-          }
-        }
-
-        const difference = totalActualCash - expectedCash;
+      pageSessions.map(async (sess) => {
+        const recon = await this.getReconciliationDetails(sess.id, undefined, true);
 
         return {
-          id: record.sessionId,
-          status: anySessionOpen ? 'open' : 'closed',
-          openedAt: startOfDay,
-          closedAt: anySessionOpen ? null : endOfDay,
-          openingFloat: totalStartingFloat,
-          openingNote: record.openingNote,
-          expectedCash,
-          actualCash:
-            anySessionOpen && totalActualCash === expectedCash
-              ? null
-              : totalActualCash,
-          difference:
-            anySessionOpen && totalActualCash === expectedCash
-              ? null
-              : difference,
-          closingNote: record.closingNote,
+          id: sess.id,
+          status: sess.status,
+          openedAt: sess.openedAt,
+          closedAt: sess.closedAt,
+          openingFloat: recon.session.openingFloat ?? 0,
+          openingNote: sess.openingNote,
+          closingNote: sess.closingNote,
+          expectedCash: recon.session.expectedCash ?? 0,
+          actualCash: recon.session.actualCash,
+          difference: recon.session.difference,
           metrics: {
-            totalSales,
-            cashSales,
-            cardSales,
-            orderCount,
+            totalSales: recon.metrics.grossSales ?? 0,
+            cashSales: recon.paymentBreakdown?.cash?.amount ?? 0,
+            cardSales: recon.paymentBreakdown?.card?.amount ?? 0,
+            orderCount: recon.metrics.orderCount ?? 0,
           },
         };
       }),
