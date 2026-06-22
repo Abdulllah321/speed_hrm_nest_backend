@@ -27,8 +27,8 @@ export class EmployeeValidatorService {
         const { row, data } = record;
 
         // Reference fields for traceability
-        const employeeId = data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'];
-        const employeeName = data.employeeName || data['Employee Name'] || data.name;
+        const employeeId = data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'] || data.employeeid;
+        const employeeName = data.employeeName || data['Employee Name'] || data.name || data.employeename;
 
         const err = (field: string, value: any, reason: string): ValidationError =>
             ({ row, field, value, reason, employeeId, employeeName });
@@ -47,7 +47,7 @@ export class EmployeeValidatorService {
             errors.push(err('AttendanceID', attendanceId, 'Attendance ID is required.'));
         }
 
-        const cnic = data.cnicNumber || data['CNIC Number'] || data['CNIC-Number'];
+        const cnic = data.cnicNumber || data.CNIC || data['CNIC Number'] || data['CNIC-Number'];
         if (!cnic || String(cnic).trim() === '') {
             errors.push(err('CNICNumber', cnic, 'CNIC Number is required.'));
         }
@@ -63,7 +63,7 @@ export class EmployeeValidatorService {
             errors.push(err('Designation', designation, 'Designation is required.'));
         }
 
-        const grade = data.employeeGrade || data['Employee Grade'] || data['Employee-Grade'];
+        const grade = data.employeeGrade || data.Grade || data['Employee Grade'] || data['Employee-Grade'] || data.grade;
         if (!grade || String(grade).trim() === '') {
             errors.push(err('EmployeeGrade', grade, 'Employee Grade is required.'));
         }
@@ -74,7 +74,7 @@ export class EmployeeValidatorService {
             errors.push(err('Country', country, 'Country is required.'));
         }
 
-        const state = data.state || data.province || data.State || data.Province || data['Province/State'] || data['Province/State'];
+        const state = data.state || data.province || data.State || data.Province || data['Province/State'] || data['State/Province'];
         if (!state || String(state).trim() === '') {
             errors.push(err('State', state, 'State/Province is required.'));
         }
@@ -107,7 +107,7 @@ export class EmployeeValidatorService {
         }
 
         // 6. Salary Validation
-        const salary = data.employeeSalary || data['Employee Salary'];
+        const salary = data.employeeSalary || data.Salary || data['Employee Salary'];
         if (salary !== undefined && salary !== null && salary !== '') {
             const numSalary = Number(salary);
             if (isNaN(numSalary)) {
@@ -169,8 +169,8 @@ export class EmployeeValidatorService {
 
         records.forEach((record) => {
             const data = record.data;
-            const empId = data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'];
-            const cnic = data.cnicNumber || data['CNIC Number'] || data['CNIC-Number'];
+            const empId = data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'] || data.employeeid;
+            const cnic = data.cnicNumber || data.CNIC || data['CNIC Number'] || data['CNIC-Number'];
             const email = data.officialEmail || data['Official Email'] || data['Offcial-Email'];
 
             if (empId) {

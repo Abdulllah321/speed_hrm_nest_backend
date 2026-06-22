@@ -1119,8 +1119,15 @@ export class PosSalesService implements OnModuleInit {
             for (const claim of orderClaims) {
                 for (const claimItem of claim.items) {
                     const current = claimedQtyMap.get(claimItem.itemId) || { claimed: 0, approved: 0 };
-                    const isRejected = claim.status === 'REJECTED' || claimItem.itemStatus === 'REJECTED';
-                    const claimedToAdd = isRejected ? 0 : Number(claimItem.claimedQty);
+                    const isRejected = claim.status === 'REJECTED' || claim.status === 'CANCELLED' || claimItem.itemStatus === 'REJECTED';
+                    let claimedToAdd = 0;
+                    if (isRejected) {
+                        claimedToAdd = 0;
+                    } else if (claimItem.itemStatus === 'APPROVED' || claimItem.itemStatus === 'PARTIALLY_APPROVED') {
+                        claimedToAdd = Number(claimItem.approvedQty);
+                    } else {
+                        claimedToAdd = Number(claimItem.claimedQty);
+                    }
                     claimedQtyMap.set(claimItem.itemId, {
                         claimed: current.claimed + claimedToAdd,
                         approved: current.approved + Number(claimItem.approvedQty),
@@ -1218,8 +1225,15 @@ export class PosSalesService implements OnModuleInit {
         for (const claim of orderClaims) {
             for (const claimItem of claim.items) {
                 const current = claimedQtyMap.get(claimItem.itemId) || { claimed: 0, approved: 0 };
-                const isRejected = claim.status === 'REJECTED' || claimItem.itemStatus === 'REJECTED';
-                const claimedToAdd = isRejected ? 0 : Number(claimItem.claimedQty);
+                const isRejected = claim.status === 'REJECTED' || claim.status === 'CANCELLED' || claimItem.itemStatus === 'REJECTED';
+                let claimedToAdd = 0;
+                if (isRejected) {
+                    claimedToAdd = 0;
+                } else if (claimItem.itemStatus === 'APPROVED' || claimItem.itemStatus === 'PARTIALLY_APPROVED') {
+                    claimedToAdd = Number(claimItem.approvedQty);
+                } else {
+                    claimedToAdd = Number(claimItem.claimedQty);
+                }
                 claimedQtyMap.set(claimItem.itemId, {
                     claimed: current.claimed + claimedToAdd,
                     approved: current.approved + Number(claimItem.approvedQty),
