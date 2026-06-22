@@ -1976,7 +1976,6 @@ export const PERMISSIONS = [
   // ── POS — New Sale ──────────────────────────────────────────────────────────
   { name: 'pos.sale.create', description: 'Create a New POS Sale' },
   { name: 'pos.sale.item-discount', description: 'Apply Per-Item Discount Override on Cart' },
-  { name: 'pos.sale.transit-override', description: 'Mark Items as Stock-in-Transit (sell without stock)' },
 
   // ── POS — Checkout / Discounts ──────────────────────────────────────────────
   { name: 'pos.checkout.promo', description: 'Apply Promo Campaign Discount at Checkout' },
