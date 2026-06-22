@@ -303,7 +303,7 @@ export class EmployeeUploadProcessor {
         for (const record of batch) {
             try {
                 const employeeData = await this.prepareEmployeeData(record, tenantMasterData);
-                const employeeId = String(record.data.employeeId || record.data.employeeID || record.data['Employee ID']);
+                const employeeId = String(record.data.employeeId || record.data.employeeID || record.data['Employee ID'] || record.data.employeeid);
 
                 // Pre-flight: validate required resolved IDs before hitting Prisma
                 const missing: string[] = [];
@@ -377,13 +377,47 @@ export class EmployeeUploadProcessor {
     private async prepareEmployeeData(record: ParsedRecord, tenantMasterData: MasterDataService): Promise<any> {
         const { data } = record;
 
+        const parseBool = (val: any): boolean => {
+            if (val === undefined || val === null) return false;
+            const s = String(val).trim().toLowerCase();
+            return ['true', 'yes', '1', 'active'].includes(s);
+        };
+
+        const parseDate = (val: any): Date | null => {
+            if (!val) return null;
+            if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+            
+            if (typeof val === 'number') {
+                const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                return isNaN(date.getTime()) ? null : date;
+            }
+            
+            const str = String(val).trim();
+            if (!str) return null;
+            
+            const parsed = new Date(str);
+            if (!isNaN(parsed.getTime())) return parsed;
+            
+            const parts = str.split(/[-/]/);
+            if (parts.length === 3) {
+                const p0 = parseInt(parts[0], 10);
+                const p1 = parseInt(parts[1], 10);
+                const p2 = parseInt(parts[2], 10);
+                if (p2 > 1000 && p0 <= 31 && p1 <= 12) {
+                    const d = new Date(p2, p1 - 1, p0);
+                    if (!isNaN(d.getTime())) return d;
+                }
+            }
+            return null;
+        };
+
         const [
             deptId, designationId, gradeId, maritalId, empStatusId, locId, whPolicyId, leavesPolicyId, allocationId, countryId,
             qualificationId, instituteId
         ] = await Promise.all([
             tenantMasterData.getOrCreateDepartment(data.department || data.Department),
             tenantMasterData.getOrCreateDesignation(data.designation || data.Designation),
-            tenantMasterData.getOrCreateEmployeeGrade(data.employeeGrade || data['Employee Grade']),
+            tenantMasterData.getOrCreateEmployeeGrade(data.employeeGrade || data['Employee Grade'] || data.Grade || data.grade),
             tenantMasterData.getOrCreateMaritalStatus(data.maritalStatus || data['Marital Status']),
             tenantMasterData.getOrCreateEmploymentStatus(data.employmentStatus || data['Employment Status']),
             tenantMasterData.getOrCreateLocation(data.branch || data.Branch || data.location || data.Location),
@@ -396,9 +430,9 @@ export class EmployeeUploadProcessor {
         ]);
 
         const [subDeptId, stateId] = await Promise.all([
-            tenantMasterData.getOrCreateSubDepartment(data.subDepartment || data['Sub Department'], deptId),
+            tenantMasterData.getOrCreateSubDepartment(data.subDepartment || data['Sub Department'] || data['Sub-Department'], deptId),
             countryId ? tenantMasterData.getOrCreateState(
-                data.state || data.province || data.State || data.Province || data['State'] || data['Province/State'],
+                data.state || data.province || data.State || data.Province || data['State'] || data['Province/State'] || data['State/Province'],
                 countryId
             ) : null,
         ]);
@@ -407,28 +441,30 @@ export class EmployeeUploadProcessor {
         const cityId = (stateId && rawCity && countryId) ? await tenantMasterData.getOrCreateCity(rawCity, stateId, countryId) : null;
 
         return {
-            employeeName: String(data.employeeName || data['Employee Name']),
-            fatherHusbandName: data.fatherHusbandName || data['Father / Husband Name'] || data['Father/Husband Name'] || '',
-            attendanceId: (data.attendanceId || data['Attendance ID']) ? String(data.attendanceId || data['Attendance ID']) : String(data.employeeId || data.employeeID || data['Employee ID'] || ''),
-            cnicNumber: String(data.cnicNumber || data['CNIC Number']),
-            cnicExpiryDate: data.cnicExpiryDate ? new Date(data.cnicExpiryDate) : null,
-            joiningDate: data.joiningDate ? new Date(data.joiningDate) : new Date(),
-            dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
-            gender: data.gender || 'male',
+            employeeName: String(data.employeeName || data['Employee Name'] || ''),
+            fatherHusbandName: data.fatherHusbandName || data['Father/Husband'] || data['Father / Husband Name'] || data['Father/Husband Name'] || '',
+            attendanceId: (data.attendanceId || data['Attendance ID']) ? String(data.attendanceId || data['Attendance ID']) : String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || ''),
+            cnicNumber: String(data.cnicNumber || data.CNIC || data['CNIC Number'] || ''),
+            cnicExpiryDate: parseDate(data.cnicExpiryDate || data['CNIC Expiry']),
+            lifetimeCnic: parseBool(data.lifetimeCnic || data['Lifetime CNIC']),
+            joiningDate: parseDate(data.joiningDate || data['Joining Date']) || new Date(),
+            probationExpiryDate: parseDate(data.probationExpiryDate || data['Probation Expiry']),
+            dateOfBirth: parseDate(data.dateOfBirth || data['Date of Birth']),
+            gender: data.gender || data.Gender || 'male',
             contactNumber: String(data.contactNumber || data['Contact Number'] || ''),
             personalEmail: data.personalEmail || data['Personal Email'] || null,
             officialEmail: data.officialEmail || data['Official Email'] || null,
             currentAddress: data.currentAddress || data['Current Address'] || null,
             permanentAddress: data.permanentAddress || data['Permanent Address'] || null,
             employeeSalary: (() => {
-                const raw = data.employeeSalary ?? data['Employee Salary'] ?? data['employee_salary'] ?? data['EmployeeSalary'];
+                const raw = data.employeeSalary ?? data.Salary ?? data['Employee Salary'] ?? data['employee_salary'] ?? data['EmployeeSalary'];
                 const num = Number(raw);
                 return (!raw && raw !== 0) ? 0 : isNaN(num) ? 0 : num;
             })(),
             bankName: data.bankName || data['Bank Name'] || null,
             accountNumber: data.accountNumber || data['Account Number'] || null,
             accountTitle: data.accountTitle || data['Account Title'] || null,
-            status: 'active',
+            status: data.status || data.Status || 'active',
             department: deptId ? { connect: { id: deptId } } : undefined,
             subDepartment: subDeptId ? { connect: { id: subDeptId } } : undefined,
             designation: designationId ? { connect: { id: designationId } } : undefined,
@@ -444,6 +480,16 @@ export class EmployeeUploadProcessor {
             state: stateId ? { connect: { id: stateId } } : undefined,
             city: cityId ? { connect: { id: cityId } } : undefined,
             nationality: data.nationality || data.Nationality || 'Pakistani',
+            daysOff: data.daysOff || data['Days Off'] ? String(data.daysOff || data['Days Off']) : null,
+            reportingManager: data.reportingManager || data['Reporting Manager'] || null,
+            allowRemoteAttendance: parseBool(data.allowRemoteAttendance || data['Remote Attendance']),
+            overtimeApplicable: parseBool(data.overtimeApplicable || data['Overtime']),
+            area: data.area || data.Area || null,
+            emergencyContactNumber: data.emergencyContactNumber || data['Emergency Contact'] || null,
+            emergencyContactPerson: data.emergencyContactPerson || data['Emergency Person'] || null,
+            eobi: parseBool(data.eobi || data['EOBI']),
+            eobiNumber: data.eobiNumber || data['EOBI Number'] || null,
+            providentFund: parseBool(data.providentFund || data['Provident Fund']),
             qualifications: qualificationId ? [
                 {
                     qualification: { connect: { id: qualificationId } },
@@ -460,7 +506,7 @@ export class EmployeeUploadProcessor {
     private async checkDbUniqueness(records: ParsedRecord[], prisma: PrismaService): Promise<any[]> {
         const errors: any[] = [];
         const emails = records.map(r => String(r.data.officialEmail || r.data['Official Email'] || '').trim()).filter(Boolean);
-        const cnics = records.map(r => String(r.data.cnicNumber || r.data['CNIC Number'] || '').trim()).filter(Boolean);
+        const cnics = records.map(r => String(r.data.cnicNumber || r.data.CNIC || r.data['CNIC Number'] || '').trim()).filter(Boolean);
 
         if (emails.length === 0 && cnics.length === 0) return [];
 
@@ -480,9 +526,9 @@ export class EmployeeUploadProcessor {
 
         for (const record of records) {
             const data = record.data;
-            const empId = String(data.employeeId || data.employeeID || data['Employee ID'] || '');
+            const empId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '');
             const email = String(data.officialEmail || data['Official Email'] || '').trim().toLowerCase();
-            const cnic = String(data.cnicNumber || data['CNIC Number'] || '').trim();
+            const cnic = String(data.cnicNumber || data.CNIC || data['CNIC Number'] || '').trim();
 
             if (email && emailConflicts.has(email) && emailConflicts.get(email) !== empId) {
                 errors.push({
