@@ -2,7 +2,7 @@ model ChartOfAccount {
   id                       String                 @id @default(uuid())
   code                     String
   name                     String
-  type                     AccountType
+  type                     AccountType            @default(ASSET)
   isGroup                  Boolean                @default(false)
   parentId                 String?
   balance                  Decimal                @default(0.0) @db.Decimal(15, 2)
