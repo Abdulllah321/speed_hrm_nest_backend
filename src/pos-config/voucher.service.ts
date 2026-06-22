@@ -700,13 +700,12 @@ export class VoucherService {
             });
             if (!voucher) return { status: false, message: 'Voucher not found' };
 
-            let sourceOrder = null;
-            if (voucher.sourceOrderId) {
-                sourceOrder = await this.prisma.salesOrder.findUnique({
+            const sourceOrder = voucher.sourceOrderId
+                ? await this.prisma.salesOrder.findUnique({
                     where: { id: voucher.sourceOrderId },
                     select: { orderNumber: true, returnNumber: true, refundNumber: true },
-                });
-            }
+                })
+                : null;
 
             return {
                 status: true,
