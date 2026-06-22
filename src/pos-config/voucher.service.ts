@@ -67,6 +67,7 @@ export class VoucherService {
                 include: {
                     locations: { include: { location: { select: { id: true, name: true, code: true } } } },
                     redemptions: { select: { amountUsed: true, orderId: true } },
+                    claims: { select: { id: true, claimNumber: true } },
                 },
                 orderBy: { createdAt: 'desc' },
             });

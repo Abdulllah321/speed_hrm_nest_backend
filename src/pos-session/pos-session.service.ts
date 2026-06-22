@@ -674,9 +674,9 @@ export class PosSessionService {
       if (order.voucherRedemptions && order.voucherRedemptions.length > 0) {
         for (const redemption of order.voucherRedemptions) {
           const amountUsed = Number(redemption.amountUsed);
-          totalVouchersReceivedAmt += amountUsed;
-
           const v = redemption.voucher;
+          let amountToUse = amountUsed;
+
           let type = 'Vouchers';
           if (v.voucherType === 'CORPORATE') {
             type = 'Gift Vouchers Corporate';
@@ -684,19 +684,23 @@ export class PosSessionService {
             type = 'Gift Vouchers';
           } else if (v.voucherType === 'CREDIT') {
             type = 'Credit Vouchers';
+            amountToUse = Number(v.faceValue);
           } else if (v.voucherType === 'EXCHANGE') {
             if (v.claims && v.claims.length > 0) {
               type = 'Claim Vouchers';
             } else {
               type = 'Exchange Vouchers';
             }
+            amountToUse = Number(v.faceValue);
           } else if (v.voucherType === 'OUTLET_GIFT') {
             type = 'Outlet Gift Vouchers';
           }
 
+          totalVouchersReceivedAmt += amountToUse;
+
           redeemedVouchersList.push({
             type,
-            amount: amountUsed,
+            amount: amountToUse,
             from: v.code,
           });
         }
@@ -750,9 +754,14 @@ export class PosSessionService {
     let cashGiftVouchersAmt = 0;
     let cardGiftVouchersAmt = 0;
     let totalGiftVoucherDiscount = 0;
+    let unusedBalanceVouchersTotal = 0;
 
     for (const v of issuedVouchers) {
       const faceValue = Number(v.faceValue);
+
+      if (v.description && v.description.includes('unused balance from')) {
+        unusedBalanceVouchersTotal += faceValue;
+      }
 
       if (v.voucherType === 'EXCHANGE') {
         const type =
@@ -932,7 +941,8 @@ export class PosSessionService {
       creditCardGiftVouchersTotal +
       (totalReceived - cashGiftVouchersTotal) +
       totalReceivable -
-      fbrTotal;
+      fbrTotal -
+      unusedBalanceVouchersTotal;
 
     const totalIssued =
       exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
@@ -1133,6 +1143,7 @@ export class PosSessionService {
         giftVouchers,
         refundVouchers,
         totalGiftVoucherDiscount,
+        unusedBalanceVouchersTotal,
       },
       fbrCharges,
       financials,
@@ -1500,10 +1511,7 @@ export class PosSessionService {
         const totalReceived = metrics.cashBreakdown.total + metrics.paymentBreakdown.voucher.amount;
         const netReceivedCard = metrics.cardBreakdown.total;
 
-        const creditVouchersAmt = metrics.issuedVouchers.creditVouchers.reduce(
-          (s, v) => s + v.amount,
-          0,
-        );
+        const unusedBalanceVouchersAmt = metrics.issuedVouchers.unusedBalanceVouchersTotal || 0;
         const cashGiftVouchersAmt = metrics.cashBreakdown.giftVouchers;
         const cardGiftVouchersAmt = metrics.cardBreakdown.giftVouchers;
         const receivablesAmt = metrics.receivables.reduce(
@@ -1512,11 +1520,11 @@ export class PosSessionService {
         );
 
         // AC: 12070002 -> Transfer Current A/c Cash
-        // Credit = Total Received + Receivables - Credit Vouchers - Cash Gift Vouchers - On Cash FBR
+        // Credit = Total Received + Receivables - Unused Balance Vouchers - Cash Gift Vouchers - On Cash FBR
         const transferCash =
           totalReceived +
           receivablesAmt -
-          creditVouchersAmt -
+          unusedBalanceVouchersAmt -
           cashGiftVouchersAmt -
           fbrCash;
 
