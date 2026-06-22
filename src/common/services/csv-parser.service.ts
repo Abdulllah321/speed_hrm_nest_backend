@@ -289,14 +289,39 @@ export class CsvParserService {
             if (!worksheet) return;
 
             const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            
+            // Detect if this is a two-header sheet (group headers on row 1, field names on row 2)
+            let headerRowIndex = range.s.r;
+            if (range.e.r - range.s.r >= 1) {
+                const firstRowCells: string[] = [];
+                const secondRowCells: string[] = [];
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell1 = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
+                    const cell2 = worksheet[XLSX.utils.encode_cell({ r: range.s.r + 1, c: C })];
+                    firstRowCells.push(cell1 && cell1.v !== undefined && cell1.v !== null ? String(cell1.v).trim().toLowerCase() : '');
+                    secondRowCells.push(cell2 && cell2.v !== undefined && cell2.v !== null ? String(cell2.v).trim().toLowerCase() : '');
+                }
+                
+                const hasEmployeeIdInSecondRow = secondRowCells.some(v => 
+                    v === 'employee id' || v === 'employee_id' || v === 'employee name' || v === 'employee_name'
+                );
+                const hasGroupHeadersInFirstRow = firstRowCells.some(v =>
+                    ['identity', 'employment', 'personal', 'contact', 'financial', 'audit'].includes(v)
+                );
+                
+                if (hasEmployeeIdInSecondRow || hasGroupHeadersInFirstRow) {
+                    headerRowIndex = range.s.r + 1;
+                }
+            }
+
             const headers: string[] = [];
             for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cell = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
-                headers.push(cell ? String(cell.v) : `UNKNOWN_${C}`);
+                const cell = worksheet[XLSX.utils.encode_cell({ r: headerRowIndex, c: C })];
+                headers.push(cell && cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : `UNKNOWN_${C}`);
             }
 
             let rowCount = 0;
-            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+            for (let R = headerRowIndex + 1; R <= range.e.r; ++R) {
                 const rowObj: any = {};
                 let hasData = false;
                 for (let C = range.s.c; C <= range.e.c; ++C) {
@@ -401,14 +426,39 @@ export class CsvParserService {
 
             // Use sheet_to_json row by row to save memory compared to full array conversion
             const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            
+            // Detect if this is a two-header sheet (group headers on row 1, field names on row 2)
+            let headerRowIndex = range.s.r;
+            if (range.e.r - range.s.r >= 1) {
+                const firstRowCells: string[] = [];
+                const secondRowCells: string[] = [];
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cell1 = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
+                    const cell2 = worksheet[XLSX.utils.encode_cell({ r: range.s.r + 1, c: C })];
+                    firstRowCells.push(cell1 && cell1.v !== undefined && cell1.v !== null ? String(cell1.v).trim().toLowerCase() : '');
+                    secondRowCells.push(cell2 && cell2.v !== undefined && cell2.v !== null ? String(cell2.v).trim().toLowerCase() : '');
+                }
+                
+                const hasEmployeeIdInSecondRow = secondRowCells.some(v => 
+                    v === 'employee id' || v === 'employee_id' || v === 'employee name' || v === 'employee_name'
+                );
+                const hasGroupHeadersInFirstRow = firstRowCells.some(v =>
+                    ['identity', 'employment', 'personal', 'contact', 'financial', 'audit'].includes(v)
+                );
+                
+                if (hasEmployeeIdInSecondRow || hasGroupHeadersInFirstRow) {
+                    headerRowIndex = range.s.r + 1;
+                }
+            }
+
             const headers: string[] = [];
             for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cell = worksheet[XLSX.utils.encode_cell({ r: range.s.r, c: C })];
-                headers.push(cell ? cell.v : `UNKNOWN_${C}`);
+                const cell = worksheet[XLSX.utils.encode_cell({ r: headerRowIndex, c: C })];
+                headers.push(cell && cell.v !== null ? String(cell.v).trim() : `UNKNOWN_${C}`);
             }
 
             let rowCount = 0;
-            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+            for (let R = headerRowIndex + 1; R <= range.e.r; ++R) {
                 const rowObj: any = {};
                 let hasData = false;
                 for (let C = range.s.c; C <= range.e.c; ++C) {
