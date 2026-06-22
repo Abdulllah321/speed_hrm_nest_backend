@@ -46,11 +46,13 @@ export class PaymentVoucherController {
   findAll(
     @Query('type') type?: string,
     @Query('status') status?: string,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit?: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    return this.paymentVoucherService.findAll({ type, status, page, limit, search });
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    return this.paymentVoucherService.findAll({ type, status, page: pageNum, limit: limitNum, search });
   }
 
   @Get('next-pv-number')

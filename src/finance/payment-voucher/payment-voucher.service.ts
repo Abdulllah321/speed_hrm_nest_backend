@@ -174,7 +174,7 @@ export class PaymentVoucherService {
     limit?: number;
     search?: string;
   }) {
-    const { type, status, page = 1, limit = 10, search } = filters || {};
+    const { type, status, page, limit, search } = filters || {};
 
     const where: any = {};
 
@@ -189,39 +189,46 @@ export class PaymentVoucherService {
       ];
     }
 
-    const skip = (page - 1) * limit;
+    const queryOptions: any = {
+      where,
+      include: {
+        details: {
+          include: {
+            account: true,
+            tagAccount: true,
+          },
+        },
+        creditAccount: true,
+        supplier: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    };
+
+    if (page !== undefined && limit !== undefined) {
+      queryOptions.skip = (page - 1) * limit;
+      queryOptions.take = limit;
+    }
 
     const [data, total] = await Promise.all([
-      this.prisma.paymentVoucher.findMany({
-        where,
-        include: {
-          details: {
-            include: {
-              account: true,
-              tagAccount: true,
-            },
-          },
-          creditAccount: true,
-          supplier: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
+      this.prisma.paymentVoucher.findMany(queryOptions),
       this.prisma.paymentVoucher.count({ where }),
     ]);
 
-    return {
-      data,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    if (page !== undefined && limit !== undefined) {
+      return {
+        data,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      } as any;
+    }
+
+    return data as any;
   }
 
   async findOne(id: string) {
