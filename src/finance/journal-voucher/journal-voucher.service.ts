@@ -5,6 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { AccountingService } from '../accounting/accounting.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { generateNextJvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 
 @Injectable()
 export class JournalVoucherService {
@@ -30,10 +31,15 @@ export class JournalVoucherService {
       }
 
       const jv = await this.prisma.$transaction(async (prisma) => {
+        const sequentialJvNo = await generateNextJvNumber(prisma, data.jvDate);
+        const sequentialFolio = await generateNextFolioNumber(prisma, data.jvDate);
+
         // 1. Persist the voucher + detail lines
         const created = await prisma.journalVoucher.create({
           data: {
             ...data,
+            jvNo: sequentialJvNo,
+            folio: sequentialFolio,
             details: {
               create: details.map(d => ({
                 accountId:       d.accountId,

@@ -2,6 +2,7 @@ model PaymentVoucher {
   id              String                    @id @default(uuid())
   type            String
   pvNo            String                    @unique
+  folio           String?
   pvDate          DateTime
   refBillNo       String?
   billDate        DateTime?

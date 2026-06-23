@@ -8,6 +8,7 @@ import { AccountRoleKey } from '../finance-account-config/dto/finance-account-co
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { generateNextPvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 @Injectable()
 export class PaymentVoucherService {
   constructor(
@@ -85,6 +86,9 @@ export class PaymentVoucherService {
       : null;
 
     return this.prisma.$transaction(async (prisma) => {
+      const sequentialPvNo = await generateNextPvNumber(prisma, data.type, data.pvDate);
+      const sequentialFolio = await generateNextFolioNumber(prisma, data.pvDate);
+
       // ── Derive creditAccountId from the first credit detail line ────────
       // This keeps the legacy scalar for backward compat (reports, supplier ledger)
       const firstCreditDetail = details.find(d => Number(d.credit) > 0);
@@ -97,7 +101,8 @@ export class PaymentVoucherService {
       const paymentVoucher = await prisma.paymentVoucher.create({
         data: {
           type: data.type,
-          pvNo: data.pvNo,
+          pvNo: sequentialPvNo,
+          folio: sequentialFolio,
           pvDate: data.pvDate,
           refBillNo: data.refBillNo,
           billDate: data.billDate,
@@ -568,28 +573,7 @@ export class PaymentVoucherService {
   }
 
   async getNextPvNumber(type: string): Promise<{ nextPvNumber: string }> {
-    const currentYear = new Date().getFullYear();
-    const prefix = type === 'bank' ? 'BPV' : 'CPV';
-
-    const lastVoucher = await this.prisma.paymentVoucher.findFirst({
-      where: {
-        type,
-        pvNo: {
-          startsWith: `${prefix}-${currentYear}`,
-        },
-      },
-      orderBy: {
-        pvNo: 'desc',
-      },
-    });
-
-    let nextNumber = 1;
-    if (lastVoucher) {
-      const lastNumber = parseInt(lastVoucher.pvNo.split('-').pop() || '0');
-      nextNumber = lastNumber + 1;
-    }
-
-    const nextPvNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    const nextPvNumber = await generateNextPvNumber(this.prisma, type, new Date());
     return { nextPvNumber };
   }
 

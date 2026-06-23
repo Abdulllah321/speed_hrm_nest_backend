@@ -6,6 +6,7 @@ import { UpdateReceiptVoucherDto } from './dto/update-receipt-voucher.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { generateNextRvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 @Injectable()
 export class ReceiptVoucherService {
   constructor(
@@ -52,6 +53,9 @@ export class ReceiptVoucherService {
     }
 
     return this.prisma.$transaction(async (prisma) => {
+      const sequentialRvNo = await generateNextRvNumber(prisma, data.type, data.rvDate);
+      const sequentialFolio = await generateNextFolioNumber(prisma, data.rvDate);
+
       // Derive debitAccountId from the first debit detail line
       const firstDebitDetail = details.find(d => Number(d.debit) > 0);
       const resolvedDebitAccountId = firstDebitDetail?.accountId ?? data.debitAccountId;
@@ -63,7 +67,8 @@ export class ReceiptVoucherService {
       const rv = await prisma.receiptVoucher.create({
         data: {
           type: data.type,
-          rvNo: data.rvNo,
+          rvNo: sequentialRvNo,
+          folio: sequentialFolio,
           rvDate: data.rvDate,
           refBillNo: data.refBillNo,
           billDate: data.billDate,
