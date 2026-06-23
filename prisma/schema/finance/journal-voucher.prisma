@@ -1,6 +1,7 @@
 model JournalVoucher {
   id          String                 @id @default(uuid())
   jvNo        String                 @unique
+  folio       String?
   jvDate      DateTime
   description String?
   status      String                 @default("pending")

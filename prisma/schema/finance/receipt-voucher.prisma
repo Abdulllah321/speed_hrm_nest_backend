@@ -2,6 +2,7 @@ model ReceiptVoucher {
   id             String                    @id @default(uuid())
   type           String
   rvNo           String                    @unique
+  folio          String?
   rvDate         DateTime
   refBillNo      String?
   billDate       DateTime?
