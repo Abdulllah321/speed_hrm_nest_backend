@@ -22,76 +22,93 @@ export class EmployeeValidatorService {
     /**
      * Validate a single employee record
      */
-    validateRecord(record: ParsedRecord): ValidationResult {
+    validateRecord(
+        record: ParsedRecord,
+        existingEmpIds: Set<string> = new Set(),
+        existingCnics: Set<string> = new Set(),
+        existingEmails: Set<string> = new Set()
+    ): ValidationResult {
         const errors: ValidationError[] = [];
         const { row, data } = record;
 
         // Reference fields for traceability
         const employeeId = data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'] || data.employeeid;
         const employeeName = data.employeeName || data['Employee Name'] || data.name || data.employeename;
+        const cnic = data.cnicNumber || data.CNIC || data['CNIC Number'] || data['CNIC-Number'];
+        const officialEmail = data.officialEmail || data['Official Email'] || data['Offcial-Email'];
 
         const err = (field: string, value: any, reason: string): ValidationError =>
             ({ row, field, value, reason, employeeId, employeeName });
 
+        const isExisting = 
+            (employeeId && existingEmpIds.has(String(employeeId).trim().toLowerCase())) ||
+            (cnic && existingCnics.has(String(cnic).trim().toLowerCase())) ||
+            (officialEmail && existingEmails.has(String(officialEmail).trim().toLowerCase()));
+
         // 1. Required Identity Fields
-        if (!employeeId || String(employeeId).trim() === '') {
-            errors.push(err('EmployeeID', employeeId, 'Employee ID is a required unique identifier.'));
-        }
+        if (!isExisting) {
+            if (!employeeId || String(employeeId).trim() === '') {
+                errors.push(err('EmployeeID', employeeId, 'Employee ID is a required unique identifier.'));
+            }
 
-        if (!employeeName || String(employeeName).trim() === '') {
-            errors.push(err('EmployeeName', employeeName, 'Employee Name is required.'));
-        }
+            if (!employeeName || String(employeeName).trim() === '') {
+                errors.push(err('EmployeeName', employeeName, 'Employee Name is required.'));
+            }
 
-        const attendanceId = data.attendanceId || data['Attendance ID'] || data['Attendance-ID'] || employeeId;
-        if (!attendanceId || String(attendanceId).trim() === '') {
-            errors.push(err('AttendanceID', attendanceId, 'Attendance ID is required.'));
-        }
+            const attendanceId = data.attendanceId || data['Attendance ID'] || data['Attendance-ID'] || employeeId;
+            if (!attendanceId || String(attendanceId).trim() === '') {
+                errors.push(err('AttendanceID', attendanceId, 'Attendance ID is required.'));
+            }
 
-        const cnic = data.cnicNumber || data.CNIC || data['CNIC Number'] || data['CNIC-Number'];
-        if (!cnic || String(cnic).trim() === '') {
-            errors.push(err('CNICNumber', cnic, 'CNIC Number is required.'));
+            if (!cnic || String(cnic).trim() === '') {
+                errors.push(err('CNICNumber', cnic, 'CNIC Number is required.'));
+            }
+        } else {
+            if (!employeeId && !cnic && !officialEmail) {
+                errors.push(err('EmployeeID', null, 'At least one identifier (Employee ID, CNIC, or Email) is required for update.'));
+            }
         }
 
         // 2. Organization Fields
         const department = data.department || data.Department;
-        if (!department || String(department).trim() === '') {
+        if (!isExisting && (!department || String(department).trim() === '')) {
             errors.push(err('Department', department, 'Department is required for employee assignment.'));
         }
 
         const designation = data.designation || data.Designation;
-        if (!designation || String(designation).trim() === '') {
+        if (!isExisting && (!designation || String(designation).trim() === '')) {
             errors.push(err('Designation', designation, 'Designation is required.'));
         }
 
         const grade = data.employeeGrade || data.Grade || data['Employee Grade'] || data['Employee-Grade'] || data.grade;
-        if (!grade || String(grade).trim() === '') {
+        if (!isExisting && (!grade || String(grade).trim() === '')) {
             errors.push(err('EmployeeGrade', grade, 'Employee Grade is required.'));
         }
 
         // 3. Location Fields
         const country = data.country || data.Country;
-        if (!country || String(country).trim() === '') {
+        if (!isExisting && (!country || String(country).trim() === '')) {
             errors.push(err('Country', country, 'Country is required.'));
         }
 
         const state = data.state || data.province || data.State || data.Province || data['Province/State'] || data['State/Province'];
-        if (!state || String(state).trim() === '') {
+        if (!isExisting && (!state || String(state).trim() === '')) {
             errors.push(err('State', state, 'State/Province is required.'));
         }
 
         const city = data.city || data.City;
-        if (!city || String(city).trim() === '') {
+        if (!isExisting && (!city || String(city).trim() === '')) {
             errors.push(err('City', city, 'City is required.'));
         }
 
         // 4. Policy Fields
         const whPolicy = data.workingHoursPolicy || data['Working Hours Policy'] || data['Working-Hours-Policy'];
-        if (!whPolicy || String(whPolicy).trim() === '') {
+        if (!isExisting && (!whPolicy || String(whPolicy).trim() === '')) {
             errors.push(err('WorkingHoursPolicy', whPolicy, 'Working Hours Policy is required.'));
         }
 
         const leavesPolicy = data.leavesPolicy || data['Leaves Policy'] || data['Leaves-Policy'];
-        if (!leavesPolicy || String(leavesPolicy).trim() === '') {
+        if (!isExisting && (!leavesPolicy || String(leavesPolicy).trim() === '')) {
             errors.push(err('LeavesPolicy', leavesPolicy, 'Leaves Policy is required.'));
         }
 
@@ -132,10 +149,15 @@ export class EmployeeValidatorService {
     /**
      * Validate a batch of records
      */
-    validateRecords(records: ParsedRecord[]): ValidationError[] {
+    validateRecords(
+        records: ParsedRecord[],
+        existingEmpIds: Set<string> = new Set(),
+        existingCnics: Set<string> = new Set(),
+        existingEmails: Set<string> = new Set()
+    ): ValidationError[] {
         const errors: ValidationError[] = [];
         for (const record of records) {
-            const result = this.validateRecord(record);
+            const result = this.validateRecord(record, existingEmpIds, existingCnics, existingEmails);
             if (!result.isValid) {
                 errors.push(...result.errors);
             }

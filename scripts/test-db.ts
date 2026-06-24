@@ -35,7 +35,7 @@ async function main() {
     const companies = await management.company.findMany({ where: { status: 'active' } });
     for (const company of companies) {
       console.log(`\n🏢 Company: ${company.name} (${company.code})`);
-      let connectionString = company.dbUrl;
+      let connectionString: string | undefined = company.dbUrl || undefined;
       if (company.dbPassword) {
         const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
         connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
