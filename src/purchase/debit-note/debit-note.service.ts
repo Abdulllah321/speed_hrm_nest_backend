@@ -25,7 +25,23 @@ export class DebitNoteService {
     const debitNote = await this.prisma.debitNote.findUnique({
       where: { id },
       include: {
-        purchaseReturn: true,
+        purchaseReturn: {
+          include: {
+            items: {
+              include: {
+                item: {
+                  include: {
+                    size: true,
+                    color: true,
+                  },
+                },
+                purchaseInvoiceItem: true,
+              },
+            },
+            purchaseInvoice: true,
+            warehouse: true,
+          },
+        },
         purchaseInvoice: true,
         supplier: true,
       },
