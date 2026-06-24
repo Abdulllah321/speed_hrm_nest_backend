@@ -114,9 +114,9 @@ export class TransferRequestService {
                     fromLocationId: data.fromLocationId,
                     toLocationId: data.toLocationId,
                     transferType,
-                    status: 'PENDING',
+                    status: 'PENDING_CHECKER',
                     requiresSourceApproval: transferType === 'OUTLET_TO_OUTLET',
-                    createdById: data.createdById,
+                    createdById: data.createdById || ctx?.userId || null,
                     notes: data.notes,
                     items: {
                         create: data.items.map((item) => ({
@@ -325,23 +325,89 @@ export class TransferRequestService {
             }
         }
 
+        // Resolve User Names (Maker, Checker, Authorizer)
+        const userIds = [req.createdById, req.checkedById, req.authorizedById].filter(Boolean) as string[];
+        if (userIds.length > 0) {
+            const users = await this.prismaMaster.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, firstName: true, lastName: true },
+            });
+            const userMap = new Map(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
+            req.creatorName = req.createdById ? userMap.get(req.createdById) || 'Unknown User' : null;
+            req.checkerName = req.checkedById ? userMap.get(req.checkedById) || 'Unknown User' : null;
+            req.authorizerName = req.authorizedById ? userMap.get(req.authorizedById) || 'Unknown User' : null;
+        } else {
+            req.creatorName = null;
+            req.checkerName = null;
+            req.authorizerName = null;
+        }
+
         return req;
     }
 
-    async updateStatus(id: string, status: string, approvedById?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    async updateStatus(
+        id: string,
+        status: string,
+        approvedById?: string,
+        ctx?: {
+            userId?: string;
+            ipAddress?: string;
+            userAgent?: string;
+            userPermissions?: string[];
+            roleName?: string;
+        }
+    ) {
         try {
             const request = await this.prisma.transferRequest.findUnique({ where: { id } });
             if (!request) {
                 throw new NotFoundException(`Transfer request ${id} not found`);
             }
 
+            const userPermissions = ctx?.userPermissions || [];
+            const isSuperAdmin =
+                userPermissions.includes('*') ||
+                ctx?.roleName?.toLowerCase() === 'super_admin' ||
+                ctx?.roleName?.toLowerCase() === 'admin';
+
+            const updateData: any = { status };
+
+            // Enforce hierarchical approvals for Maker-Checker-Authorizer
+            if (request.status === 'PENDING_CHECKER') {
+                if (status !== 'PENDING_AUTHORIZER' && status !== 'REJECTED') {
+                    throw new BadRequestException(`Invalid status transition from PENDING_CHECKER to ${status}.`);
+                }
+                if (!isSuperAdmin && !userPermissions.includes('erp.inventory.transfer.check') && !userPermissions.includes('pos.inventory.transfer.check')) {
+                    throw new BadRequestException('You do not have permission to check this Stock Transfer (requires erp.inventory.transfer.check).');
+                }
+
+                updateData.checkedById = ctx?.userId || null;
+                updateData.checkedAt = new Date();
+            } else if (request.status === 'PENDING_AUTHORIZER') {
+                if (status !== 'PENDING' && status !== 'REJECTED' && status !== 'APPROVED' && status !== 'COMPLETED') {
+                    throw new BadRequestException(`Invalid status transition from PENDING_AUTHORIZER to ${status}.`);
+                }
+                if (!isSuperAdmin && !userPermissions.includes('erp.inventory.transfer.authorize') && !userPermissions.includes('pos.inventory.transfer.authorize')) {
+                    throw new BadRequestException('You do not have permission to authorize this Stock Transfer (requires erp.inventory.transfer.authorize).');
+                }
+
+                updateData.authorizedById = ctx?.userId || null;
+                updateData.authorizedAt = new Date();
+
+                // If authorized to APPROVED/PENDING, transition status to PENDING so it enters the active flow
+                if (status === 'APPROVED' || status === 'PENDING') {
+                    updateData.status = 'PENDING';
+                }
+            } else {
+                if (status === 'APPROVED' || status === 'COMPLETED') {
+                    updateData.approvedById = approvedById || ctx?.userId || null;
+                }
+            }
+
             const updated = await this.prisma.transferRequest.update({
                 where: { id },
-                data: {
-                    status,
-                    ...(status === 'APPROVED' ? { approvedById } : {}),
-                },
+                data: updateData,
             });
+
             runInBackground(
                 'Update Transfer Request Status',
                 this.activityLogs.log({

@@ -77,13 +77,22 @@ export class TransferRequestController {
     }
 
     @Patch(':id/status')
-    @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
+    @Permissions(
+        'pos.inventory.transfer.create',
+        'erp.inventory.transfer.create',
+        'erp.inventory.transfer.check',
+        'erp.inventory.transfer.authorize',
+        'pos.inventory.transfer.check',
+        'pos.inventory.transfer.authorize'
+    )
     @ApiOperation({ summary: 'Update transfer request status' })
     async updateStatus(@Param('id') id: string, @Body() dto: { status: string; approvedById?: string }, @Req() req: any) {
         const data = await this.transferRequestService.updateStatus(id, dto.status, dto.approvedById, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
+            userPermissions: req.user?.permissions,
+            roleName: req.user?.roleName,
         });
         return { status: true, data, message: `Request ${dto.status} successfully` };
     }
