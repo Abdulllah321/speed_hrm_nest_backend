@@ -29,6 +29,7 @@ model PurchaseInvoice {
   warehouse       Warehouse?                @relation(fields: [warehouseId], references: [id])
   paymentVouchers PaymentVoucherToInvoice[]
   debitNotes      DebitNote[]
+  purchaseReturns PurchaseReturn[]
 
   @@map("purchase_invoices")
 }
@@ -50,6 +51,7 @@ model PurchaseInvoiceItem {
   purchaseInvoice   PurchaseInvoice       @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
   grnItem           GoodsReceiptNoteItem? @relation(fields: [grnItemId], references: [id])
   item              Item                  @relation(fields: [itemId], references: [id])
+  purchaseReturnItems PurchaseReturnItem[]
 
   @@map("purchase_invoice_items")
 }

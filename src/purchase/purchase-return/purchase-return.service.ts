@@ -2,6 +2,9 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseReturnDto, ReturnSourceType } from './dto/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from './dto/update-purchase-return.dto';
+import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
+import { AccountingService } from '../../finance/accounting/accounting.service';
+import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
@@ -11,6 +14,8 @@ export class PurchaseReturnService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
+    private financeConfig: FinanceAccountConfigService,
+    private accounting: AccountingService,
   ) {}
 
   async create(createDto: CreatePurchaseReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
@@ -30,11 +35,13 @@ export class PurchaseReturnService {
           sourceType: createDto.sourceType,
           grnId: createDto.grnId,
           landedCostId: createDto.landedCostId,
+          purchaseInvoiceId: createDto.purchaseInvoiceId,
           supplierId: createDto.supplierId,
           warehouseId: createDto.warehouseId,
           returnType: createDto.returnType,
           reason: createDto.reason,
           notes: createDto.notes,
+          staxEInvoiceNumber: createDto.staxEInvoiceNumber,
           subtotal,
           taxAmount,
           totalAmount,
@@ -43,6 +50,7 @@ export class PurchaseReturnService {
               sourceItemType: item.sourceItemType,
               grnItemId: item.grnItemId,
               landedCostItemId: item.landedCostItemId,
+              purchaseInvoiceItemId: item.purchaseInvoiceItemId,
               itemId: item.itemId,
               description: item.description,
               returnQty: item.returnQty,
@@ -56,6 +64,7 @@ export class PurchaseReturnService {
           items: true,
           grn: true,
           landedCost: true,
+          purchaseInvoice: true,
           supplier: true,
           warehouse: true,
         },
@@ -109,6 +118,7 @@ export class PurchaseReturnService {
         },
         grn: true,
         landedCost: true,
+        purchaseInvoice: true,
         supplier: true,
         warehouse: true,
       },
@@ -124,7 +134,13 @@ export class PurchaseReturnService {
           include: {
             grnItem: true,
             landedCostItem: true,
-            item: true,
+            purchaseInvoiceItem: true,
+            item: {
+              include: {
+                size: true,
+                color: true,
+              },
+            },
           },
         },
         grn: {
@@ -135,6 +151,20 @@ export class PurchaseReturnService {
         landedCost: {
           include: {
             purchaseOrder: true,
+          },
+        },
+        purchaseInvoice: {
+          include: {
+            grn: {
+              include: {
+                purchaseOrder: true,
+              },
+            },
+            landedCost: {
+              include: {
+                purchaseOrder: true,
+              },
+            },
           },
         },
         debitNote: true,
@@ -171,6 +201,7 @@ export class PurchaseReturnService {
       if (updateDto.returnType) updateData.returnType = updateDto.returnType;
       if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
       if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
+      if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;
 
       const updated = await this.prisma.purchaseReturn.update({
         where: { id },
@@ -285,7 +316,11 @@ export class PurchaseReturnService {
     // Find associated Purchase Invoice
     let purchaseInvoice: any = null;
 
-    if (purchaseReturn.sourceType === 'GRN' && purchaseReturn.grnId) {
+    if (purchaseReturn.sourceType === 'INVOICE') {
+      purchaseInvoice = await this.prisma.purchaseInvoice.findUnique({
+        where: { id: purchaseReturn.purchaseInvoiceId },
+      });
+    } else if (purchaseReturn.sourceType === 'GRN' && purchaseReturn.grnId) {
       purchaseInvoice = await this.prisma.purchaseInvoice.findFirst({
         where: { 
           grnId: purchaseReturn.grnId,
@@ -302,14 +337,15 @@ export class PurchaseReturnService {
     }
 
     if (!purchaseInvoice) {
-      console.log('No approved Purchase Invoice found for this return source. Skipping financial adjustment.');
+      console.log('No approved Purchase Invoice found for this return. Skipping financial adjustment.');
       return;
     }
 
-    console.log(`Found Purchase Invoice ${purchaseInvoice.invoiceNumber}. Processing adjustment against Debit Note.`);
+    console.log(`Found Purchase Invoice ${purchaseInvoice.invoiceNumber}. Processing financial adjustment.`);
 
     // Generate Debit Note Number
     const debitNoteNo = `DN-${Date.now()}`;
+    const totalAmount = Number(purchaseReturn.totalAmount);
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Create Debit Note
@@ -325,24 +361,118 @@ export class PurchaseReturnService {
         }
       });
 
-      // 2. Update Purchase Invoice
-      // Important: totalAmount remains unchanged (original value)
-      // returnAmount is incremented
-      // remainingAmount is reduced
-      const newReturnAmount = Number(purchaseInvoice.returnAmount || 0) + Number(purchaseReturn.totalAmount);
-      const newRemainingAmount = Number(purchaseInvoice.totalAmount) - Number(purchaseInvoice.paidAmount) - newReturnAmount;
-
-      await tx.purchaseInvoice.update({
-        where: { id: purchaseInvoice.id },
-        data: {
-          returnAmount: newReturnAmount,
-          remainingAmount: Math.max(0, newRemainingAmount),
-          paymentStatus: newRemainingAmount <= 0.01 ? 'FULLY_PAID' : (Number(purchaseInvoice.paidAmount) > 0 ? 'PARTIALLY_PAID' : 'UNPAID')
-        }
+      // 2. Post Journal Entry to GL
+      const supplier = await tx.supplier.findUnique({
+        where: { id: purchaseReturn.supplierId },
+        include: { chartOfAccounts: { select: { id: true } } },
       });
 
-      console.log(`Updated PI ${purchaseInvoice.invoiceNumber}: ReturnAmount=${newReturnAmount}, RemainingAmount=${newRemainingAmount}`);
-      
+      let apPartiesAccountId: string | null = null;
+      try {
+        apPartiesAccountId = await this.financeConfig.resolveAccount(AccountRoleKey.AP_PARTIES);
+      } catch (error) {
+        console.error('AP_PARTIES account resolution failed', error);
+      }
+
+      let purchasesReturnAccountId: string | null = null;
+      try {
+        purchasesReturnAccountId = await this.financeConfig.resolveAccount(AccountRoleKey.PURCHASES_RETURN);
+      } catch (error) {
+        console.error('PURCHASES_RETURN account resolution failed', error);
+      }
+
+      let payableAccounts: { accountId: string; tagAccountId?: string }[] = [];
+
+      if (apPartiesAccountId && supplier) {
+        const tagAccount = await tx.chartOfAccount.findFirst({
+          where: {
+            parentId: apPartiesAccountId,
+            code: supplier.code,
+          },
+          select: { id: true },
+        });
+        if (tagAccount) {
+          payableAccounts.push({
+            accountId: apPartiesAccountId,
+            tagAccountId: tagAccount.id,
+          });
+        } else if (supplier.chartOfAccounts?.length) {
+          payableAccounts = supplier.chartOfAccounts.map(acc => ({
+            accountId: acc.id,
+          }));
+        }
+      } else if (supplier?.chartOfAccounts?.length) {
+        payableAccounts = supplier.chartOfAccounts.map(acc => ({
+          accountId: acc.id,
+        }));
+      }
+
+      if (purchasesReturnAccountId && payableAccounts.length > 0) {
+        const debitPerAccount = totalAmount / payableAccounts.length;
+        const debitLines = payableAccounts.map(acc => ({
+          accountId: acc.accountId,
+          tagAccountId: acc.tagAccountId,
+          debit: debitPerAccount,
+          credit: 0,
+        }));
+
+        const creditLines = [{ accountId: purchasesReturnAccountId, debit: 0, credit: totalAmount }];
+
+        await this.accounting.postLines([...debitLines, ...creditLines], {
+          sourceType: 'PURCHASE_RETURN',
+          sourceId: purchaseReturn.id,
+          sourceRef: purchaseReturn.returnNumber,
+          description: `Purchase Return approved: ${purchaseReturn.returnNumber}`,
+          transactionDate: new Date(),
+        }, tx);
+      }
+
+      // 3. Write supplier ledger debit entry & update supplier current balance
+      const supplierForLedger = await tx.supplier.findUnique({
+        where: { id: purchaseReturn.supplierId },
+        select: { currentBalance: true, advanceBalance: true },
+      });
+      if (supplierForLedger) {
+        const newBalance = Number(supplierForLedger.currentBalance) - totalAmount;
+        await tx.supplierLedger.create({
+          data: {
+            supplierId: purchaseReturn.supplierId,
+            entryDate: new Date(),
+            entryType: 'PURCHASE_RETURN',
+            sourceId: purchaseReturn.id,
+            sourceRef: purchaseReturn.returnNumber,
+            description: `Purchase Return approved`,
+            debit: totalAmount,
+            credit: 0,
+            balanceAfter: newBalance,
+            advanceDebit: 0,
+            advanceCredit: 0,
+            advanceBalance: Number(supplierForLedger.advanceBalance),
+          },
+        });
+        await tx.supplier.update({
+          where: { id: purchaseReturn.supplierId },
+          data: { currentBalance: newBalance },
+        });
+      }
+
+      // 4. Update Purchase Invoice ONLY for old/legacy flows.
+      // For sourceType === 'INVOICE', we do NOT update purchaseInvoice amounts or paymentStatus at all!
+      if (purchaseReturn.sourceType !== 'INVOICE') {
+        const newReturnAmount = Number(purchaseInvoice.returnAmount || 0) + totalAmount;
+        const newRemainingAmount = Number(purchaseInvoice.totalAmount) - Number(purchaseInvoice.paidAmount) - newReturnAmount;
+
+        await tx.purchaseInvoice.update({
+          where: { id: purchaseInvoice.id },
+          data: {
+            returnAmount: newReturnAmount,
+            remainingAmount: Math.max(0, newRemainingAmount),
+            paymentStatus: newRemainingAmount <= 0.01 ? 'FULLY_PAID' : (Number(purchaseInvoice.paidAmount) > 0 ? 'PARTIALLY_PAID' : 'UNPAID')
+          }
+        });
+        console.log(`Updated PI ${purchaseInvoice.invoiceNumber}: ReturnAmount=${newReturnAmount}, RemainingAmount=${newRemainingAmount}`);
+      }
+
       return debitNote;
     });
   }
@@ -477,39 +607,75 @@ export class PurchaseReturnService {
     }));
   }
 
+  async getEligibleInvoices() {
+    const invoices = await this.prisma.purchaseInvoice.findMany({
+      where: {
+        status: 'APPROVED',
+        createdAt: {
+          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+      include: {
+        supplier: true,
+        warehouse: true,
+        items: {
+          include: {
+            item: {
+              include: {
+                size: true,
+                color: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return invoices.map(inv => ({
+      id: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      supplier: inv.supplier,
+      warehouse: inv.warehouse,
+      advanceTaxRate: Number(inv.advanceTaxRate || 0.5),
+      items: inv.items.map(item => ({
+        id: item.id,
+        itemId: item.itemId,
+        sku: item.item?.sku || '',
+        hsCodeStr: item.item?.hsCodeStr || '',
+        description: item.description || item.item?.description || '',
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        taxRate: Number(item.taxRate),
+        taxAmount: Number(item.taxAmount),
+        discountRate: Number(item.discountRate),
+        discountAmount: Number(item.discountAmount),
+        lineTotal: Number(item.lineTotal),
+        size: item.item?.size?.name || null,
+        color: item.item?.color?.name || null,
+      })),
+    }));
+  }
+
   private async validateSourceDocument(createDto: CreatePurchaseReturnDto) {
-    if (createDto.sourceType === ReturnSourceType.GRN) {
-      if (!createDto.grnId) {
-        throw new BadRequestException('GRN ID is required for GRN-based returns');
-      }
+    if (createDto.sourceType !== ReturnSourceType.INVOICE) {
+      throw new BadRequestException('Only Purchase Invoice (INVOICE) returns are supported');
+    }
 
-      const grn = await this.prisma.goodsReceiptNote.findUnique({
-        where: { id: createDto.grnId },
-      });
+    if (!createDto.purchaseInvoiceId) {
+      throw new BadRequestException('Purchase Invoice ID is required for Invoice-based returns');
+    }
 
-      if (!grn) {
-        throw new NotFoundException('GRN not found');
-      }
+    const invoice = await this.prisma.purchaseInvoice.findUnique({
+      where: { id: createDto.purchaseInvoiceId },
+    });
 
-      if (grn.status !== 'VALUED') {
-        throw new BadRequestException('Only VALUED GRNs can be returned');
-      }
-    } else if (createDto.sourceType === ReturnSourceType.LANDED_COST) {
-      if (!createDto.landedCostId) {
-        throw new BadRequestException('Landed Cost ID is required for Landed Cost-based returns');
-      }
+    if (!invoice) {
+      throw new NotFoundException('Purchase Invoice not found');
+    }
 
-      const landedCost = await this.prisma.landedCost.findUnique({
-        where: { id: createDto.landedCostId },
-      });
-
-      if (!landedCost) {
-        throw new NotFoundException('Landed Cost not found');
-      }
-
-      if (landedCost.status !== 'SUBMITTED') {
-        throw new BadRequestException('Only SUBMITTED Landed Costs can be returned');
-      }
+    if (invoice.status !== 'APPROVED') {
+      throw new BadRequestException('Only APPROVED Purchase Invoices can be returned');
     }
   }
 
@@ -528,7 +694,9 @@ export class PurchaseReturnService {
     for (const item of purchaseReturn.items) {
       const referenceType = purchaseReturn.sourceType === 'GRN' 
         ? 'PURCHASE_RETURN_GRN' 
-        : 'PURCHASE_RETURN_LC';
+        : purchaseReturn.sourceType === 'LANDED_COST'
+          ? 'PURCHASE_RETURN_LC'
+          : 'PURCHASE_RETURN_INV';
 
       // Debug log to check values
       console.log('Purchase Return Stock Ledger Entry:', {
