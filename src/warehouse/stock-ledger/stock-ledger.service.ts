@@ -437,8 +437,9 @@ export class StockLedgerService {
     locationId: string;
     startDate?: string;
     endDate?: string;
+    summaryOnly?: boolean;
   }) {
-    const { locationId, startDate: startStr, endDate: endStr } = options;
+    const { locationId, startDate: startStr, endDate: endStr, summaryOnly } = options;
     if (!locationId) {
       throw new BadRequestException('locationId is required');
     }
@@ -637,10 +638,10 @@ export class StockLedgerService {
     };
 
     for (const item of items) {
-      const genderName = item.gender?.name || 'No Gender';
-      const categoryName = item.category?.name || 'No Category';
       const divisionName = item.division?.name || 'No Division';
       const brandName = item.brand?.name || 'No Brand';
+      const genderName = item.gender?.name || 'No Gender';
+      const categoryName = item.category?.name || 'No Category';
       const sku = item.sku;
       const articleName = item.description || 'Unknown Article';
 
@@ -677,11 +678,11 @@ export class StockLedgerService {
         balance,
       };
 
-      const genderNode = getOrInsert(root, 'gender', genderName, () => ({ gender: genderName, categories: [], totals: createEmptyTotals() }));
-      const categoryNode = getOrInsert(genderNode.categories, 'category', categoryName, () => ({ category: categoryName, divisions: [], totals: createEmptyTotals() }));
-      const divisionNode = getOrInsert(categoryNode.divisions, 'division', divisionName, () => ({ division: divisionName, brands: [], totals: createEmptyTotals() }));
-      const brandNode = getOrInsert(divisionNode.brands, 'brand', brandName, () => ({ brand: brandName, articles: [], totals: createEmptyTotals() }));
-      const articleNode = getOrInsert(brandNode.articles, 'sku', sku, () => ({
+      const divisionNode = getOrInsert(root, 'division', divisionName, () => ({ division: divisionName, brands: [], totals: createEmptyTotals() }));
+      const brandNode = getOrInsert(divisionNode.brands, 'brand', brandName, () => ({ brand: brandName, genders: [], totals: createEmptyTotals() }));
+      const genderNode = getOrInsert(brandNode.genders, 'gender', genderName, () => ({ gender: genderName, categories: [], totals: createEmptyTotals() }));
+      const categoryNode = getOrInsert(genderNode.categories, 'category', categoryName, () => ({ category: categoryName, articles: [], totals: createEmptyTotals() }));
+      const articleNode = getOrInsert(categoryNode.articles, 'sku', sku, () => ({
         sku,
         articleName,
         totals: createEmptyTotals(),
@@ -693,417 +694,36 @@ export class StockLedgerService {
     }
 
     // Compute aggregates recursively
-    for (const g of root) {
-      for (const c of g.categories) {
-        for (const d of c.divisions) {
-          for (const b of d.brands) {
-            for (const a of b.articles) {
-              addTotals(b.totals, a.totals);
+    for (const d of root) {
+      for (const b of d.brands) {
+        for (const g of b.genders) {
+          for (const c of g.categories) {
+            for (const a of c.articles) {
+              addTotals(c.totals, a.totals);
             }
-            addTotals(d.totals, b.totals);
+            addTotals(g.totals, c.totals);
           }
-          addTotals(c.totals, d.totals);
+          addTotals(b.totals, g.totals);
         }
-        addTotals(g.totals, c.totals);
+        addTotals(d.totals, b.totals);
+      }
+    }
+
+    // If summaryOnly is true, clean/empty out the variants array to reduce JSON payload size
+    if (summaryOnly) {
+      for (const d of root) {
+        for (const b of d.brands) {
+          for (const g of b.genders) {
+            for (const c of g.categories) {
+              for (const a of c.articles) {
+                a.variants = [];
+              }
+            }
+          }
+        }
       }
     }
 
     return root;
-  }
-
-  async exportStockActivityReportPdf(
-    options: {
-      locationId: string;
-      startDate?: string;
-      endDate?: string;
-    },
-    res: any,
-  ): Promise<void> {
-    const data = await this.getStockActivityReport(options);
-
-    const location = await this.prisma.location.findUnique({
-      where: { id: options.locationId },
-      select: { name: true },
-    });
-    const locationName = location?.name || 'Store';
-
-    const fromDateStr = options.startDate ? new Date(options.startDate).toLocaleDateString() : 'Beginning';
-    const toDateStr = options.endDate ? new Date(options.endDate).toLocaleDateString() : 'Present';
-
-    const html = this.buildPdfHtml(data, locationName, fromDateStr, toDateStr);
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        landscape: true,
-        margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
-        printBackground: true,
-        displayHeaderFooter: true,
-        headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Innovative Network | Stock Activity Report</div>',
-        footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
-      });
-
-      res.header('Content-Type', 'application/pdf');
-      res.header('Content-Disposition', `attachment; filename="stock-activity-report-${new Date().toISOString().slice(0, 10)}.pdf"`);
-      res.header('Content-Length', pdfBuffer.length);
-      res.send(pdfBuffer);
-    } finally {
-      await browser.close();
-    }
-  }
-
-  private buildPdfHtml(data: any[], locationName: string, fromDateStr: string, toDateStr: string): string {
-    let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toString();
-
-    for (const g of data) {
-      rowsHtml += `
-        <tr class="gender-row">
-          <td colspan="3">GENDER: ${g.gender.toUpperCase()}</td>
-          <td class="num">${formatVal(g.totals.bf)}</td>
-          <td class="num">${formatVal(g.totals.fromWarehouse)}</td>
-          <td class="num">${formatVal(g.totals.fromOutlet)}</td>
-          <td class="num highlight-in">${formatVal(g.totals.totalTrfIn)}</td>
-          <td class="num">${formatVal(g.totals.toWarehouse)}</td>
-          <td class="num">${formatVal(g.totals.toOutlet)}</td>
-          <td class="num highlight-out">${formatVal(g.totals.totalTrfOut)}</td>
-          <td class="num">${formatVal(g.totals.exchg)}</td>
-          <td class="num">${formatVal(g.totals.refund)}</td>
-          <td class="num">${formatVal(g.totals.claim)}</td>
-          <td class="num">${formatVal(g.totals.sales)}</td>
-          <td class="num">${formatVal(g.totals.adj)}</td>
-          <td class="num highlight-avail">${formatVal(g.totals.availableStock)}</td>
-          <td class="num highlight-transit">${formatVal(g.totals.transit)}</td>
-          <td class="num highlight-bal">${formatVal(g.totals.balance)}</td>
-        </tr>
-      `;
-
-      for (const c of g.categories) {
-        rowsHtml += `
-          <tr class="category-row">
-            <td colspan="3">&nbsp;&nbsp;CATEGORY: ${c.category.toUpperCase()}</td>
-            <td class="num">${formatVal(c.totals.bf)}</td>
-            <td class="num">${formatVal(c.totals.fromWarehouse)}</td>
-            <td class="num">${formatVal(c.totals.fromOutlet)}</td>
-            <td class="num highlight-in">${formatVal(c.totals.totalTrfIn)}</td>
-            <td class="num">${formatVal(c.totals.toWarehouse)}</td>
-            <td class="num">${formatVal(c.totals.toOutlet)}</td>
-            <td class="num highlight-out">${formatVal(c.totals.totalTrfOut)}</td>
-            <td class="num">${formatVal(c.totals.exchg)}</td>
-            <td class="num">${formatVal(c.totals.refund)}</td>
-            <td class="num">${formatVal(c.totals.claim)}</td>
-            <td class="num">${formatVal(c.totals.sales)}</td>
-            <td class="num">${formatVal(c.totals.adj)}</td>
-            <td class="num highlight-avail">${formatVal(c.totals.availableStock)}</td>
-            <td class="num highlight-transit">${formatVal(c.totals.transit)}</td>
-            <td class="num highlight-bal">${formatVal(c.totals.balance)}</td>
-          </tr>
-        `;
-
-        for (const d of c.divisions) {
-          rowsHtml += `
-            <tr class="division-row">
-              <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;DIVISION: ${d.division.toUpperCase()}</td>
-              <td class="num">${formatVal(d.totals.bf)}</td>
-              <td class="num">${formatVal(d.totals.fromWarehouse)}</td>
-              <td class="num">${formatVal(d.totals.fromOutlet)}</td>
-              <td class="num highlight-in">${formatVal(d.totals.totalTrfIn)}</td>
-              <td class="num">${formatVal(d.totals.toWarehouse)}</td>
-              <td class="num">${formatVal(d.totals.toOutlet)}</td>
-              <td class="num highlight-out">${formatVal(d.totals.totalTrfOut)}</td>
-              <td class="num">${formatVal(d.totals.exchg)}</td>
-              <td class="num">${formatVal(d.totals.refund)}</td>
-              <td class="num">${formatVal(d.totals.claim)}</td>
-              <td class="num">${formatVal(d.totals.sales)}</td>
-              <td class="num">${formatVal(d.totals.adj)}</td>
-              <td class="num highlight-avail">${formatVal(d.totals.availableStock)}</td>
-              <td class="num highlight-transit">${formatVal(d.totals.transit)}</td>
-              <td class="num highlight-bal">${formatVal(d.totals.balance)}</td>
-            </tr>
-          `;
-
-          for (const b of d.brands) {
-            rowsHtml += `
-              <tr class="brand-row">
-                <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;BRAND: ${b.brand.toUpperCase()}</td>
-                <td class="num">${formatVal(b.totals.bf)}</td>
-                <td class="num">${formatVal(b.totals.fromWarehouse)}</td>
-                <td class="num">${formatVal(b.totals.fromOutlet)}</td>
-                <td class="num highlight-in">${formatVal(b.totals.totalTrfIn)}</td>
-                <td class="num">${formatVal(b.totals.toWarehouse)}</td>
-                <td class="num">${formatVal(b.totals.toOutlet)}</td>
-                <td class="num highlight-out">${formatVal(b.totals.totalTrfOut)}</td>
-                <td class="num">${formatVal(b.totals.exchg)}</td>
-                <td class="num">${formatVal(b.totals.refund)}</td>
-                <td class="num">${formatVal(b.totals.claim)}</td>
-                <td class="num">${formatVal(b.totals.sales)}</td>
-                <td class="num">${formatVal(b.totals.adj)}</td>
-                <td class="num highlight-avail">${formatVal(b.totals.availableStock)}</td>
-                <td class="num highlight-transit">${formatVal(b.totals.transit)}</td>
-                <td class="num highlight-bal">${formatVal(b.totals.balance)}</td>
-              </tr>
-            `;
-
-            for (const a of b.articles) {
-              rowsHtml += `
-                <tr class="article-row">
-                  <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SKU: ${a.sku} (${a.articleName})</td>
-                  <td class="center">ALL COLORS</td>
-                  <td class="center">ALL SIZES</td>
-                  <td class="num">${formatVal(a.totals.bf)}</td>
-                  <td class="num">${formatVal(a.totals.fromWarehouse)}</td>
-                  <td class="num">${formatVal(a.totals.fromOutlet)}</td>
-                  <td class="num highlight-in">${formatVal(a.totals.totalTrfIn)}</td>
-                  <td class="num">${formatVal(a.totals.toWarehouse)}</td>
-                  <td class="num">${formatVal(a.totals.toOutlet)}</td>
-                  <td class="num highlight-out">${formatVal(a.totals.totalTrfOut)}</td>
-                  <td class="num">${formatVal(a.totals.exchg)}</td>
-                  <td class="num">${formatVal(a.totals.refund)}</td>
-                  <td class="num">${formatVal(a.totals.claim)}</td>
-                  <td class="num">${formatVal(a.totals.sales)}</td>
-                  <td class="num">${formatVal(a.totals.adj)}</td>
-                  <td class="num highlight-avail">${formatVal(a.totals.availableStock)}</td>
-                  <td class="num highlight-transit">${formatVal(a.totals.transit)}</td>
-                  <td class="num highlight-bal">${formatVal(a.totals.balance)}</td>
-                </tr>
-              `;
-
-              for (const v of a.variants) {
-                rowsHtml += `
-                  <tr class="variant-row">
-                    <td class="indent">&mdash; Variant Item</td>
-                    <td class="center">${v.color}</td>
-                    <td class="center">${v.size}</td>
-                    <td class="num">${formatVal(v.bf)}</td>
-                    <td class="num">${formatVal(v.fromWarehouse)}</td>
-                    <td class="num">${formatVal(v.fromOutlet)}</td>
-                    <td class="num highlight-in">${formatVal(v.totalTrfIn)}</td>
-                    <td class="num">${formatVal(v.toWarehouse)}</td>
-                    <td class="num">${formatVal(v.toOutlet)}</td>
-                    <td class="num highlight-out">${formatVal(v.totalTrfOut)}</td>
-                    <td class="num">${formatVal(v.exchg)}</td>
-                    <td class="num">${formatVal(v.refund)}</td>
-                    <td class="num">${formatVal(v.claim)}</td>
-                    <td class="num">${formatVal(v.sales)}</td>
-                    <td class="num">${formatVal(v.adj)}</td>
-                    <td class="num highlight-avail">${formatVal(v.availableStock)}</td>
-                    <td class="num highlight-transit">${formatVal(v.transit)}</td>
-                    <td class="num highlight-bal">${formatVal(v.balance)}</td>
-                  </tr>
-                `;
-              }
-            }
-
-            rowsHtml += `
-              <tr class="brand-footer-row">
-                <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TOTAL FOR BRAND: ${b.brand.toUpperCase()}</td>
-                <td class="num">${formatVal(b.totals.bf)}</td>
-                <td class="num">${formatVal(b.totals.fromWarehouse)}</td>
-                <td class="num">${formatVal(b.totals.fromOutlet)}</td>
-                <td class="num highlight-in">${formatVal(b.totals.totalTrfIn)}</td>
-                <td class="num">${formatVal(b.totals.toWarehouse)}</td>
-                <td class="num">${formatVal(b.totals.toOutlet)}</td>
-                <td class="num highlight-out">${formatVal(b.totals.totalTrfOut)}</td>
-                <td class="num">${formatVal(b.totals.exchg)}</td>
-                <td class="num">${formatVal(b.totals.refund)}</td>
-                <td class="num">${formatVal(b.totals.claim)}</td>
-                <td class="num">${formatVal(b.totals.sales)}</td>
-                <td class="num">${formatVal(b.totals.adj)}</td>
-                <td class="num highlight-avail">${formatVal(b.totals.availableStock)}</td>
-                <td class="num highlight-transit">${formatVal(b.totals.transit)}</td>
-                <td class="num highlight-bal">${formatVal(b.totals.balance)}</td>
-              </tr>
-            `;
-          }
-        }
-      }
-    }
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: #1e293b;
-            font-size: 7px;
-            margin: 0;
-            padding: 0;
-            background: #ffffff;
-          }
-          .header-block {
-            border-bottom: 2px solid #0f172a;
-            padding-bottom: 8px;
-            margin-bottom: 12px;
-          }
-          .company-name {
-            font-size: 14px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #0f172a;
-          }
-          .report-title {
-            font-size: 11px;
-            font-weight: 700;
-            color: #475569;
-            margin-top: 2px;
-          }
-          .meta-info {
-            font-size: 8px;
-            color: #64748b;
-            margin-top: 4px;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            page-break-inside: auto;
-          }
-          tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
-          }
-          thead {
-            display: table-header-group;
-          }
-          th {
-            background-color: #334155;
-            color: #ffffff;
-            font-weight: 700;
-            text-transform: uppercase;
-            font-size: 6px;
-            padding: 4px 3px;
-            border: 1px solid #475569;
-            text-align: center;
-          }
-          th.align-left {
-            text-align: left;
-          }
-          td {
-            padding: 3px 2px;
-            border: 1px solid #e2e8f0;
-            vertical-align: middle;
-          }
-          td.num {
-            text-align: right;
-          }
-          td.center {
-            text-align: center;
-          }
-          td.indent {
-            color: #64748b;
-            font-style: italic;
-            padding-left: 10px;
-          }
-          .gender-row {
-            background-color: #cbd5e1;
-            font-weight: 800;
-            font-size: 8px;
-            color: #0f172a;
-          }
-          .category-row {
-            background-color: #e2e8f0;
-            font-weight: 700;
-            font-size: 7.5px;
-            color: #1e293b;
-          }
-          .division-row {
-            background-color: #f1f5f9;
-            font-weight: 700;
-            font-size: 7px;
-            color: #334155;
-          }
-          .brand-row {
-            background-color: #f8fafc;
-            font-weight: 700;
-            font-size: 7px;
-            color: #475569;
-          }
-          .article-row {
-            background-color: #f1f5f9;
-            font-weight: 700;
-            font-size: 7px;
-            color: #0f172a;
-          }
-          .variant-row {
-            background-color: #ffffff;
-            color: #475569;
-          }
-          .brand-footer-row {
-            background-color: #e2e8f0;
-            font-weight: 800;
-            font-size: 7px;
-            color: #0f172a;
-          }
-          .highlight-in {
-            background-color: rgba(16, 185, 129, 0.08);
-            font-weight: 700;
-            color: #047857;
-          }
-          .highlight-out {
-            background-color: rgba(239, 68, 68, 0.08);
-            font-weight: 700;
-            color: #b91c1c;
-          }
-          .highlight-avail {
-            background-color: rgba(59, 130, 246, 0.08);
-            font-weight: 700;
-            color: #1d4ed8;
-          }
-          .highlight-transit {
-            font-weight: 700;
-            color: #b45309;
-          }
-          .highlight-bal {
-            background-color: #f1f5f9;
-            font-weight: 900;
-            color: #0f172a;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header-block">
-          <div class="company-name">Innovative Network</div>
-          <div class="report-title">Stock Activity Report — ${locationName}</div>
-          <div class="meta-info">Period: ${fromDateStr} to ${toDateStr}</div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th colspan="3" class="align-left">Article / Variant Info</th>
-              <th>BF (Opening)</th>
-              <th>Wh IN</th>
-              <th>Out IN</th>
-              <th style="background-color: #047857;">Trf IN</th>
-              <th>Wh OUT</th>
-              <th>Out OUT</th>
-              <th style="background-color: #b91c1c;">Trf OUT</th>
-              <th>Exchg</th>
-              <th>Refund</th>
-              <th>Claim</th>
-              <th>Sales</th>
-              <th>Adj</th>
-              <th style="background-color: #1d4ed8;">Available</th>
-              <th style="background-color: #b45309;">Transit</th>
-              <th style="background-color: #0f172a;">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
   }
 }
