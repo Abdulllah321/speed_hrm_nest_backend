@@ -391,6 +391,8 @@ export class StockActivityExportProcessor {
 
         try {
           const page = await browser.newPage();
+          page.setDefaultTimeout(0);
+          page.setDefaultNavigationTimeout(0);
           await page.setContent(html, { waitUntil: 'domcontentloaded' });
 
           const pdfBuffer = await page.pdf({
@@ -1142,7 +1144,27 @@ export class StockActivityExportProcessor {
           <div class="report-title">Stock Activity Report — ${locationName}</div>
           <div class="meta-info">Period: ${fromDateStr} to ${toDateStr}</div>
         </div>
-        <table>
+        <table style="table-layout: fixed; width: 100%;">
+          <colgroup>
+            <col style="width: 15%;" />
+            <col style="width: 6%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+            <col style="width: 5%;" />
+          </colgroup>
           <thead>
             <tr>
               <th colspan="3" class="align-left">Article / Variant Info</th>
