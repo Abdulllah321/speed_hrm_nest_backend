@@ -376,17 +376,20 @@ export class StockActivityExportProcessor {
         const toDateStr = endDate.toLocaleDateString();
         const html = this.buildPdfHtml(root, locationName, fromDateStr, toDateStr, grandTotals, !!summaryOnly);
 
+        const launchArgs = process.platform === 'linux'
+          ? [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+              '--no-first-run',
+              '--no-zygote',
+            ]
+          : [];
+
         const browser = await puppeteer.launch({
           headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-          ],
+          args: launchArgs,
         });
 
         try {
@@ -401,7 +404,7 @@ export class StockActivityExportProcessor {
             margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
             printBackground: true,
             displayHeaderFooter: true,
-            headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Innovative Network | Stock Activity Report</div>',
+            headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;"> | Stock Activity Report</div>',
             footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
           });
 
@@ -897,61 +900,6 @@ export class StockActivityExportProcessor {
             page-break-after: always;
             break-after: page;
           }
-          .summary-page {
-            padding: 40px;
-            height: 100vh;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-          }
-          .summary-header {
-            border-bottom: 3px solid #1e3a8a;
-            padding-bottom: 12px;
-            margin-bottom: 24px;
-          }
-          .summary-header h1 {
-            font-size: 24px;
-            font-weight: 900;
-            color: #1e3a8a;
-            margin: 0;
-            text-transform: uppercase;
-          }
-          .summary-header p {
-            font-size: 11px;
-            color: #64748b;
-            margin: 4px 0 0 0;
-            font-weight: 600;
-          }
-          .summary-grid {
-            display: grid;
-            grid-template-cols: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 32px;
-          }
-          .summary-card {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 16px;
-            background: #f8fafc;
-            text-align: center;
-          }
-          .summary-card p {
-            font-size: 8px;
-            font-weight: 800;
-            color: #64748b;
-            text-transform: uppercase;
-            margin: 0 0 8px 0;
-          }
-          .summary-card h3 {
-            font-size: 20px;
-            font-weight: 900;
-            color: #0f172a;
-            margin: 0;
-          }
-          .summary-card.in h3 { color: #047857; }
-          .summary-card.out h3 { color: #b91c1c; }
-          .summary-card.bal h3 { color: #1d4ed8; }
 
           /* Table view details */
           .header-block {
@@ -983,8 +931,10 @@ export class StockActivityExportProcessor {
             page-break-inside: auto;
           }
           tr {
+            page-break-inside: auto;
+          }
+          tr.division-row, tr.brand-row, tr.gender-row, tr.category-row, tr.article-row, tr.grand-total-row {
             page-break-inside: avoid;
-            page-break-after: auto;
           }
           thead {
             display: table-header-group;
@@ -1089,58 +1039,10 @@ export class StockActivityExportProcessor {
         </style>
       </head>
       <body>
-        <!-- Page 1: Short Summary Page -->
-        <div class="summary-page page-break">
-          <div class="summary-header">
-            <h1>Innovative Network</h1>
-            <p>Stock Activity Report Summary &bull; Outlet: ${locationName}</p>
-            <p>Date Period: ${fromDateStr} to ${toDateStr}</p>
-          </div>
-          <div style="font-size: 11px; margin-bottom: 20px; font-weight: bold; color: #334155;">
-            Executive Summary Overview
-          </div>
-          <div class="summary-grid">
-            <div class="summary-card">
-              <p>Opening Balance</p>
-              <h3>${grandTotals.bf}</h3>
-            </div>
-            <div class="summary-card in">
-              <p>Total Transfers IN</p>
-              <h3>+${grandTotals.totalTrfIn}</h3>
-            </div>
-            <div class="summary-card out">
-              <p>Total Transfers OUT</p>
-              <h3>-${grandTotals.totalTrfOut}</h3>
-            </div>
-            <div class="summary-card">
-              <p>Total Sales</p>
-              <h3>${grandTotals.sales}</h3>
-            </div>
-            <div class="summary-card">
-              <p>Approved Claims</p>
-              <h3>${grandTotals.claim}</h3>
-            </div>
-            <div class="summary-card">
-              <p>Total Adjustments</p>
-              <h3>${grandTotals.adj}</h3>
-            </div>
-            <div class="summary-card">
-              <p>Total In Transit</p>
-              <h3>${grandTotals.transit}</h3>
-            </div>
-            <div class="summary-card bal">
-              <p>Closing Net Balance</p>
-              <h3>${grandTotals.balance}</h3>
-            </div>
-          </div>
-          <div style="font-size: 8px; color: #94a3b8; text-align: center;">
-            Detailed item-by-item movements and hierarchy grids start on the next page.
-          </div>
-        </div>
 
         <!-- Page 2+: Detailed Hierarchy Table -->
         <div class="header-block">
-          <div class="company-name">Innovative Network</div>
+          <div class="company-name">Speed (Pvt.) Limited</div>
           <div class="report-title">Stock Activity Report — ${locationName}</div>
           <div class="meta-info">Period: ${fromDateStr} to ${toDateStr}</div>
         </div>
@@ -1230,7 +1132,7 @@ export class StockActivityExportProcessor {
     const html = `
       <html>
       <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-        <h2>Innovative Network - Stock Activity Report</h2>
+        <h2>Speed (Pvt.) Limited - Stock Activity Report</h2>
         <p>Outlet: ${locationName}</p>
         <p>Period: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}</p>
         <div style="margin-top: 30px; color: #666;">No ledger records found matching options.</div>
