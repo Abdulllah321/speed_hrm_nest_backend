@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import * as ExcelJS from 'exceljs';
+import * as puppeteer from 'puppeteer';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MovementType, Prisma } from '@prisma/client';
 
@@ -436,9 +437,8 @@ export class StockLedgerService {
     locationId: string;
     startDate?: string;
     endDate?: string;
-    search?: string;
   }) {
-    const { locationId, startDate: startStr, endDate: endStr, search } = options;
+    const { locationId, startDate: startStr, endDate: endStr } = options;
     if (!locationId) {
       throw new BadRequestException('locationId is required');
     }
@@ -467,21 +467,15 @@ export class StockLedgerService {
       return [];
     }
 
-    const itemsWhere: any = {
-      id: { in: uniqueItemIds },
-    };
-    if (search) {
-      itemsWhere.OR = [
-        { sku: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
     const items = await this.prisma.item.findMany({
-      where: itemsWhere,
+      where: { id: { in: uniqueItemIds } },
       include: {
         color: true,
         size: true,
+        gender: true,
+        category: true,
+        division: true,
+        brand: true,
       },
     });
 
@@ -607,29 +601,54 @@ export class StockLedgerService {
       }
     }
 
-    const skuGroups = new Map<string, {
-      sku: string;
-      articleName: string;
-      variants: any[];
-    }>();
+    const root: any[] = [];
+    const getOrInsert = (arr: any[], keyField: string, keyValue: string, creator: () => any) => {
+      let val = arr.find(x => x[keyField] === keyValue);
+      if (!val) {
+        val = creator();
+        arr.push(val);
+      }
+      return val;
+    };
+
+    const createEmptyTotals = () => ({
+      bf: 0, fromWarehouse: 0, fromOutlet: 0, totalTrfIn: 0,
+      toWarehouse: 0, toOutlet: 0, totalTrfOut: 0, exchg: 0,
+      refund: 0, claim: 0, sales: 0, adj: 0, availableStock: 0,
+      transit: 0, balance: 0,
+    });
+
+    const addTotals = (target: any, source: any) => {
+      target.bf += source.bf;
+      target.fromWarehouse += source.fromWarehouse;
+      target.fromOutlet += source.fromOutlet;
+      target.totalTrfIn += source.totalTrfIn;
+      target.toWarehouse += source.toWarehouse;
+      target.toOutlet += source.toOutlet;
+      target.totalTrfOut += source.totalTrfOut;
+      target.exchg += source.exchg;
+      target.refund += source.refund;
+      target.claim += source.claim;
+      target.sales += source.sales;
+      target.adj += source.adj;
+      target.availableStock += source.availableStock;
+      target.transit += source.transit;
+      target.balance += source.balance;
+    };
 
     for (const item of items) {
+      const genderName = item.gender?.name || 'No Gender';
+      const categoryName = item.category?.name || 'No Category';
+      const divisionName = item.division?.name || 'No Division';
+      const brandName = item.brand?.name || 'No Brand';
       const sku = item.sku;
       const articleName = item.description || 'Unknown Article';
-      const itemId = item.id;
 
-      const bf = bfMap.get(itemId) || 0;
-      const transit = transitMap.get(itemId) || 0;
-      const m = itemMetricsMap.get(itemId) || {
-        fromWarehouse: 0,
-        fromOutlet: 0,
-        toWarehouse: 0,
-        toOutlet: 0,
-        exchg: 0,
-        refund: 0,
-        claim: 0,
-        sales: 0,
-        adj: 0,
+      const bf = bfMap.get(item.id) || 0;
+      const transit = transitMap.get(item.id) || 0;
+      const m = itemMetricsMap.get(item.id) || {
+        fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
+        exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
       };
 
       const totalTrfIn = m.fromWarehouse + m.fromOutlet;
@@ -637,8 +656,8 @@ export class StockLedgerService {
       const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
       const balance = availableStock + transit;
 
-      const variantData = {
-        itemId,
+      const variant = {
+        itemId: item.id,
         color: item.color?.name || 'Default',
         size: item.size?.name || 'Default',
         bf,
@@ -658,70 +677,45 @@ export class StockLedgerService {
         balance,
       };
 
-      let group = skuGroups.get(sku);
-      if (!group) {
-        group = {
-          sku,
-          articleName,
-          variants: [],
-        };
-        skuGroups.set(sku, group);
-      }
-      group.variants.push(variantData);
+      const genderNode = getOrInsert(root, 'gender', genderName, () => ({ gender: genderName, categories: [], totals: createEmptyTotals() }));
+      const categoryNode = getOrInsert(genderNode.categories, 'category', categoryName, () => ({ category: categoryName, divisions: [], totals: createEmptyTotals() }));
+      const divisionNode = getOrInsert(categoryNode.divisions, 'division', divisionName, () => ({ division: divisionName, brands: [], totals: createEmptyTotals() }));
+      const brandNode = getOrInsert(divisionNode.brands, 'brand', brandName, () => ({ brand: brandName, articles: [], totals: createEmptyTotals() }));
+      const articleNode = getOrInsert(brandNode.articles, 'sku', sku, () => ({
+        sku,
+        articleName,
+        totals: createEmptyTotals(),
+        variants: [],
+      }));
+
+      articleNode.variants.push(variant);
+      addTotals(articleNode.totals, variant);
     }
 
-    const reportData = Array.from(skuGroups.values()).map(group => {
-      const totals = {
-        bf: 0,
-        fromWarehouse: 0,
-        fromOutlet: 0,
-        totalTrfIn: 0,
-        toWarehouse: 0,
-        toOutlet: 0,
-        totalTrfOut: 0,
-        exchg: 0,
-        refund: 0,
-        claim: 0,
-        sales: 0,
-        adj: 0,
-        availableStock: 0,
-        transit: 0,
-        balance: 0,
-      };
-
-      for (const v of group.variants) {
-        totals.bf += v.bf;
-        totals.fromWarehouse += v.fromWarehouse;
-        totals.fromOutlet += v.fromOutlet;
-        totals.totalTrfIn += v.totalTrfIn;
-        totals.toWarehouse += v.toWarehouse;
-        totals.toOutlet += v.toOutlet;
-        totals.totalTrfOut += v.totalTrfOut;
-        totals.exchg += v.exchg;
-        totals.refund += v.refund;
-        totals.claim += v.claim;
-        totals.sales += v.sales;
-        totals.adj += v.adj;
-        totals.availableStock += v.availableStock;
-        totals.transit += v.transit;
-        totals.balance += v.balance;
+    // Compute aggregates recursively
+    for (const g of root) {
+      for (const c of g.categories) {
+        for (const d of c.divisions) {
+          for (const b of d.brands) {
+            for (const a of b.articles) {
+              addTotals(b.totals, a.totals);
+            }
+            addTotals(d.totals, b.totals);
+          }
+          addTotals(c.totals, d.totals);
+        }
+        addTotals(g.totals, c.totals);
       }
+    }
 
-      return {
-        ...group,
-        totals,
-      };
-    });
-
-    return reportData;
+    return root;
   }
 
-  async exportStockActivityReport(
+  async exportStockActivityReportPdf(
     options: {
       locationId: string;
       startDate?: string;
       endDate?: string;
-      search?: string;
     },
     res: any,
   ): Promise<void> {
@@ -733,185 +727,383 @@ export class StockLedgerService {
     });
     const locationName = location?.name || 'Store';
 
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Stock Activity Report');
-
-    sheet.mergeCells('A1:S1');
-    const titleRow = sheet.getRow(1);
-    titleRow.values = [`Stock Activity Report - ${locationName}`];
-    titleRow.font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FFFFFF' } };
-    titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
-    titleRow.height = 40;
-    
-    const titleCell = sheet.getCell('A1');
-    titleCell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: '1E293B' },
-    };
-
-    sheet.mergeCells('A2:S2');
-    const subTitleRow = sheet.getRow(2);
     const fromDateStr = options.startDate ? new Date(options.startDate).toLocaleDateString() : 'Beginning';
     const toDateStr = options.endDate ? new Date(options.endDate).toLocaleDateString() : 'Present';
-    subTitleRow.values = [`Period: ${fromDateStr} to ${toDateStr}`];
-    subTitleRow.font = { name: 'Arial', size: 10, italic: true, color: { argb: '475569' } };
-    subTitleRow.alignment = { horizontal: 'center', vertical: 'middle' };
-    subTitleRow.height = 20;
 
-    sheet.getRow(3).height = 10;
+    const html = this.buildPdfHtml(data, locationName, fromDateStr, toDateStr);
 
-    sheet.mergeCells('F4:H4');
-    sheet.mergeCells('I4:K4');
-    const groupHeaderRow = sheet.getRow(4);
-    groupHeaderRow.getCell(6).value = 'Transfer IN';
-    groupHeaderRow.getCell(9).value = 'Transfer OUT';
-    
-    const headerGroupFillIn = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E2E8F0' } } as any;
-    const headerGroupFont = { name: 'Arial', size: 10, bold: true, color: { argb: '1E293B' } };
-    const centerAlign = { horizontal: 'center', vertical: 'middle' } as any;
-
-    groupHeaderRow.getCell(6).fill = headerGroupFillIn;
-    groupHeaderRow.getCell(6).font = headerGroupFont;
-    groupHeaderRow.getCell(6).alignment = centerAlign;
-    groupHeaderRow.getCell(9).fill = headerGroupFillIn;
-    groupHeaderRow.getCell(9).font = headerGroupFont;
-    groupHeaderRow.getCell(9).alignment = centerAlign;
-    groupHeaderRow.height = 22;
-
-    const headers = [
-      'SKU', 'Article Name', 'Color', 'Size', 'BF (Opening)',
-      'From Wh', 'From Outlet', 'Total IN',
-      'To Wh', 'To Outlet', 'Total OUT',
-      'Exchg', 'Refund', 'Claim', 'Sales', 'Adj',
-      'Available Stock', 'Transit', 'Closing Balance'
-    ];
-    const headerRow = sheet.getRow(5);
-    headerRow.values = headers;
-    headerRow.height = 28;
-
-    const columnHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '334155' } } as any;
-    const columnHeaderFont = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFF' } };
-
-    for (let i = 1; i <= headers.length; i++) {
-      const cell = headerRow.getCell(i);
-      cell.fill = columnHeaderFill;
-      cell.font = columnHeaderFont;
-      cell.alignment = { horizontal: i <= 4 ? 'left' : 'right', vertical: 'middle' } as any;
-      cell.border = {
-        top: { style: 'thin', color: { argb: '475569' } },
-        bottom: { style: 'medium', color: { argb: '1E293B' } },
-        left: { style: 'thin', color: { argb: '475569' } },
-        right: { style: 'thin', color: { argb: '475569' } },
-      } as any;
-    }
-
-    let currentRow = 6;
-
-    const parentRowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFC' } } as any;
-    const parentFont = { name: 'Arial', size: 10, bold: true, color: { argb: '0F172A' } };
-    const childFont = { name: 'Arial', size: 10, color: { argb: '334155' } };
-    const borderThin = {
-      top: { style: 'thin', color: { argb: 'E2E8F0' } },
-      bottom: { style: 'thin', color: { argb: 'E2E8F0' } },
-      left: { style: 'thin', color: { argb: 'E2E8F0' } },
-      right: { style: 'thin', color: { argb: 'E2E8F0' } },
-    } as any;
-
-    for (const group of data) {
-      const pRow = sheet.getRow(currentRow);
-      pRow.values = [
-        group.sku,
-        group.articleName,
-        'ALL COLORS',
-        'ALL SIZES',
-        group.totals.bf,
-        group.totals.fromWarehouse,
-        group.totals.fromOutlet,
-        group.totals.totalTrfIn,
-        group.totals.toWarehouse,
-        group.totals.toOutlet,
-        group.totals.totalTrfOut,
-        group.totals.exchg,
-        group.totals.refund,
-        group.totals.claim,
-        group.totals.sales,
-        group.totals.adj,
-        group.totals.availableStock,
-        group.totals.transit,
-        group.totals.balance,
-      ];
-      pRow.height = 22;
-
-      for (let i = 1; i <= headers.length; i++) {
-        const cell = pRow.getCell(i);
-        cell.fill = parentRowFill;
-        cell.font = parentFont;
-        cell.alignment = { horizontal: i <= 4 ? 'left' : 'right', vertical: 'middle' } as any;
-        cell.border = borderThin;
-      }
-      currentRow++;
-
-      for (const v of group.variants) {
-        const cRow = sheet.getRow(currentRow);
-        cRow.values = [
-          '',
-          '',
-          v.color,
-          v.size,
-          v.bf,
-          v.fromWarehouse,
-          v.fromOutlet,
-          v.totalTrfIn,
-          v.toWarehouse,
-          v.toOutlet,
-          v.totalTrfOut,
-          v.exchg,
-          v.refund,
-          v.claim,
-          v.sales,
-          v.adj,
-          v.availableStock,
-          v.transit,
-          v.balance,
-        ];
-        cRow.height = 20;
-
-        for (let i = 1; i <= headers.length; i++) {
-          const cell = cRow.getCell(i);
-          cell.font = childFont;
-          cell.alignment = { horizontal: i <= 4 ? 'left' : 'right', vertical: 'middle' } as any;
-          cell.border = borderThin;
-        }
-        currentRow++;
-      }
-    }
-
-    sheet.columns.forEach((col, idx) => {
-      if (col) {
-        let maxLen = 0;
-        col.eachCell?.({ includeEmpty: false }, (cell, rowNumber) => {
-          if (rowNumber > 3) {
-            const val = cell.value ? cell.value.toString() : '';
-            if (val.length > maxLen) {
-              maxLen = val.length;
-            }
-          }
-        });
-        col.width = maxLen < 12 ? 12 : maxLen + 3;
-      }
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
-    if (sheet.getColumn(1)) sheet.getColumn(1).width = 18;
-    if (sheet.getColumn(2)) sheet.getColumn(2).width = 30;
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
 
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `stock-activity-report-${timestamp}.xlsx`;
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        landscape: true,
+        margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Innovative Network | Stock Activity Report</div>',
+        footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+      });
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${filename}"`);
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.header('Content-Type', 'application/pdf');
+      res.header('Content-Disposition', `attachment; filename="stock-activity-report-${new Date().toISOString().slice(0, 10)}.pdf"`);
+      res.header('Content-Length', pdfBuffer.length);
+      res.send(pdfBuffer);
+    } finally {
+      await browser.close();
+    }
+  }
 
-    await workbook.xlsx.write(res);
+  private buildPdfHtml(data: any[], locationName: string, fromDateStr: string, toDateStr: string): string {
+    let rowsHtml = '';
+    const formatVal = (val: number) => val === 0 ? '-' : val.toString();
+
+    for (const g of data) {
+      rowsHtml += `
+        <tr class="gender-row">
+          <td colspan="3">GENDER: ${g.gender.toUpperCase()}</td>
+          <td class="num">${formatVal(g.totals.bf)}</td>
+          <td class="num">${formatVal(g.totals.fromWarehouse)}</td>
+          <td class="num">${formatVal(g.totals.fromOutlet)}</td>
+          <td class="num highlight-in">${formatVal(g.totals.totalTrfIn)}</td>
+          <td class="num">${formatVal(g.totals.toWarehouse)}</td>
+          <td class="num">${formatVal(g.totals.toOutlet)}</td>
+          <td class="num highlight-out">${formatVal(g.totals.totalTrfOut)}</td>
+          <td class="num">${formatVal(g.totals.exchg)}</td>
+          <td class="num">${formatVal(g.totals.refund)}</td>
+          <td class="num">${formatVal(g.totals.claim)}</td>
+          <td class="num">${formatVal(g.totals.sales)}</td>
+          <td class="num">${formatVal(g.totals.adj)}</td>
+          <td class="num highlight-avail">${formatVal(g.totals.availableStock)}</td>
+          <td class="num highlight-transit">${formatVal(g.totals.transit)}</td>
+          <td class="num highlight-bal">${formatVal(g.totals.balance)}</td>
+        </tr>
+      `;
+
+      for (const c of g.categories) {
+        rowsHtml += `
+          <tr class="category-row">
+            <td colspan="3">&nbsp;&nbsp;CATEGORY: ${c.category.toUpperCase()}</td>
+            <td class="num">${formatVal(c.totals.bf)}</td>
+            <td class="num">${formatVal(c.totals.fromWarehouse)}</td>
+            <td class="num">${formatVal(c.totals.fromOutlet)}</td>
+            <td class="num highlight-in">${formatVal(c.totals.totalTrfIn)}</td>
+            <td class="num">${formatVal(c.totals.toWarehouse)}</td>
+            <td class="num">${formatVal(c.totals.toOutlet)}</td>
+            <td class="num highlight-out">${formatVal(c.totals.totalTrfOut)}</td>
+            <td class="num">${formatVal(c.totals.exchg)}</td>
+            <td class="num">${formatVal(c.totals.refund)}</td>
+            <td class="num">${formatVal(c.totals.claim)}</td>
+            <td class="num">${formatVal(c.totals.sales)}</td>
+            <td class="num">${formatVal(c.totals.adj)}</td>
+            <td class="num highlight-avail">${formatVal(c.totals.availableStock)}</td>
+            <td class="num highlight-transit">${formatVal(c.totals.transit)}</td>
+            <td class="num highlight-bal">${formatVal(c.totals.balance)}</td>
+          </tr>
+        `;
+
+        for (const d of c.divisions) {
+          rowsHtml += `
+            <tr class="division-row">
+              <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;DIVISION: ${d.division.toUpperCase()}</td>
+              <td class="num">${formatVal(d.totals.bf)}</td>
+              <td class="num">${formatVal(d.totals.fromWarehouse)}</td>
+              <td class="num">${formatVal(d.totals.fromOutlet)}</td>
+              <td class="num highlight-in">${formatVal(d.totals.totalTrfIn)}</td>
+              <td class="num">${formatVal(d.totals.toWarehouse)}</td>
+              <td class="num">${formatVal(d.totals.toOutlet)}</td>
+              <td class="num highlight-out">${formatVal(d.totals.totalTrfOut)}</td>
+              <td class="num">${formatVal(d.totals.exchg)}</td>
+              <td class="num">${formatVal(d.totals.refund)}</td>
+              <td class="num">${formatVal(d.totals.claim)}</td>
+              <td class="num">${formatVal(d.totals.sales)}</td>
+              <td class="num">${formatVal(d.totals.adj)}</td>
+              <td class="num highlight-avail">${formatVal(d.totals.availableStock)}</td>
+              <td class="num highlight-transit">${formatVal(d.totals.transit)}</td>
+              <td class="num highlight-bal">${formatVal(d.totals.balance)}</td>
+            </tr>
+          `;
+
+          for (const b of d.brands) {
+            rowsHtml += `
+              <tr class="brand-row">
+                <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;BRAND: ${b.brand.toUpperCase()}</td>
+                <td class="num">${formatVal(b.totals.bf)}</td>
+                <td class="num">${formatVal(b.totals.fromWarehouse)}</td>
+                <td class="num">${formatVal(b.totals.fromOutlet)}</td>
+                <td class="num highlight-in">${formatVal(b.totals.totalTrfIn)}</td>
+                <td class="num">${formatVal(b.totals.toWarehouse)}</td>
+                <td class="num">${formatVal(b.totals.toOutlet)}</td>
+                <td class="num highlight-out">${formatVal(b.totals.totalTrfOut)}</td>
+                <td class="num">${formatVal(b.totals.exchg)}</td>
+                <td class="num">${formatVal(b.totals.refund)}</td>
+                <td class="num">${formatVal(b.totals.claim)}</td>
+                <td class="num">${formatVal(b.totals.sales)}</td>
+                <td class="num">${formatVal(b.totals.adj)}</td>
+                <td class="num highlight-avail">${formatVal(b.totals.availableStock)}</td>
+                <td class="num highlight-transit">${formatVal(b.totals.transit)}</td>
+                <td class="num highlight-bal">${formatVal(b.totals.balance)}</td>
+              </tr>
+            `;
+
+            for (const a of b.articles) {
+              rowsHtml += `
+                <tr class="article-row">
+                  <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SKU: ${a.sku} (${a.articleName})</td>
+                  <td class="center">ALL COLORS</td>
+                  <td class="center">ALL SIZES</td>
+                  <td class="num">${formatVal(a.totals.bf)}</td>
+                  <td class="num">${formatVal(a.totals.fromWarehouse)}</td>
+                  <td class="num">${formatVal(a.totals.fromOutlet)}</td>
+                  <td class="num highlight-in">${formatVal(a.totals.totalTrfIn)}</td>
+                  <td class="num">${formatVal(a.totals.toWarehouse)}</td>
+                  <td class="num">${formatVal(a.totals.toOutlet)}</td>
+                  <td class="num highlight-out">${formatVal(a.totals.totalTrfOut)}</td>
+                  <td class="num">${formatVal(a.totals.exchg)}</td>
+                  <td class="num">${formatVal(a.totals.refund)}</td>
+                  <td class="num">${formatVal(a.totals.claim)}</td>
+                  <td class="num">${formatVal(a.totals.sales)}</td>
+                  <td class="num">${formatVal(a.totals.adj)}</td>
+                  <td class="num highlight-avail">${formatVal(a.totals.availableStock)}</td>
+                  <td class="num highlight-transit">${formatVal(a.totals.transit)}</td>
+                  <td class="num highlight-bal">${formatVal(a.totals.balance)}</td>
+                </tr>
+              `;
+
+              for (const v of a.variants) {
+                rowsHtml += `
+                  <tr class="variant-row">
+                    <td class="indent">&mdash; Variant Item</td>
+                    <td class="center">${v.color}</td>
+                    <td class="center">${v.size}</td>
+                    <td class="num">${formatVal(v.bf)}</td>
+                    <td class="num">${formatVal(v.fromWarehouse)}</td>
+                    <td class="num">${formatVal(v.fromOutlet)}</td>
+                    <td class="num highlight-in">${formatVal(v.totalTrfIn)}</td>
+                    <td class="num">${formatVal(v.toWarehouse)}</td>
+                    <td class="num">${formatVal(v.toOutlet)}</td>
+                    <td class="num highlight-out">${formatVal(v.totalTrfOut)}</td>
+                    <td class="num">${formatVal(v.exchg)}</td>
+                    <td class="num">${formatVal(v.refund)}</td>
+                    <td class="num">${formatVal(v.claim)}</td>
+                    <td class="num">${formatVal(v.sales)}</td>
+                    <td class="num">${formatVal(v.adj)}</td>
+                    <td class="num highlight-avail">${formatVal(v.availableStock)}</td>
+                    <td class="num highlight-transit">${formatVal(v.transit)}</td>
+                    <td class="num highlight-bal">${formatVal(v.balance)}</td>
+                  </tr>
+                `;
+              }
+            }
+
+            rowsHtml += `
+              <tr class="brand-footer-row">
+                <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TOTAL FOR BRAND: ${b.brand.toUpperCase()}</td>
+                <td class="num">${formatVal(b.totals.bf)}</td>
+                <td class="num">${formatVal(b.totals.fromWarehouse)}</td>
+                <td class="num">${formatVal(b.totals.fromOutlet)}</td>
+                <td class="num highlight-in">${formatVal(b.totals.totalTrfIn)}</td>
+                <td class="num">${formatVal(b.totals.toWarehouse)}</td>
+                <td class="num">${formatVal(b.totals.toOutlet)}</td>
+                <td class="num highlight-out">${formatVal(b.totals.totalTrfOut)}</td>
+                <td class="num">${formatVal(b.totals.exchg)}</td>
+                <td class="num">${formatVal(b.totals.refund)}</td>
+                <td class="num">${formatVal(b.totals.claim)}</td>
+                <td class="num">${formatVal(b.totals.sales)}</td>
+                <td class="num">${formatVal(b.totals.adj)}</td>
+                <td class="num highlight-avail">${formatVal(b.totals.availableStock)}</td>
+                <td class="num highlight-transit">${formatVal(b.totals.transit)}</td>
+                <td class="num highlight-bal">${formatVal(b.totals.balance)}</td>
+              </tr>
+            `;
+          }
+        }
+      }
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #1e293b;
+            font-size: 7px;
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+          }
+          .header-block {
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+          }
+          .company-name {
+            font-size: 14px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #0f172a;
+          }
+          .report-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            margin-top: 2px;
+          }
+          .meta-info {
+            font-size: 8px;
+            color: #64748b;
+            margin-top: 4px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            page-break-inside: auto;
+          }
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          th {
+            background-color: #334155;
+            color: #ffffff;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 6px;
+            padding: 4px 3px;
+            border: 1px solid #475569;
+            text-align: center;
+          }
+          th.align-left {
+            text-align: left;
+          }
+          td {
+            padding: 3px 2px;
+            border: 1px solid #e2e8f0;
+            vertical-align: middle;
+          }
+          td.num {
+            text-align: right;
+          }
+          td.center {
+            text-align: center;
+          }
+          td.indent {
+            color: #64748b;
+            font-style: italic;
+            padding-left: 10px;
+          }
+          .gender-row {
+            background-color: #cbd5e1;
+            font-weight: 800;
+            font-size: 8px;
+            color: #0f172a;
+          }
+          .category-row {
+            background-color: #e2e8f0;
+            font-weight: 700;
+            font-size: 7.5px;
+            color: #1e293b;
+          }
+          .division-row {
+            background-color: #f1f5f9;
+            font-weight: 700;
+            font-size: 7px;
+            color: #334155;
+          }
+          .brand-row {
+            background-color: #f8fafc;
+            font-weight: 700;
+            font-size: 7px;
+            color: #475569;
+          }
+          .article-row {
+            background-color: #f1f5f9;
+            font-weight: 700;
+            font-size: 7px;
+            color: #0f172a;
+          }
+          .variant-row {
+            background-color: #ffffff;
+            color: #475569;
+          }
+          .brand-footer-row {
+            background-color: #e2e8f0;
+            font-weight: 800;
+            font-size: 7px;
+            color: #0f172a;
+          }
+          .highlight-in {
+            background-color: rgba(16, 185, 129, 0.08);
+            font-weight: 700;
+            color: #047857;
+          }
+          .highlight-out {
+            background-color: rgba(239, 68, 68, 0.08);
+            font-weight: 700;
+            color: #b91c1c;
+          }
+          .highlight-avail {
+            background-color: rgba(59, 130, 246, 0.08);
+            font-weight: 700;
+            color: #1d4ed8;
+          }
+          .highlight-transit {
+            font-weight: 700;
+            color: #b45309;
+          }
+          .highlight-bal {
+            background-color: #f1f5f9;
+            font-weight: 900;
+            color: #0f172a;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header-block">
+          <div class="company-name">Innovative Network</div>
+          <div class="report-title">Stock Activity Report — ${locationName}</div>
+          <div class="meta-info">Period: ${fromDateStr} to ${toDateStr}</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th colspan="3" class="align-left">Article / Variant Info</th>
+              <th>BF (Opening)</th>
+              <th>Wh IN</th>
+              <th>Out IN</th>
+              <th style="background-color: #047857;">Trf IN</th>
+              <th>Wh OUT</th>
+              <th>Out OUT</th>
+              <th style="background-color: #b91c1c;">Trf OUT</th>
+              <th>Exchg</th>
+              <th>Refund</th>
+              <th>Claim</th>
+              <th>Sales</th>
+              <th>Adj</th>
+              <th style="background-color: #1d4ed8;">Available</th>
+              <th style="background-color: #b45309;">Transit</th>
+              <th style="background-color: #0f172a;">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
   }
 }
