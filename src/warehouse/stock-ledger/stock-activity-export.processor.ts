@@ -78,7 +78,7 @@ export class StockActivityExportProcessor {
     }
   }
 
-  @Process()
+  @Process({ concurrency: 1 })
   async handleExport(job: Job<StockActivityExportJobData>): Promise<void> {
     const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, format, summaryOnly } = job.data;
     this.logger.log(`[StockActivityExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
@@ -398,15 +398,29 @@ export class StockActivityExportProcessor {
           page.setDefaultNavigationTimeout(0);
           await page.setContent(html, { waitUntil: 'domcontentloaded' });
 
-          const pdfBuffer = await page.pdf({
-            format: 'A4',
-            landscape: true,
-            margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
-            printBackground: true,
-            displayHeaderFooter: true,
-            headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;"> | Stock Activity Report</div>',
-            footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
-          });
+          // Start an active progress ticker to prevent UI looking stuck at 80%
+          let currentProgress = 80;
+          const progressInterval = setInterval(() => {
+            if (currentProgress < 94) {
+              currentProgress += 1;
+              job.progress(currentProgress).catch(() => {});
+            }
+          }, 3000);
+
+          let pdfBuffer;
+          try {
+            pdfBuffer = await page.pdf({
+              format: 'A4',
+              landscape: true,
+              margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+              printBackground: true,
+              displayHeaderFooter: true,
+              headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Stock Activity Report</div>',
+              footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+            });
+          } finally {
+            clearInterval(progressInterval);
+          }
 
           fs.writeFileSync(filePath, pdfBuffer);
         } finally {
