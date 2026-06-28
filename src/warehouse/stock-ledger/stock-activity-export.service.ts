@@ -11,6 +11,8 @@ export interface QueueStockActivityExportOptions {
   locationId: string;
   startDate?: string;
   endDate?: string;
+  format: 'xlsx' | 'pdf';
+  summaryOnly?: boolean;
 }
 
 @Injectable()
@@ -26,14 +28,15 @@ export class StockActivityExportService {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
 
     // Save export job request in history audit table
     await this.prisma.exportHistory.create({
       data: {
         id: jobId,
         userId: opts.userId,
-        fileName: `stock-activity-report-${new Date().toISOString().slice(0, 10)}.xlsx`,
-        filePath: path.join('uploads', 'exports', `export-${jobId}.xlsx`),
+        fileName: `stock-activity-report-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
         moduleName: 'STOCK_ACTIVITY_REPORT',
         status: 'PENDING',
       },
@@ -48,6 +51,8 @@ export class StockActivityExportService {
         locationId: opts.locationId,
         startDate: opts.startDate,
         endDate: opts.endDate,
+        format: opts.format,
+        summaryOnly: !!opts.summaryOnly,
       },
       {
         jobId,
@@ -58,7 +63,7 @@ export class StockActivityExportService {
       },
     );
 
-    this.logger.log(`[StockActivityExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`);
+    this.logger.log(`[StockActivityExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
     return { jobId };
   }
 
@@ -71,15 +76,22 @@ export class StockActivityExportService {
   }
 
   async streamExportFile(jobId: string, res: any): Promise<void> {
-    const filePath = path.join(process.cwd(), 'uploads', 'exports', `export-${jobId}.xlsx`);
+    const record = await this.prisma.exportHistory.findUnique({
+      where: { id: jobId },
+      select: { fileName: true, filePath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Export record ${jobId} not found in database`);
+    }
+
+    const filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
     }
 
     const stat = fs.statSync(filePath);
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `stock-activity-report-${timestamp}.xlsx`;
 
     // Increment download count in ExportHistory
     try {
@@ -98,8 +110,9 @@ export class StockActivityExportService {
       this.logger.error(`[StockActivityExport] Stream error: ${err.message}`);
     });
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${filename}"`);
+    const isPdf = record.fileName.endsWith('.pdf');
+    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

@@ -90,11 +90,13 @@ export class StockLedgerController {
     @Query('locationId') locationId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('summaryOnly') summaryOnly?: string,
   ) {
     const data = await this.stockLedgerService.getStockActivityReport({
       locationId,
       startDate,
       endDate,
+      summaryOnly: summaryOnly === 'true',
     });
     return { status: true, data };
   }
@@ -103,7 +105,13 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueActivityReportExport(
     @Req() req: any,
-    @Body() body: { locationId: string; startDate?: string; endDate?: string },
+    @Body() body: {
+      locationId: string;
+      startDate?: string;
+      endDate?: string;
+      format: 'xlsx' | 'pdf';
+      summaryOnly?: boolean;
+    },
   ) {
     const userId = req.user?.id;
     const result = await this.stockActivityExportService.queueExport({
@@ -111,6 +119,8 @@ export class StockLedgerController {
       locationId: body.locationId,
       startDate: body.startDate,
       endDate: body.endDate,
+      format: body.format,
+      summaryOnly: body.summaryOnly,
     });
     return { status: true, data: result };
   }
@@ -129,24 +139,6 @@ export class StockLedgerController {
     } catch (err: any) {
       const status = err?.status ?? 404;
       res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
-    }
-  }
-
-  @Get('activity-report/pdf')
-  async downloadActivityReportPdf(
-    @Res() res: any,
-    @Query('locationId') locationId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-  ) {
-    try {
-      await this.stockLedgerService.exportStockActivityReportPdf(
-        { locationId, startDate, endDate },
-        res,
-      );
-    } catch (err: any) {
-      const status = err?.status ?? 500;
-      res.status(status).send({ status: false, message: err?.message ?? 'PDF generation failed' });
     }
   }
 }
