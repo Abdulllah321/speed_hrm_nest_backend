@@ -56,7 +56,27 @@ export class StockActivityExportProcessor {
 
   constructor(
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) {
+    if (process.platform === 'linux') {
+      try {
+        const logger = new Logger('StockActivityExportProcessor');
+        logger.log('Checking and installing Chromium dependencies on Linux host...');
+        const { exec } = require('child_process');
+        exec(
+          'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
+          (err: any) => {
+            if (err) {
+              logger.warn(`Could not install Chromium dependencies automatically: ${err.message}. If not running as root, please install them manually: apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0`);
+            } else {
+              logger.log('Chromium dependencies verified/installed successfully.');
+            }
+          }
+        );
+      } catch (e: any) {
+        this.logger.warn(`Error trying to run chromium dependencies installer: ${e.message}`);
+      }
+    }
+  }
 
   @Process()
   async handleExport(job: Job<StockActivityExportJobData>): Promise<void> {
@@ -358,7 +378,15 @@ export class StockActivityExportProcessor {
 
         const browser = await puppeteer.launch({
           headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+          ],
         });
 
         try {
@@ -450,31 +478,108 @@ export class StockActivityExportProcessor {
         const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
 
         const styleHeaderRow = (row: ExcelJS.Row, bgHex: string, bold: boolean, size = 9, fgHex = '1E293B') => {
-          row.eachCell((cell, colNum) => {
+          for (let colNum = 1; colNum <= 18; colNum++) {
+            const cell = row.getCell(colNum);
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${bgHex}` } };
             cell.font = { bold, size, color: { argb: `FF${fgHex}` } };
             cell.border = borderThin;
-            cell.alignment = colNum <= 3 ? leftAlign : rightAlign;
-          });
+            cell.alignment = colNum <= 3 ? (colNum === 1 ? leftAlign : centerAlign) : rightAlign;
+          }
           row.height = 20;
           row.commit();
         };
 
         // Write hierarchy data
         for (const d of root) {
-          const dRow = ws.addRow({ sku: `DIVISION: ${d.division.toUpperCase()}` });
+          const dRow = ws.addRow({
+            sku: `DIVISION: ${d.division.toUpperCase()}`,
+            color: '',
+            size: '',
+            bf: d.totals.bf,
+            fromWarehouse: d.totals.fromWarehouse,
+            fromOutlet: d.totals.fromOutlet,
+            totalTrfIn: d.totals.totalTrfIn,
+            toWarehouse: d.totals.toWarehouse,
+            toOutlet: d.totals.toOutlet,
+            totalTrfOut: d.totals.totalTrfOut,
+            exchg: d.totals.exchg,
+            refund: d.totals.refund,
+            claim: d.totals.claim,
+            sales: d.totals.sales,
+            adj: d.totals.adj,
+            availableStock: d.totals.availableStock,
+            transit: d.totals.transit,
+            balance: d.totals.balance,
+          });
           styleHeaderRow(dRow, '1E293B', true, 10, 'FFFFFF');
 
           for (const b of d.brands) {
-            const bRow = ws.addRow({ sku: `  BRAND: ${b.brand.toUpperCase()}` });
+            const bRow = ws.addRow({
+              sku: `  BRAND: ${b.brand.toUpperCase()}`,
+              color: '',
+              size: '',
+              bf: b.totals.bf,
+              fromWarehouse: b.totals.fromWarehouse,
+              fromOutlet: b.totals.fromOutlet,
+              totalTrfIn: b.totals.totalTrfIn,
+              toWarehouse: b.totals.toWarehouse,
+              toOutlet: b.totals.toOutlet,
+              totalTrfOut: b.totals.totalTrfOut,
+              exchg: b.totals.exchg,
+              refund: b.totals.refund,
+              claim: b.totals.claim,
+              sales: b.totals.sales,
+              adj: b.totals.adj,
+              availableStock: b.totals.availableStock,
+              transit: b.totals.transit,
+              balance: b.totals.balance,
+            });
             styleHeaderRow(bRow, '334155', true, 9.5, 'FFFFFF');
 
             for (const g of b.genders) {
-              const gRow = ws.addRow({ sku: `    GENDER: ${g.gender.toUpperCase()}` });
+              const gRow = ws.addRow({
+                sku: `    GENDER: ${g.gender.toUpperCase()}`,
+                color: '',
+                size: '',
+                bf: g.totals.bf,
+                fromWarehouse: g.totals.fromWarehouse,
+                fromOutlet: g.totals.fromOutlet,
+                totalTrfIn: g.totals.totalTrfIn,
+                toWarehouse: g.totals.toWarehouse,
+                toOutlet: g.totals.toOutlet,
+                totalTrfOut: g.totals.totalTrfOut,
+                exchg: g.totals.exchg,
+                refund: g.totals.refund,
+                claim: g.totals.claim,
+                sales: g.totals.sales,
+                adj: g.totals.adj,
+                availableStock: g.totals.availableStock,
+                transit: g.totals.transit,
+                balance: g.totals.balance,
+              });
               styleHeaderRow(gRow, '475569', true, 9, 'FFFFFF');
 
               for (const c of g.categories) {
-                const cRow = ws.addRow({ sku: `      CATEGORY: ${c.category.toUpperCase()}` });
+                const cRow = ws.addRow({
+                  sku: `      CATEGORY: ${c.category.toUpperCase()}`,
+                  color: '',
+                  size: '',
+                  bf: c.totals.bf,
+                  fromWarehouse: c.totals.fromWarehouse,
+                  fromOutlet: c.totals.fromOutlet,
+                  totalTrfIn: c.totals.totalTrfIn,
+                  toWarehouse: c.totals.toWarehouse,
+                  toOutlet: c.totals.toOutlet,
+                  totalTrfOut: c.totals.totalTrfOut,
+                  exchg: c.totals.exchg,
+                  refund: c.totals.refund,
+                  claim: c.totals.claim,
+                  sales: c.totals.sales,
+                  adj: c.totals.adj,
+                  availableStock: c.totals.availableStock,
+                  transit: c.totals.transit,
+                  balance: c.totals.balance,
+                });
                 styleHeaderRow(cRow, '94A3B8', true, 9, 'FFFFFF');
 
                 for (const a of c.articles) {
