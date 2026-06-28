@@ -87,6 +87,16 @@ export class PosSessionController {
         );
     }
 
+    @Get('reconciliation/daywise')
+    @ApiOperation({ summary: 'Get detailed reconciliation report metrics for a date' })
+    async getDaywiseReconciliation(
+        @Req() req: any,
+        @Query('date') date: string,
+    ) {
+        const { locationId } = this.extractTerminalContext(req);
+        return this.sessionService.getDaywiseReconciliation(locationId, date);
+    }
+
     @Get(':id/reconciliation')
     @ApiOperation({ summary: 'Get detailed reconciliation report metrics for a POS shift' })
     async getReconciliationDetails(
