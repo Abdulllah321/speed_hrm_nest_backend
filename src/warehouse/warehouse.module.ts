@@ -11,16 +11,44 @@ import { TransferRequestService } from './transfer-request.service';
 import { StockLedgerModule } from './stock-ledger/stock-ledger.module';
 import { StockUploadModule } from './stock-upload/stock-upload.module';
 import { StockAdjustmentModule } from './stock-adjustment/stock-adjustment.module';
+import { BullModule } from '@nestjs/bull';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { DeliveryNoteExportController } from './delivery-note-export.controller';
+import { DeliveryNoteExportService } from './delivery-note-export.service';
+import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
 
 @Module({
-  imports: [DatabaseModule, StockLedgerModule, StockUploadModule, StockAdjustmentModule],
+  imports: [
+    DatabaseModule,
+    StockLedgerModule,
+    StockUploadModule,
+    StockAdjustmentModule,
+    NotificationsModule,
+    BullModule.registerQueue({ name: 'delivery-note-export' }),
+  ],
   controllers: [
     WarehouseController,
     InventoryController,
     StockOperationController,
     TransferRequestController,
+    DeliveryNoteExportController,
   ],
-  providers: [WarehouseService, InventoryService, StockMovementService, TransferRequestService],
-  exports: [WarehouseService, InventoryService, StockMovementService, TransferRequestService, StockAdjustmentModule],
+  providers: [
+    WarehouseService,
+    InventoryService,
+    StockMovementService,
+    TransferRequestService,
+    DeliveryNoteExportService,
+    DeliveryNoteExportProcessor,
+  ],
+  exports: [
+    WarehouseService,
+    InventoryService,
+    StockMovementService,
+    TransferRequestService,
+    DeliveryNoteExportService,
+    StockAdjustmentModule,
+  ],
 })
 export class WarehouseModule { }
+

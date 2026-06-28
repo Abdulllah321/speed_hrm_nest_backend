@@ -4,6 +4,7 @@ import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MovementType, Prisma } from '@prisma/client';
 
@@ -429,5 +430,488 @@ export class StockLedgerService {
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
+  }
+
+  async getStockActivityReport(options: {
+    locationId: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }) {
+    const { locationId, startDate: startStr, endDate: endStr, search } = options;
+    if (!locationId) {
+      throw new BadRequestException('locationId is required');
+    }
+
+    const now = new Date();
+    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = endStr ? new Date(endStr) : new Date(now);
+
+    const inventoryItems = await this.prisma.inventoryItem.findMany({
+      where: { locationId, status: 'AVAILABLE' },
+      select: { itemId: true },
+    });
+    
+    const ledgerItems = await this.prisma.stockLedger.findMany({
+      where: { locationId },
+      select: { itemId: true },
+      distinct: ['itemId'],
+    });
+
+    const uniqueItemIds = [...new Set([
+      ...inventoryItems.map(i => i.itemId),
+      ...ledgerItems.map(l => l.itemId),
+    ])];
+
+    if (uniqueItemIds.length === 0) {
+      return [];
+    }
+
+    const itemsWhere: any = {
+      id: { in: uniqueItemIds },
+    };
+    if (search) {
+      itemsWhere.OR = [
+        { sku: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const items = await this.prisma.item.findMany({
+      where: itemsWhere,
+      include: {
+        color: true,
+        size: true,
+      },
+    });
+
+    if (items.length === 0) {
+      return [];
+    }
+
+    const matchedItemIds = items.map(i => i.id);
+
+    const bfGroup = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: {
+        locationId,
+        itemId: { in: matchedItemIds },
+        createdAt: { lt: startDate },
+      },
+      _sum: {
+        qty: true,
+      },
+    });
+
+    const bfMap = new Map<string, number>();
+    for (const row of bfGroup) {
+      bfMap.set(row.itemId, Number(row._sum.qty || 0));
+    }
+
+    const ledgerEntries = await this.prisma.stockLedger.findMany({
+      where: {
+        locationId,
+        itemId: { in: matchedItemIds },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        itemId: true,
+        qty: true,
+        referenceType: true,
+        movementType: true,
+      },
+    });
+
+    const transitItems = await this.prisma.transferRequestItem.findMany({
+      where: {
+        itemId: { in: matchedItemIds },
+        transferRequest: {
+          toLocationId: locationId,
+          status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET'] },
+        },
+      },
+      select: {
+        itemId: true,
+        quantity: true,
+      },
+    });
+
+    const transitMap = new Map<string, number>();
+    for (const row of transitItems) {
+      const qty = Number(row.quantity || 0);
+      transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+    }
+
+    const itemMetricsMap = new Map<string, {
+      fromWarehouse: number;
+      fromOutlet: number;
+      toWarehouse: number;
+      toOutlet: number;
+      exchg: number;
+      refund: number;
+      claim: number;
+      sales: number;
+      adj: number;
+    }>();
+
+    for (const entry of ledgerEntries) {
+      const itemId = entry.itemId;
+      let m = itemMetricsMap.get(itemId);
+      if (!m) {
+        m = {
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
+        };
+        itemMetricsMap.set(itemId, m);
+      }
+
+      const qty = Number(entry.qty || 0);
+      const ref = entry.referenceType || '';
+      const mov = entry.movementType;
+
+      if (mov === MovementType.ADJUSTMENT) {
+        m.adj += qty;
+      } else if (qty > 0) {
+        if (ref === 'TRANSFER_REQUEST') {
+          m.fromWarehouse += qty;
+        } else if (ref === 'OUTLET_TRANSFER_IN') {
+          m.fromOutlet += qty;
+        } else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) {
+          m.exchg += qty;
+        } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
+          m.refund += qty;
+        } else if (ref === 'POS_CLAIM_APPROVED') {
+          m.claim += qty;
+        } else {
+          m.adj += qty;
+        }
+      } else if (qty < 0) {
+        const absQty = Math.abs(qty);
+        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) {
+          m.toWarehouse += absQty;
+        } else if (ref === 'OUTLET_TRANSFER_OUT') {
+          m.toOutlet += absQty;
+        } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
+          m.sales += absQty;
+        } else {
+          m.adj += qty;
+        }
+      }
+    }
+
+    const skuGroups = new Map<string, {
+      sku: string;
+      articleName: string;
+      variants: any[];
+    }>();
+
+    for (const item of items) {
+      const sku = item.sku;
+      const articleName = item.description || 'Unknown Article';
+      const itemId = item.id;
+
+      const bf = bfMap.get(itemId) || 0;
+      const transit = transitMap.get(itemId) || 0;
+      const m = itemMetricsMap.get(itemId) || {
+        fromWarehouse: 0,
+        fromOutlet: 0,
+        toWarehouse: 0,
+        toOutlet: 0,
+        exchg: 0,
+        refund: 0,
+        claim: 0,
+        sales: 0,
+        adj: 0,
+      };
+
+      const totalTrfIn = m.fromWarehouse + m.fromOutlet;
+      const totalTrfOut = m.toWarehouse + m.toOutlet;
+      const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+      const balance = availableStock + transit;
+
+      const variantData = {
+        itemId,
+        color: item.color?.name || 'Default',
+        size: item.size?.name || 'Default',
+        bf,
+        fromWarehouse: m.fromWarehouse,
+        fromOutlet: m.fromOutlet,
+        totalTrfIn,
+        toWarehouse: m.toWarehouse,
+        toOutlet: m.toOutlet,
+        totalTrfOut,
+        exchg: m.exchg,
+        refund: m.refund,
+        claim: m.claim,
+        sales: m.sales,
+        adj: m.adj,
+        availableStock,
+        transit,
+        balance,
+      };
+
+      let group = skuGroups.get(sku);
+      if (!group) {
+        group = {
+          sku,
+          articleName,
+          variants: [],
+        };
+        skuGroups.set(sku, group);
+      }
+      group.variants.push(variantData);
+    }
+
+    const reportData = Array.from(skuGroups.values()).map(group => {
+      const totals = {
+        bf: 0,
+        fromWarehouse: 0,
+        fromOutlet: 0,
+        totalTrfIn: 0,
+        toWarehouse: 0,
+        toOutlet: 0,
+        totalTrfOut: 0,
+        exchg: 0,
+        refund: 0,
+        claim: 0,
+        sales: 0,
+        adj: 0,
+        availableStock: 0,
+        transit: 0,
+        balance: 0,
+      };
+
+      for (const v of group.variants) {
+        totals.bf += v.bf;
+        totals.fromWarehouse += v.fromWarehouse;
+        totals.fromOutlet += v.fromOutlet;
+        totals.totalTrfIn += v.totalTrfIn;
+        totals.toWarehouse += v.toWarehouse;
+        totals.toOutlet += v.toOutlet;
+        totals.totalTrfOut += v.totalTrfOut;
+        totals.exchg += v.exchg;
+        totals.refund += v.refund;
+        totals.claim += v.claim;
+        totals.sales += v.sales;
+        totals.adj += v.adj;
+        totals.availableStock += v.availableStock;
+        totals.transit += v.transit;
+        totals.balance += v.balance;
+      }
+
+      return {
+        ...group,
+        totals,
+      };
+    });
+
+    return reportData;
+  }
+
+  async exportStockActivityReport(
+    options: {
+      locationId: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+    },
+    res: any,
+  ): Promise<void> {
+    const data = await this.getStockActivityReport(options);
+
+    const location = await this.prisma.location.findUnique({
+      where: { id: options.locationId },
+      select: { name: true },
+    });
+    const locationName = location?.name || 'Store';
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Stock Activity Report');
+
+    sheet.mergeCells('A1:S1');
+    const titleRow = sheet.getRow(1);
+    titleRow.values = [`Stock Activity Report - ${locationName}`];
+    titleRow.font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FFFFFF' } };
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    titleRow.height = 40;
+    
+    const titleCell = sheet.getCell('A1');
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '1E293B' },
+    };
+
+    sheet.mergeCells('A2:S2');
+    const subTitleRow = sheet.getRow(2);
+    const fromDateStr = options.startDate ? new Date(options.startDate).toLocaleDateString() : 'Beginning';
+    const toDateStr = options.endDate ? new Date(options.endDate).toLocaleDateString() : 'Present';
+    subTitleRow.values = [`Period: ${fromDateStr} to ${toDateStr}`];
+    subTitleRow.font = { name: 'Arial', size: 10, italic: true, color: { argb: '475569' } };
+    subTitleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    subTitleRow.height = 20;
+
+    sheet.getRow(3).height = 10;
+
+    sheet.mergeCells('F4:H4');
+    sheet.mergeCells('I4:K4');
+    const groupHeaderRow = sheet.getRow(4);
+    groupHeaderRow.getCell(6).value = 'Transfer IN';
+    groupHeaderRow.getCell(9).value = 'Transfer OUT';
+    
+    const headerGroupFillIn = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E2E8F0' } } as any;
+    const headerGroupFont = { name: 'Arial', size: 10, bold: true, color: { argb: '1E293B' } };
+    const centerAlign = { horizontal: 'center', vertical: 'middle' } as any;
+
+    groupHeaderRow.getCell(6).fill = headerGroupFillIn;
+    groupHeaderRow.getCell(6).font = headerGroupFont;
+    groupHeaderRow.getCell(6).alignment = centerAlign;
+    groupHeaderRow.getCell(9).fill = headerGroupFillIn;
+    groupHeaderRow.getCell(9).font = headerGroupFont;
+    groupHeaderRow.getCell(9).alignment = centerAlign;
+    groupHeaderRow.height = 22;
+
+    const headers = [
+      'SKU', 'Article Name', 'Color', 'Size', 'BF (Opening)',
+      'From Wh', 'From Outlet', 'Total IN',
+      'To Wh', 'To Outlet', 'Total OUT',
+      'Exchg', 'Refund', 'Claim', 'Sales', 'Adj',
+      'Available Stock', 'Transit', 'Closing Balance'
+    ];
+    const headerRow = sheet.getRow(5);
+    headerRow.values = headers;
+    headerRow.height = 28;
+
+    const columnHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '334155' } } as any;
+    const columnHeaderFont = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+
+    for (let i = 1; i <= headers.length; i++) {
+      const cell = headerRow.getCell(i);
+      cell.fill = columnHeaderFill;
+      cell.font = columnHeaderFont;
+      cell.alignment = { horizontal: i <= 4 ? 'left' : 'right', vertical: 'middle' } as any;
+      cell.border = {
+        top: { style: 'thin', color: { argb: '475569' } },
+        bottom: { style: 'medium', color: { argb: '1E293B' } },
+        left: { style: 'thin', color: { argb: '475569' } },
+        right: { style: 'thin', color: { argb: '475569' } },
+      } as any;
+    }
+
+    let currentRow = 6;
+
+    const parentRowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFC' } } as any;
+    const parentFont = { name: 'Arial', size: 10, bold: true, color: { argb: '0F172A' } };
+    const childFont = { name: 'Arial', size: 10, color: { argb: '334155' } };
+    const borderThin = {
+      top: { style: 'thin', color: { argb: 'E2E8F0' } },
+      bottom: { style: 'thin', color: { argb: 'E2E8F0' } },
+      left: { style: 'thin', color: { argb: 'E2E8F0' } },
+      right: { style: 'thin', color: { argb: 'E2E8F0' } },
+    } as any;
+
+    for (const group of data) {
+      const pRow = sheet.getRow(currentRow);
+      pRow.values = [
+        group.sku,
+        group.articleName,
+        'ALL COLORS',
+        'ALL SIZES',
+        group.totals.bf,
+        group.totals.fromWarehouse,
+        group.totals.fromOutlet,
+        group.totals.totalTrfIn,
+        group.totals.toWarehouse,
+        group.totals.toOutlet,
+        group.totals.totalTrfOut,
+        group.totals.exchg,
+        group.totals.refund,
+        group.totals.claim,
+        group.totals.sales,
+        group.totals.adj,
+        group.totals.availableStock,
+        group.totals.transit,
+        group.totals.balance,
+      ];
+      pRow.height = 22;
+
+      for (let i = 1; i <= headers.length; i++) {
+        const cell = pRow.getCell(i);
+        cell.fill = parentRowFill;
+        cell.font = parentFont;
+        cell.alignment = { horizontal: i <= 4 ? 'left' : 'right', vertical: 'middle' } as any;
+        cell.border = borderThin;
+      }
+      currentRow++;
+
+      for (const v of group.variants) {
+        const cRow = sheet.getRow(currentRow);
+        cRow.values = [
+          '',
+          '',
+          v.color,
+          v.size,
+          v.bf,
+          v.fromWarehouse,
+          v.fromOutlet,
+          v.totalTrfIn,
+          v.toWarehouse,
+          v.toOutlet,
+          v.totalTrfOut,
+          v.exchg,
+          v.refund,
+          v.claim,
+          v.sales,
+          v.adj,
+          v.availableStock,
+          v.transit,
+          v.balance,
+        ];
+        cRow.height = 20;
+
+        for (let i = 1; i <= headers.length; i++) {
+          const cell = cRow.getCell(i);
+          cell.font = childFont;
+          cell.alignment = { horizontal: i <= 4 ? 'left' : 'right', vertical: 'middle' } as any;
+          cell.border = borderThin;
+        }
+        currentRow++;
+      }
+    }
+
+    sheet.columns.forEach((col, idx) => {
+      if (col) {
+        let maxLen = 0;
+        col.eachCell?.({ includeEmpty: false }, (cell, rowNumber) => {
+          if (rowNumber > 3) {
+            const val = cell.value ? cell.value.toString() : '';
+            if (val.length > maxLen) {
+              maxLen = val.length;
+            }
+          }
+        });
+        col.width = maxLen < 12 ? 12 : maxLen + 3;
+      }
+    });
+
+    if (sheet.getColumn(1)) sheet.getColumn(1).width = 18;
+    if (sheet.getColumn(2)) sheet.getColumn(2).width = 30;
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `stock-activity-report-${timestamp}.xlsx`;
+
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${filename}"`);
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    await workbook.xlsx.write(res);
   }
 }
