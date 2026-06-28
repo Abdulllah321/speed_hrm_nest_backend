@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body, Req, Query, Param, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Req, Query, Param, UseGuards, UnauthorizedException, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSessionService } from './pos-session.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -95,6 +95,54 @@ export class PosSessionController {
     ) {
         const { locationId } = this.extractTerminalContext(req);
         return this.sessionService.getDaywiseReconciliation(locationId, date);
+    }
+
+    @Get('reconciliation/daywise/excel')
+    @ApiOperation({ summary: 'Export detailed daywise reconciliation report metrics as Excel' })
+    async getDaywiseReconciliationExcel(
+        @Req() req: any,
+        @Query('date') date: string,
+        @Res() res: any,
+    ) {
+        const { locationId } = this.extractTerminalContext(req);
+        return this.sessionService.exportDaywiseReconciliationExcel(locationId, date, res);
+    }
+
+    @Post('reconciliation/daywise/export/queue')
+    @ApiOperation({ summary: 'Queue daywise reconciliation export' })
+    async queueReconciliationExport(
+        @Req() req: any,
+        @Query('date') date: string,
+    ) {
+        const { locationId } = this.extractTerminalContext(req);
+        const userId = req.user?.userId;
+        const result = await this.sessionService.queueDaywiseReconciliationExcel(userId, locationId, date);
+        return {
+            status: true,
+            message: "Reconciliation export queued. You'll receive a notification when it is ready.",
+            data: result,
+        };
+    }
+
+    @Get('reconciliation/daywise/export/:jobId/status')
+    @ApiOperation({ summary: 'Check daywise reconciliation export status' })
+    async getReconciliationExportStatus(@Param('jobId') jobId: string) {
+        const result = await this.sessionService.getDaywiseReconciliationExportStatus(jobId);
+        return { status: true, data: result };
+    }
+
+    @Get('reconciliation/daywise/export/:jobId/download')
+    @ApiOperation({ summary: 'Download completed daywise reconciliation export' })
+    async downloadReconciliationExport(
+        @Param('jobId') jobId: string,
+        @Res() res: any,
+    ) {
+        try {
+            await this.sessionService.streamDaywiseReconciliationExcelFile(jobId, res);
+        } catch (err: any) {
+            const status = err?.status ?? 404;
+            res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+        }
     }
 
     @Get(':id/reconciliation')
