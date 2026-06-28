@@ -39,10 +39,23 @@ export class TransferRequestController {
         @Query('warehouseId') warehouseId?: string,
         @Query('status') status?: string,
         @Query('id') id?: string,
+        @Query('transferType') transferType?: string,
+        @Query('search') search?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
     ) {
-        const data = await this.transferRequestService.getRequests(warehouseId, status, id);
+        const data = await this.transferRequestService.getRequests(
+            warehouseId,
+            status,
+            id,
+            transferType,
+            search,
+            dateFrom,
+            dateTo
+        );
         return { status: true, data };
     }
+
 
     @Get('incoming')
     @Permissions('pos.inventory.receiving.view')

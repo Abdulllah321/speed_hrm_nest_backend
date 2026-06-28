@@ -79,4 +79,40 @@ export class StockLedgerController {
       res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
     }
   }
+
+  @Get('activity-report')
+  @UseGuards(JwtAuthGuard)
+  async getActivityReport(
+    @Query('locationId') locationId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.stockLedgerService.getStockActivityReport({
+      locationId,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Get('activity-report/export')
+  async exportActivityReport(
+    @Res() res: any,
+    @Query('locationId') locationId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    try {
+      await this.stockLedgerService.exportStockActivityReport(
+        { locationId, startDate, endDate, search },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 500;
+      res.status(status).send({ status: false, message: err?.message ?? 'Export failed' });
+    }
+  }
 }
