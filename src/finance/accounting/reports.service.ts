@@ -846,4 +846,153 @@ export class ReportsService {
       ]),
     );
   }
+
+  async getSubaccountSummary(
+    parentAccountId: string,
+    subAccountIds: string[],
+    from?: string,
+    to?: string,
+  ) {
+    const parentAccount = await this.prisma.chartOfAccount.findUnique({
+      where: { id: parentAccountId },
+      select: { id: true, code: true, name: true, type: true },
+    });
+    if (!parentAccount) throw new NotFoundException('Parent account not found');
+
+    const fromDate = parseFromDate(from);
+    const toDate = parseToDate(to);
+
+    // If subAccountIds is empty, load all sub-accounts of the parent account
+    let targetIds = subAccountIds;
+    if (!targetIds || targetIds.length === 0) {
+      const children = await this.prisma.chartOfAccount.findMany({
+        where: { parentId: parentAccountId, isActive: true },
+        select: { id: true },
+      });
+      targetIds = children.map((c) => c.id);
+    }
+
+    if (targetIds.length === 0) {
+      return {
+        parentAccount,
+        rows: [],
+        totals: { openingBalance: 0, debit: 0, credit: 0, closingBalance: 0 },
+      };
+    }
+
+    const subAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { id: { in: targetIds } },
+      select: { id: true, code: true, name: true },
+      orderBy: { code: 'asc' },
+    });
+
+    // 1. Opening Balance aggregation
+    const openingWhere: any = {
+      AND: [
+        { tagAccountId: { in: targetIds } },
+      ],
+    };
+    if (fromDate) {
+      openingWhere.AND.push({
+        OR: [
+          { sourceType: 'OPENING_BALANCE' },
+          {
+            transactionDate: { lt: fromDate },
+            sourceType: { not: 'OPENING_BALANCE' },
+          },
+        ],
+      });
+    } else {
+      openingWhere.AND.push({ sourceType: 'OPENING_BALANCE' });
+    }
+
+    // 2. Activity aggregation
+    const activityWhere: any = {
+      AND: [
+        { tagAccountId: { in: targetIds } },
+        { sourceType: { not: 'OPENING_BALANCE' } },
+      ],
+    };
+    if (fromDate || toDate) {
+      const dateConditions: any = {};
+      if (fromDate) dateConditions.gte = fromDate;
+      if (toDate) dateConditions.lte = toDate;
+      activityWhere.AND.push({ transactionDate: dateConditions });
+    }
+
+    const [openingAggs, activityAggs] = await Promise.all([
+      this.prisma.accountTransaction.groupBy({
+        by: ['tagAccountId'],
+        where: openingWhere,
+        _sum: { debit: true, credit: true },
+      }),
+      this.prisma.accountTransaction.groupBy({
+        by: ['tagAccountId'],
+        where: activityWhere,
+        _sum: { debit: true, credit: true },
+      }),
+    ]);
+
+    const openingMap = new Map<string, { debit: number; credit: number }>();
+    openingAggs.forEach((agg) => {
+      if (agg.tagAccountId) {
+        openingMap.set(agg.tagAccountId, {
+          debit: Number(agg._sum.debit ?? 0),
+          credit: Number(agg._sum.credit ?? 0),
+        });
+      }
+    });
+
+    const activityMap = new Map<string, { debit: number; credit: number }>();
+    activityAggs.forEach((agg) => {
+      if (agg.tagAccountId) {
+        activityMap.set(agg.tagAccountId, {
+          debit: Number(agg._sum.debit ?? 0),
+          credit: Number(agg._sum.credit ?? 0),
+        });
+      }
+    });
+
+    let grandOpening = 0;
+    let grandDebit = 0;
+    let grandCredit = 0;
+    let grandClosing = 0;
+
+    const rows = subAccounts.map((sa) => {
+      const op = openingMap.get(sa.id) || { debit: 0, credit: 0 };
+      const act = activityMap.get(sa.id) || { debit: 0, credit: 0 };
+
+      // Balance = Debit - Credit
+      const openingBalance = op.debit - op.credit;
+      const debit = act.debit;
+      const credit = act.credit;
+      const closingBalance = openingBalance + debit - credit;
+
+      grandOpening += openingBalance;
+      grandDebit += debit;
+      grandCredit += credit;
+      grandClosing += closingBalance;
+
+      return {
+        id: sa.id,
+        code: sa.code,
+        name: sa.name,
+        openingBalance,
+        debit,
+        credit,
+        closingBalance,
+      };
+    });
+
+    return {
+      parentAccount,
+      rows,
+      totals: {
+        openingBalance: grandOpening,
+        debit: grandDebit,
+        credit: grandCredit,
+        closingBalance: grandClosing,
+      },
+    };
+  }
 }
