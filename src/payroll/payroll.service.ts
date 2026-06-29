@@ -1363,6 +1363,7 @@ export class PayrollService {
     departmentId?: string;
     subDepartmentId?: string;
     employeeId?: string;
+    locationId?: string;
   }) {
     const where: Prisma.PayrollDetailWhereInput = {};
 
@@ -1375,12 +1376,17 @@ export class PayrollService {
     }
 
     if (filters.employeeId && filters.employeeId !== 'all') {
-      where.employeeId = filters.employeeId;
+      if (filters.employeeId.includes(',')) {
+        where.employeeId = { in: filters.employeeId.split(',') };
+      } else {
+        where.employeeId = filters.employeeId;
+      }
     }
 
     if (
       (filters.departmentId && filters.departmentId !== 'all') ||
-      (filters.subDepartmentId && filters.subDepartmentId !== 'all')
+      (filters.subDepartmentId && filters.subDepartmentId !== 'all') ||
+      (filters.locationId && filters.locationId !== 'all')
     ) {
       where.employee = {
         ...(filters.departmentId &&
@@ -1390,6 +1396,10 @@ export class PayrollService {
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
           subDepartmentId: filters.subDepartmentId,
+        }),
+        ...(filters.locationId &&
+          filters.locationId !== 'all' && {
+          locationId: filters.locationId,
         }),
       };
     }
@@ -1886,7 +1896,7 @@ export class PayrollService {
     }
 
     // Provident Fund calculation from master table
-    // Calculate PF as percentage of deductible base amount only
+    // Calculate PF as percentage of Basic Salary component (falls back to deductibleBaseAmount if no basic component is found)
     if (employee.providentFund) {
       try {
         // Fetch active ProvidentFund record from master table
@@ -1898,8 +1908,16 @@ export class PayrollService {
         });
 
         if (pfRecord) {
-          // Calculate PF deduction as percentage of deductible base amount
-          providentFundDeduction = deductibleBaseAmount
+          // Find Basic Salary component from salaryBreakup
+          const basicComponent = salaryBreakup.find((component) =>
+            component.name.toLowerCase().includes('basic'),
+          );
+          const basicSalaryBase = basicComponent
+            ? new Decimal(basicComponent.amount)
+            : deductibleBaseAmount;
+
+          // Calculate PF deduction as percentage of Basic Salary base
+          providentFundDeduction = basicSalaryBase
             .mul(new Decimal(pfRecord.percentage))
             .div(100);
         } else {

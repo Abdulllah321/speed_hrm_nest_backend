@@ -1,0 +1,38 @@
+model StockRequisition {
+  id              String                 @id @default(uuid())
+  requisitionNo   String                 @unique @map("requisition_no")
+  fromWarehouseId String                 @map("from_warehouse_id")
+  toLocationId    String                 @map("to_location_id")
+  status          String                 @default("PENDING") // PENDING | PARTIALLY_FULFILLED | COMPLETED | CANCELLED
+  requisitionDate DateTime               @default(now()) @map("requisition_date")
+  createdById     String?                @map("created_by_id")
+  notes           String?
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  documentType    String                 @default("New Arrival") @map("document_type") // "New Arrival" | "Regular"
+  remarks         String?
+  financialYear   String?                @map("financial_year")
+  brandId         String?                @map("brand_id")
+  
+  fromWarehouse   Warehouse              @relation("StockRequisition_fromWarehouse", fields: [fromWarehouseId], references: [id])
+  toLocation      Location               @relation("StockRequisition_toLocation", fields: [toLocationId], references: [id])
+  brand           Brand?                 @relation(fields: [brandId], references: [id])
+  items           StockRequisitionItem[]
+  transferRequests TransferRequest[]      @relation("StockRequisition_TransferRequests")
+
+  @@map("stock_requisitions")
+}
+
+model StockRequisitionItem {
+  id                 String           @id @default(uuid())
+  stockRequisitionId String           @map("stock_requisition_id")
+  itemId             String           @map("item_id")
+  quantity           Decimal          @db.Decimal(15, 4)
+  fulfilledQty       Decimal          @default(0) @db.Decimal(15, 4)
+  
+  stockRequisition   StockRequisition @relation(fields: [stockRequisitionId], references: [id], onDelete: Cascade)
+  item               Item             @relation(fields: [itemId], references: [id])
+
+  @@unique([stockRequisitionId, itemId])
+  @@map("stock_requisition_items")
+}

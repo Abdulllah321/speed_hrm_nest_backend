@@ -90,7 +90,24 @@ export class TransferRequestService {
                             status: 'AVAILABLE'
                         }
                     });
-                    availableQty = stock ? Number(stock.quantity) : 0;
+                    const physicalQty = stock ? Number(stock.quantity) : 0;
+
+                    // Deduct active reservations
+                    const reservations = await this.prisma.stockReserve.aggregate({
+                        where: {
+                            itemId: item.itemId,
+                            warehouseId: data.fromWarehouseId,
+                            OR: [
+                                { expiresAt: null },
+                                { expiresAt: { gte: new Date() } }
+                            ]
+                        },
+                        _sum: {
+                            quantity: true
+                        }
+                    });
+                    const reservedQty = reservations._sum.quantity ? Number(reservations._sum.quantity) : 0;
+                    availableQty = Math.max(0, physicalQty - reservedQty);
                 } else {
                     const stock = await this.prisma.inventoryItem.findFirst({
                         where: {
@@ -103,7 +120,7 @@ export class TransferRequestService {
                 }
 
                 if (availableQty < item.quantity) {
-                    throw new BadRequestException(`Insufficient stock for item ID: ${item.itemId}. Available: ${availableQty}, Requested: ${item.quantity}`);
+                    throw new BadRequestException(`Insufficient stock for item ID: ${item.itemId}. Available (unreserved): ${availableQty}, Requested: ${item.quantity}`);
                 }
             }
 
@@ -114,7 +131,7 @@ export class TransferRequestService {
                     fromLocationId: data.fromLocationId,
                     toLocationId: data.toLocationId,
                     transferType,
-                    status: 'PENDING_CHECKER',
+                    status: transferType === 'OUTLET_TO_OUTLET' ? 'PENDING' : 'PENDING_CHECKER',
                     requiresSourceApproval: transferType === 'OUTLET_TO_OUTLET',
                     createdById: data.createdById || ctx?.userId || null,
                     notes: data.notes,
@@ -212,7 +229,10 @@ export class TransferRequestService {
                         item: {
                             include: {
                                 color: true,
-                                size: true
+                                size: true,
+                                category: true,
+                                gender: true,
+                                segment: true,
                             }
                         }
                     }
@@ -221,6 +241,7 @@ export class TransferRequestService {
                 toWarehouse: { select: { name: true, code: true } },
                 fromLocation: { select: { name: true, code: true } },
                 toLocation: { select: { name: true, code: true } },
+                stockRequisition: { select: { requisitionNo: true } },
             },
             orderBy: { createdAt: 'desc' },
         });

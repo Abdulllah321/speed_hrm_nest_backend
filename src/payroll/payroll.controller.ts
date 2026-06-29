@@ -81,6 +81,7 @@ export class PayrollController {
     @Query('departmentId') departmentId?: string,
     @Query('subDepartmentId') subDepartmentId?: string,
     @Query('employeeId') employeeId?: string,
+    @Query('locationId') locationId?: string,
   ) {
     return this.payrollService.getPayrollReport({
       month,
@@ -88,6 +89,7 @@ export class PayrollController {
       departmentId,
       subDepartmentId,
       employeeId,
+      locationId,
     });
   }
 
@@ -131,6 +133,7 @@ export class PayrollController {
     @Query('departmentId') departmentId?: string,
     @Query('subDepartmentId') subDepartmentId?: string,
     @Query('employeeId') employeeId?: string,
+    @Query('locationId') locationId?: string,
   ) {
     return this.payrollService.getPayrollReport({
       month,
@@ -138,6 +141,7 @@ export class PayrollController {
       departmentId,
       subDepartmentId,
       employeeId,
+      locationId,
     });
   }
 
