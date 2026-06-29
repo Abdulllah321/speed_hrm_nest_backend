@@ -19,6 +19,13 @@ export interface StockActivityExportJobData {
   endDate?: string;
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
+  showBrand?: boolean;
+  showDivision?: boolean;
+  showCategory?: boolean;
+  showGender?: boolean;
+  showSilhouette?: boolean;
+  showArticle?: boolean;
+  showVariant?: boolean;
 }
 
 const GROUP_COLORS: Record<string, string> = {
@@ -80,7 +87,10 @@ export class StockActivityExportProcessor {
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<StockActivityExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, format, summaryOnly } = job.data;
+    const {
+      jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, format, summaryOnly,
+      showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
+    } = job.data;
     this.logger.log(`[StockActivityExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
@@ -142,6 +152,7 @@ export class StockActivityExportProcessor {
           category: true,
           division: true,
           brand: true,
+          silhouette: true,
         },
       });
 
@@ -258,18 +269,29 @@ export class StockActivityExportProcessor {
         }
       }
 
-      // Build hierarchical grouping:
-      // Division -> Brand -> Gender -> Category -> SKU (Article) -> Variants
-      const root: any[] = [];
-      const getOrInsert = (arr: any[], keyField: string, keyValue: string, creator: () => any) => {
-        let val = arr.find(x => x[keyField] === keyValue);
-        if (!val) {
-          val = creator();
-          arr.push(val);
-        }
-        return val;
-      };
+      // Build hierarchical grouping dynamically
+      const sBrand = showBrand !== false;
+      const sDivision = showDivision !== false;
+      const sCategory = showCategory !== false;
+      const sGender = showGender !== false;
+      const sSilhouette = showSilhouette !== false;
+      const sArticle = showArticle !== false;
+      const sVariant = showVariant !== undefined ? showVariant : !summaryOnly;
 
+      const levels: string[] = [];
+      if (sBrand) levels.push('brand');
+      if (sDivision) levels.push('division');
+      if (sCategory) levels.push('category');
+      if (sGender) levels.push('gender');
+      if (sSilhouette) levels.push('silhouette');
+      if (sArticle) levels.push('article');
+      if (sVariant) levels.push('variant');
+
+      if (levels.length === 0) {
+        levels.push('brand');
+      }
+
+      const root: any[] = [];
       const createEmptyTotals = () => ({
         bf: 0, fromWarehouse: 0, fromOutlet: 0, totalTrfIn: 0,
         toWarehouse: 0, toOutlet: 0, totalTrfOut: 0, exchg: 0,
@@ -296,13 +318,6 @@ export class StockActivityExportProcessor {
       };
 
       for (const item of items) {
-        const divisionName = item.division?.name || 'No Division';
-        const brandName = item.brand?.name || 'No Brand';
-        const genderName = item.gender?.name || 'No Gender';
-        const categoryName = item.category?.name || 'No Category';
-        const sku = item.sku;
-        const articleName = item.description || 'Unknown Article';
-
         const bf = bfMap.get(item.id) || 0;
         const transit = transitMap.get(item.id) || 0;
         const m = itemMetricsMap.get(item.id) || {
@@ -315,10 +330,7 @@ export class StockActivityExportProcessor {
         const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
         const balance = availableStock + transit;
 
-        const variant = {
-          itemId: item.id,
-          color: item.color?.name || 'Default',
-          size: item.size?.name || 'Default',
+        const variantMetrics = {
           bf,
           fromWarehouse: m.fromWarehouse,
           fromOutlet: m.fromOutlet,
@@ -336,37 +348,56 @@ export class StockActivityExportProcessor {
           balance,
         };
 
-        const divisionNode = getOrInsert(root, 'division', divisionName, () => ({ division: divisionName, brands: [], totals: createEmptyTotals() }));
-        const brandNode = getOrInsert(divisionNode.brands, 'brand', brandName, () => ({ brand: brandName, genders: [], totals: createEmptyTotals() }));
-        const genderNode = getOrInsert(brandNode.genders, 'gender', genderName, () => ({ gender: genderName, categories: [], totals: createEmptyTotals() }));
-        const categoryNode = getOrInsert(genderNode.categories, 'category', categoryName, () => ({ category: categoryName, articles: [], totals: createEmptyTotals() }));
-        const articleNode = getOrInsert(categoryNode.articles, 'sku', sku, () => ({
-          sku,
-          articleName,
-          totals: createEmptyTotals(),
-          variants: [],
-        }));
+        let currentLevelNodes = root;
+        for (let i = 0; i < levels.length; i++) {
+          const levelName = levels[i];
+          let nodeVal = '';
+          let extraFields: any = {};
 
-        articleNode.variants.push(variant);
-        addTotals(articleNode.totals, variant);
+          if (levelName === 'brand') {
+            nodeVal = item.brand?.name || 'No Brand';
+          } else if (levelName === 'division') {
+            nodeVal = item.division?.name || 'No Division';
+          } else if (levelName === 'category') {
+            nodeVal = item.category?.name || 'No Category';
+          } else if (levelName === 'gender') {
+            nodeVal = item.gender?.name || 'No Gender';
+          } else if (levelName === 'silhouette') {
+            nodeVal = item.silhouette?.name || 'No Silhouette';
+          } else if (levelName === 'article') {
+            nodeVal = item.sku;
+            extraFields.sku = item.sku;
+            extraFields.articleName = item.description || 'Unknown Article';
+          } else if (levelName === 'variant') {
+            nodeVal = `${item.color?.name || 'Default'}-${item.size?.name || 'Default'}`;
+            extraFields.color = item.color?.name || 'Default';
+            extraFields.size = item.size?.name || 'Default';
+          }
+
+          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          if (!existingNode) {
+            existingNode = {
+              level: levelName,
+              value: nodeVal,
+              totals: createEmptyTotals(),
+              ...extraFields,
+              children: [],
+            };
+            currentLevelNodes.push(existingNode);
+          }
+
+          addTotals(existingNode.totals, variantMetrics);
+
+          if (i < levels.length - 1) {
+            currentLevelNodes = existingNode.children;
+          }
+        }
       }
 
-      // Compute aggregates recursively & calculate grand totals
+      // Compute grand totals
       const grandTotals = createEmptyTotals();
-      for (const d of root) {
-        for (const b of d.brands) {
-          for (const g of b.genders) {
-            for (const c of g.categories) {
-              for (const a of c.articles) {
-                addTotals(c.totals, a.totals);
-              }
-              addTotals(g.totals, c.totals);
-            }
-            addTotals(b.totals, g.totals);
-          }
-          addTotals(d.totals, b.totals);
-        }
-        addTotals(grandTotals, d.totals);
+      for (const node of root) {
+        addTotals(grandTotals, node.totals);
       }
 
       await job.progress(80);
@@ -509,157 +540,84 @@ export class StockActivityExportProcessor {
         };
 
         // Write hierarchy data
-        for (const d of root) {
-          const dRow = ws.addRow({
-            sku: `DIVISION: ${d.division.toUpperCase()}`,
-            color: '',
-            size: '',
-            bf: d.totals.bf,
-            fromWarehouse: d.totals.fromWarehouse,
-            fromOutlet: d.totals.fromOutlet,
-            totalTrfIn: d.totals.totalTrfIn,
-            toWarehouse: d.totals.toWarehouse,
-            toOutlet: d.totals.toOutlet,
-            totalTrfOut: d.totals.totalTrfOut,
-            exchg: d.totals.exchg,
-            refund: d.totals.refund,
-            claim: d.totals.claim,
-            sales: d.totals.sales,
-            adj: d.totals.adj,
-            availableStock: d.totals.availableStock,
-            transit: d.totals.transit,
-            balance: d.totals.balance,
+        const LEVEL_EXCEL_STYLES: Record<string, {
+          bgHex: string;
+          fgHex: string;
+          fontSize: number;
+          bold: boolean;
+          indent: number;
+          prefix: string;
+        }> = {
+          brand: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
+          division: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
+          category: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'CATEGORY: ' },
+          gender: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'GENDER: ' },
+          silhouette: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'SILHOUETTE: ' },
+          article: { bgHex: 'F1F5F9', fgHex: '1E293B', fontSize: 9, bold: true, indent: 10, prefix: 'SKU: ' },
+          variant: { bgHex: 'FFFFFF', fgHex: '475569', fontSize: 9, bold: false, indent: 12, prefix: '' },
+        };
+
+        const writeNodeToExcel = (node: any) => {
+          const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
+          
+          let label = ' '.repeat(style.indent) + style.prefix;
+          let colorVal = '';
+          let sizeVal = '';
+          
+          if (node.level === 'article') {
+            label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
+            colorVal = 'ALL COLORS';
+            sizeVal = 'ALL SIZES';
+          } else if (node.level === 'variant') {
+            label = ' '.repeat(style.indent) + 'Variant Item';
+            colorVal = node.color;
+            sizeVal = node.size;
+          } else {
+            label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
+          }
+          
+          const row = ws.addRow({
+            sku: label,
+            color: colorVal,
+            size: sizeVal,
+            bf: node.totals.bf,
+            fromWarehouse: node.totals.fromWarehouse,
+            fromOutlet: node.totals.fromOutlet,
+            totalTrfIn: node.totals.totalTrfIn,
+            toWarehouse: node.totals.toWarehouse,
+            toOutlet: node.totals.toOutlet,
+            totalTrfOut: node.totals.totalTrfOut,
+            exchg: node.totals.exchg,
+            refund: node.totals.refund,
+            claim: node.totals.claim,
+            sales: node.totals.sales,
+            adj: node.totals.adj,
+            availableStock: node.totals.availableStock,
+            transit: node.totals.transit,
+            balance: node.totals.balance,
           });
-          styleHeaderRow(dRow, '1E293B', true, 10, 'FFFFFF');
-
-          for (const b of d.brands) {
-            const bRow = ws.addRow({
-              sku: `  BRAND: ${b.brand.toUpperCase()}`,
-              color: '',
-              size: '',
-              bf: b.totals.bf,
-              fromWarehouse: b.totals.fromWarehouse,
-              fromOutlet: b.totals.fromOutlet,
-              totalTrfIn: b.totals.totalTrfIn,
-              toWarehouse: b.totals.toWarehouse,
-              toOutlet: b.totals.toOutlet,
-              totalTrfOut: b.totals.totalTrfOut,
-              exchg: b.totals.exchg,
-              refund: b.totals.refund,
-              claim: b.totals.claim,
-              sales: b.totals.sales,
-              adj: b.totals.adj,
-              availableStock: b.totals.availableStock,
-              transit: b.totals.transit,
-              balance: b.totals.balance,
-            });
-            styleHeaderRow(bRow, '334155', true, 9.5, 'FFFFFF');
-
-            for (const g of b.genders) {
-              const gRow = ws.addRow({
-                sku: `    GENDER: ${g.gender.toUpperCase()}`,
-                color: '',
-                size: '',
-                bf: g.totals.bf,
-                fromWarehouse: g.totals.fromWarehouse,
-                fromOutlet: g.totals.fromOutlet,
-                totalTrfIn: g.totals.totalTrfIn,
-                toWarehouse: g.totals.toWarehouse,
-                toOutlet: g.totals.toOutlet,
-                totalTrfOut: g.totals.totalTrfOut,
-                exchg: g.totals.exchg,
-                refund: g.totals.refund,
-                claim: g.totals.claim,
-                sales: g.totals.sales,
-                adj: g.totals.adj,
-                availableStock: g.totals.availableStock,
-                transit: g.totals.transit,
-                balance: g.totals.balance,
-              });
-              styleHeaderRow(gRow, '475569', true, 9, 'FFFFFF');
-
-              for (const c of g.categories) {
-                const cRow = ws.addRow({
-                  sku: `      CATEGORY: ${c.category.toUpperCase()}`,
-                  color: '',
-                  size: '',
-                  bf: c.totals.bf,
-                  fromWarehouse: c.totals.fromWarehouse,
-                  fromOutlet: c.totals.fromOutlet,
-                  totalTrfIn: c.totals.totalTrfIn,
-                  toWarehouse: c.totals.toWarehouse,
-                  toOutlet: c.totals.toOutlet,
-                  totalTrfOut: c.totals.totalTrfOut,
-                  exchg: c.totals.exchg,
-                  refund: c.totals.refund,
-                  claim: c.totals.claim,
-                  sales: c.totals.sales,
-                  adj: c.totals.adj,
-                  availableStock: c.totals.availableStock,
-                  transit: c.totals.transit,
-                  balance: c.totals.balance,
-                });
-                styleHeaderRow(cRow, '94A3B8', true, 9, 'FFFFFF');
-
-                for (const a of c.articles) {
-                  const aRow = ws.addRow({
-                    sku: `        SKU: ${a.sku} (${a.articleName})`,
-                    color: 'ALL COLORS',
-                    size: 'ALL SIZES',
-                    bf: a.totals.bf,
-                    fromWarehouse: a.totals.fromWarehouse,
-                    fromOutlet: a.totals.fromOutlet,
-                    totalTrfIn: a.totals.totalTrfIn,
-                    toWarehouse: a.totals.toWarehouse,
-                    toOutlet: a.totals.toOutlet,
-                    totalTrfOut: a.totals.totalTrfOut,
-                    exchg: a.totals.exchg,
-                    refund: a.totals.refund,
-                    claim: a.totals.claim,
-                    sales: a.totals.sales,
-                    adj: a.totals.adj,
-                    availableStock: a.totals.availableStock,
-                    transit: a.totals.transit,
-                    balance: a.totals.balance,
-                  });
-                  styleHeaderRow(aRow, 'F1F5F9', true, 9);
-
-                  if (!summaryOnly) {
-                    for (const v of a.variants) {
-                      const vRow = ws.addRow({
-                        sku: '          Variant Item',
-                        color: v.color,
-                        size: v.size,
-                        bf: v.bf,
-                        fromWarehouse: v.fromWarehouse,
-                        fromOutlet: v.fromOutlet,
-                        totalTrfIn: v.totalTrfIn,
-                        toWarehouse: v.toWarehouse,
-                        toOutlet: v.toOutlet,
-                        totalTrfOut: v.totalTrfOut,
-                        exchg: v.exchg,
-                        refund: v.refund,
-                        claim: v.claim,
-                        sales: v.sales,
-                        adj: v.adj,
-                        availableStock: v.availableStock,
-                        transit: v.transit,
-                        balance: v.balance,
-                      });
-
-                      vRow.eachCell((cell, colNum) => {
-                        cell.font = { size: 9, color: { argb: 'FF475569' } };
-                        cell.border = borderThin;
-                        cell.alignment = colNum === 2 || colNum === 3 ? centerAlign : (colNum === 1 ? leftAlign : rightAlign);
-                      });
-                      vRow.height = 18;
-                      vRow.commit();
-                    }
-                  }
-                }
-              }
+          
+          for (let colNum = 1; colNum <= 18; colNum++) {
+            const cell = row.getCell(colNum);
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
+            cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
+            cell.border = borderThin;
+            cell.alignment = colNum === 2 || colNum === 3 
+              ? centerAlign 
+              : (colNum === 1 ? leftAlign : rightAlign);
+          }
+          row.height = node.level === 'variant' ? 18 : 20;
+          row.commit();
+          
+          if (node.children && node.children.length > 0) {
+            for (const child of node.children) {
+              writeNodeToExcel(child);
             }
           }
+        };
+
+        for (const rootNode of root) {
+          writeNodeToExcel(rootNode);
         }
 
         // Add GRAND TOTALS Row at bottom of Excel
@@ -752,148 +710,104 @@ export class StockActivityExportProcessor {
     let rowsHtml = '';
     const formatVal = (val: number) => val === 0 ? '-' : val.toString();
 
-    for (const d of data) {
-      rowsHtml += `
-        <tr class="division-row">
-          <td colspan="3">DIVISION: ${d.division.toUpperCase()}</td>
-          <td class="num">${formatVal(d.totals.bf)}</td>
-          <td class="num">${formatVal(d.totals.fromWarehouse)}</td>
-          <td class="num">${formatVal(d.totals.fromOutlet)}</td>
-          <td class="num highlight-in">${formatVal(d.totals.totalTrfIn)}</td>
-          <td class="num">${formatVal(d.totals.toWarehouse)}</td>
-          <td class="num">${formatVal(d.totals.toOutlet)}</td>
-          <td class="num highlight-out">${formatVal(d.totals.totalTrfOut)}</td>
-          <td class="num">${formatVal(d.totals.exchg)}</td>
-          <td class="num">${formatVal(d.totals.refund)}</td>
-          <td class="num">${formatVal(d.totals.claim)}</td>
-          <td class="num">${formatVal(d.totals.sales)}</td>
-          <td class="num">${formatVal(d.totals.adj)}</td>
-          <td class="num highlight-avail">${formatVal(d.totals.availableStock)}</td>
-          <td class="num highlight-transit">${formatVal(d.totals.transit)}</td>
-          <td class="num highlight-bal">${formatVal(d.totals.balance)}</td>
-        </tr>
-      `;
+    const LEVEL_PDF_STYLES: Record<string, {
+      className: string;
+      indentStyles: string;
+      prefix: string;
+    }> = {
+      brand: { className: 'brand-row', indentStyles: '', prefix: 'BRAND: ' },
+      division: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: 'DIVISION: ' },
+      category: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: 'CATEGORY: ' },
+      gender: { className: 'gender-row', indentStyles: 'padding-left: 30px;', prefix: 'GENDER: ' },
+      silhouette: { className: 'silhouette-row', indentStyles: 'padding-left: 40px;', prefix: 'SILHOUETTE: ' },
+      article: { className: 'article-row', indentStyles: 'padding-left: 50px;', prefix: 'SKU: ' },
+      variant: { className: 'variant-row', indentStyles: 'padding-left: 60px;', prefix: '' },
+    };
 
-      for (const b of d.brands) {
-        rowsHtml += `
-          <tr class="brand-row">
-            <td colspan="3">&nbsp;&nbsp;BRAND: ${b.brand.toUpperCase()}</td>
-            <td class="num">${formatVal(b.totals.bf)}</td>
-            <td class="num">${formatVal(b.totals.fromWarehouse)}</td>
-            <td class="num">${formatVal(b.totals.fromOutlet)}</td>
-            <td class="num highlight-in">${formatVal(b.totals.totalTrfIn)}</td>
-            <td class="num">${formatVal(b.totals.toWarehouse)}</td>
-            <td class="num">${formatVal(b.totals.toOutlet)}</td>
-            <td class="num highlight-out">${formatVal(b.totals.totalTrfOut)}</td>
-            <td class="num">${formatVal(b.totals.exchg)}</td>
-            <td class="num">${formatVal(b.totals.refund)}</td>
-            <td class="num">${formatVal(b.totals.claim)}</td>
-            <td class="num">${formatVal(b.totals.sales)}</td>
-            <td class="num">${formatVal(b.totals.adj)}</td>
-            <td class="num highlight-avail">${formatVal(b.totals.availableStock)}</td>
-            <td class="num highlight-transit">${formatVal(b.totals.transit)}</td>
-            <td class="num highlight-bal">${formatVal(b.totals.balance)}</td>
+    const buildHtmlRows = (node: any): string => {
+      const style = LEVEL_PDF_STYLES[node.level] || LEVEL_PDF_STYLES.brand;
+      let html = '';
+      
+      if (node.level === 'article') {
+        html += `
+          <tr class="${style.className}">
+            <td style="${style.indentStyles}">SKU: ${node.sku} (${node.articleName})</td>
+            <td class="center">ALL COLORS</td>
+            <td class="center">ALL SIZES</td>
+            <td class="num">${formatVal(node.totals.bf)}</td>
+            <td class="num">${formatVal(node.totals.fromWarehouse)}</td>
+            <td class="num">${formatVal(node.totals.fromOutlet)}</td>
+            <td class="num highlight-in">${formatVal(node.totals.totalTrfIn)}</td>
+            <td class="num">${formatVal(node.totals.toWarehouse)}</td>
+            <td class="num">${formatVal(node.totals.toOutlet)}</td>
+            <td class="num highlight-out">${formatVal(node.totals.totalTrfOut)}</td>
+            <td class="num">${formatVal(node.totals.exchg)}</td>
+            <td class="num">${formatVal(node.totals.refund)}</td>
+            <td class="num">${formatVal(node.totals.claim)}</td>
+            <td class="num">${formatVal(node.totals.sales)}</td>
+            <td class="num">${formatVal(node.totals.adj)}</td>
+            <td class="num highlight-avail">${formatVal(node.totals.availableStock)}</td>
+            <td class="num highlight-transit">${formatVal(node.totals.transit)}</td>
+            <td class="num highlight-bal">${formatVal(node.totals.balance)}</td>
           </tr>
         `;
-
-        for (const g of b.genders) {
-          rowsHtml += `
-            <tr class="gender-row">
-              <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;GENDER: ${g.gender.toUpperCase()}</td>
-              <td class="num">${formatVal(g.totals.bf)}</td>
-              <td class="num">${formatVal(g.totals.fromWarehouse)}</td>
-              <td class="num">${formatVal(g.totals.fromOutlet)}</td>
-              <td class="num highlight-in">${formatVal(g.totals.totalTrfIn)}</td>
-              <td class="num">${formatVal(g.totals.toWarehouse)}</td>
-              <td class="num">${formatVal(g.totals.toOutlet)}</td>
-              <td class="num highlight-out">${formatVal(g.totals.totalTrfOut)}</td>
-              <td class="num">${formatVal(g.totals.exchg)}</td>
-              <td class="num">${formatVal(g.totals.refund)}</td>
-              <td class="num">${formatVal(g.totals.claim)}</td>
-              <td class="num">${formatVal(g.totals.sales)}</td>
-              <td class="num">${formatVal(g.totals.adj)}</td>
-              <td class="num highlight-avail">${formatVal(g.totals.availableStock)}</td>
-              <td class="num highlight-transit">${formatVal(g.totals.transit)}</td>
-              <td class="num highlight-bal">${formatVal(g.totals.balance)}</td>
-            </tr>
-          `;
-
-          for (const c of g.categories) {
-            rowsHtml += `
-              <tr class="category-row">
-                <td colspan="3">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CATEGORY: ${c.category.toUpperCase()}</td>
-                <td class="num">${formatVal(c.totals.bf)}</td>
-                <td class="num">${formatVal(c.totals.fromWarehouse)}</td>
-                <td class="num">${formatVal(c.totals.fromOutlet)}</td>
-                <td class="num highlight-in">${formatVal(c.totals.totalTrfIn)}</td>
-                <td class="num">${formatVal(c.totals.toWarehouse)}</td>
-                <td class="num">${formatVal(c.totals.toOutlet)}</td>
-                <td class="num highlight-out">${formatVal(c.totals.totalTrfOut)}</td>
-                <td class="num">${formatVal(c.totals.exchg)}</td>
-                <td class="num">${formatVal(c.totals.refund)}</td>
-                <td class="num">${formatVal(c.totals.claim)}</td>
-                <td class="num">${formatVal(c.totals.sales)}</td>
-                <td class="num">${formatVal(c.totals.adj)}</td>
-                <td class="num highlight-avail">${formatVal(c.totals.availableStock)}</td>
-                <td class="num highlight-transit">${formatVal(c.totals.transit)}</td>
-                <td class="num highlight-bal">${formatVal(c.totals.balance)}</td>
-              </tr>
-            `;
-
-            for (const a of c.articles) {
-              rowsHtml += `
-                <tr class="article-row">
-                  <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SKU: ${a.sku} (${a.articleName})</td>
-                  <td class="center">ALL COLORS</td>
-                  <td class="center">ALL SIZES</td>
-                  <td class="num">${formatVal(a.totals.bf)}</td>
-                  <td class="num">${formatVal(a.totals.fromWarehouse)}</td>
-                  <td class="num">${formatVal(a.totals.fromOutlet)}</td>
-                  <td class="num highlight-in">${formatVal(a.totals.totalTrfIn)}</td>
-                  <td class="num">${formatVal(a.totals.toWarehouse)}</td>
-                  <td class="num">${formatVal(a.totals.toOutlet)}</td>
-                  <td class="num highlight-out">${formatVal(a.totals.totalTrfOut)}</td>
-                  <td class="num">${formatVal(a.totals.exchg)}</td>
-                  <td class="num">${formatVal(a.totals.refund)}</td>
-                  <td class="num">${formatVal(a.totals.claim)}</td>
-                  <td class="num">${formatVal(a.totals.sales)}</td>
-                  <td class="num">${formatVal(a.totals.adj)}</td>
-                  <td class="num highlight-avail">${formatVal(a.totals.availableStock)}</td>
-                  <td class="num highlight-transit">${formatVal(a.totals.transit)}</td>
-                  <td class="num highlight-bal">${formatVal(a.totals.balance)}</td>
-                </tr>
-              `;
-
-              if (!summaryOnly) {
-                for (const v of a.variants) {
-                  rowsHtml += `
-                    <tr class="variant-row">
-                      <td class="indent">&mdash; Variant Item</td>
-                      <td class="center">${v.color}</td>
-                      <td class="center">${v.size}</td>
-                      <td class="num">${formatVal(v.bf)}</td>
-                      <td class="num">${formatVal(v.fromWarehouse)}</td>
-                      <td class="num">${formatVal(v.fromOutlet)}</td>
-                      <td class="num highlight-in">${formatVal(v.totalTrfIn)}</td>
-                      <td class="num">${formatVal(v.toWarehouse)}</td>
-                      <td class="num">${formatVal(v.toOutlet)}</td>
-                      <td class="num highlight-out">${formatVal(v.totalTrfOut)}</td>
-                      <td class="num">${formatVal(v.exchg)}</td>
-                      <td class="num">${formatVal(v.refund)}</td>
-                      <td class="num">${formatVal(v.claim)}</td>
-                      <td class="num">${formatVal(v.sales)}</td>
-                      <td class="num">${formatVal(v.adj)}</td>
-                      <td class="num highlight-avail">${formatVal(v.availableStock)}</td>
-                      <td class="num highlight-transit">${formatVal(v.transit)}</td>
-                      <td class="num highlight-bal">${formatVal(v.balance)}</td>
-                    </tr>
-                  `;
-                }
-              }
-            }
-          }
+      } else if (node.level === 'variant') {
+        html += `
+          <tr class="${style.className}">
+            <td style="${style.indentStyles} color: #64748b; font-style: italic;">&mdash; Variant Item</td>
+            <td class="center">${node.color}</td>
+            <td class="center">${node.size}</td>
+            <td class="num">${formatVal(node.totals.bf)}</td>
+            <td class="num">${formatVal(node.totals.fromWarehouse)}</td>
+            <td class="num">${formatVal(node.totals.fromOutlet)}</td>
+            <td class="num highlight-in">${formatVal(node.totals.totalTrfIn)}</td>
+            <td class="num">${formatVal(node.totals.toWarehouse)}</td>
+            <td class="num">${formatVal(node.totals.toOutlet)}</td>
+            <td class="num highlight-out">${formatVal(node.totals.totalTrfOut)}</td>
+            <td class="num">${formatVal(node.totals.exchg)}</td>
+            <td class="num">${formatVal(node.totals.refund)}</td>
+            <td class="num">${formatVal(node.totals.claim)}</td>
+            <td class="num">${formatVal(node.totals.sales)}</td>
+            <td class="num">${formatVal(node.totals.adj)}</td>
+            <td class="num highlight-avail">${formatVal(node.totals.availableStock)}</td>
+            <td class="num highlight-transit">${formatVal(node.totals.transit)}</td>
+            <td class="num highlight-bal">${formatVal(node.totals.balance)}</td>
+          </tr>
+        `;
+      } else {
+        html += `
+          <tr class="${style.className}">
+            <td colspan="3" style="${style.indentStyles}">${style.prefix}${node.value.toUpperCase()}</td>
+            <td class="num">${formatVal(node.totals.bf)}</td>
+            <td class="num">${formatVal(node.totals.fromWarehouse)}</td>
+            <td class="num">${formatVal(node.totals.fromOutlet)}</td>
+            <td class="num highlight-in">${formatVal(node.totals.totalTrfIn)}</td>
+            <td class="num">${formatVal(node.totals.toWarehouse)}</td>
+            <td class="num">${formatVal(node.totals.toOutlet)}</td>
+            <td class="num highlight-out">${formatVal(node.totals.totalTrfOut)}</td>
+            <td class="num">${formatVal(node.totals.exchg)}</td>
+            <td class="num">${formatVal(node.totals.refund)}</td>
+            <td class="num">${formatVal(node.totals.claim)}</td>
+            <td class="num">${formatVal(node.totals.sales)}</td>
+            <td class="num">${formatVal(node.totals.adj)}</td>
+            <td class="num highlight-avail">${formatVal(node.totals.availableStock)}</td>
+            <td class="num highlight-transit">${formatVal(node.totals.transit)}</td>
+            <td class="num highlight-bal">${formatVal(node.totals.balance)}</td>
+          </tr>
+        `;
+      }
+      
+      if (node.children && node.children.length > 0) {
+        for (const child of node.children) {
+          html += buildHtmlRows(child);
         }
       }
+      
+      return html;
+    };
+
+    for (const rootNode of data) {
+      rowsHtml += buildHtmlRows(rootNode);
     }
 
     return `
@@ -947,7 +861,7 @@ export class StockActivityExportProcessor {
           tr {
             page-break-inside: auto;
           }
-          tr.division-row, tr.brand-row, tr.gender-row, tr.category-row, tr.article-row, tr.grand-total-row {
+          tr.brand-row, tr.division-row, tr.category-row, tr.gender-row, tr.silhouette-row, tr.article-row, tr.grand-total-row {
             page-break-inside: avoid;
           }
           thead {
@@ -984,25 +898,31 @@ export class StockActivityExportProcessor {
           }
           
           /* Rows Styling */
-          .division-row {
+          .brand-row {
             background-color: #1e293b;
             font-weight: 800;
             font-size: 8px;
             color: #ffffff;
           }
-          .brand-row {
+          .division-row {
             background-color: #334155;
             font-weight: 700;
             font-size: 7.5px;
             color: #ffffff;
           }
-          .gender-row {
+          .category-row {
             background-color: #475569;
             font-weight: 700;
             font-size: 7px;
             color: #ffffff;
           }
-          .category-row {
+          .gender-row {
+            background-color: #64748b;
+            font-weight: 700;
+            font-size: 7px;
+            color: #ffffff;
+          }
+          .silhouette-row {
             background-color: #94a3b8;
             font-weight: 700;
             font-size: 7px;

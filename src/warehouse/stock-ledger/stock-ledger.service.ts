@@ -438,10 +438,38 @@ export class StockLedgerService {
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
+    showBrand?: boolean;
+    showDivision?: boolean;
+    showCategory?: boolean;
+    showGender?: boolean;
+    showSilhouette?: boolean;
+    showArticle?: boolean;
+    showVariant?: boolean;
   }) {
-    const { locationId, startDate: startStr, endDate: endStr, summaryOnly } = options;
+    const { locationId, startDate: startStr, endDate: endStr } = options;
     if (!locationId) {
       throw new BadRequestException('locationId is required');
+    }
+
+    const showBrand = options.showBrand !== false;
+    const showDivision = options.showDivision !== false;
+    const showCategory = options.showCategory !== false;
+    const showGender = options.showGender !== false;
+    const showSilhouette = options.showSilhouette !== false;
+    const showArticle = options.showArticle !== false;
+    const showVariant = options.showVariant !== undefined ? options.showVariant : !options.summaryOnly;
+
+    const levels: string[] = [];
+    if (showBrand) levels.push('brand');
+    if (showDivision) levels.push('division');
+    if (showCategory) levels.push('category');
+    if (showGender) levels.push('gender');
+    if (showSilhouette) levels.push('silhouette');
+    if (showArticle) levels.push('article');
+    if (showVariant) levels.push('variant');
+
+    if (levels.length === 0) {
+      levels.push('brand');
     }
 
     const now = new Date();
@@ -477,6 +505,7 @@ export class StockLedgerService {
         category: true,
         division: true,
         brand: true,
+        silhouette: true,
       },
     });
 
@@ -603,14 +632,6 @@ export class StockLedgerService {
     }
 
     const root: any[] = [];
-    const getOrInsert = (arr: any[], keyField: string, keyValue: string, creator: () => any) => {
-      let val = arr.find(x => x[keyField] === keyValue);
-      if (!val) {
-        val = creator();
-        arr.push(val);
-      }
-      return val;
-    };
 
     const createEmptyTotals = () => ({
       bf: 0, fromWarehouse: 0, fromOutlet: 0, totalTrfIn: 0,
@@ -638,13 +659,6 @@ export class StockLedgerService {
     };
 
     for (const item of items) {
-      const divisionName = item.division?.name || 'No Division';
-      const brandName = item.brand?.name || 'No Brand';
-      const genderName = item.gender?.name || 'No Gender';
-      const categoryName = item.category?.name || 'No Category';
-      const sku = item.sku;
-      const articleName = item.description || 'Unknown Article';
-
       const bf = bfMap.get(item.id) || 0;
       const transit = transitMap.get(item.id) || 0;
       const m = itemMetricsMap.get(item.id) || {
@@ -657,10 +671,7 @@ export class StockLedgerService {
       const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
       const balance = availableStock + transit;
 
-      const variant = {
-        itemId: item.id,
-        color: item.color?.name || 'Default',
-        size: item.size?.name || 'Default',
+      const variantMetrics = {
         bf,
         fromWarehouse: m.fromWarehouse,
         fromOutlet: m.fromOutlet,
@@ -678,48 +689,48 @@ export class StockLedgerService {
         balance,
       };
 
-      const divisionNode = getOrInsert(root, 'division', divisionName, () => ({ division: divisionName, brands: [], totals: createEmptyTotals() }));
-      const brandNode = getOrInsert(divisionNode.brands, 'brand', brandName, () => ({ brand: brandName, genders: [], totals: createEmptyTotals() }));
-      const genderNode = getOrInsert(brandNode.genders, 'gender', genderName, () => ({ gender: genderName, categories: [], totals: createEmptyTotals() }));
-      const categoryNode = getOrInsert(genderNode.categories, 'category', categoryName, () => ({ category: categoryName, articles: [], totals: createEmptyTotals() }));
-      const articleNode = getOrInsert(categoryNode.articles, 'sku', sku, () => ({
-        sku,
-        articleName,
-        totals: createEmptyTotals(),
-        variants: [],
-      }));
+      let currentLevelNodes = root;
+      for (let i = 0; i < levels.length; i++) {
+        const levelName = levels[i];
+        let nodeVal = '';
+        let extraFields: any = {};
 
-      articleNode.variants.push(variant);
-      addTotals(articleNode.totals, variant);
-    }
-
-    // Compute aggregates recursively
-    for (const d of root) {
-      for (const b of d.brands) {
-        for (const g of b.genders) {
-          for (const c of g.categories) {
-            for (const a of c.articles) {
-              addTotals(c.totals, a.totals);
-            }
-            addTotals(g.totals, c.totals);
-          }
-          addTotals(b.totals, g.totals);
+        if (levelName === 'brand') {
+          nodeVal = item.brand?.name || 'No Brand';
+        } else if (levelName === 'division') {
+          nodeVal = item.division?.name || 'No Division';
+        } else if (levelName === 'category') {
+          nodeVal = item.category?.name || 'No Category';
+        } else if (levelName === 'gender') {
+          nodeVal = item.gender?.name || 'No Gender';
+        } else if (levelName === 'silhouette') {
+          nodeVal = item.silhouette?.name || 'No Silhouette';
+        } else if (levelName === 'article') {
+          nodeVal = item.sku;
+          extraFields.sku = item.sku;
+          extraFields.articleName = item.description || 'Unknown Article';
+        } else if (levelName === 'variant') {
+          nodeVal = `${item.color?.name || 'Default'}-${item.size?.name || 'Default'}`;
+          extraFields.color = item.color?.name || 'Default';
+          extraFields.size = item.size?.name || 'Default';
         }
-        addTotals(d.totals, b.totals);
-      }
-    }
 
-    // If summaryOnly is true, clean/empty out the variants array to reduce JSON payload size
-    if (summaryOnly) {
-      for (const d of root) {
-        for (const b of d.brands) {
-          for (const g of b.genders) {
-            for (const c of g.categories) {
-              for (const a of c.articles) {
-                a.variants = [];
-              }
-            }
-          }
+        let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+        if (!existingNode) {
+          existingNode = {
+            level: levelName,
+            value: nodeVal,
+            totals: createEmptyTotals(),
+            ...extraFields,
+            children: [],
+          };
+          currentLevelNodes.push(existingNode);
+        }
+
+        addTotals(existingNode.totals, variantMetrics);
+
+        if (i < levels.length - 1) {
+          currentLevelNodes = existingNode.children;
         }
       }
     }

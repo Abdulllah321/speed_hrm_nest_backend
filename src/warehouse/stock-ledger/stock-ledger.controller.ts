@@ -91,12 +91,26 @@ export class StockLedgerController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
+    @Query('showBrand') showBrand?: string,
+    @Query('showDivision') showDivision?: string,
+    @Query('showCategory') showCategory?: string,
+    @Query('showGender') showGender?: string,
+    @Query('showSilhouette') showSilhouette?: string,
+    @Query('showArticle') showArticle?: string,
+    @Query('showVariant') showVariant?: string,
   ) {
     const data = await this.stockLedgerService.getStockActivityReport({
       locationId,
       startDate,
       endDate,
       summaryOnly: summaryOnly === 'true',
+      showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
+      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
+      showGender: showGender !== undefined ? showGender === 'true' : undefined,
+      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
+      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
     });
     return { status: true, data };
   }
@@ -111,6 +125,13 @@ export class StockLedgerController {
       endDate?: string;
       format: 'xlsx' | 'pdf';
       summaryOnly?: boolean;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
     },
   ) {
     const userId = req.user?.id;
@@ -121,6 +142,13 @@ export class StockLedgerController {
       endDate: body.endDate,
       format: body.format,
       summaryOnly: body.summaryOnly,
+      showBrand: body.showBrand,
+      showDivision: body.showDivision,
+      showCategory: body.showCategory,
+      showGender: body.showGender,
+      showSilhouette: body.showSilhouette,
+      showArticle: body.showArticle,
+      showVariant: body.showVariant,
     });
     return { status: true, data: result };
   }

@@ -13,6 +13,13 @@ export interface QueueStockActivityExportOptions {
   endDate?: string;
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
+  showBrand?: boolean;
+  showDivision?: boolean;
+  showCategory?: boolean;
+  showGender?: boolean;
+  showSilhouette?: boolean;
+  showArticle?: boolean;
+  showVariant?: boolean;
 }
 
 @Injectable()
@@ -53,6 +60,13 @@ export class StockActivityExportService {
         endDate: opts.endDate,
         format: opts.format,
         summaryOnly: !!opts.summaryOnly,
+        showBrand: opts.showBrand,
+        showDivision: opts.showDivision,
+        showCategory: opts.showCategory,
+        showGender: opts.showGender,
+        showSilhouette: opts.showSilhouette,
+        showArticle: opts.showArticle,
+        showVariant: opts.showVariant,
       },
       {
         jobId,
