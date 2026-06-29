@@ -33,12 +33,12 @@ const COLUMNS = [
   { header: 'SKU / Variant Info', key: 'sku', width: 32, group: 'General' },
   { header: 'Color', key: 'color', width: 14, group: 'General', align: 'center' as const },
   { header: 'Size', key: 'size', width: 10, group: 'General', align: 'center' as const },
-  { header: 'BF (Opening)', key: 'bf', width: 14, group: 'General', align: 'right' as const },
+  { header: 'Opening', key: 'bf', width: 14, group: 'General', align: 'right' as const },
   { header: 'Wh IN', key: 'fromWarehouse', width: 12, group: 'Transfer IN', align: 'right' as const },
-  { header: 'Out IN', key: 'fromOutlet', width: 12, group: 'Transfer IN', align: 'right' as const },
+  { header: 'Outlet IN', key: 'fromOutlet', width: 12, group: 'Transfer IN', align: 'right' as const },
   { header: 'Total IN', key: 'totalTrfIn', width: 14, group: 'Transfer IN', align: 'right' as const },
   { header: 'Wh OUT', key: 'toWarehouse', width: 12, group: 'Transfer OUT', align: 'right' as const },
-  { header: 'Out OUT', key: 'toOutlet', width: 12, group: 'Transfer OUT', align: 'right' as const },
+  { header: 'Outlet OUT', key: 'toOutlet', width: 12, group: 'Transfer OUT', align: 'right' as const },
   { header: 'Total OUT', key: 'totalTrfOut', width: 14, group: 'Transfer OUT', align: 'right' as const },
   { header: 'Exchg', key: 'exchg', width: 12, group: 'Movements', align: 'right' as const },
   { header: 'Refund', key: 'refund', width: 12, group: 'Movements', align: 'right' as const },
@@ -1084,12 +1084,12 @@ export class StockActivityExportProcessor {
           <thead>
             <tr>
               <th colspan="3" class="align-left">Article / Variant Info</th>
-              <th>BF (Opening)</th>
+              <th>Opening</th>
               <th>Wh IN</th>
-              <th>Out IN</th>
+              <th>Outlet IN</th>
               <th style="background-color: #047857;">Trf IN</th>
               <th>Wh OUT</th>
-              <th>Out OUT</th>
+              <th>Outlet OUT</th>
               <th style="background-color: #b91c1c;">Trf OUT</th>
               <th>Exchg</th>
               <th>Refund</th>

@@ -80,6 +80,29 @@ export class ReportsController {
   }
 
   /**
+   * GET /api/finance/reports/general-ledger-summary
+   * Sub-account summary for a parent account and selected child account IDs.
+   */
+  @Get('general-ledger-summary')
+  @ApiOperation({ summary: 'General Ledger Subaccount Summary Report' })
+  @ApiQuery({ name: 'parentAccountId', required: true, type: String })
+  @ApiQuery({ name: 'subAccountIds', required: false, type: String, description: 'Comma-separated sub-account IDs (optional)' })
+  @ApiQuery({ name: 'from', required: false, type: String })
+  @ApiQuery({ name: 'to', required: false, type: String })
+  async generalLedgerSummary(
+    @Query('parentAccountId') parentAccountId: string,
+    @Query('subAccountIds') subAccountIds?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const ids = subAccountIds && subAccountIds.trim() !== '' ? subAccountIds.split(',') : [];
+    return {
+      status: true,
+      data: await this.reports.getSubaccountSummary(parentAccountId, ids, from, to),
+    };
+  }
+
+  /**
    * GET /api/finance/reports/summary
    * Activity summary grouped by source type and account type.
    */
