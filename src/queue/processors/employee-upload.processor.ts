@@ -410,22 +410,38 @@ export class EmployeeUploadProcessor {
                     this.logger.log(`CNIC match: Employee ${existing.employeeName} (ID: ${existing.employeeId}) matches CNIC ${rawCnic}. Updating existing record to new Employee ID ${employeeId}.`);
                 }
 
-                // Uniqueness validations against other records in DB
+                // Uniqueness validations and resolution against other records in DB
                 if (existing) {
                     if (rawCnic && existingByCnic && existingByCnic.id !== existing.id) {
-                        throw new Error(`Conflict: CNIC Number '${rawCnic}' is already registered to another employee (${existingByCnic.employeeId}).`);
+                        // Free up the CNIC on the other record by renaming it with a temporary suffix
+                        const tempCnic = `${existingByCnic.cnicNumber}-temp-${existingByCnic.id.slice(0, 8)}`;
+                        await prisma.employee.update({
+                            where: { id: existingByCnic.id },
+                            data: { cnicNumber: tempCnic }
+                        });
+                        this.logger.log(`Freed CNIC '${rawCnic}' from employee ${existingByCnic.employeeId} by renaming to '${tempCnic}' to resolve conflict with ${existing.employeeId}`);
                     }
                     if (useEmail && existingByEmail && existingByEmail.id !== existing.id) {
-                        this.logger.warn(`Conflict: Email '${useEmail}' is already in use by another employee (${existingByEmail.employeeId}). Setting email to null for Employee '${employeeId}'.`);
-                        useEmail = null;
+                        // Free up the Email on the other record by renaming it with a temporary suffix
+                        const tempEmail = `${existingByEmail.officialEmail}-temp-${existingByEmail.id.slice(0, 8)}`;
+                        await prisma.employee.update({
+                            where: { id: existingByEmail.id },
+                            data: { officialEmail: tempEmail }
+                        });
+                        this.logger.log(`Freed Email '${useEmail}' from employee ${existingByEmail.employeeId} by renaming to '${tempEmail}' to resolve conflict with ${existing.employeeId}`);
                     }
                     if (existingById && existingById.id !== existing.id) {
                         throw new Error(`Conflict: Employee ID '${employeeId}' is already registered to another employee (${existingById.employeeName}).`);
                     }
                 } else {
                     if (useEmail && existingByEmail) {
-                        this.logger.warn(`Conflict: Email '${useEmail}' is already in use by another employee (${existingByEmail.employeeId}). Setting email to null for new Employee '${employeeId}'.`);
-                        useEmail = null;
+                        // Free up the Email on the other record by renaming it with a temporary suffix
+                        const tempEmail = `${existingByEmail.officialEmail}-temp-${existingByEmail.id.slice(0, 8)}`;
+                        await prisma.employee.update({
+                            where: { id: existingByEmail.id },
+                            data: { officialEmail: tempEmail }
+                        });
+                        this.logger.log(`Freed Email '${useEmail}' from employee ${existingByEmail.employeeId} by renaming to '${tempEmail}' to resolve conflict with new employee ID ${employeeId}`);
                     }
                 }
 
@@ -719,61 +735,8 @@ export class EmployeeUploadProcessor {
     }
 
     private async checkDbUniqueness(records: ParsedRecord[], prisma: PrismaService): Promise<any[]> {
-        const errors: any[] = [];
-        const cnics = records.map(r => String(r.data.cnicNumber || r.data.CNIC || r.data['CNIC Number'] || '').trim()).filter(Boolean);
-        const empIds = records.map(r => String(r.data.employeeId || r.data.employeeID || r.data['Employee ID'] || r.data.employeeid || '').trim()).filter(Boolean);
-
-        if (cnics.length === 0) return [];
-
-        // Fetch existing records for both CNICs and Employee IDs in batch
-        const existingEmployees = await prisma.employee.findMany({
-            where: {
-                OR: [
-                    { cnicNumber: { in: cnics } },
-                    ...(empIds.length > 0 ? [{ employeeId: { in: empIds } }] : [])
-                ]
-            },
-            select: { id: true, cnicNumber: true, employeeId: true }
-        });
-
-        // Map database records by CNIC and Employee ID
-        const employeeByCnic = new Map<string, typeof existingEmployees[0]>();
-        const employeeById = new Map<string, typeof existingEmployees[0]>();
-
-        for (const emp of existingEmployees) {
-            if (emp.cnicNumber) {
-                employeeByCnic.set(emp.cnicNumber.toLowerCase(), emp);
-            }
-            if (emp.employeeId) {
-                employeeById.set(emp.employeeId.toLowerCase(), emp);
-            }
-        }
-
-        for (const record of records) {
-            const data = record.data;
-            const empId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '').trim();
-            const cnic = String(data.cnicNumber || data.CNIC || data['CNIC Number'] || '').trim();
-
-            if (cnic) {
-                const dbEmpByCnic = employeeByCnic.get(cnic.toLowerCase());
-                if (dbEmpByCnic) {
-                    const dbEmpById = empId ? employeeById.get(empId.toLowerCase()) : null;
-                    
-                    // Conflict only if the CNIC belongs to Employee A, but the employeeId belongs to a DIFFERENT Employee B
-                    if (dbEmpById && dbEmpById.id !== dbEmpByCnic.id) {
-                        errors.push({
-                            row: record.row,
-                            field: 'CNICNumber',
-                            value: cnic,
-                            reason: `CNIC is already registered to another employee (${dbEmpByCnic.employeeId})`,
-                            employeeId: empId,
-                            employeeName: data.employeeName || data['Employee Name']
-                        });
-                    }
-                }
-            }
-        }
-
-        return errors;
+        // Since we automatically resolve unique constraint shifts during the import phase, 
+        // we do not block the validation phase with CNIC conflict errors.
+        return [];
     }
 }
