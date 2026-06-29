@@ -116,6 +116,7 @@ import { TaskListModule } from './task-list/task-list.module';
 import { TaskModule } from './task/task.module';
 import { TaskReportsModule } from './task-reports/task-reports.module';
 import { PayeeModule } from './master/payee/payee.module';
+import { VoucherExportModule } from './finance/voucher-export/voucher-export.module';
 
 @Module({
   imports: [
@@ -256,6 +257,7 @@ import { PayeeModule } from './master/payee/payee.module';
     TaskModule,
     TaskReportsModule,
     PayeeModule,
+    VoucherExportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

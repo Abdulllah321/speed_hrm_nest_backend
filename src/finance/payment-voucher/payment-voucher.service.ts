@@ -8,6 +8,7 @@ import { AccountRoleKey } from '../finance-account-config/dto/finance-account-co
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { generateNextPvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 @Injectable()
 export class PaymentVoucherService {
   constructor(
@@ -85,6 +86,9 @@ export class PaymentVoucherService {
       : null;
 
     return this.prisma.$transaction(async (prisma) => {
+      const sequentialPvNo = await generateNextPvNumber(prisma, data.type, data.pvDate);
+      const sequentialFolio = await generateNextFolioNumber(prisma, data.pvDate);
+
       // ── Derive creditAccountId from the first credit detail line ────────
       // This keeps the legacy scalar for backward compat (reports, supplier ledger)
       const firstCreditDetail = details.find(d => Number(d.credit) > 0);
@@ -97,7 +101,8 @@ export class PaymentVoucherService {
       const paymentVoucher = await prisma.paymentVoucher.create({
         data: {
           type: data.type,
-          pvNo: data.pvNo,
+          pvNo: sequentialPvNo,
+          folio: sequentialFolio,
           pvDate: data.pvDate,
           refBillNo: data.refBillNo,
           billDate: data.billDate,
@@ -121,6 +126,7 @@ export class PaymentVoucherService {
                 credit:          Number(d.credit) || 0,
                 narration:       d.narration  || data.description || null,
                 refBillNo:       d.refBillNo  || data.refBillNo   || null,
+                refBillNo2:      d.refBillNo2 || null,
                 taxType: d.taxType ?? data.taxType ?? 'Taxable',
               })),
           },
@@ -173,7 +179,7 @@ export class PaymentVoucherService {
     limit?: number;
     search?: string;
   }) {
-    const { type, status, page = 1, limit = 10, search } = filters || {};
+    const { type, status, page, limit, search } = filters || {};
 
     const where: any = {};
 
@@ -188,39 +194,46 @@ export class PaymentVoucherService {
       ];
     }
 
-    const skip = (page - 1) * limit;
+    const queryOptions: any = {
+      where,
+      include: {
+        details: {
+          include: {
+            account: true,
+            tagAccount: true,
+          },
+        },
+        creditAccount: true,
+        supplier: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    };
+
+    if (page !== undefined && limit !== undefined) {
+      queryOptions.skip = (page - 1) * limit;
+      queryOptions.take = limit;
+    }
 
     const [data, total] = await Promise.all([
-      this.prisma.paymentVoucher.findMany({
-        where,
-        include: {
-          details: {
-            include: {
-              account: true,
-              tagAccount: true,
-            },
-          },
-          creditAccount: true,
-          supplier: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
+      this.prisma.paymentVoucher.findMany(queryOptions),
       this.prisma.paymentVoucher.count({ where }),
     ]);
 
-    return {
-      data,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    if (page !== undefined && limit !== undefined) {
+      return {
+        data,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      } as any;
+    }
+
+    return data as any;
   }
 
   async findOne(id: string) {
@@ -306,6 +319,7 @@ export class PaymentVoucherService {
                   credit:          Number(d.credit) || 0,
                   narration:       d.narration  || data.description || null,
                   refBillNo:       d.refBillNo  || data.refBillNo   || null,
+                  refBillNo2:      d.refBillNo2 || null,
                   taxType: d.taxType ?? data.taxType ?? 'Taxable',
                 })),
             },
@@ -464,6 +478,7 @@ export class PaymentVoucherService {
           credit:          Number(d.credit) || 0,
           narration:       d.narration  || voucher.description || undefined,
           refBillNo:       d.refBillNo  || voucher.refBillNo   || undefined,
+          refBillNo2:      d.refBillNo2 || undefined,
           taxType: d.taxType ?? voucher.taxType ?? 'Taxable',
         }));
       await this.accounting.postLines(allLines, {
@@ -558,28 +573,7 @@ export class PaymentVoucherService {
   }
 
   async getNextPvNumber(type: string): Promise<{ nextPvNumber: string }> {
-    const currentYear = new Date().getFullYear();
-    const prefix = type === 'bank' ? 'BPV' : 'CPV';
-
-    const lastVoucher = await this.prisma.paymentVoucher.findFirst({
-      where: {
-        type,
-        pvNo: {
-          startsWith: `${prefix}-${currentYear}`,
-        },
-      },
-      orderBy: {
-        pvNo: 'desc',
-      },
-    });
-
-    let nextNumber = 1;
-    if (lastVoucher) {
-      const lastNumber = parseInt(lastVoucher.pvNo.split('-').pop() || '0');
-      nextNumber = lastNumber + 1;
-    }
-
-    const nextPvNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    const nextPvNumber = await generateNextPvNumber(this.prisma, type, new Date());
     return { nextPvNumber };
   }
 

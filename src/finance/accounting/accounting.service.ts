@@ -12,6 +12,7 @@ export interface JournalLine {
     // ── Per-line details (optional — falls back to PostOptions.description) ──
     narration?: string;       // line-level narration
     refBillNo?: string;       // bill/ref number for this specific line
+    refBillNo2?: string;      // secondary reference number
     taxType?: string; // withholding tax type for this line
 }
 
@@ -88,6 +89,7 @@ export class AccountingService {
                     // Per-line narration takes priority; fall back to voucher-level description
                     narration: line.narration ?? null,
                     refBillNo: line.refBillNo ?? null,
+                    refBillNo2: line.refBillNo2 ?? null,
                     taxType: line.taxType ?? 'Taxable',
                     description: options.description ?? null,
                     transactionDate: date,

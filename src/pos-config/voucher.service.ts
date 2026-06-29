@@ -72,7 +72,32 @@ export class VoucherService {
                 orderBy: { createdAt: 'desc' },
             });
 
-            return { status: true, data: vouchers };
+            const sourceOrderIds = vouchers
+                .map(v => v.sourceOrderId)
+                .filter((id): id is string => !!id);
+
+            const sourceOrders = sourceOrderIds.length > 0
+                ? await this.prisma.salesOrder.findMany({
+                    where: { id: { in: sourceOrderIds } },
+                    select: { id: true, orderNumber: true, returnNumber: true, refundNumber: true },
+                })
+                : [];
+
+            const sourceOrderMap = new Map(sourceOrders.map(o => [o.id, o]));
+
+            const data = vouchers.map(v => {
+                const sourceOrder = v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null;
+                return {
+                    ...v,
+                    sourceOrder: sourceOrder ? {
+                        orderNumber: sourceOrder.orderNumber,
+                        returnNumber: sourceOrder.returnNumber,
+                        refundNumber: sourceOrder.refundNumber,
+                    } : null,
+                };
+            });
+
+            return { status: true, data };
         } catch (error: any) {
             return { status: false, message: error.message };
         }
@@ -674,7 +699,25 @@ export class VoucherService {
                 },
             });
             if (!voucher) return { status: false, message: 'Voucher not found' };
-            return { status: true, data: voucher };
+
+            const sourceOrder = voucher.sourceOrderId
+                ? await this.prisma.salesOrder.findUnique({
+                    where: { id: voucher.sourceOrderId },
+                    select: { orderNumber: true, returnNumber: true, refundNumber: true },
+                })
+                : null;
+
+            return {
+                status: true,
+                data: {
+                    ...voucher,
+                    sourceOrder: sourceOrder ? {
+                        orderNumber: sourceOrder.orderNumber,
+                        returnNumber: sourceOrder.returnNumber,
+                        refundNumber: sourceOrder.refundNumber,
+                    } : null,
+                },
+            };
         } catch (error: any) {
             return { status: false, message: error.message };
         }
