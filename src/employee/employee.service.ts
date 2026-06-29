@@ -183,6 +183,7 @@ export class EmployeeService {
     departmentId?: string;
     subDepartmentId?: string;
     providentFund?: string;
+    locationId?: string;
   }) {
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 100; // Dropdowns might want more by default
@@ -199,6 +200,10 @@ export class EmployeeService {
 
     if (query?.subDepartmentId) {
       where.subDepartmentId = query.subDepartmentId;
+    }
+
+    if (query?.locationId) {
+      where.locationId = query.locationId;
     }
 
     if (query?.providentFund === 'true') {

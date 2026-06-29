@@ -646,8 +646,9 @@ model Brand {
   createdById String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  divisions   Division[]
-  items       Item[]
+  divisions         Division[]
+  items             Item[]
+  stockRequisitions StockRequisition[]
 }
 
 model Division {

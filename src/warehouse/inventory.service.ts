@@ -112,12 +112,13 @@ export class InventoryService {
         description: true,
         unitPrice: true,
         imageUrl: true,
-        brand: { select: { id: true, name: true } },
+                brand: { select: { id: true, name: true } },
         category: { select: { id: true, name: true } },
         silhouette: { select: { id: true, name: true } },
         gender: { select: { id: true, name: true } },
         color: { select: { id: true, name: true } },
         size: { select: { id: true, name: true } },
+        segment: { select: { id: true, name: true } },
       },
     });
 

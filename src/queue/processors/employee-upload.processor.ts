@@ -409,6 +409,10 @@ export class EmployeeUploadProcessor {
                     existing = existingByCnic;
                     this.logger.log(`CNIC match: Employee ${existing.employeeName} (ID: ${existing.employeeId}) matches CNIC ${rawCnic}. Updating existing record to new Employee ID ${employeeId}.`);
                 }
+                if (!existing && existingByEmail) {
+                    existing = existingByEmail;
+                    this.logger.log(`Email match: Employee ${existing.employeeName} (ID: ${existing.employeeId}) matches Email ${useEmail}. Updating existing record to new Employee ID ${employeeId}.`);
+                }
 
                 // Uniqueness validations and resolution against other records in DB
                 if (existing) {
@@ -735,8 +739,77 @@ export class EmployeeUploadProcessor {
     }
 
     private async checkDbUniqueness(records: ParsedRecord[], prisma: PrismaService): Promise<any[]> {
-        // Since we automatically resolve unique constraint shifts during the import phase, 
-        // we do not block the validation phase with CNIC conflict errors.
-        return [];
+        const errors: any[] = [];
+        const empIds = records.map(r => String(r.data.employeeId || r.data.employeeID || r.data['Employee ID'] || r.data.employeeid || '').trim()).filter(Boolean);
+        const cnics = records.map(r => String(r.data.cnicNumber || r.data.CNIC || r.data['CNIC Number'] || '').trim()).filter(Boolean);
+        const emails = records.map(r => r.data.officialEmail || r.data['Official Email'] ? String(r.data.officialEmail || r.data['Official Email']).trim().toLowerCase() : '').filter(Boolean);
+
+        if (empIds.length === 0 && cnics.length === 0 && emails.length === 0) {
+            return [];
+        }
+
+        const existingEmployees = await prisma.employee.findMany({
+            where: {
+                OR: [
+                    empIds.length > 0 ? { employeeId: { in: empIds } } : {},
+                    cnics.length > 0 ? { cnicNumber: { in: cnics } } : {},
+                    emails.length > 0 ? { officialEmail: { in: emails } } : {}
+                ].filter(o => Object.keys(o).length > 0)
+            }
+        });
+
+        const byIdMap = new Map<string, any>();
+        const byCnicMap = new Map<string, any>();
+        const byEmailMap = new Map<string, any>();
+
+        for (const emp of existingEmployees) {
+            if (emp.employeeId) byIdMap.set(emp.employeeId.toLowerCase(), emp);
+            if (emp.cnicNumber) byCnicMap.set(emp.cnicNumber.toLowerCase(), emp);
+            if (emp.officialEmail) byEmailMap.set(emp.officialEmail.toLowerCase(), emp);
+        }
+
+        for (const record of records) {
+            const data = record.data;
+            const employeeId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '').trim();
+            const rawCnic = String(data.cnicNumber || data.CNIC || data['CNIC Number'] || '').trim();
+            const rawEmail = data.officialEmail || data['Official Email'] ? String(data.officialEmail || data['Official Email']).trim().toLowerCase() : '';
+
+            const existingById = employeeId ? byIdMap.get(employeeId.toLowerCase()) : null;
+            const existingByCnic = rawCnic ? byCnicMap.get(rawCnic.toLowerCase()) : null;
+            const existingByEmail = rawEmail ? byEmailMap.get(rawEmail.toLowerCase()) : null;
+
+            let existing = existingById;
+            if (!existing && existingByCnic) {
+                existing = existingByCnic;
+            }
+            if (!existing && existingByEmail) {
+                existing = existingByEmail;
+            }
+
+            if (existing) {
+                if (rawCnic && existingByCnic && existingByCnic.id !== existing.id) {
+                    errors.push({
+                        row: record.row,
+                        field: 'CNICNumber',
+                        value: rawCnic,
+                        reason: `Conflict: CNIC Number '${rawCnic}' is already registered to another employee (${existingByCnic.employeeId}).`,
+                        employeeId,
+                        employeeName: data.employeeName || data['Employee Name']
+                    });
+                }
+                if (employeeId && existingById && existingById.id !== existing.id) {
+                    errors.push({
+                        row: record.row,
+                        field: 'EmployeeID',
+                        value: employeeId,
+                        reason: `Conflict: Employee ID '${employeeId}' is already registered to another employee (${existingById.employeeName}).`,
+                        employeeId,
+                        employeeName: data.employeeName || data['Employee Name']
+                    });
+                }
+            }
+        }
+
+        return errors;
     }
 }
