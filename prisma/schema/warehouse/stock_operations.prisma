@@ -41,6 +41,10 @@ model TransferRequest {
   sourceApprovedById     String?               @map("source_approved_by_id")
   sourceApprovedAt       DateTime?             @map("source_approved_at")
   createdById            String?
+  checkedById            String?               @map("checked_by_id")
+  checkedAt              DateTime?             @map("checked_at")
+  authorizedById         String?               @map("authorized_by_id")
+  authorizedAt           DateTime?             @map("authorized_at")
   approvedById           String?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
