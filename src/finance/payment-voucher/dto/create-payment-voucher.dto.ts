@@ -39,6 +39,10 @@ export class CreatePaymentVoucherDetailDto {
 
   @IsString()
   @IsOptional()
+  refBillNo2?: string;
+
+  @IsString()
+  @IsOptional()
   taxType?: string;
 }
 

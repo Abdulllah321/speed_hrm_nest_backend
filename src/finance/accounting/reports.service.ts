@@ -18,7 +18,6 @@ function parseToDate(dateStr?: string): Date | undefined {
   return new Date(`${dateStr}T23:59:59.999Z`);
 }
 
-
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -53,7 +52,12 @@ export class ReportsService {
     const fromDate = parseFromDate(from);
     const toDate = parseToDate(to);
 
-    // 1. Get Opening Balances
+    // ─── 1 & 2. Aggregate amounts, keyed by EFFECTIVE account ────────────────
+    // The effective account is: tagAccountId when set (the real sub-account /
+    // leaf where the balance lives), otherwise accountId. This is essential
+    // because in this system ALL postings go through tagAccountId, so grouping
+    // by accountId alone would land amounts on group/parent accounts and then
+    // lose them during rollup zeroing.
     const openingWhere: any = fromDate
       ? {
           OR: [
@@ -66,13 +70,6 @@ export class ReportsService {
         }
       : { sourceType: 'OPENING_BALANCE' };
 
-    const openingAgg = await this.prisma.accountTransaction.groupBy({
-      by: includeTagAccounts ? ['accountId', 'tagAccountId'] : ['accountId'],
-      where: openingWhere,
-      _sum: { debit: true, credit: true },
-    });
-
-    // 2. Get Period Transactions
     const txWhere: any = { sourceType: { not: 'OPENING_BALANCE' } };
     if (fromDate || toDate) {
       txWhere.transactionDate = {};
@@ -80,63 +77,90 @@ export class ReportsService {
       if (toDate) txWhere.transactionDate.lte = toDate;
     }
 
-    const txAgg = await this.prisma.accountTransaction.groupBy({
-      by: includeTagAccounts ? ['accountId', 'tagAccountId'] : ['accountId'],
+    // Fetch raw opening rows grouped by (accountId, tagAccountId)
+    const openingRaw = await this.prisma.accountTransaction.groupBy({
+      by: ['accountId', 'tagAccountId'],
+      where: openingWhere,
+      _sum: { debit: true, credit: true },
+    });
+
+    // Fetch raw period-transaction rows grouped by (accountId, tagAccountId)
+    const txRaw = await this.prisma.accountTransaction.groupBy({
+      by: ['accountId', 'tagAccountId'],
       where: txWhere,
       _sum: { debit: true, credit: true },
     });
 
-    const getKey = (accId: string, tagId?: string | null) =>
-      includeTagAccounts && tagId ? `${accId}_${tagId}` : accId;
+    // Build canonical amounts map:
+    //   key = tagAccountId if present, else accountId  (effective posting account)
     const amountsMap = new Map<
       string,
-      {
-        openingDr: number;
-        openingCr: number;
-        txDr: number;
-        txCr: number;
-        accountId: string;
-        tagAccountId: string | null;
-      }
+      { openingDr: number; openingCr: number; txDr: number; txCr: number }
     >();
 
-    for (const o of openingAgg) {
-      const k = getKey(o.accountId, (o as any).tagAccountId);
-      if (!amountsMap.has(k))
-        amountsMap.set(k, {
-          openingDr: 0,
-          openingCr: 0,
-          txDr: 0,
-          txCr: 0,
-          accountId: o.accountId,
-          tagAccountId: (o as any).tagAccountId || null,
-        });
-      const entry = amountsMap.get(k)!;
+    const effectiveId = (row: { accountId: string; tagAccountId?: string | null }) =>
+      (row as any).tagAccountId || row.accountId;
+
+    for (const o of openingRaw) {
+      const eid = effectiveId(o as any);
+      if (!amountsMap.has(eid))
+        amountsMap.set(eid, { openingDr: 0, openingCr: 0, txDr: 0, txCr: 0 });
+      const entry = amountsMap.get(eid)!;
       entry.openingDr += Number(o._sum.debit ?? 0);
       entry.openingCr += Number(o._sum.credit ?? 0);
     }
 
-    for (const t of txAgg) {
-      const k = getKey(t.accountId, (t as any).tagAccountId);
-      if (!amountsMap.has(k))
-        amountsMap.set(k, {
-          openingDr: 0,
-          openingCr: 0,
-          txDr: 0,
-          txCr: 0,
-          accountId: t.accountId,
-          tagAccountId: (t as any).tagAccountId || null,
-        });
-      const entry = amountsMap.get(k)!;
+    for (const t of txRaw) {
+      const eid = effectiveId(t as any);
+      if (!amountsMap.has(eid))
+        amountsMap.set(eid, { openingDr: 0, openingCr: 0, txDr: 0, txCr: 0 });
+      const entry = amountsMap.get(eid)!;
       entry.txDr += Number(t._sum.debit ?? 0);
       entry.txCr += Number(t._sum.credit ?? 0);
     }
 
-    // 3. Build data for leaf accounts and tag accounts
+    // ─── 3. Build tag display breakdown from the same raw rows ───────────────
+    // No extra DB queries needed — openingRaw / txRaw are already (accountId, tagAccountId).
+    // tagBreakdownMap is keyed by accountId and lists each tagAccountId sub-breakdown.
+    // This is purely for display rows — it does NOT affect any balance calculations.
+    const tagBreakdownMap = new Map<
+      string, // accountId (the parent account)
+      Map<string, { openingDr: number; openingCr: number; txDr: number; txCr: number }>
+    >();
+
+    if (includeTagAccounts) {
+      const upsertTag = (accountId: string, tagId: string) => {
+        if (!tagBreakdownMap.has(accountId))
+          tagBreakdownMap.set(accountId, new Map());
+        const inner = tagBreakdownMap.get(accountId)!;
+        if (!inner.has(tagId))
+          inner.set(tagId, { openingDr: 0, openingCr: 0, txDr: 0, txCr: 0 });
+        return inner.get(tagId)!;
+      };
+
+      for (const o of openingRaw) {
+        const tagId = (o as any).tagAccountId as string | null;
+        if (!tagId) continue;
+        const e = upsertTag(o.accountId, tagId);
+        e.openingDr += Number(o._sum.debit ?? 0);
+        e.openingCr += Number(o._sum.credit ?? 0);
+      }
+
+      for (const t of txRaw) {
+        const tagId = (t as any).tagAccountId as string | null;
+        if (!tagId) continue;
+        const e = upsertTag(t.accountId, tagId);
+        e.txDr += Number(t._sum.debit ?? 0);
+        e.txCr += Number(t._sum.credit ?? 0);
+      }
+    }
+
+
+    // ─── 4. Build leaf nodes from canonical amountsMap ────────────────────────
     const leafNodes: any[] = [];
 
-    for (const [k, v] of amountsMap.entries()) {
-      const acc = accountMap.get(v.accountId);
+    for (const [accountId, v] of amountsMap.entries()) {
+      const acc = accountMap.get(accountId);
       if (!acc) continue;
 
       const openNet = v.openingDr - v.openingCr;
@@ -158,39 +182,27 @@ export class ReportsService {
         continue;
       }
 
-      if (includeTagAccounts && v.tagAccountId) {
-        // Find Tag Name from ChartOfAccount if exists, or Payee tables if needed.
-        // Wait, if tag is in ChartOfAccount:
-        const tagAcc = accountMap.get(v.tagAccountId);
-
-        leafNodes.push({
-          id: k,
-          isTagAccount: true,
-          parentId: acc.id,
-          code: tagAcc ? tagAcc.code : v.tagAccountId,
-          name: tagAcc ? tagAcc.name : `Tag: ${v.tagAccountId}`,
-          type: acc.type,
-          openingDebit,
-          openingCredit,
-          transactionDebit: v.txDr,
-          transactionCredit: v.txCr,
-          closingDebit,
-          closingCredit,
-        });
-      } else {
-        leafNodes.push({
-          ...acc,
-          openingDebit,
-          openingCredit,
-          transactionDebit: v.txDr,
-          transactionCredit: v.txCr,
-          closingDebit,
-          closingCredit,
-        });
-      }
+      // Push the account leaf node with correct balances
+      leafNodes.push({
+        ...acc,
+        openingDebit,
+        openingCredit,
+        transactionDebit: v.txDr,
+        transactionCredit: v.txCr,
+        closingDebit,
+        closingCredit,
+        // Attach tag breakdown only if requested — used later in traverse for display rows.
+        // Convert inner Map<tagId, amounts> → array of {tagAccountId, ...} for easy iteration.
+        _tagBreakdown: includeTagAccounts
+          ? Array.from(
+              (tagBreakdownMap.get(accountId) ?? new Map()).entries(),
+              ([tagAccountId, amounts]) => ({ tagAccountId, ...amounts }),
+            )
+          : [],
+      });
     }
 
-    // 4. Roll up to parent groups
+    // ─── 5. Roll up to parent groups ──────────────────────────────────────────
     const nodeMap = new Map<string, any>();
     for (const node of leafNodes) {
       nodeMap.set(node.id, node);
@@ -206,6 +218,7 @@ export class ReportsService {
           transactionCredit: 0,
           closingDebit: 0,
           closingCredit: 0,
+          _tagBreakdown: [],
         });
       }
     }
@@ -265,7 +278,7 @@ export class ReportsService {
       }
     }
 
-    // 5. Calculate Grand Totals from Root Nodes ONLY
+    // ─── 6. Calculate Grand Totals from Root Nodes ONLY ──────────────────────
     let totalOpeningDebit = 0,
       totalOpeningCredit = 0;
     let totalTxDebit = 0,
@@ -273,9 +286,7 @@ export class ReportsService {
     let totalClosingDebit = 0,
       totalClosingCredit = 0;
 
-    const roots = Array.from(nodeMap.values()).filter(
-      (n) => !n.parentId && !n.isTagAccount,
-    );
+    const roots = Array.from(nodeMap.values()).filter((n) => !n.parentId);
     for (const root of roots) {
       totalOpeningDebit += root.openingDebit;
       totalOpeningCredit += root.openingCredit;
@@ -285,7 +296,7 @@ export class ReportsService {
       totalClosingCredit += root.closingCredit;
     }
 
-    // 6. Flatten tree
+    // ─── 7. Flatten tree, injecting tag sub-rows for display only ─────────────
     const rows: any[] = [];
     const traverse = (nodeId: string, level = 0) => {
       const node = nodeMap.get(nodeId);
@@ -300,6 +311,63 @@ export class ReportsService {
         node.closingCredit !== 0
       ) {
         rows.push({ ...node, level });
+
+        // If this is a leaf account (non-group) with tag breakdown, insert tag sub-rows.
+        // These rows are display-only and do NOT affect any totals or rollup logic.
+        if (!node.isGroup && node._tagBreakdown?.length > 0) {
+          const tags: Array<{
+            tagAccountId: string;
+            openingDr: number;
+            openingCr: number;
+            txDr: number;
+            txCr: number;
+          }> = node._tagBreakdown;
+          tags.sort((a, b) => {
+            const ta = accountMap.get(a.tagAccountId);
+            const tb = accountMap.get(b.tagAccountId);
+            return (ta?.code ?? '').localeCompare(tb?.code ?? '');
+          });
+
+          for (const tag of tags) {
+            const tagAcc = accountMap.get(tag.tagAccountId);
+
+            const openNet = tag.openingDr - tag.openingCr;
+            const openingDebit = openNet > 0 ? openNet : 0;
+            const openingCredit = openNet < 0 ? -openNet : 0;
+
+            const closeNet =
+              tag.openingDr + tag.txDr - (tag.openingCr + tag.txCr);
+            const closingDebit = closeNet > 0 ? closeNet : 0;
+            const closingCredit = closeNet < 0 ? -closeNet : 0;
+
+            // Skip zero tag rows
+            if (
+              openingDebit === 0 &&
+              openingCredit === 0 &&
+              tag.txDr === 0 &&
+              tag.txCr === 0 &&
+              closingDebit === 0 &&
+              closingCredit === 0
+            )
+              continue;
+
+            rows.push({
+              id: `${node.id}_${tag.tagAccountId}`,
+              isTagAccount: true,
+              parentId: node.id,
+              code: tagAcc ? tagAcc.code : tag.tagAccountId,
+              name: tagAcc ? tagAcc.name : `Tag: ${tag.tagAccountId}`,
+              type: node.type,
+              level: level + 1,
+              openingDebit,
+              openingCredit,
+              transactionDebit: tag.txDr,
+              transactionCredit: tag.txCr,
+              closingDebit,
+              closingCredit,
+            });
+          }
+        }
       }
 
       const children = childMap.get(nodeId) || [];
@@ -354,12 +422,9 @@ export class ReportsService {
     const openingWhere: any = {
       AND: [
         {
-          OR: [
-            { accountId },
-            { tagAccountId: accountId }
-          ]
-        }
-      ]
+          OR: [{ accountId }, { tagAccountId: accountId }],
+        },
+      ],
     };
 
     if (sourceType) {
@@ -371,11 +436,15 @@ export class ReportsService {
       openingWhere.AND.push({
         OR: [
           { sourceType: 'OPENING_BALANCE' },
-          ...(fromDate ? [{
-            transactionDate: { lt: fromDate },
-            sourceType: { not: 'OPENING_BALANCE' }
-          }] : [])
-        ]
+          ...(fromDate
+            ? [
+                {
+                  transactionDate: { lt: fromDate },
+                  sourceType: { not: 'OPENING_BALANCE' },
+                },
+              ]
+            : []),
+        ],
       });
     }
 
@@ -391,12 +460,9 @@ export class ReportsService {
     const where: any = {
       AND: [
         {
-          OR: [
-            { accountId },
-            { tagAccountId: accountId }
-          ]
-        }
-      ]
+          OR: [{ accountId }, { tagAccountId: accountId }],
+        },
+      ],
     };
 
     if (sourceType) {
@@ -427,9 +493,9 @@ export class ReportsService {
         take: limit,
         include: {
           tagAccount: {
-            select: { id: true, code: true, name: true, type: true }
-          }
-        }
+            select: { id: true, code: true, name: true, type: true },
+          },
+        },
       }),
       this.prisma.accountTransaction.count({ where }),
       this.prisma.accountTransaction.aggregate({
@@ -471,7 +537,8 @@ export class ReportsService {
 
     const rangeTotalDebit = Number(totalAgg._sum.debit ?? 0);
     const rangeTotalCredit = Number(totalAgg._sum.credit ?? 0);
-    const rangeClosingBalance = openingBalance + rangeTotalDebit - rangeTotalCredit;
+    const rangeClosingBalance =
+      openingBalance + rangeTotalDebit - rangeTotalCredit;
 
     return {
       account: { ...account, balance: Number(account.balance) },

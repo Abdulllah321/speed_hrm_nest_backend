@@ -23,6 +23,7 @@ model AccountTransaction {
   narration       String?
   /// Bill / reference number tied to this specific line (e.g. CW-M076-2026-05)
   refBillNo       String?
+  refBillNo2      String?
   /// Whether this line is subject to withholding tax
   taxType         String          @default("Taxable")
 

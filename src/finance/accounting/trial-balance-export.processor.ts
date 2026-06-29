@@ -149,6 +149,9 @@ export class TrialBalanceExportProcessor {
       // ── Data rows ────────────────────────────────────────────────────────
       let rowIdx = 0;
       for (const row of rows) {
+        // Skip sub-account (tag) rows if user did not request them
+        if (row.isTagAccount && !includeTagAccounts) continue;
+
         const isAlt = rowIdx % 2 === 1;
         const isGroup = row.isGroup;
         const isTag = row.isTagAccount;
