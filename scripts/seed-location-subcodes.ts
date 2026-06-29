@@ -26,7 +26,7 @@ const locations: LocationSeed[] = [
   { shortCode: 'Corporate Office', code: 'C00001' },
   { shortCode: 'C.O.-Sales Administration', code: 'C10002' },
   { shortCode: 'C.O.-Sports Brands', code: 'C10003' },
-  { shortCode: 'C.O. C & K/Pedro', code: 'C10005' },
+  // { shortCode: 'C.O. C & K/Pedro', code: 'C10005' },
   { shortCode: 'C.O.-Speed Sports Online', code: 'C10004' },
   { shortCode: 'C.O.-PLM', code: 'C20001' },
   { shortCode: 'C.O.-Watches', code: 'C30001' },
