@@ -721,30 +721,56 @@ export class EmployeeUploadProcessor {
     private async checkDbUniqueness(records: ParsedRecord[], prisma: PrismaService): Promise<any[]> {
         const errors: any[] = [];
         const cnics = records.map(r => String(r.data.cnicNumber || r.data.CNIC || r.data['CNIC Number'] || '').trim()).filter(Boolean);
+        const empIds = records.map(r => String(r.data.employeeId || r.data.employeeID || r.data['Employee ID'] || r.data.employeeid || '').trim()).filter(Boolean);
 
         if (cnics.length === 0) return [];
 
-        const existingCnics = await prisma.employee.findMany({
-            where: { cnicNumber: { in: cnics } },
-            select: { cnicNumber: true, employeeId: true }
+        // Fetch existing records for both CNICs and Employee IDs in batch
+        const existingEmployees = await prisma.employee.findMany({
+            where: {
+                OR: [
+                    { cnicNumber: { in: cnics } },
+                    ...(empIds.length > 0 ? [{ employeeId: { in: empIds } }] : [])
+                ]
+            },
+            select: { id: true, cnicNumber: true, employeeId: true }
         });
 
-        const cnicConflicts = new Map<string, string>(existingCnics.map(e => [e.cnicNumber!, e.employeeId!] as [string, string]));
+        // Map database records by CNIC and Employee ID
+        const employeeByCnic = new Map<string, typeof existingEmployees[0]>();
+        const employeeById = new Map<string, typeof existingEmployees[0]>();
+
+        for (const emp of existingEmployees) {
+            if (emp.cnicNumber) {
+                employeeByCnic.set(emp.cnicNumber.toLowerCase(), emp);
+            }
+            if (emp.employeeId) {
+                employeeById.set(emp.employeeId.toLowerCase(), emp);
+            }
+        }
 
         for (const record of records) {
             const data = record.data;
-            const empId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '');
+            const empId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '').trim();
             const cnic = String(data.cnicNumber || data.CNIC || data['CNIC Number'] || '').trim();
 
-            if (cnic && cnicConflicts.has(cnic) && cnicConflicts.get(cnic) !== empId) {
-                errors.push({
-                    row: record.row,
-                    field: 'CNICNumber',
-                    value: cnic,
-                    reason: ` CNIC is already registered to another employee `,
-                    employeeId: empId,
-                    employeeName: data.employeeName || data['Employee Name']
-                });
+            if (cnic) {
+                const dbEmpByCnic = employeeByCnic.get(cnic.toLowerCase());
+                if (dbEmpByCnic) {
+                    const dbEmpById = empId ? employeeById.get(empId.toLowerCase()) : null;
+                    
+                    // Conflict only if the CNIC belongs to Employee A, but the employeeId belongs to a DIFFERENT Employee B
+                    if (dbEmpById && dbEmpById.id !== dbEmpByCnic.id) {
+                        errors.push({
+                            row: record.row,
+                            field: 'CNICNumber',
+                            value: cnic,
+                            reason: `CNIC is already registered to another employee (${dbEmpByCnic.employeeId})`,
+                            employeeId: empId,
+                            employeeName: data.employeeName || data['Employee Name']
+                        });
+                    }
+                }
             }
         }
 
