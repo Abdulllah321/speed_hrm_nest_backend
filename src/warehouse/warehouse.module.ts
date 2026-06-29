@@ -16,6 +16,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { DeliveryNoteExportController } from './delivery-note-export.controller';
 import { DeliveryNoteExportService } from './delivery-note-export.service';
 import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
+import { StockRequisitionController } from './stock-requisition/stock-requisition.controller';
+import { StockRequisitionService } from './stock-requisition/stock-requisition.service';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
     StockOperationController,
     TransferRequestController,
     DeliveryNoteExportController,
+    StockRequisitionController,
   ],
   providers: [
     WarehouseService,
@@ -40,6 +43,7 @@ import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
     TransferRequestService,
     DeliveryNoteExportService,
     DeliveryNoteExportProcessor,
+    StockRequisitionService,
   ],
   exports: [
     WarehouseService,
@@ -48,6 +52,7 @@ import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
     TransferRequestService,
     DeliveryNoteExportService,
     StockAdjustmentModule,
+    StockRequisitionService,
   ],
 })
 export class WarehouseModule { }

@@ -22,6 +22,7 @@ model Warehouse {
   stockAdjustments     StockAdjustment[]
   fromTransferRequests TransferRequest[]   @relation("TransferRequest_fromWarehouse")
   toTransferRequests   TransferRequest[]   @relation("TransferRequest_toWarehouse")
+  stockRequisitions    StockRequisition[]  @relation("StockRequisition_fromWarehouse")
 
   // Sales Relations
   erpSalesOrders   ERPSalesOrder[]
@@ -79,6 +80,7 @@ model Location {
   toTransferRequests        TransferRequest[]          @relation("TransferRequest_toLocationIdToWarehouseLocation")
   fromStockMovements        StockMovement[]            @relation("StockMovement_fromLocation")
   toStockMovements          StockMovement[]            @relation("StockMovement_toLocation")
+  stockRequisitions         StockRequisition[]         @relation("StockRequisition_toLocation")
   inventoryItems            InventoryItem[]
   stockAdjustmentItems      StockAdjustmentItem[]
 
