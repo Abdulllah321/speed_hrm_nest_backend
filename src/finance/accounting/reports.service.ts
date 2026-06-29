@@ -490,7 +490,7 @@ export class ReportsService {
     });
     const d = Number(before._sum.debit ?? 0);
     const c = Number(before._sum.credit ?? 0);
-    const openingBalance = isDebitNormal ? d - c : c - d;
+    const openingBalance = d - c;
 
     // Transaction rows within range (excluding OPENING_BALANCE transactions)
     const where: any = {
@@ -557,6 +557,33 @@ export class ReportsService {
       }
     }
 
+    // Fetch matching cheque numbers for vouchers
+    const pvIds = transactions
+      .filter((tx) => tx.sourceType === 'PAYMENT_VOUCHER')
+      .map((tx) => tx.sourceId);
+    const rvIds = transactions
+      .filter((tx) => tx.sourceType === 'RECEIPT_VOUCHER')
+      .map((tx) => tx.sourceId);
+
+    const [pvs, rvs] = await Promise.all([
+      this.prisma.paymentVoucher.findMany({
+        where: { id: { in: pvIds } },
+        select: { id: true, chequeNo: true },
+      }),
+      this.prisma.receiptVoucher.findMany({
+        where: { id: { in: rvIds } },
+        select: { id: true, chequeNo: true },
+      }),
+    ]);
+
+    const chequeMap = new Map<string, string>();
+    pvs.forEach((pv) => {
+      if (pv.chequeNo) chequeMap.set(pv.id, pv.chequeNo);
+    });
+    rvs.forEach((rv) => {
+      if (rv.chequeNo) chequeMap.set(rv.id, rv.chequeNo);
+    });
+
     // Compute running balance per row on current page
     let running = pageStartingBalance;
     const rows = transactions.map((tx) => {
@@ -568,6 +595,7 @@ export class ReportsService {
         debit: d,
         credit: c,
         runningBalance: running,
+        chequeNo: chequeMap.get(tx.sourceId) || '',
       };
     });
 

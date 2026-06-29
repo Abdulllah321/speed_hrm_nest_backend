@@ -50,12 +50,15 @@ const COLUMNS: {
 }[] = [
   { header: 'Sr. No',      key: 'srNo',            width: 10, group: 'Identity', align: 'center' },
   { header: 'Date',        key: 'transactionDate', width: 14, group: 'Identity', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Reference',   key: 'sourceRef',       width: 20, group: 'Identity', align: 'center' },
-  { header: 'Source Doc',  key: 'sourceType',      width: 20, group: 'Identity', align: 'center' },
+  { header: 'VOH No.',     key: 'sourceRef',       width: 20, group: 'Identity', align: 'center' },
+  { header: 'VOH TYPE',    key: 'sourceType',      width: 20, group: 'Identity', align: 'center' },
+  { header: 'Cheque No',   key: 'chequeNo',        width: 16, group: 'Details',  align: 'center' },
+  { header: 'Ref 1',       key: 'refBillNo',       width: 16, group: 'Details',  align: 'center' },
+  { header: 'Ref 2',       key: 'refBillNo2',      width: 16, group: 'Details',  align: 'center' },
   { header: 'Narration',   key: 'narration',       width: 42, group: 'Details',  align: 'left' },
   { header: 'Debit',       key: 'debit',           width: 18, group: 'Volume',   numFmt: '#,##0.00', align: 'right' },
   { header: 'Credit',      key: 'credit',          width: 18, group: 'Volume',   numFmt: '#,##0.00', align: 'right' },
-  { header: 'Balance',     key: 'runningBalance',  width: 20, group: 'Position', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Balance',     key: 'runningBalance',  width: 20, group: 'Position', numFmt: '#,##0.00;(#,##0.00)', align: 'right' },
 ];
 
 @Processor('general-ledger-export')
@@ -153,19 +156,22 @@ export class GeneralLedgerExportProcessor {
 
       // ── Row 3: Opening Balance Row ───────────────────────────────────────
       const opRow = ws.getRow(3);
-      opRow.getCell(1).value = '';
-      opRow.getCell(2).value = '';
-      opRow.getCell(3).value = '—';
-      opRow.getCell(4).value = 'Opening Balance';
-      opRow.getCell(5).value = 'Balance brought forward';
-      opRow.getCell(6).value = null;
-      opRow.getCell(7).value = null;
-      opRow.getCell(8).value = result.openingBalance;
-      opRow.getCell(8).numFmt = '#,##0.00';
-      opRow.getCell(8).alignment = { horizontal: 'right', vertical: 'middle' };
-      opRow.getCell(8).font = { bold: true, size: 9 };
+      opRow.getCell(1).value = ''; // srNo
+      opRow.getCell(2).value = ''; // Date
+      opRow.getCell(3).value = '—'; // VOH No.
+      opRow.getCell(4).value = 'Opening Balance'; // VOH TYPE
+      opRow.getCell(5).value = ''; // chequeNo
+      opRow.getCell(6).value = ''; // refBillNo
+      opRow.getCell(7).value = ''; // refBillNo2
+      opRow.getCell(8).value = 'Balance brought forward'; // narration
+      opRow.getCell(9).value = null; // debit
+      opRow.getCell(10).value = null; // credit
+      opRow.getCell(11).value = result.openingBalance; // runningBalance
+      opRow.getCell(11).numFmt = '#,##0.00;(#,##0.00)';
+      opRow.getCell(11).alignment = { horizontal: 'right', vertical: 'middle' };
+      opRow.getCell(11).font = { bold: true, size: 9 };
 
-      for (let c = 1; c <= 8; c++) {
+      for (let c = 1; c <= 11; c++) {
         const cell = opRow.getCell(c);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
         cell.border = {
@@ -187,9 +193,10 @@ export class GeneralLedgerExportProcessor {
           transactionDate: row.transactionDate ? new Date(row.transactionDate) : null,
           sourceRef:       row.sourceRef,
           sourceType:      SOURCE_LABELS[row.sourceType] ?? row.sourceType,
-          narration:       row.tagAccount 
-            ? `${row.narration || row.description || '—'} [Tag: ${row.tagAccount.code} - ${row.tagAccount.name}]` 
-            : (row.narration || row.description || '—'),
+          chequeNo:        row.chequeNo || '',
+          refBillNo:       row.refBillNo || '',
+          refBillNo2:      row.refBillNo2 || '',
+          narration:       row.narration || row.description || '—',
           debit:           row.debit > 0 ? Number(row.debit) : null,
           credit:          row.credit > 0 ? Number(row.credit) : null,
           runningBalance:  Number(row.runningBalance),
