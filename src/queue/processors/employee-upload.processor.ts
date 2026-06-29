@@ -95,9 +95,11 @@ export class EmployeeUploadProcessor {
 
                 progress.totalRecords = uploadRecord?.totalRecords || 0;
                 progress.failedRecords = invalidRows.size;
-                progress.successRecords = 0; // Reset success count for import phase so it doesn't show validation count
+                progress.successRecords = 0;
 
                 const startTime = Date.now();
+                const seenImportCnics = new Map<string, string>();
+                const seenImportEmails = new Map<string, string>();
                 let importBatch: ParsedRecord[] = [];
                 
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
@@ -107,7 +109,7 @@ export class EmployeeUploadProcessor {
                     importBatch.push(record);
 
                     if (importBatch.length >= 500) {
-                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
+                        await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, seenImportCnics, seenImportEmails);
                         importBatch = [];
 
                         await new Promise(resolve => setImmediate(resolve));
@@ -137,12 +139,12 @@ export class EmployeeUploadProcessor {
                 });
 
                 if (importBatch.length > 0) {
-                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData);
+                    await this.processBatch(importBatch, progress, uploadId, prisma, tenantMasterData, seenImportCnics, seenImportEmails);
                 }
             } else {
                 // Validation Mode
                 this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Loading master data...' } });
-                await tenantMasterData.warmCache(); // Pre-warm for validation too as we need names
+                await tenantMasterData.warmCache();
 
                 this.eventsService.emit({ uploadId, type: 'status', data: { message: 'Streaming validation scan...' } });
 
@@ -164,12 +166,70 @@ export class EmployeeUploadProcessor {
                     return Promise.resolve();
                 };
 
+                const seenEmployeeIds = new Set<string>();
+                const seenAttendanceIds = new Set<string>();
+                const seenCnics = new Set<string>();
+
                 await this.csvParser.parseFileFromPath(filePath, filename, async (record) => {
                     totalRecordsCount++;
+
+                    // In-file uniqueness validation
+                    const employeeId = String(record.data.employeeId || record.data.employeeID || record.data['Employee ID'] || record.data.employeeid || '').trim();
+                    const attendanceId = (record.data.attendanceId || record.data['Attendance ID']) 
+                        ? String(record.data.attendanceId || record.data['Attendance ID']).trim() 
+                        : employeeId;
+                    const cnic = String(record.data.cnicNumber || record.data.CNIC || record.data['CNIC Number'] || record.data['CNIC-Number'] || '').trim();
+
+                    if (employeeId) {
+                        if (seenEmployeeIds.has(employeeId)) {
+                            await writeError({
+                                row: record.row,
+                                field: 'EmployeeID',
+                                value: employeeId,
+                                reason: `Duplicate Employee ID '${employeeId}' found within this upload file.`,
+                                employeeId,
+                                employeeName: record.data.employeeName || record.data['Employee Name']
+                            });
+                        } else {
+                            seenEmployeeIds.add(employeeId);
+                        }
+                    }
+
+                    if (attendanceId) {
+                        if (seenAttendanceIds.has(attendanceId)) {
+                            await writeError({
+                                row: record.row,
+                                field: 'AttendanceID',
+                                value: attendanceId,
+                                reason: `Duplicate Attendance ID '${attendanceId}' found within this upload file.`,
+                                employeeId,
+                                employeeName: record.data.employeeName || record.data['Employee Name']
+                            });
+                        } else {
+                            seenAttendanceIds.add(attendanceId);
+                        }
+                    }
+
+                    if (cnic) {
+                        if (seenCnics.has(cnic)) {
+                            await writeError({
+                                row: record.row,
+                                field: 'CNICNumber',
+                                value: cnic,
+                                reason: `Duplicate CNIC Number '${cnic}' found within this upload file.`,
+                                employeeId,
+                                employeeName: record.data.employeeName || record.data['Employee Name']
+                            });
+                        } else {
+                            seenCnics.add(cnic);
+                        }
+                    }
+
                     validationBatch.push(record);
 
                     if (validationBatch.length >= 1000) {
-                        const batchErrors = this.validator.validateRecords(validationBatch);
+                        const { existingEmpIds, existingCnics, existingEmails } = await this.getExistingIdentifiers(validationBatch, prisma);
+                        const batchErrors = this.validator.validateRecords(validationBatch, existingEmpIds, existingCnics, existingEmails);
                         for (const e of batchErrors) await writeError(e);
 
                         // DB Uniqueness Check
@@ -199,7 +259,8 @@ export class EmployeeUploadProcessor {
                 });
 
                 if (validationBatch.length > 0) {
-                    const batchErrors = this.validator.validateRecords(validationBatch);
+                    const { existingEmpIds, existingCnics, existingEmails } = await this.getExistingIdentifiers(validationBatch, prisma);
+                    const batchErrors = this.validator.validateRecords(validationBatch, existingEmpIds, existingCnics, existingEmails);
                     for (const e of batchErrors) await writeError(e);
                     
                     // DB Uniqueness Check
@@ -256,10 +317,11 @@ export class EmployeeUploadProcessor {
                 where: { id: uploadId },
                 data: {
                     status: 'completed',
-                    message: `Import completed successfully: ${progress.successRecords} employees added.`,
+                    message: `Import completed: ${progress.successRecords} added/updated, ${progress.failedRecords} failed.`,
                     successRecords: progress.successRecords,
                     failedRecords: progress.failedRecords,
                     processedRecords: progress.processedRecords,
+                    errors: progress.errors.slice(0, 100) as any,
                     completedAt: new Date(),
                 },
             });
@@ -267,7 +329,7 @@ export class EmployeeUploadProcessor {
             await this.notificationsService.create({
                 userId,
                 title: 'Employee Import Completed',
-                message: `Bulk import finished: ${progress.successRecords} added, ${progress.failedRecords} failed.`,
+                message: `Bulk import finished: ${progress.successRecords} added/updated, ${progress.failedRecords} failed.`,
                 category: 'system',
                 priority: 'high',
                 channels: ['inApp']
@@ -283,7 +345,7 @@ export class EmployeeUploadProcessor {
                     failedRecords: progress.failedRecords,
                     processedRecords: progress.processedRecords,
                     totalRecords: progress.totalRecords,
-                    message: `Import completed: ${progress.successRecords} added, ${progress.failedRecords} failed.`,
+                    message: `Import completed: ${progress.successRecords} added/updated, ${progress.failedRecords} failed.`,
                 }
             });
 
@@ -299,39 +361,130 @@ export class EmployeeUploadProcessor {
         }
     }
 
-    private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService, tenantMasterData: MasterDataService): Promise<void> {
+    private async processBatch(
+        batch: ParsedRecord[],
+        progress: UploadProgress,
+        uploadId: string,
+        prisma: PrismaService,
+        tenantMasterData: MasterDataService,
+        seenImportCnics: Map<string, string>,
+        seenImportEmails: Map<string, string>
+    ): Promise<void> {
         for (const record of batch) {
             try {
-                const employeeData = await this.prepareEmployeeData(record, tenantMasterData);
-                const employeeId = String(record.data.employeeId || record.data.employeeID || record.data['Employee ID'] || record.data.employeeid);
+                const employeeId = String(record.data.employeeId || record.data.employeeID || record.data['Employee ID'] || record.data.employeeid || '').trim();
+                const rawCnic = String(record.data.cnicNumber || record.data.CNIC || record.data['CNIC Number'] || record.data['CNIC-Number'] || '').trim();
+                const rawEmail = record.data.officialEmail || record.data['Official Email'] ? String(record.data.officialEmail || record.data['Official Email']).trim().toLowerCase() : null;
+
+                if (!employeeId) {
+                    throw new Error('Employee ID is missing in record.');
+                }
+
+                // 1. In-memory check for CNIC duplication within the current import job
+                if (rawCnic && seenImportCnics.has(rawCnic) && seenImportCnics.get(rawCnic) !== employeeId) {
+                    throw new Error(`Duplicate CNIC Number '${rawCnic}' found within this upload file.`);
+                }
+                if (rawCnic) {
+                    seenImportCnics.set(rawCnic, employeeId);
+                }
+
+                // 2. In-memory check for Official Email duplication within the current import job (downgrade to null if duplicate)
+                let useEmail = rawEmail;
+                if (rawEmail) {
+                    if (seenImportEmails.has(rawEmail) && seenImportEmails.get(rawEmail) !== employeeId) {
+                        this.logger.warn(`Duplicate Official Email '${rawEmail}' found within this upload file. Setting email to null for Employee '${employeeId}'.`);
+                        useEmail = null;
+                    } else {
+                        seenImportEmails.set(rawEmail, employeeId);
+                    }
+                }
+
+                // 3. Query Database for existing records with conflicting unique fields
+                const existingById = await prisma.employee.findUnique({ where: { employeeId } });
+                const existingByCnic = rawCnic ? await prisma.employee.findUnique({ where: { cnicNumber: rawCnic } }) : null;
+                const existingByEmail = useEmail ? await prisma.employee.findUnique({ where: { officialEmail: useEmail } }) : null;
+
+                let existing = existingById;
+                if (!existing && existingByCnic) {
+                    existing = existingByCnic;
+                    this.logger.log(`CNIC match: Employee ${existing.employeeName} (ID: ${existing.employeeId}) matches CNIC ${rawCnic}. Updating existing record to new Employee ID ${employeeId}.`);
+                }
+
+                // Uniqueness validations against other records in DB
+                if (existing) {
+                    if (rawCnic && existingByCnic && existingByCnic.id !== existing.id) {
+                        throw new Error(`Conflict: CNIC Number '${rawCnic}' is already registered to another employee (${existingByCnic.employeeId}).`);
+                    }
+                    if (useEmail && existingByEmail && existingByEmail.id !== existing.id) {
+                        this.logger.warn(`Conflict: Email '${useEmail}' is already in use by another employee (${existingByEmail.employeeId}). Setting email to null for Employee '${employeeId}'.`);
+                        useEmail = null;
+                    }
+                    if (existingById && existingById.id !== existing.id) {
+                        throw new Error(`Conflict: Employee ID '${employeeId}' is already registered to another employee (${existingById.employeeName}).`);
+                    }
+                } else {
+                    if (useEmail && existingByEmail) {
+                        this.logger.warn(`Conflict: Email '${useEmail}' is already in use by another employee (${existingByEmail.employeeId}). Setting email to null for new Employee '${employeeId}'.`);
+                        useEmail = null;
+                    }
+                }
+
+                const employeeData = await this.prepareEmployeeData(record, tenantMasterData, existing);
+
+                // Override officialEmail in payload if we downgraded it
+                if (useEmail === null && employeeData.officialEmail !== null) {
+                    employeeData.officialEmail = null;
+                }
 
                 // Pre-flight: validate required resolved IDs before hitting Prisma
                 const missing: string[] = [];
-                if (!employeeData.department?.connect?.id) missing.push('Department (not found in master data)');
-                if (!employeeData.designation?.connect?.id) missing.push('Designation (not found in master data)');
-                if (!employeeData.employeeGrade?.connect?.id) missing.push('Employee Grade (not found in master data)');
-                if (!employeeData.workingHoursPolicy?.connect?.id) missing.push('Working Hours Policy (not found in master data)');
-                if (!employeeData.leavesPolicy?.connect?.id) missing.push('Leaves Policy (not found in master data)');
-                if (!employeeData.country?.connect?.id) missing.push('Country (not found — check spelling)');
-                if (!employeeData.state?.connect?.id) missing.push('State (not found — ensure Country is valid so State can be auto-created)');
-                if (!employeeData.city?.connect?.id) missing.push('City (not found — ensure State is valid so City can be auto-created)');
-                if (missing.length > 0) {
-                    throw new Error(`Missing required fields: ${missing.join('; ')}`);
-                }
+                const checkField = (fieldValue: any, resolvedValue: any, label: string) => {
+                    const hasInput = fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== '';
+                    if (!existing && !hasInput) {
+                        missing.push(`${label} is required`);
+                    } else if (hasInput && !resolvedValue) {
+                        missing.push(`${label} not found in master data/invalid`);
+                    }
+                };
 
-                const existing = await prisma.employee.findUnique({ where: { employeeId } });
+                const data = record.data;
+                const deptInput = data.department || data.Department;
+                const designationInput = data.designation || data.Designation;
+                const gradeInput = data.employeeGrade || data['Employee Grade'] || data.Grade || data.grade;
+                const whPolicyInput = data.workingHoursPolicy || data['Working Hours Policy'];
+                const leavesPolicyInput = data.leavesPolicy || data['Leaves Policy'];
+                const countryInput = data.country || data.Country;
+                const stateInput = data.state || data.province || data.State || data.Province || data['Province/State'] || data['State/Province'];
+                const cityInput = data.city || data.City;
+
+                checkField(deptInput, employeeData.department?.connect?.id, 'Department');
+                checkField(designationInput, employeeData.designation?.connect?.id, 'Designation');
+                checkField(gradeInput, employeeData.employeeGrade?.connect?.id, 'Employee Grade');
+                checkField(whPolicyInput, employeeData.workingHoursPolicy?.connect?.id, 'Working Hours Policy');
+                checkField(leavesPolicyInput, employeeData.leavesPolicy?.connect?.id, 'Leaves Policy');
+                checkField(countryInput, employeeData.country?.connect?.id, 'Country');
+                checkField(stateInput, employeeData.state?.connect?.id, 'State');
+                checkField(cityInput, employeeData.city?.connect?.id, 'City');
+
+                if (missing.length > 0) {
+                    throw new Error(`Missing or unresolved required fields: ${missing.join('; ')}`);
+                }
 
                 if (existing) {
                     // Update employee data
-                    // For qualifications, we delete existing and recreate to match manual update behavior
-                    await prisma.employeeQualification.deleteMany({ where: { employeeId: existing.id } });
-                    
                     const { qualifications, ...basicData } = employeeData;
+                    
+                    const hasQualificationInput = !!(data.qualification || data.Qualification);
+                    if (hasQualificationInput) {
+                        await prisma.employeeQualification.deleteMany({ where: { employeeId: existing.id } });
+                    }
+                    
                     await prisma.employee.update({ 
                         where: { id: existing.id }, 
                         data: {
                             ...basicData,
-                            qualifications: qualifications && qualifications.length > 0 ? {
+                            employeeId,
+                            qualifications: (hasQualificationInput && qualifications && qualifications.length > 0) ? {
                                 create: qualifications
                             } : undefined
                         } 
@@ -352,7 +505,7 @@ export class EmployeeUploadProcessor {
             } catch (error) {
                 let errorMessage = error.message;
 
-                // Handle Prisma Unique Constraint Errors (P2002)
+                // Handle Prisma Unique Constraint Errors (P2002) as a fallback
                 if (error.code === 'P2002') {
                     const target = (error.meta?.target as string[]) || [];
                     const rowEmpId = String(record.data.employeeId || record.data.employeeID || record.data['Employee ID'] || '');
@@ -369,12 +522,17 @@ export class EmployeeUploadProcessor {
 
                 this.logger.warn(`Failed row ${record.row}: ${errorMessage}`);
                 progress.failedRecords++;
+                progress.errors.push({
+                    row: record.row,
+                    reason: errorMessage,
+                    data: record.data
+                });
             }
             progress.processedRecords++;
         }
     }
 
-    private async prepareEmployeeData(record: ParsedRecord, tenantMasterData: MasterDataService): Promise<any> {
+    private async prepareEmployeeData(record: ParsedRecord, tenantMasterData: MasterDataService, existing?: any): Promise<any> {
         const { data } = record;
 
         const parseBool = (val: any): boolean => {
@@ -411,6 +569,26 @@ export class EmployeeUploadProcessor {
             return null;
         };
 
+        const getOptionalString = (val: any): string | null => {
+            if (val === undefined || val === null) return null;
+            const str = String(val).trim();
+            return str === '' ? null : str;
+        };
+
+        const getVal = (val: any, fallback: any = undefined) => {
+            if (val === undefined || val === null || String(val).trim() === '') {
+                return existing ? undefined : fallback;
+            }
+            return val;
+        };
+
+        const getValParsed = (val: any, parser: (v: any) => any, fallback: any = undefined) => {
+            if (val === undefined || val === null || String(val).trim() === '') {
+                return existing ? undefined : fallback;
+            }
+            return parser(val);
+        };
+
         const [
             deptId, designationId, gradeId, maritalId, empStatusId, locId, whPolicyId, leavesPolicyId, allocationId, countryId,
             qualificationId, instituteId
@@ -440,31 +618,36 @@ export class EmployeeUploadProcessor {
         const rawCity = data.city || data.City || data['City'];
         const cityId = (stateId && rawCity && countryId) ? await tenantMasterData.getOrCreateCity(rawCity, stateId, countryId) : null;
 
+        const employeeId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '').trim();
+
         return {
-            employeeName: String(data.employeeName || data['Employee Name'] || ''),
-            fatherHusbandName: data.fatherHusbandName || data['Father/Husband'] || data['Father / Husband Name'] || data['Father/Husband Name'] || '',
-            attendanceId: (data.attendanceId || data['Attendance ID']) ? String(data.attendanceId || data['Attendance ID']) : String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || ''),
-            cnicNumber: String(data.cnicNumber || data.CNIC || data['CNIC Number'] || ''),
-            cnicExpiryDate: parseDate(data.cnicExpiryDate || data['CNIC Expiry']),
-            lifetimeCnic: parseBool(data.lifetimeCnic || data['Lifetime CNIC']),
-            joiningDate: parseDate(data.joiningDate || data['Joining Date']) || new Date(),
-            probationExpiryDate: parseDate(data.probationExpiryDate || data['Probation Expiry']),
-            dateOfBirth: parseDate(data.dateOfBirth || data['Date of Birth']),
-            gender: data.gender || data.Gender || 'male',
-            contactNumber: String(data.contactNumber || data['Contact Number'] || ''),
-            personalEmail: data.personalEmail || data['Personal Email'] || null,
-            officialEmail: data.officialEmail || data['Official Email'] || null,
-            currentAddress: data.currentAddress || data['Current Address'] || null,
-            permanentAddress: data.permanentAddress || data['Permanent Address'] || null,
+            employeeName: getVal(data.employeeName || data['Employee Name'] || data.name || data.employeename, ''),
+            fatherHusbandName: getVal(data.fatherHusbandName || data['Father/Husband'] || data['Father / Husband Name'] || data['Father/Husband Name'], ''),
+            attendanceId: getValParsed(data.attendanceId || data['Attendance ID'] || data['Attendance-ID'], (v) => String(v).trim(), String(employeeId).trim()),
+            cnicNumber: getValParsed(data.cnicNumber || data.CNIC || data['CNIC Number'], (v) => String(v).trim(), ''),
+            cnicExpiryDate: getValParsed(data.cnicExpiryDate || data['CNIC Expiry'], parseDate, null),
+            lifetimeCnic: getValParsed(data.lifetimeCnic || data['Lifetime CNIC'], parseBool, false),
+            joiningDate: getValParsed(data.joiningDate || data['Joining Date'], parseDate, new Date()),
+            probationExpiryDate: getValParsed(data.probationExpiryDate || data['Probation Expiry'], parseDate, null),
+            dateOfBirth: getValParsed(data.dateOfBirth || data['Date of Birth'], parseDate, null),
+            gender: getVal(data.gender || data.Gender, 'male'),
+            contactNumber: getValParsed(data.contactNumber || data['Contact Number'], (v) => String(v).trim(), ''),
+            personalEmail: getValParsed(data.personalEmail ?? data['Personal Email'], getOptionalString, null),
+            officialEmail: getValParsed(data.officialEmail ?? data['Official Email'], getOptionalString, null),
+            currentAddress: getValParsed(data.currentAddress ?? data['Current Address'], getOptionalString, null),
+            permanentAddress: getValParsed(data.permanentAddress ?? data['Permanent Address'], getOptionalString, null),
             employeeSalary: (() => {
                 const raw = data.employeeSalary ?? data.Salary ?? data['Employee Salary'] ?? data['employee_salary'] ?? data['EmployeeSalary'];
+                if (raw === undefined || raw === null || String(raw).trim() === '') {
+                    return existing ? undefined : 0;
+                }
                 const num = Number(raw);
-                return (!raw && raw !== 0) ? 0 : isNaN(num) ? 0 : num;
+                return isNaN(num) ? 0 : num;
             })(),
-            bankName: data.bankName || data['Bank Name'] || null,
-            accountNumber: data.accountNumber || data['Account Number'] || null,
-            accountTitle: data.accountTitle || data['Account Title'] || null,
-            status: data.status || data.Status || 'active',
+            bankName: getValParsed(data.bankName ?? data['Bank Name'], getOptionalString, null),
+            accountNumber: getValParsed(data.accountNumber ?? data['Account Number'], getOptionalString, null),
+            accountTitle: getValParsed(data.accountTitle ?? data['Account Title'], getOptionalString, null),
+            status: getVal(data.status || data.Status, 'active'),
             department: deptId ? { connect: { id: deptId } } : undefined,
             subDepartment: subDeptId ? { connect: { id: subDeptId } } : undefined,
             designation: designationId ? { connect: { id: designationId } } : undefined,
@@ -475,21 +658,20 @@ export class EmployeeUploadProcessor {
             workingHoursPolicy: whPolicyId ? { connect: { id: whPolicyId } } : undefined,
             leavesPolicy: leavesPolicyId ? { connect: { id: leavesPolicyId } } : undefined,
             allocation: allocationId ? { connect: { id: allocationId } } : undefined,
-            // Use relations for these to avoid Prisma scalar mapping issues
             country: countryId ? { connect: { id: countryId } } : undefined,
             state: stateId ? { connect: { id: stateId } } : undefined,
             city: cityId ? { connect: { id: cityId } } : undefined,
-            nationality: data.nationality || data.Nationality || 'Pakistani',
-            daysOff: data.daysOff || data['Days Off'] ? String(data.daysOff || data['Days Off']) : null,
-            reportingManager: data.reportingManager || data['Reporting Manager'] || null,
-            allowRemoteAttendance: parseBool(data.allowRemoteAttendance || data['Remote Attendance']),
-            overtimeApplicable: parseBool(data.overtimeApplicable || data['Overtime']),
-            area: data.area || data.Area || null,
-            emergencyContactNumber: data.emergencyContactNumber || data['Emergency Contact'] || null,
-            emergencyContactPerson: data.emergencyContactPerson || data['Emergency Person'] || null,
-            eobi: parseBool(data.eobi || data['EOBI']),
-            eobiNumber: data.eobiNumber || data['EOBI Number'] || null,
-            providentFund: parseBool(data.providentFund || data['Provident Fund']),
+            nationality: getVal(data.nationality || data.Nationality, 'Pakistani'),
+            daysOff: getValParsed(data.daysOff || data['Days Off'], (v) => String(v).trim(), null),
+            reportingManager: getValParsed(data.reportingManager ?? data['Reporting Manager'], getOptionalString, null),
+            allowRemoteAttendance: getValParsed(data.allowRemoteAttendance || data['Remote Attendance'], parseBool, false),
+            overtimeApplicable: getValParsed(data.overtimeApplicable || data['Overtime'], parseBool, false),
+            area: getValParsed(data.area ?? data.Area, getOptionalString, null),
+            emergencyContactNumber: getValParsed(data.emergencyContactNumber ?? data['Emergency Contact'] ?? data['Emergency Contact Number'], getOptionalString, null),
+            emergencyContactPerson: getValParsed(data.emergencyContactPerson ?? data['Emergency Person'] ?? data['Emergency Contact Person'], getOptionalString, null),
+            eobi: getValParsed(data.eobi || data['EOBI'], parseBool, false),
+            eobiNumber: getValParsed(data.eobiNumber ?? data['EOBI Number'], getOptionalString, null),
+            providentFund: getValParsed(data.providentFund || data['Provident Fund'], parseBool, false),
             qualifications: qualificationId ? [
                 {
                     qualification: { connect: { id: qualificationId } },
@@ -503,43 +685,56 @@ export class EmployeeUploadProcessor {
         };
     }
 
+    private async getExistingIdentifiers(records: ParsedRecord[], prisma: PrismaService) {
+        const empIds = records.map(r => String(r.data.employeeId || r.data.employeeID || r.data['Employee ID'] || r.data.employeeid || '').trim()).filter(Boolean);
+        const cnics = records.map(r => String(r.data.cnicNumber || r.data.CNIC || r.data['CNIC Number'] || '').trim()).filter(Boolean);
+        const emails = records.map(r => r.data.officialEmail || r.data['Official Email'] ? String(r.data.officialEmail || r.data['Official Email']).trim().toLowerCase() : '').filter(Boolean);
+
+        const existingEmpIds = new Set<string>();
+        const existingCnics = new Set<string>();
+        const existingEmails = new Set<string>();
+
+        if (empIds.length === 0 && cnics.length === 0 && emails.length === 0) {
+            return { existingEmpIds, existingCnics, existingEmails };
+        }
+
+        const existingEmployees = await prisma.employee.findMany({
+            where: {
+                OR: [
+                    empIds.length > 0 ? { employeeId: { in: empIds } } : {},
+                    cnics.length > 0 ? { cnicNumber: { in: cnics } } : {},
+                    emails.length > 0 ? { officialEmail: { in: emails } } : {}
+                ].filter(o => Object.keys(o).length > 0)
+            },
+            select: { employeeId: true, cnicNumber: true, officialEmail: true }
+        });
+
+        for (const emp of existingEmployees) {
+            if (emp.employeeId) existingEmpIds.add(emp.employeeId.toLowerCase());
+            if (emp.cnicNumber) existingCnics.add(emp.cnicNumber.toLowerCase());
+            if (emp.officialEmail) existingEmails.add(emp.officialEmail.toLowerCase());
+        }
+
+        return { existingEmpIds, existingCnics, existingEmails };
+    }
+
     private async checkDbUniqueness(records: ParsedRecord[], prisma: PrismaService): Promise<any[]> {
         const errors: any[] = [];
-        const emails = records.map(r => String(r.data.officialEmail || r.data['Official Email'] || '').trim()).filter(Boolean);
         const cnics = records.map(r => String(r.data.cnicNumber || r.data.CNIC || r.data['CNIC Number'] || '').trim()).filter(Boolean);
 
-        if (emails.length === 0 && cnics.length === 0) return [];
+        if (cnics.length === 0) return [];
 
-        const [existingEmails, existingCnics] = await Promise.all([
-            emails.length > 0 ? prisma.employee.findMany({
-                where: { officialEmail: { in: emails, mode: 'insensitive' } },
-                select: { officialEmail: true, employeeId: true }
-            }) : [],
-            cnics.length > 0 ? prisma.employee.findMany({
-                where: { cnicNumber: { in: cnics } },
-                select: { cnicNumber: true, employeeId: true }
-            }) : []
-        ]);
+        const existingCnics = await prisma.employee.findMany({
+            where: { cnicNumber: { in: cnics } },
+            select: { cnicNumber: true, employeeId: true }
+        });
 
-        const emailConflicts = new Map<string, string>(existingEmails.map(e => [e.officialEmail!.toLowerCase(), e.employeeId!] as [string, string]));
         const cnicConflicts = new Map<string, string>(existingCnics.map(e => [e.cnicNumber!, e.employeeId!] as [string, string]));
 
         for (const record of records) {
             const data = record.data;
             const empId = String(data.employeeId || data.employeeID || data['Employee ID'] || data.employeeid || '');
-            const email = String(data.officialEmail || data['Official Email'] || '').trim().toLowerCase();
             const cnic = String(data.cnicNumber || data.CNIC || data['CNIC Number'] || '').trim();
-
-            if (email && emailConflicts.has(email) && emailConflicts.get(email) !== empId) {
-                errors.push({
-                    row: record.row,
-                    field: 'OfficialEmail',
-                    value: email,
-                    reason: ` Email is already in use by another employee `,
-                    employeeId: empId,
-                    employeeName: data.employeeName || data['Employee Name']
-                });
-            }
 
             if (cnic && cnicConflicts.has(cnic) && cnicConflicts.get(cnic) !== empId) {
                 errors.push({

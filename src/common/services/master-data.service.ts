@@ -297,11 +297,26 @@ export class MasterDataService {
     /**
      * Get or create Location master record
      */
-    async getOrCreateLocation(name: string): Promise<string | null> {
+    async getOrCreateLocation(nameOrShortCode: string): Promise<string | null> {
+        if (!nameOrShortCode) return null;
+        const normalized = nameOrShortCode.trim();
         return this.resolveOrCreate(
-            'location', name, null,
-            () => this.prisma.location.findFirst({ where: { name: { equals: name.trim(), mode: 'insensitive' } } }),
-            () => this.prisma.location.create({ data: { name: name.trim() } })
+            'location', normalized, null,
+            () => this.prisma.location.findFirst({
+                where: {
+                    OR: [
+                        { shortCode: { equals: normalized, mode: 'insensitive' } },
+                        { name: { equals: normalized, mode: 'insensitive' } }
+                    ]
+                }
+            }),
+            () => this.prisma.location.create({
+                data: {
+                    name: normalized,
+                    code: normalized,
+                    shortCode: normalized
+                }
+            })
         );
     }
 
@@ -601,7 +616,7 @@ export class MasterDataService {
             this.prisma.employeeGrade.findMany({ select: { id: true, grade: true } }),
             this.prisma.maritalStatus.findMany({ select: { id: true, name: true } }),
             this.prisma.employeeStatus.findMany({ select: { id: true, status: true } }),
-            this.prisma.location.findMany({ select: { id: true, name: true } }),
+            this.prisma.location.findMany({ select: { id: true, name: true, shortCode: true } }),
             this.prisma.workingHoursPolicy.findMany({ select: { id: true, name: true } }),
             this.prisma.leavesPolicy.findMany({ select: { id: true, name: true } }),
             this.prisma.allocation.findMany({ select: { id: true, name: true } }),
@@ -635,7 +650,15 @@ export class MasterDataService {
         load('employeegrade', grades);
         load('maritalstatus', maritalStatus);
         load('employmentstatus', employmentStatus);
-        load('location', locations);
+        this.initCache('location');
+        for (const loc of locations as any[]) {
+            if (loc.shortCode) {
+                this.cache[this.getCacheKey('location')].set(loc.shortCode.toLowerCase(), loc.id);
+            }
+            if (loc.name) {
+                this.cache[this.getCacheKey('location')].set(loc.name.toLowerCase(), loc.id);
+            }
+        }
         load('workinghourspolicy', whPolicies);
         load('leavespolicy', leavesPolicies);
         load('allocation', allocations);

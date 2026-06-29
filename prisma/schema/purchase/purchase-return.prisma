@@ -14,12 +14,15 @@ model PurchaseReturn {
   taxAmount    Decimal   @default(0) @map("tax_amount") @db.Decimal(15, 2)
   totalAmount  Decimal   @default(0) @map("total_amount") @db.Decimal(15, 2)
   notes        String?
+  staxEInvoiceNumber String? @map("stax_e_invoice_number")
   approvedBy   String?   @map("approved_by")
   approvedAt   DateTime? @map("approved_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   items      PurchaseReturnItem[]
+  purchaseInvoiceId String?   @map("purchase_invoice_id")
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
   grn        GoodsReceiptNote?    @relation(fields: [grnId], references: [id])
   landedCost LandedCost?          @relation(fields: [landedCostId], references: [id])
   supplier   Supplier             @relation(fields: [supplierId], references: [id])
@@ -32,9 +35,10 @@ model PurchaseReturn {
 model PurchaseReturnItem {
   id               String   @id @default(uuid())
   purchaseReturnId String   @map("purchase_return_id")
-  sourceItemType   String   @map("source_item_type") // GRN_ITEM, LANDED_COST_ITEM
+  sourceItemType   String   @map("source_item_type") // GRN_ITEM, LANDED_COST_ITEM, INVOICE_ITEM
   grnItemId        String?  @map("grn_item_id")
   landedCostItemId String?  @map("landed_cost_item_id")
+  purchaseInvoiceItemId String? @map("purchase_invoice_item_id")
   itemId           String   @map("item_id")
   description      String?
   returnQty        Decimal  @map("return_qty") @db.Decimal(15, 4)
@@ -47,6 +51,7 @@ model PurchaseReturnItem {
   purchaseReturn PurchaseReturn        @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
   grnItem        GoodsReceiptNoteItem? @relation(fields: [grnItemId], references: [id])
   landedCostItem LandedCostItem?       @relation(fields: [landedCostItemId], references: [id])
+  purchaseInvoiceItem PurchaseInvoiceItem? @relation(fields: [purchaseInvoiceItemId], references: [id])
   item           Item                  @relation(fields: [itemId], references: [id])
 
   @@map("purchase_return_items")
