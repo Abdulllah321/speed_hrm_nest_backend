@@ -56,6 +56,8 @@ model TransferRequest {
   fromLocation           Location?             @relation("TransferRequest_fromLocationIdToWarehouseLocation", fields: [fromLocationId], references: [id])
   toLocation             Location?             @relation("TransferRequest_toLocationIdToWarehouseLocation", fields: [toLocationId], references: [id])
   items                  TransferRequestItem[]
+  stockRequisitionId     String?               @map("stock_requisition_id")
+  stockRequisition       StockRequisition?     @relation("StockRequisition_TransferRequests", fields: [stockRequisitionId], references: [id])
 }
 
 model TransferRequestItem {

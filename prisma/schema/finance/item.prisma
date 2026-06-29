@@ -78,6 +78,7 @@ model Item {
 
   // Discount Campaigns
   discountCampaignItems DiscountCampaignItem[]
+  stockRequisitionItems StockRequisitionItem[]
 }
 
 // ─── Discount Campaign ────────────────────────────────────────────────────────
