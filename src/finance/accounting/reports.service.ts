@@ -223,6 +223,34 @@ export class ReportsService {
       }
     }
 
+    // Ensure all ancestors of active nodes are in nodeMap to prevent orphaned trees
+    const ensureAncestors = (nodeId: string) => {
+      const node = accountMap.get(nodeId);
+      if (!node) return;
+      if (!nodeMap.has(nodeId)) {
+        nodeMap.set(nodeId, {
+          ...node,
+          openingDebit: 0,
+          openingCredit: 0,
+          transactionDebit: 0,
+          transactionCredit: 0,
+          closingDebit: 0,
+          closingCredit: 0,
+          _tagBreakdown: [],
+        });
+      }
+      if (node.parentId) {
+        ensureAncestors(node.parentId);
+      }
+    };
+
+    for (const nodeId of Array.from(nodeMap.keys())) {
+      const node = nodeMap.get(nodeId);
+      if (node?.parentId) {
+        ensureAncestors(node.parentId);
+      }
+    }
+
     const childMap = new Map<string, any[]>();
     for (const node of nodeMap.values()) {
       if (node.parentId) {
@@ -310,7 +338,14 @@ export class ReportsService {
         node.closingDebit !== 0 ||
         node.closingCredit !== 0
       ) {
-        rows.push({ ...node, level });
+        // If includeTagAccounts is false, skip pushing sub-accounts (level >= 4) to rows.
+        if (includeTagAccounts || level < 4) {
+          const rowToPush = { ...node, level };
+          if (level >= 4) {
+            rowToPush.isTagAccount = true;
+          }
+          rows.push(rowToPush);
+        }
 
         // If this is a leaf account (non-group) with tag breakdown, insert tag sub-rows.
         // These rows are display-only and do NOT affect any totals or rollup logic.
@@ -397,6 +432,7 @@ export class ReportsService {
       to,
     };
   }
+  
   async getGeneralLedger(
     accountId: string,
     from?: string,
