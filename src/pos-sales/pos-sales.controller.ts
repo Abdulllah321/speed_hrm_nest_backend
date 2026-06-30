@@ -209,6 +209,56 @@ export class PosSalesController {
         );
     }
 
+    // ─── List sales activities (Activity Log) ─────────────────────────
+    @Get('activities')
+    @Permissions('pos.sales.history.view')
+    @ApiOperation({ summary: 'List sales activities (sales, returns, refunds, claims)' })
+    async listActivities(
+        @Req() req: any,
+        @Query('page') page?: number,
+        @Query('limit') limit?: number,
+        @Query('posId') posId?: string,
+        @Query('activityType') activityType?: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('search') search?: string,
+    ) {
+        // Determine effective filtering context
+        let effectivePosId = posId;
+        let effectiveLocationId: string | undefined = undefined;
+
+        // 1. Context from logged-in user
+        if (req.user?.isPosUser || req.user?.isTerminal) {
+            if (!effectivePosId) effectivePosId = req.user.posId || req.user.terminalId;
+            effectiveLocationId = req.user.locationId;
+        }
+
+        // 2. Fallback to terminal cookie
+        if (!effectivePosId && req.cookies?.posTerminalToken) {
+            try {
+                const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+                effectivePosId = decoded?.posId || decoded?.terminalId;
+                if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
+            } catch (e) { }
+        }
+
+        // 3. Fallback: any user with a locationId on their token
+        if (!effectiveLocationId && req.user?.locationId) {
+            effectiveLocationId = req.user.locationId;
+        }
+
+        return this.posSalesService.listSalesActivities(
+            req.user,
+            page ? Number(page) : 1,
+            limit ? Number(limit) : 20,
+            effectivePosId,
+            activityType,
+            { startDate, endDate, search },
+            effectiveLocationId,
+        );
+    }
+
+
     // ─── Get return details for printing return slip ──────────────────
     // IMPORTANT: This must come BEFORE @Get('orders/:id') to avoid route conflict
     @Get('orders/:id/return-details')
