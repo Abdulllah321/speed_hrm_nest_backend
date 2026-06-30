@@ -175,7 +175,7 @@ export class PosDashboardService {
     const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
     const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
 
-    // ── Enrich salesperson rows with names from master DB ───────────
+    // ── Enrich salesperson rows with names from master DB and local employee DB ───────────
     const spUserIds = salespersonAgg
       .map((r) => r.cashierUserId)
       .filter(Boolean) as string[];
@@ -186,15 +186,37 @@ export class PosDashboardService {
           select: { id: true, firstName: true, lastName: true },
         })
       : [];
-    const spUserMap = new Map(spUsers.map((u) => [u.id, u]));
+
+    const spEmployees = spUserIds.length
+      ? await this.prisma.employee.findMany({
+          where: {
+            OR: [
+              { id: { in: spUserIds } },
+              { userId: { in: spUserIds } }
+            ]
+          },
+          select: { id: true, userId: true, employeeName: true }
+        })
+      : [];
+
+    const spNameMap = new Map<string, string>();
+    for (const u of spUsers) {
+      spNameMap.set(u.id, `${u.firstName} ${u.lastName}`);
+    }
+    for (const emp of spEmployees) {
+      spNameMap.set(emp.id, emp.employeeName);
+      if (emp.userId) {
+        spNameMap.set(emp.userId, emp.employeeName);
+      }
+    }
 
     const salespeople = salespersonAgg.map((row) => {
-      const u = spUserMap.get(row.cashierUserId ?? '');
+      const name = spNameMap.get(row.cashierUserId ?? '') || 'Unknown';
       const sales = Number(row._sum.grandTotal ?? 0);
       const txns = row._count.id;
       return {
         userId: row.cashierUserId,
-        name: u ? `${u.firstName} ${u.lastName}` : 'Unknown',
+        name,
         sales,
         transactions: txns,
         cashSales: Number(row._sum.cashAmount ?? 0),

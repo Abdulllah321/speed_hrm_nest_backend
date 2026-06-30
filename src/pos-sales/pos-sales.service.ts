@@ -562,6 +562,7 @@ export class PosSalesService implements OnModuleInit {
                             locationId: dto.locationId,
                             customerId: dto.customerId,
                             cashierUserId,
+                            createdById: ctx?.userId || cashierUserId || null,
                             paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                             notes: notesParts.join(' | ') || undefined,
                             manualDiscountNote: dto.manualDiscountNote || undefined,
@@ -604,6 +605,7 @@ export class PosSalesService implements OnModuleInit {
                             locationId: dto.locationId,
                             customerId: dto.customerId,
                             cashierUserId,
+                            createdById: ctx?.userId || cashierUserId || null,
                             paymentMethod: isCreditSale && totalPaid === 0 ? 'credit_account' : paymentMethod,
                             notes: notesParts.join(' | ') || undefined,
                             manualDiscountNote: dto.manualDiscountNote || undefined,
@@ -2882,6 +2884,7 @@ export class PosSalesService implements OnModuleInit {
                         locationId: dto.locationId,
                         customerId: dto.customerId,
                         cashierUserId,
+                        createdById: ctx?.userId || cashierUserId || null,
                         paymentMethod: null,
                         notes: dto.notes,
                         subtotal,
@@ -3440,14 +3443,43 @@ export class PosSalesService implements OnModuleInit {
                 select: { id: true, firstName: true, lastName: true, email: true },
             })
             : [];
-        const cashierUserMap = new Map(cashierUsers.map((u) => [u.id, u]));
+
+        const cashierEmployees = cashierUserIds.length
+            ? await this.prisma.employee.findMany({
+                where: {
+                    OR: [
+                        { id: { in: cashierUserIds } },
+                        { userId: { in: cashierUserIds } }
+                    ]
+                },
+                select: { id: true, userId: true, employeeName: true, officialEmail: true, personalEmail: true }
+            })
+            : [];
+
+        const cashierNameMap = new Map<string, string>();
+        const cashierEmailMap = new Map<string, string>();
+
+        for (const u of cashierUsers) {
+            cashierNameMap.set(u.id, `${u.firstName} ${u.lastName}`);
+            if (u.email) cashierEmailMap.set(u.id, u.email);
+        }
+        for (const emp of cashierEmployees) {
+            cashierNameMap.set(emp.id, emp.employeeName);
+            const email = emp.officialEmail || emp.personalEmail;
+            if (email) cashierEmailMap.set(emp.id, email);
+            if (emp.userId) {
+                cashierNameMap.set(emp.userId, emp.employeeName);
+                if (email) cashierEmailMap.set(emp.userId, email);
+            }
+        }
 
         const cashierStats = cashierPerf.map((row) => {
-            const u = cashierUserMap.get(row.cashierUserId || '');
+            const name = cashierNameMap.get(row.cashierUserId || '') || 'Unknown';
+            const email = cashierEmailMap.get(row.cashierUserId || '') || '-';
             return {
                 cashierUserId: row.cashierUserId,
-                name: u ? `${u.firstName} ${u.lastName}` : 'Unknown',
-                email: u?.email || '-',
+                name,
+                email,
                 totalSales: Number(row._sum.grandTotal || 0),
                 totalDiscount: Number(row._sum.discountAmount || 0),
                 orderCount: row._count.id,
@@ -3481,7 +3513,29 @@ export class PosSalesService implements OnModuleInit {
                 select: { id: true, firstName: true, lastName: true },
             })
             : [];
-        const orderCashierMap = new Map(orderCashierUsers.map((u) => [u.id, `${u.firstName} ${u.lastName}`]));
+
+        const orderEmployees = orderCashierIds.length
+            ? await this.prisma.employee.findMany({
+                where: {
+                    OR: [
+                        { id: { in: orderCashierIds } },
+                        { userId: { in: orderCashierIds } }
+                    ]
+                },
+                select: { id: true, userId: true, employeeName: true }
+            })
+            : [];
+
+        const orderCashierMap = new Map<string, string>();
+        for (const u of orderCashierUsers) {
+            orderCashierMap.set(u.id, `${u.firstName} ${u.lastName}`);
+        }
+        for (const emp of orderEmployees) {
+            orderCashierMap.set(emp.id, emp.employeeName);
+            if (emp.userId) {
+                orderCashierMap.set(emp.userId, emp.employeeName);
+            }
+        }
 
         const orders = rawOrders.map((o) => ({
             ...o,
@@ -3597,10 +3651,10 @@ export class PosSalesService implements OnModuleInit {
 
     // ─── List available cashiers for a location ─────────────────────
     async listCashiers(locationId: string) {
-        // 1. Find all employees at this location
+        // 1. Find all active employees at this location
         const employees = await this.prisma.employee.findMany({
-            where: { locationId },
-            select: { id: true, employeeName: true, employeeId: true, userId: true, status: true }
+            where: { locationId, status: 'active' },
+            select: { id: true, employeeName: true, employeeId: true, userId: true, officialEmail: true, personalEmail: true }
         });
 
         if (employees.length === 0) return { status: true, data: [] };
@@ -3620,17 +3674,15 @@ export class PosSalesService implements OnModuleInit {
             select: { id: true, firstName: true, lastName: true, email: true, employeeId: true }
         });
 
-        // 3. Merge data
-        // We want to return a list where each entry has a valid userId for the SalesOrder
-        const cashierList = users.map(user => {
-            // Find the corresponding employee record
-            const emp = employees.find(e => e.id === user.employeeId || e.userId === user.id);
+        // 3. Merge data starting from employees as primary source
+        const cashierList = employees.map(emp => {
+            const user = users.find(u => u.employeeId === emp.id || u.id === emp.userId);
             return {
-                userId: user.id,
-                employeeId: emp?.id || user.employeeId,
-                name: emp ? emp.employeeName : `${user.firstName} ${user.lastName}`,
-                email: user.email,
-                empCode: emp ? emp.employeeId : null
+                userId: user?.id || emp.userId || emp.id,
+                employeeId: emp.id,
+                name: emp.employeeName || (user ? `${user.firstName} ${user.lastName}` : 'Unknown'),
+                email: user?.email || emp.officialEmail || emp.personalEmail || null,
+                empCode: emp.employeeId
             };
         });
 
