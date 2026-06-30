@@ -251,6 +251,11 @@ export class CreateSalesOrderDto {
     @IsString()
     holdOrderId?: string;
 
+    @ApiPropertyOptional({ description: 'Specific time at which hold expires' })
+    @IsOptional()
+    @IsString()
+    holdExpiresAt?: string;
+
     @ApiPropertyOptional({ description: 'Flag to indicate this is a credit sale (customer will pay later)' })
     @IsOptional()
     isCreditSale?: boolean;
