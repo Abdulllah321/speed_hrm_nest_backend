@@ -86,6 +86,12 @@ export class TenderItemDto {
     @IsOptional()
     @IsString()
     voucherId?: string;
+
+    @ApiPropertyOptional({ description: 'Voucher face value (total amount of the voucher)' })
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    voucherFaceValue?: number;
 }
 
 // ── Alliance / bank card meta ─────────────────────────────────────────────
