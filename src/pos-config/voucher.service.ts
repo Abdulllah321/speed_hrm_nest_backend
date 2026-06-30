@@ -85,14 +85,33 @@ export class VoucherService {
 
             const sourceOrderMap = new Map(sourceOrders.map(o => [o.id, o]));
 
+            const locationIds = vouchers
+                .map(v => v.issuedByLocationId)
+                .filter((id): id is string => !!id);
+
+            const locations = locationIds.length > 0
+                ? await this.prisma.location.findMany({
+                    where: { id: { in: locationIds } },
+                    select: { id: true, name: true, code: true },
+                })
+                : [];
+
+            const locationMap = new Map(locations.map(l => [l.id, l]));
+
             const data = vouchers.map(v => {
                 const sourceOrder = v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null;
+                const issuedByLocation = v.issuedByLocationId ? locationMap.get(v.issuedByLocationId) : null;
                 return {
                     ...v,
                     sourceOrder: sourceOrder ? {
                         orderNumber: sourceOrder.orderNumber,
                         returnNumber: sourceOrder.returnNumber,
                         refundNumber: sourceOrder.refundNumber,
+                    } : null,
+                    issuedByLocation: issuedByLocation ? {
+                        id: issuedByLocation.id,
+                        name: issuedByLocation.name,
+                        code: issuedByLocation.code,
                     } : null,
                 };
             });
