@@ -76,16 +76,22 @@ export class TransferRequestController {
     @Get('outbound-requests')
     @Permissions('pos.inventory.outbound.view')
     @ApiOperation({ summary: 'Get outbound requests for source approval (outlet to outlet)' })
-    async getOutboundRequests(@Query('locationId') locationId: string) {
-        const data = await this.transferRequestService.getOutboundRequests(locationId);
+    async getOutboundRequests(
+        @Query('locationId') locationId: string,
+        @Query('status') status?: string
+    ) {
+        const data = await this.transferRequestService.getOutboundRequests(locationId, status);
         return { status: true, data };
     }
 
     @Get('inbound-requests')
     @Permissions('pos.inventory.inbound.view')
     @ApiOperation({ summary: 'Get inbound requests for destination acceptance (outlet to outlet)' })
-    async getInboundRequests(@Query('locationId') locationId: string) {
-        const data = await this.transferRequestService.getInboundRequests(locationId);
+    async getInboundRequests(
+        @Query('locationId') locationId: string,
+        @Query('status') status?: string
+    ) {
+        const data = await this.transferRequestService.getInboundRequests(locationId, status);
         return { status: true, data };
     }
 
@@ -125,8 +131,8 @@ export class TransferRequestController {
     @Post(':id/approve-source')
     @Permissions('pos.inventory.outbound.approve')
     @ApiOperation({ summary: 'Approve transfer at source outlet (outlet to outlet only)' })
-    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string }, @Req() req: any) {
-        const data = await this.transferRequestService.approveSource(id, dto.userId, {
+    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string; items?: { itemId: string; quantity: number }[] }, @Req() req: any) {
+        const data = await this.transferRequestService.approveSource(id, dto.userId, dto.items, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
