@@ -595,26 +595,43 @@ export class PosSessionService {
       totalTaxes += taxAmount;
       totalDiscounts += discountAmount + globalDiscountAmount;
 
-      const isLegacy =
-        order.voucherAmount === null || order.voucherAmount === undefined;
       const voucherRedemptionsSum =
         order.voucherRedemptions?.reduce(
           (sum, r) => sum + Number(r.amountUsed),
           0,
         ) ?? 0;
 
-      const cash = Number(order.cashAmount ?? 0);
-      const card = isLegacy
-        ? Math.max(
-            0,
-            Number(order.cardAmount ?? 0) -
-              voucherRedemptionsSum -
-              Number(order.changeAmount ?? 0),
-          )
-        : Number(order.cardAmount ?? 0);
-      const voucher = isLegacy
-        ? voucherRedemptionsSum
-        : Number(order.voucherAmount ?? 0);
+      const rawCash = Number(order.cashAmount ?? 0);
+      const rawCard = Number(order.cardAmount ?? 0);
+      const change = Number(order.changeAmount ?? 0);
+
+      // Determine if voucher redemption is double-counted within card/cash amounts
+      const excess = Math.max(
+        0,
+        rawCash + rawCard + voucherRedemptionsSum - (grandTotal + change),
+      );
+
+      let cash = rawCash;
+      let card = rawCard;
+      if (excess > 0) {
+        if (card > 0) {
+          card = Math.max(0, card - excess);
+        } else {
+          cash = Math.max(0, cash - excess);
+        }
+      }
+
+      // Fallback for non-split orders with empty cash/card amounts in DB
+      if (order.tenderType !== 'split' && order.paymentMethod) {
+        if (order.paymentMethod === 'cash') {
+          if (cash === 0) cash = Math.max(0, grandTotal - voucherRedemptionsSum);
+        } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+          if (card === 0) card = Math.max(0, grandTotal - voucherRedemptionsSum);
+        }
+      }
+
+      const voucher = voucherRedemptionsSum;
+
 
       if (cash > 0) {
         cashSalesCount++;
@@ -1255,26 +1272,43 @@ export class PosSessionService {
       totalTaxes += taxAmount;
       totalDiscounts += discountAmount + globalDiscountAmount;
 
-      const isLegacy =
-        order.voucherAmount === null || order.voucherAmount === undefined;
       const voucherRedemptionsSum =
         order.voucherRedemptions?.reduce(
           (sum, r) => sum + Number(r.amountUsed),
           0,
         ) ?? 0;
 
-      const cash = Number(order.cashAmount ?? 0);
-      const card = isLegacy
-        ? Math.max(
-            0,
-            Number(order.cardAmount ?? 0) -
-              voucherRedemptionsSum -
-              Number(order.changeAmount ?? 0),
-          )
-        : Number(order.cardAmount ?? 0);
-      const voucher = isLegacy
-        ? voucherRedemptionsSum
-        : Number(order.voucherAmount ?? 0);
+      const rawCash = Number(order.cashAmount ?? 0);
+      const rawCard = Number(order.cardAmount ?? 0);
+      const change = Number(order.changeAmount ?? 0);
+
+      // Determine if voucher redemption is double-counted within card/cash amounts
+      const excess = Math.max(
+        0,
+        rawCash + rawCard + voucherRedemptionsSum - (grandTotal + change),
+      );
+
+      let cash = rawCash;
+      let card = rawCard;
+      if (excess > 0) {
+        if (card > 0) {
+          card = Math.max(0, card - excess);
+        } else {
+          cash = Math.max(0, cash - excess);
+        }
+      }
+
+      // Fallback for non-split orders with empty cash/card amounts in DB
+      if (order.tenderType !== 'split' && order.paymentMethod) {
+        if (order.paymentMethod === 'cash') {
+          if (cash === 0) cash = Math.max(0, grandTotal - voucherRedemptionsSum);
+        } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+          if (card === 0) card = Math.max(0, grandTotal - voucherRedemptionsSum);
+        }
+      }
+
+      const voucher = voucherRedemptionsSum;
+
 
       if (cash > 0) {
         cashSalesCount++;
