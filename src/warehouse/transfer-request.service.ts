@@ -300,16 +300,23 @@ export class TransferRequestService {
         return Promise.all(requests.map(req => this.enrichRequest(req)));
     }
 
-    async getOutboundRequests(locationId: string) {
+    async getOutboundRequests(locationId: string, status?: string) {
         // Get outlet-to-outlet requests where this location is the source
+        const whereClause: any = {
+            fromLocationId: locationId,
+            transferType: 'OUTLET_TO_OUTLET',
+        };
+
+        if (status === 'history') {
+            whereClause.status = { in: ['SOURCE_APPROVED', 'COMPLETED', 'REJECTED'] };
+        } else {
+            whereClause.status = 'PENDING';
+            whereClause.requiresSourceApproval = true;
+            whereClause.sourceApprovedById = null;
+        }
+
         const requests = await this.prisma.transferRequest.findMany({
-            where: {
-                fromLocationId: locationId,
-                transferType: 'OUTLET_TO_OUTLET',
-                status: 'PENDING',
-                requiresSourceApproval: true,
-                sourceApprovedById: null,
-            },
+            where: whereClause,
             include: {
                 items: {
                     include: {
@@ -321,6 +328,7 @@ export class TransferRequestService {
                         }
                     }
                 },
+                toLocation: { select: { name: true, code: true } }
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -328,14 +336,21 @@ export class TransferRequestService {
         return Promise.all(requests.map(req => this.enrichRequest(req)));
     }
 
-    async getInboundRequests(locationId: string) {
+    async getInboundRequests(locationId: string, status?: string) {
         // Get outlet-to-outlet requests where this location is the destination
+        const whereClause: any = {
+            toLocationId: locationId,
+            transferType: 'OUTLET_TO_OUTLET',
+        };
+
+        if (status === 'history') {
+            whereClause.status = { in: ['COMPLETED', 'REJECTED'] };
+        } else {
+            whereClause.status = { in: ['PENDING', 'SOURCE_APPROVED'] };
+        }
+
         const requests = await this.prisma.transferRequest.findMany({
-            where: {
-                toLocationId: locationId,
-                transferType: 'OUTLET_TO_OUTLET',
-                status: 'SOURCE_APPROVED', // Only show after source approval
-            },
+            where: whereClause,
             include: {
                 items: {
                     include: {
@@ -347,6 +362,7 @@ export class TransferRequestService {
                         }
                     }
                 },
+                fromLocation: { select: { name: true, code: true } }
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -363,6 +379,13 @@ export class TransferRequestService {
                 where: { id: req.toLocationId }
             });
             if (masterLoc) req.toLocation = masterLoc;
+        }
+
+        if (req.fromLocationId) {
+            const sourceLoc = await this.prisma.location.findUnique({
+                where: { id: req.fromLocationId }
+            });
+            if (sourceLoc) req.fromLocation = sourceLoc;
         }
 
         // Fetch claim data if this is a claim transfer
@@ -500,7 +523,12 @@ export class TransferRequestService {
         }
     }
 
-    async approveSource(id: string, userId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    async approveSource(
+        id: string, 
+        userId?: string, 
+        items?: { itemId: string; quantity: number }[],
+        ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
+    ) {
         try {
             const request = await this.prisma.transferRequest.findUnique({
                 where: { id },
@@ -543,6 +571,25 @@ export class TransferRequestService {
             }
 
             return this.prisma.$transaction(async (tx) => {
+                // If adjusted items are provided, update them first
+                if (items && items.length > 0) {
+                    for (const adjustedItem of items) {
+                        const existingItem = request.items.find(i => i.itemId === adjustedItem.itemId);
+                        if (existingItem) {
+                            if (adjustedItem.quantity <= 0) {
+                                throw new BadRequestException(`Quantity for item ${adjustedItem.itemId} must be greater than 0`);
+                            }
+                            // Update quantity in the database
+                            await tx.transferRequestItem.update({
+                                where: { id: existingItem.id },
+                                data: { quantity: adjustedItem.quantity }
+                            });
+                            // Update our local memory of the item quantity so the subsequent stock check uses the new quantity
+                            existingItem.quantity = adjustedItem.quantity as any;
+                        }
+                    }
+                }
+
                 // 1. Check and reserve stock at source outlet
                 for (const item of request.items) {
                     const sourceStock = await tx.inventoryItem.findFirst({
