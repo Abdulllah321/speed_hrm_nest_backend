@@ -1155,7 +1155,6 @@ export class PosSalesService implements OnModuleInit {
                     });
                 }
             }
-            
             const enrichedItems = order.items.map(oi => ({
                 ...oi,
                 returnedQty: itemMap?.get(oi.itemId) || 0,
@@ -1230,187 +1229,172 @@ export class PosSalesService implements OnModuleInit {
             where.cashierUserId = user.id;
         }
 
-        // ── Resolve Search Filters ──
-        if (filters?.search) {
-            const searchTerm = filters.search.trim();
-            
-            // 1. Search SalesOrder by orderNumber, returnNumber, refundNumber
-            const matchedOrders = await this.prisma.salesOrder.findMany({
+        // ── Determine Date Range ──
+        let start: Date | undefined = undefined;
+        let end: Date | undefined = undefined;
+
+        if (filters?.startDate) {
+            start = new Date(filters.startDate);
+        } else if (!filters?.search) {
+            // Default to last 30 days if no start date and no search query is specified
+            start = new Date();
+            start.setDate(start.getDate() - 30);
+            start.setHours(0, 0, 0, 0);
+        }
+
+        if (filters?.endDate) {
+            end = new Date(filters.endDate);
+            end.setHours(23, 59, 59, 999);
+        } else if (!filters?.search) {
+            end = new Date();
+            end.setHours(23, 59, 59, 999);
+        }
+
+        // ── Gather all matching Order IDs by Activity Date ──
+        const targetOrderIds = new Set<string>();
+        const filterByDate = start || end;
+
+        if (filterByDate) {
+            // 1. Sale Activity in range
+            const saleRangeQuery: any = {};
+            if (start) saleRangeQuery.gte = start;
+            if (end) saleRangeQuery.lte = end;
+
+            const salesInRange = await this.prisma.salesOrder.findMany({
                 where: {
-                    OR: [
-                        { orderNumber: { contains: searchTerm, mode: 'insensitive' } },
-                        { returnNumber: { contains: searchTerm, mode: 'insensitive' } },
-                        { refundNumber: { contains: searchTerm, mode: 'insensitive' } },
-                    ],
+                    ...where,
+                    createdAt: saleRangeQuery,
                 },
                 select: { id: true },
             });
-            const orderIdsFromSales = matchedOrders.map(o => o.id);
+            salesInRange.forEach(o => targetOrderIds.add(o.id));
 
-            // 2. Search Claims by claimNumber
+            // 2. Return/Refund Activity in range (from stock ledgers)
+            const ledgerRangeQuery: any = {};
+            if (start) ledgerRangeQuery.gte = start;
+            if (end) ledgerRangeQuery.lte = end;
+
+            const ledgersInRange = await this.prisma.stockLedger.findMany({
+                where: {
+                    referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+                    createdAt: ledgerRangeQuery,
+                },
+                select: { referenceId: true },
+            });
+            ledgersInRange.forEach(l => targetOrderIds.add(l.referenceId));
+
+            // 3. Claim Activity in range (from claims)
+            const claimRangeQuery: any = {};
+            if (start) claimRangeQuery.gte = start;
+            if (end) claimRangeQuery.lte = end;
+
+            const claimsInRange = await this.prisma.posClaim.findMany({
+                where: { submittedAt: claimRangeQuery },
+                select: { salesOrderId: true },
+            });
+            claimsInRange.forEach(c => targetOrderIds.add(c.salesOrderId));
+        }
+
+        // ── Search Filters ──
+        if (filters?.search) {
+            const searchTerm = filters.search.trim();
+
+            const searchWhere: any = {
+                OR: [
+                    { orderNumber: { contains: searchTerm, mode: 'insensitive' } },
+                    { returnNumber: { contains: searchTerm, mode: 'insensitive' } },
+                    { refundNumber: { contains: searchTerm, mode: 'insensitive' } },
+                ],
+            };
+
+            const matchedOrders = await this.prisma.salesOrder.findMany({
+                where: {
+                    ...where,
+                    ...searchWhere,
+                },
+                select: { id: true },
+            });
+            const searchOrderIds = new Set(matchedOrders.map(o => o.id));
+
+            // Search by Claim Number
             const matchedClaims = await this.prisma.posClaim.findMany({
                 where: { claimNumber: { contains: searchTerm, mode: 'insensitive' } },
                 select: { salesOrderId: true },
             });
-            const orderIdsFromClaims = matchedClaims.map(c => c.salesOrderId);
+            matchedClaims.forEach(c => searchOrderIds.add(c.salesOrderId));
 
-            // 3. Search Vouchers (issued vouchers where sourceOrderId is set)
+            // Search by Voucher Code (Issued or Redeemed)
             const matchedIssuedVouchers = await this.prisma.voucher.findMany({
                 where: { code: { contains: searchTerm, mode: 'insensitive' }, sourceOrderId: { not: null } },
                 select: { sourceOrderId: true },
             });
-            const orderIdsFromIssuedVouchers = matchedIssuedVouchers.map(v => v.sourceOrderId as string);
+            matchedIssuedVouchers.forEach(v => searchOrderIds.add(v.sourceOrderId as string));
 
-            // 4. Search Vouchers redeemed in order
             const matchedRedemptions = await this.prisma.voucherRedemption.findMany({
                 where: { voucher: { code: { contains: searchTerm, mode: 'insensitive' } } },
                 select: { orderId: true },
             });
-            const orderIdsFromRedeemedVouchers = matchedRedemptions.map(r => r.orderId);
+            matchedRedemptions.forEach(r => searchOrderIds.add(r.orderId));
 
-            // Combine all matched order IDs
-            const allMatchedIds = Array.from(new Set([
-                ...orderIdsFromSales,
-                ...orderIdsFromClaims,
-                ...orderIdsFromIssuedVouchers,
-                ...orderIdsFromRedeemedVouchers,
-            ]));
-
-            where.id = { in: allMatchedIds };
-        }
-
-        // ── Resolve Date Range Filters ──
-        if (filters?.startDate || filters?.endDate) {
-            const start = filters.startDate ? new Date(filters.startDate) : undefined;
-            let end: Date | undefined = undefined;
-            if (filters.endDate) {
-                end = new Date(filters.endDate);
-                end.setHours(23, 59, 59, 999);
-            }
-
-            // Find orders where original sale matches range
-            const saleQuery: any = {};
-            if (start) saleQuery.gte = start;
-            if (end) saleQuery.lte = end;
-
-            const ordersWithSaleInRange = await this.prisma.salesOrder.findMany({
-                where: { createdAt: saleQuery },
-                select: { id: true },
-            });
-            const orderIdsFromSaleRange = ordersWithSaleInRange.map(o => o.id);
-
-            // Find orders where a return or refund occurred in range
-            const ledgerQuery: any = {};
-            if (start) ledgerQuery.gte = start;
-            if (end) ledgerQuery.lte = end;
-
-            const returnedLedgersInRange = await this.prisma.stockLedger.findMany({
-                where: {
-                    referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
-                    createdAt: ledgerQuery,
-                },
-                select: { referenceId: true },
-            });
-            const orderIdsFromReturnRange = returnedLedgersInRange.map(l => l.referenceId);
-
-            // Find orders where a claim was submitted in range
-            const claimQuery: any = {};
-            if (start) claimQuery.gte = start;
-            if (end) claimQuery.lte = end;
-
-            const claimsInRange = await this.prisma.posClaim.findMany({
-                where: { submittedAt: claimQuery },
-                select: { salesOrderId: true },
-            });
-            const orderIdsFromClaimRange = claimsInRange.map(c => c.salesOrderId);
-
-            // Combine matched range IDs
-            const allRangeIds = Array.from(new Set([
-                ...orderIdsFromSaleRange,
-                ...orderIdsFromReturnRange,
-                ...orderIdsFromClaimRange,
-            ]));
-
-            // Intersect with search if search is active
-            if (where.id) {
-                const searchIds = where.id.in as string[];
-                where.id = { in: searchIds.filter(id => allRangeIds.includes(id)) };
+            // If we have date filters, intersect search results with target IDs. Else, use search results directly.
+            if (filterByDate) {
+                const intersectIds = Array.from(targetOrderIds).filter(id => searchOrderIds.has(id));
+                targetOrderIds.clear();
+                intersectIds.forEach(id => targetOrderIds.add(id));
             } else {
-                where.id = { in: allRangeIds };
+                searchOrderIds.forEach(id => targetOrderIds.add(id));
             }
         }
 
-        // ── Resolve Activity Type Filter ──
-        if (activityType) {
-            if (activityType === 'sale') {
-                // Just orders (all matched orders have a sale activity by default)
-            } else if (activityType === 'return') {
-                where.returnNumber = { not: null };
-            } else if (activityType === 'refund') {
-                where.refundNumber = { not: null };
-            } else if (activityType === 'claim') {
-                where.claims = { some: {} };
-            } else if (activityType === 'exchange') {
-                // Exchange matches returns or claims of type EXCHANGE/status exchanged
-                where.OR = [
-                    { returnNumber: { not: null } },
-                    { claims: { some: { claimType: 'EXCHANGE' } } }
-                ];
-            }
-        }
+        // Apply final resolved order IDs filter
+        where.id = { in: Array.from(targetOrderIds) };
 
-        // ── Fetch paginated orders ──
-        const [rawOrders, total] = await Promise.all([
-            this.prisma.salesOrder.findMany({
-                where,
-                skip,
-                take: limit,
-                orderBy: { createdAt: 'desc' },
-                include: {
-                    items: { 
-                        include: { 
-                            item: { 
-                                select: { 
-                                    description: true, 
-                                    sku: true, 
-                                    barCode: true, 
-                                    size: { select: { name: true } }, 
-                                    color: { select: { name: true } },
-                                    brand: { select: { name: true } }
-                                } 
+        // ── Fetch orders with matching IDs ──
+        const rawOrders = await this.prisma.salesOrder.findMany({
+            where,
+            include: {
+                items: { 
+                    include: { 
+                        item: { 
+                            select: { 
+                                description: true, 
+                                sku: true, 
+                                barCode: true, 
+                                size: { select: { name: true } }, 
+                                color: { select: { name: true } },
+                                brand: { select: { name: true } }
                             } 
                         } 
-                    },
-                    customer: { select: { id: true, name: true, contactNo: true } },
-                    promo: { select: { name: true, code: true } },
-                    coupon: { select: { code: true, description: true } },
-                    alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
-                    merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
-                    voucherRedemptions: { 
-                        select: { 
-                            amountUsed: true, 
-                            voucher: { select: { code: true, faceValue: true } } 
-                        } 
-                    },
-                    claims: {
-                        include: {
-                            items: {
-                                include: {
-                                    item: { select: { description: true, sku: true, barCode: true } }
-                                }
-                            },
-                            voucher: { select: { code: true, faceValue: true } }
-                        },
-                        orderBy: { submittedAt: 'desc' },
-                    }
+                    } 
                 },
-            }),
-            this.prisma.salesOrder.count({ where }),
-        ]);
+                customer: { select: { id: true, name: true, contactNo: true } },
+                promo: { select: { name: true, code: true } },
+                coupon: { select: { code: true, description: true } },
+                alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
+                merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
+                voucherRedemptions: { 
+                    select: { 
+                        amountUsed: true, 
+                        voucher: { select: { code: true, faceValue: true } } 
+                    } 
+                },
+                claims: {
+                    include: {
+                        items: {
+                            include: {
+                                item: { select: { description: true, sku: true, barCode: true } }
+                            }
+                        },
+                        voucher: { select: { code: true, faceValue: true } }
+                    },
+                    orderBy: { submittedAt: 'desc' },
+                }
+            },
+        });
 
         const orderIds = rawOrders.map(o => o.id);
 
-        // Fetch stock ledgers for ALL fetched orders to reconstruct return/refund item entries
+        // Fetch stock ledgers for returns/refunds
         const returnEntries = await this.prisma.stockLedger.findMany({
             where: {
                 referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
@@ -1426,7 +1410,6 @@ export class PosSalesService implements OnModuleInit {
             orderBy: { createdAt: 'asc' },
         });
 
-        // Group returns/refunds by order ID
         const returnEntriesMap = new Map<string, typeof returnEntries>();
         for (const entry of returnEntries) {
             if (!returnEntriesMap.has(entry.referenceId)) {
@@ -1435,7 +1418,7 @@ export class PosSalesService implements OnModuleInit {
             returnEntriesMap.get(entry.referenceId)!.push(entry);
         }
 
-        // Fetch issued vouchers (where sourceOrderId matches and is active)
+        // Fetch issued vouchers
         const issuedVouchers = await this.prisma.voucher.findMany({
             where: {
                 sourceOrderId: { in: orderIds },
@@ -1461,13 +1444,15 @@ export class PosSalesService implements OnModuleInit {
             }
         }
 
-        // ── Map rawOrders to construct activities feed ──
-        const ordersWithActivities = (rawOrders as any[]).map(order => {
-            const activities: any[] = [];
+        // ── Flatten activities ──
+        let allActivities: any[] = [];
+
+        (rawOrders as any[]).forEach(order => {
             const orderVouchers = issuedVouchersMap.get(order.id) || [];
             const orderLedgers = returnEntriesMap.get(order.id) || [];
 
             // 1. Sale Activity
+            const saleIssuedVouchers = orderVouchers.filter(v => ['GIFT', 'CREDIT'].includes(v.voucherType));
             const tenders: { method: string; amount: number; slipNo?: string }[] = [];
             const voucherTotalFromRedemptions = (order.voucherRedemptions || []).reduce(
                 (sum: number, r: any) => sum + Number(r.amountUsed), 0
@@ -1494,14 +1479,17 @@ export class PosSalesService implements OnModuleInit {
                 }
             }
 
-            const saleIssuedVouchers = orderVouchers.filter(v => ['GIFT', 'CREDIT'].includes(v.voucherType));
-
-            activities.push({
+            allActivities.push({
                 id: `${order.id}-sale`,
                 type: 'sale',
                 number: order.orderNumber,
                 date: order.createdAt,
                 amount: Number(order.grandTotal),
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                locationId: order.locationId,
+                posId: order.posId || order.terminalId,
+                customer: order.customer,
                 tenders,
                 issuedVouchers: saleIssuedVouchers.map(v => ({
                     code: v.code,
@@ -1509,7 +1497,7 @@ export class PosSalesService implements OnModuleInit {
                     voucherType: v.voucherType,
                     expiresAt: v.expiresAt
                 })),
-                items: order.items.map(oi => ({
+                items: order.items.map((oi: any) => ({
                     itemId: oi.itemId,
                     sku: oi.item?.sku || oi.item?.barCode || 'N/A',
                     description: oi.item?.description || 'Item',
@@ -1521,14 +1509,14 @@ export class PosSalesService implements OnModuleInit {
                 }))
             });
 
-            // 2. Return Activity (POS_RETURN entries in stock ledger)
+            // 2. Return Activity
             const returnLedgers = orderLedgers.filter(l => l.referenceType === 'POS_RETURN');
             if (order.returnNumber || returnLedgers.length > 0) {
                 const exchangeVoucher = orderVouchers.find(v => v.voucherType === 'EXCHANGE');
                 const returnDate = returnLedgers.length > 0 ? returnLedgers[returnLedgers.length - 1].createdAt : order.updatedAt;
 
                 const returnedItems = returnLedgers.map(l => {
-                    const orderItem = order.items.find(oi => oi.itemId === l.itemId);
+                    const orderItem = order.items.find((oi: any) => oi.itemId === l.itemId);
                     return {
                         itemId: l.itemId,
                         sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
@@ -1541,12 +1529,17 @@ export class PosSalesService implements OnModuleInit {
                     };
                 });
 
-                activities.push({
+                allActivities.push({
                     id: `${order.id}-return`,
                     type: 'return',
                     number: order.returnNumber || 'Return',
                     date: returnDate,
                     amount: exchangeVoucher ? Number(exchangeVoucher.faceValue) : returnedItems.reduce((s, i) => s + i.lineTotal, 0),
+                    orderId: order.id,
+                    orderNumber: order.orderNumber,
+                    locationId: order.locationId,
+                    posId: order.posId || order.terminalId,
+                    customer: order.customer,
                     items: returnedItems,
                     issuedVouchers: exchangeVoucher ? [{
                         code: exchangeVoucher.code,
@@ -1557,14 +1550,14 @@ export class PosSalesService implements OnModuleInit {
                 });
             }
 
-            // 3. Refund Activity (POS_REFUND entries in stock ledger)
+            // 3. Refund Activity
             const refundLedgers = orderLedgers.filter(l => l.referenceType === 'POS_REFUND');
             if (order.refundNumber || refundLedgers.length > 0) {
                 const refundVouchers = orderVouchers.filter(v => ['REFUND', 'CREDIT'].includes(v.voucherType) && !saleIssuedVouchers.some(sv => sv.id === v.id));
                 const refundDate = refundLedgers.length > 0 ? refundLedgers[refundLedgers.length - 1].createdAt : order.updatedAt;
 
                 const refundedItems = refundLedgers.map(l => {
-                    const orderItem = order.items.find(oi => oi.itemId === l.itemId);
+                    const orderItem = order.items.find((oi: any) => oi.itemId === l.itemId);
                     return {
                         itemId: l.itemId,
                         sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
@@ -1577,12 +1570,17 @@ export class PosSalesService implements OnModuleInit {
                     };
                 });
 
-                activities.push({
+                allActivities.push({
                     id: `${order.id}-refund`,
                     type: 'refund',
                     number: order.refundNumber || 'Refund',
                     date: refundDate,
                     amount: refundVouchers.length > 0 ? refundVouchers.reduce((sum, v) => sum + Number(v.faceValue), 0) : refundedItems.reduce((s, i) => s + i.lineTotal, 0),
+                    orderId: order.id,
+                    orderNumber: order.orderNumber,
+                    locationId: order.locationId,
+                    posId: order.posId || order.terminalId,
+                    customer: order.customer,
                     items: refundedItems,
                     issuedVouchers: refundVouchers.map(v => ({
                         code: v.code,
@@ -1595,7 +1593,7 @@ export class PosSalesService implements OnModuleInit {
 
             // 4. Claim Activities
             for (const claim of order.claims || []) {
-                activities.push({
+                allActivities.push({
                     id: claim.id,
                     type: 'claim',
                     number: claim.claimNumber,
@@ -1605,13 +1603,18 @@ export class PosSalesService implements OnModuleInit {
                     approvedAmount: Number(claim.approvedAmount),
                     reasonNotes: claim.reasonNotes,
                     reviewNotes: claim.reviewNotes,
+                    orderId: order.id,
+                    orderNumber: order.orderNumber,
+                    locationId: order.locationId,
+                    posId: order.posId || order.terminalId,
+                    customer: order.customer,
                     issuedVouchers: claim.voucher ? [{
                         code: claim.voucher.code,
                         faceValue: Number(claim.voucher.faceValue),
                         voucherType: 'EXCHANGE',
                         expiresAt: (claim.voucher as any).expiresAt
                     }] : [],
-                    items: claim.items.map(ci => ({
+                    items: claim.items.map((ci: any) => ({
                         itemId: ci.itemId,
                         sku: ci.item?.sku || ci.item?.barCode || 'N/A',
                         description: ci.item?.description || 'Item',
@@ -1625,17 +1628,42 @@ export class PosSalesService implements OnModuleInit {
                 });
             }
 
-            activities.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            return {
-                ...order,
-                activities
-            };
         });
+
+        // ── Secondary filter based on date & activityType & search in memory ──
+        let filteredActivities = allActivities;
+
+        // Apply strict date range filtering on actual activity date
+        if (start || end) {
+            filteredActivities = filteredActivities.filter(act => {
+                const actTime = new Date(act.date).getTime();
+                if (start && actTime < start.getTime()) return false;
+                if (end && actTime > end.getTime()) return false;
+                return true;
+            });
+        }
+
+        // Apply activityType filter
+        if (activityType && activityType !== 'all') {
+            if (activityType === 'exchange') {
+                filteredActivities = filteredActivities.filter(act => 
+                    act.type === 'return' || (act.type === 'claim' && act.claimType === 'EXCHANGE')
+                );
+            } else {
+                filteredActivities = filteredActivities.filter(act => act.type === activityType);
+            }
+        }
+
+        // Sort chronologically by date DESC (newest activities first)
+        filteredActivities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        // Paginate in memory
+        const total = filteredActivities.length;
+        const paginatedActivities = filteredActivities.slice(skip, skip + limit);
 
         return {
             status: true,
-            data: ordersWithActivities,
+            data: paginatedActivities,
             meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
         };
     }
@@ -2780,10 +2808,16 @@ export class PosSalesService implements OnModuleInit {
     async holdOrder(dto: CreateSalesOrderDto, cashierUserId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const now = new Date();
-            const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
-            const midnight = new Date(now);
-            midnight.setHours(23, 59, 59, 999);
-            const holdExpiresAt = oneHourLater < midnight ? oneHourLater : midnight;
+            let holdExpiresAt: Date;
+
+            if (dto.holdExpiresAt) {
+                holdExpiresAt = new Date(dto.holdExpiresAt);
+            } else {
+                const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+                const midnight = new Date(now);
+                midnight.setHours(23, 59, 59, 999);
+                holdExpiresAt = oneHourLater < midnight ? oneHourLater : midnight;
+            }
 
             const itemsData = dto.items.map((lineItem) => {
                 const subtotal = lineItem.unitPrice * lineItem.quantity;
