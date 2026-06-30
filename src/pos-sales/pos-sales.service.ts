@@ -997,7 +997,7 @@ export class PosSalesService implements OnModuleInit {
                     coupon: { select: { code: true, description: true } },
                     alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                     merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
-                    voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true } } } },
+                    voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true, faceValue: true } } } },
                 },
             }),
             this.prisma.salesOrder.count({ where }),
@@ -1077,34 +1077,55 @@ export class PosSalesService implements OnModuleInit {
 
         // Reconstruct tenders and attach returnedQty and claimedQty to each order item
         const orders = rawOrders.map(order => {
-            const tenders: { method: string; amount: number; slipNo?: string }[] = [];
+            const tenders: { method: string; amount: number; slipNo?: string; voucherFaceValue?: number }[] = [];
 
             // Extract voucher redemptions first
             const voucherTotalFromRedemptions = (order.voucherRedemptions || []).reduce(
                 (sum: number, r: any) => sum + Number(r.amountUsed), 0
             );
             for (const r of (order.voucherRedemptions || []) as any[]) {
-                tenders.push({ method: 'voucher', amount: Number(r.amountUsed), slipNo: r.voucher?.code || undefined });
+                tenders.push({
+                    method: 'voucher',
+                    amount: Number(r.amountUsed),
+                    slipNo: r.voucher?.code || undefined,
+                    voucherFaceValue: r.voucher?.faceValue ? Number(r.voucher.faceValue) : undefined,
+                });
+            }
+
+            const rawCash = Number(order.cashAmount ?? 0);
+            const rawCard = Number(order.cardAmount ?? 0);
+            const change = Number(order.changeAmount ?? 0);
+            const grandTotal = Number(order.grandTotal ?? 0);
+
+            // Determine if voucher redemption is double-counted within card/cash amounts
+            const excess = Math.max(
+                0,
+                rawCash + rawCard + voucherTotalFromRedemptions - (grandTotal + change)
+            );
+
+            let cash = rawCash;
+            let card = rawCard;
+            if (excess > 0) {
+                if (card > 0) {
+                    card = Math.max(0, card - excess);
+                } else {
+                    cash = Math.max(0, cash - excess);
+                }
             }
 
             if (order.tenderType === 'split') {
-                if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
-                // cardAmount includes voucher amounts for legacy orders (they were lumped together at creation),
-                // so subtract voucher total only if order.voucherAmount is null/undefined
-                const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
-                const realCardAmount = isLegacy
-                    ? Math.max(0, Number(order.cardAmount) - voucherTotalFromRedemptions - Number(order.changeAmount ?? 0))
-                    : Number(order.cardAmount);
-                if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
+                if (cash > 0) tenders.push({ method: 'cash', amount: cash });
+                if (card > 0) tenders.push({ method: 'card', amount: card });
             } else if (order.paymentMethod) {
-                if (voucherTotalFromRedemptions > 0) {
-                    // Voucher was used alongside another method; compute remaining
-                    const totalOrder = Number(order.grandTotal);
-                    const remaining = totalOrder - voucherTotalFromRedemptions;
-                    if (remaining > 0) tenders.push({ method: order.paymentMethod, amount: remaining });
-                } else {
-                    const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
-                    tenders.push({ method: order.paymentMethod, amount });
+                if (order.paymentMethod === 'cash') {
+                    const finalCash = cash > 0 ? cash : Math.max(0, grandTotal - voucherTotalFromRedemptions);
+                    if (finalCash > 0) tenders.push({ method: 'cash', amount: finalCash });
+                } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+                    const finalCard = card > 0 ? card : Math.max(0, grandTotal - voucherTotalFromRedemptions);
+                    if (finalCard > 0) tenders.push({ method: order.paymentMethod, amount: finalCard });
+                } else if (order.paymentMethod !== 'voucher') {
+                    const finalAmt = Math.max(0, grandTotal - voucherTotalFromRedemptions);
+                    if (finalAmt > 0) tenders.push({ method: order.paymentMethod, amount: finalAmt });
                 }
             }
 
@@ -1629,7 +1650,7 @@ export class PosSalesService implements OnModuleInit {
                 coupon: { select: { code: true, description: true } },
                 alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
                 merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
-                voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true } } } },
+                voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true, faceValue: true } } } },
             },
         });
         if (!order) return { status: false, message: 'Order not found' };
@@ -1698,34 +1719,55 @@ export class PosSalesService implements OnModuleInit {
             approvedClaimQty: claimedQtyMap.get(oi.itemId)?.approved || 0,
         }));
 
-        const tenders: { method: string; amount: number; slipNo?: string }[] = [];
+        const tenders: { method: string; amount: number; slipNo?: string; voucherFaceValue?: number }[] = [];
 
         // Extract voucher redemptions first
         const voucherTotalFromRedemptions = (order.voucherRedemptions || []).reduce(
             (sum: number, r: any) => sum + Number(r.amountUsed), 0
         );
         for (const r of (order.voucherRedemptions || []) as any[]) {
-            tenders.push({ method: 'voucher', amount: Number(r.amountUsed), slipNo: r.voucher?.code || undefined });
+            tenders.push({
+                method: 'voucher',
+                amount: Number(r.amountUsed),
+                slipNo: r.voucher?.code || undefined,
+                voucherFaceValue: r.voucher?.faceValue ? Number(r.voucher.faceValue) : undefined,
+            });
+        }
+
+        const rawCash = Number(order.cashAmount ?? 0);
+        const rawCard = Number(order.cardAmount ?? 0);
+        const change = Number(order.changeAmount ?? 0);
+        const grandTotal = Number(order.grandTotal ?? 0);
+
+        // Determine if voucher redemption is double-counted within card/cash amounts
+        const excess = Math.max(
+            0,
+            rawCash + rawCard + voucherTotalFromRedemptions - (grandTotal + change)
+        );
+
+        let cash = rawCash;
+        let card = rawCard;
+        if (excess > 0) {
+            if (card > 0) {
+                card = Math.max(0, card - excess);
+            } else {
+                cash = Math.max(0, cash - excess);
+            }
         }
 
         if (order.tenderType === 'split') {
-            if (Number(order.cashAmount) > 0) tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
-            // cardAmount includes voucher amounts for legacy orders (they were lumped together at creation),
-            // so subtract voucher total only if order.voucherAmount is null/undefined
-            const isLegacy = order.voucherAmount === null || order.voucherAmount === undefined;
-            const realCardAmount = isLegacy
-                ? Math.max(0, Number(order.cardAmount) - voucherTotalFromRedemptions - Number(order.changeAmount ?? 0))
-                : Number(order.cardAmount);
-            if (realCardAmount > 0) tenders.push({ method: 'card', amount: realCardAmount });
+            if (cash > 0) tenders.push({ method: 'cash', amount: cash });
+            if (card > 0) tenders.push({ method: 'card', amount: card });
         } else if (order.paymentMethod) {
-            if (voucherTotalFromRedemptions > 0) {
-                // Voucher was used alongside another method; compute remaining
-                const totalOrder = Number(order.grandTotal);
-                const remaining = totalOrder - voucherTotalFromRedemptions;
-                if (remaining > 0) tenders.push({ method: order.paymentMethod, amount: remaining });
-            } else {
-                const amount = Number(order.cashAmount) || Number(order.cardAmount) || Number(order.grandTotal);
-                tenders.push({ method: order.paymentMethod, amount });
+            if (order.paymentMethod === 'cash') {
+                const finalCash = cash > 0 ? cash : Math.max(0, grandTotal - voucherTotalFromRedemptions);
+                if (finalCash > 0) tenders.push({ method: 'cash', amount: finalCash });
+            } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+                const finalCard = card > 0 ? card : Math.max(0, grandTotal - voucherTotalFromRedemptions);
+                if (finalCard > 0) tenders.push({ method: order.paymentMethod, amount: finalCard });
+            } else if (order.paymentMethod !== 'voucher') {
+                const finalAmt = Math.max(0, grandTotal - voucherTotalFromRedemptions);
+                if (finalAmt > 0) tenders.push({ method: order.paymentMethod, amount: finalAmt });
             }
         }
 
