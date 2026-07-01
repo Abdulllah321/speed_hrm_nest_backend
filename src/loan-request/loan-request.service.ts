@@ -785,6 +785,9 @@ export class LoanRequestService {
 
       if (body.status !== undefined) {
         updateData.status = body.status;
+        if (body.status === 'disbursed') {
+          updateData.disbursedAt = new Date();
+        }
       }
 
       const updated = await this.prisma.loanRequest.update({

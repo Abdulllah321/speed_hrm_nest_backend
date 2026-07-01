@@ -20,6 +20,7 @@ model LoanRequest {
   approvedAt              DateTime?
   rejectionReason         String?
   status                  String    @default("pending")
+  disbursedAt             DateTime?
   createdById             String?
   updatedById             String?
   createdAt               DateTime  @default(now())
