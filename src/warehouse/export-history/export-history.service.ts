@@ -222,4 +222,94 @@ export class ExportHistoryService {
     });
     res.send(stream);
   }
+
+  async bulkDelete(userId: string, ids: string[]) {
+    const records = await this.prisma.exportHistory.findMany({
+      where: {
+        id: { in: ids },
+        userId,
+      },
+      select: { id: true, filePath: true },
+    });
+
+    if (records.length === 0) return { deletedCount: 0 };
+
+    const deleteResult = await this.prisma.exportHistory.deleteMany({
+      where: {
+        id: { in: records.map(r => r.id) },
+        userId,
+      },
+    });
+
+    for (const record of records) {
+      if (record.filePath) {
+        const fullPath = path.isAbsolute(record.filePath)
+          ? record.filePath
+          : path.join(process.cwd(), record.filePath);
+        try {
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            this.logger.log(`[BulkDelete] Deleted file from disk: ${fullPath}`);
+          }
+        } catch (err) {
+          this.logger.warn(`[BulkDelete] Could not delete file ${fullPath}: ${err.message}`);
+        }
+      }
+    }
+
+    return { deletedCount: deleteResult.count };
+  }
+
+  async bulkMove(userId: string, ids: string[], folderId: string | null) {
+    let destFolderId: string | null = null;
+    
+    if (folderId !== null && folderId !== 'null' && folderId !== 'root') {
+      const folder = await this.prisma.exportFolder.findFirst({
+        where: { id: folderId, userId },
+      });
+      if (!folder) {
+        throw new NotFoundException(`Target folder not found`);
+      }
+      destFolderId = folderId;
+    }
+
+    const updateResult = await this.prisma.exportHistory.updateMany({
+      where: {
+        id: { in: ids },
+        userId,
+      },
+      data: {
+        folderId: destFolderId,
+      },
+    });
+
+    return { movedCount: updateResult.count };
+  }
+
+  async bulkRename(userId: string, ids: string[], baseName: string) {
+    const records = await this.prisma.exportHistory.findMany({
+      where: {
+        id: { in: ids },
+        userId,
+      },
+      select: { id: true, fileName: true },
+    });
+
+    let renamedCount = 0;
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      const originalExt = path.extname(record.fileName);
+      const newName = `${baseName} (${i + 1})${originalExt}`;
+      
+      await this.prisma.exportHistory.update({
+        where: { id: record.id },
+        data: { fileName: newName },
+      });
+      renamedCount++;
+    }
+
+    return { renamedCount };
+  }
 }
+
