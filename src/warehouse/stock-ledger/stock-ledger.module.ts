@@ -7,11 +7,13 @@ import { StockActivityExportService } from './stock-activity-export.service';
 import { StockActivityExportProcessor } from './stock-activity-export.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
+import { ExportHistoryModule } from '../export-history/export-history.module';
 
 @Module({
   imports: [
     PrismaModule,
     NotificationsModule,
+    ExportHistoryModule,
     BullModule.registerQueue(
       { name: 'stock-ledger-export' },
       { name: 'stock-activity-export' },

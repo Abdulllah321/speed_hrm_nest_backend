@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { ExportHistoryService } from '../../warehouse/export-history/export-history.service';
 
 export interface ItemExportJobData {
   jobId: string;
@@ -57,6 +58,7 @@ const COLUMNS: {
   { header: 'Division',      key: 'division',          width: 16, group: 'Classification' },
   { header: 'Category',      key: 'category',          width: 18, group: 'Classification' },
   { header: 'Sub-Category',  key: 'subCategory',       width: 18, group: 'Classification' },
+  { header: 'Segment',       key: 'segment',           width: 16, group: 'Classification' },
   { header: 'Gender',        key: 'gender',            width: 12, group: 'Classification' },
   { header: 'Season',        key: 'season',            width: 14, group: 'Classification' },
   { header: 'Silhouette',    key: 'silhouette',        width: 16, group: 'Classification' },
@@ -93,7 +95,7 @@ const includeMasterData = {
   brand: true, division: true, category: true, subCategory: true,
   season: true, gender: true, size: true, silhouette: true,
   channelClass: true, color: true, itemClass: true, itemSubclass: true,
-  hsCode: true,
+  hsCode: true, segment: true,
 };
 
 @Processor('item-export')
@@ -102,6 +104,7 @@ export class ItemExportProcessor {
 
   constructor(
     private readonly notificationsService: NotificationsService,
+    private readonly exportHistoryService: ExportHistoryService,
   ) {}
 
   @Process()
@@ -144,13 +147,18 @@ export class ItemExportProcessor {
       const directSortFields = new Set(['itemId','sku','unitPrice','isActive','createdAt','updatedAt','description','barCode','hsCode']);
       const relationalSortFields: Record<string, string> = { brand: 'brandId', category: 'categoryId', division: 'divisionId' };
       const direction = sortOrder === 'asc' ? 'asc' : 'desc';
-      let orderBy: any;
+      let orderBy: any[];
       if (directSortFields.has(sortBy ?? '')) {
-        orderBy = { [sortBy!]: direction };
+        orderBy = [{ [sortBy!]: direction }];
       } else if (relationalSortFields[sortBy ?? '']) {
-        orderBy = { [relationalSortFields[sortBy!]]: direction };
+        orderBy = [{ [relationalSortFields[sortBy!]]: direction }];
       } else {
-        orderBy = { createdAt: 'desc' };
+        orderBy = [
+          { division: { name: 'asc' } },
+          { brand: { name: 'asc' } },
+          { category: { name: 'asc' } },
+          { sku: 'asc' }
+        ];
       }
 
       // ── Count total for progress reporting ───────────────────────────────
@@ -221,10 +229,9 @@ export class ItemExportProcessor {
       headerRow.height = 20;
       headerRow.commit();
 
-      // ── Data rows — cursor-paginated in chunks of 500 ────────────────────
+      // ── Data rows — paginated in chunks of 500 ────────────────────
       // 500 rows × ~40 cols × ~200 bytes ≈ 4MB per chunk — safe for any heap size
       const CHUNK = 500;
-      let cursor: string | undefined;
       let rowIdx = 0;
       let processed = 0;
 
@@ -233,7 +240,7 @@ export class ItemExportProcessor {
           where,
           orderBy,
           take: CHUNK,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+          skip: processed,
           include: includeMasterData,
         });
 
@@ -253,6 +260,7 @@ export class ItemExportProcessor {
             division:          (item as any).division?.name ?? '',
             category:          (item as any).category?.name ?? '',
             subCategory:       (item as any).subCategory?.name ?? '',
+            segment:           (item as any).segment?.name ?? '',
             gender:            (item as any).gender?.name ?? '',
             season:            (item as any).season?.name ?? '',
             silhouette:        (item as any).silhouette?.name ?? '',
@@ -319,7 +327,6 @@ export class ItemExportProcessor {
         }
 
         processed += chunk.length;
-        cursor = chunk[chunk.length - 1].id;
 
         // Report progress to Bull (0-100)
         const pct = total > 0 ? Math.round((processed / total) * 95) : 50;
@@ -365,9 +372,19 @@ export class ItemExportProcessor {
       });
 
       await workbook.commit(); // finalise and flush to disk
+
+      // Upload to S3/CDN and update export history
+      await this.exportHistoryService.completeAndUploadExport(
+        prisma,
+        jobId,
+        filePath,
+        `items-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+
       await job.progress(100);
 
-      this.logger.log(`[Export ${jobId}] File written: ${filePath} (${rowIdx} rows)`);
+      this.logger.log(`[Export ${jobId}] Finished processing successfully (${rowIdx} rows)`);
 
       // ── Notify user via in-app notification ──────────────────────────────
       await this.notificationsService.create({
@@ -377,7 +394,7 @@ export class ItemExportProcessor {
         category: 'export',
         priority: 'high',
         actionType: 'item-export.ready',
-        actionPayload: { jobId },
+        actionPayload: JSON.stringify({ jobId }),
         entityType: 'item-export',
         entityId: jobId,
         channels: ['inApp'],
@@ -386,7 +403,13 @@ export class ItemExportProcessor {
     } catch (error: any) {
       this.logger.error(`[Export ${jobId}] FAILED: ${error.message}`, error.stack);
       // Clean up partial file
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (err) {}
+      }
+
+      await this.exportHistoryService.failExport(prisma, jobId);
 
       await this.notificationsService.create({
         userId,

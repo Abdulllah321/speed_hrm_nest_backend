@@ -34,6 +34,18 @@ export class ItemExportService {
     const tenantId  = this.prisma.getTenantId()  ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
+    // Create pending export history record
+    await this.prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId: opts.userId,
+        fileName: `items-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filePath: path.join('uploads', 'exports', `export-${jobId}.xlsx`),
+        moduleName: 'ITEMS_EXPORT',
+        status: 'PENDING',
+      },
+    });
+
     await this.exportQueue.add(
       {
         jobId,

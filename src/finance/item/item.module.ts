@@ -18,10 +18,12 @@ import { MasterDataService } from '../../common/services/master-data.service';
 import { ItemValidatorService } from '../../common/services/item-validator.service';
 import { ItemUpdateValidatorService } from '../../common/services/item-update-validator.service';
 import { UploadEventsService } from './upload-events.service';
+import { ExportHistoryModule } from '../../warehouse/export-history/export-history.module';
 
 @Module({
     imports: [
         DatabaseModule,
+        ExportHistoryModule,
         BullModule.registerQueue(
             { name: 'item-upload' },
             { name: 'item-export' },
