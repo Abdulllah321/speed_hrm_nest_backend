@@ -8,6 +8,8 @@ import * as puppeteer from 'puppeteer';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { MovementType } from '@prisma/client';
+import { ExportHistoryService } from '../export-history/export-history.service';
+
 
 export interface StockActivityExportJobData {
   jobId: string;
@@ -63,6 +65,7 @@ export class StockActivityExportProcessor {
 
   constructor(
     private readonly notificationsService: NotificationsService,
+    private readonly exportHistoryService: ExportHistoryService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -661,16 +664,18 @@ export class StockActivityExportProcessor {
 
       await job.progress(95);
 
-      // Record size in ExportHistory and set status to COMPLETED
-      const stats = fs.statSync(filePath);
-      await prisma.exportHistory.update({
-        where: { id: jobId },
-        data: {
-          status: 'COMPLETED',
-          fileSize: stats.size,
-          completedAt: new Date(),
-        },
-      });
+      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName = format === 'pdf'
+        ? `stock-activity-report-${new Date().toISOString().slice(0, 10)}.pdf`
+        : `stock-activity-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      await this.exportHistoryService.completeAndUploadExport(
+        prisma,
+        jobId,
+        filePath,
+        fileName,
+        mimeType,
+      );
 
       // Notify User via Socket notification
       await this.notificationsService.create({
@@ -687,14 +692,7 @@ export class StockActivityExportProcessor {
       this.logger.log(`[StockActivityExport ${jobId}] Finished processing ${format.toUpperCase()} successfully`);
     } catch (err) {
       this.logger.error(`[StockActivityExport ${jobId}] Failed: ${err.message}`, err.stack);
-      try {
-        await prisma.exportHistory.update({
-          where: { id: jobId },
-          data: { status: 'FAILED' },
-        });
-      } catch (dbErr) {
-        this.logger.warn(`Could not update export job status to FAILED in database: ${dbErr.message}`);
-      }
+      await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     }
   }

@@ -296,4 +296,79 @@ export class UploadService {
 
     return { status: true, message: 'File deleted successfully' };
   }
+
+  isS3Enabled(): boolean {
+    return USE_S3;
+  }
+
+  async getSignedUrlForDownload(key: string): Promise<string> {
+    if (!USE_S3) return `/uploads/${key}`;
+    return getSignedUrl(
+      s3Client!,
+      new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }),
+      { expiresIn: SIGNED_URL_EXPIRES },
+    );
+  }
+
+  async deleteS3Object(key: string): Promise<void> {
+    if (USE_S3) {
+      try {
+        await s3Client!.send(
+          new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key }),
+        );
+        this.logger.log(`[UploadService] Deleted S3 object: ${key}`);
+      } catch (e: any) {
+        this.logger.error(`[UploadService] Failed to delete S3 object ${key}: ${e.message}`);
+      }
+    }
+  }
+
+  async uploadExportBuffer(
+    buffer: Buffer,
+    filename: string,
+    mimetype: string,
+  ): Promise<{ url: string; key: string }> {
+    const ts = Date.now();
+    const safeFilename = filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const filenameWithTs = `${ts}_${safeFilename}`;
+    const s3Key = `${S3_KEY_PREFIX}/exports/${filenameWithTs}`;
+
+    let publicUrl = '';
+
+    if (USE_S3) {
+      await s3Client!.send(
+        new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: s3Key,
+          Body: buffer,
+          ContentType: mimetype,
+          ContentDisposition: `attachment; filename="${filename}"`,
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+      );
+
+      const cdnHost = process.env.AWS_S3_CDN_URL || process.env.CDN_URL;
+      if (cdnHost) {
+        const host = cdnHost.endsWith('/') ? cdnHost.slice(0, -1) : cdnHost;
+        publicUrl = `${host}/${s3Key}`;
+      } else if (S3_PUBLIC) {
+        const endpoint = process.env.AWS_S3_ENDPOINT;
+        publicUrl = endpoint
+          ? `${endpoint}/${S3_BUCKET}/${s3Key}`
+          : `https://${S3_BUCKET}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+      } else {
+        publicUrl = `s3://${s3Key}`;
+      }
+    } else {
+      const destDir = path.join(this.uploadRoot, 'exports');
+      fs.mkdirSync(destDir, { recursive: true });
+      const destPath = path.join(destDir, filenameWithTs);
+      fs.writeFileSync(destPath, buffer);
+
+      publicUrl = path.join('uploads', 'exports', filenameWithTs);
+    }
+
+    return { url: publicUrl, key: s3Key };
+  }
 }
+

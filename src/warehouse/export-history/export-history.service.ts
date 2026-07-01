@@ -3,12 +3,65 @@ import { PrismaService } from '../../database/prisma.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { UpdateExportDto } from './dto/export-history.dto';
+import { UploadService } from '../../upload/upload.service';
 
 @Injectable()
 export class ExportHistoryService {
   private readonly logger = new Logger(ExportHistoryService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploadService: UploadService,
+  ) {}
+
+  async completeAndUploadExport(
+    tenantPrisma: any,
+    jobId: string,
+    localPath: string,
+    fileName: string,
+    mimeType: string,
+  ): Promise<string> {
+    const stats = fs.statSync(localPath);
+    const buffer = fs.readFileSync(localPath);
+
+    // Upload buffer to S3 / local storage via UploadService
+    const uploadResult = await this.uploadService.uploadExportBuffer(buffer, fileName, mimeType);
+
+    // Delete local temp file
+    try {
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+        this.logger.log(`[ExportHistoryService] Cleaned up local temp file: ${localPath}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[ExportHistoryService] Could not delete temp local file ${localPath}: ${err.message}`);
+    }
+
+    // Update database record using tenantPrisma (since Bull jobs run outside tenant context)
+    await tenantPrisma.exportHistory.update({
+      where: { id: jobId },
+      data: {
+        status: 'COMPLETED',
+        fileSize: stats.size,
+        completedAt: new Date(),
+        filePath: uploadResult.url,
+      },
+    });
+
+    return uploadResult.url;
+  }
+
+  async failExport(tenantPrisma: any, jobId: string) {
+    try {
+      await tenantPrisma.exportHistory.update({
+        where: { id: jobId },
+        data: { status: 'FAILED' },
+      });
+    } catch (dbErr: any) {
+      this.logger.warn(`[ExportHistoryService] Could not update export job status to FAILED in database: ${dbErr.message}`);
+    }
+  }
+
 
   async createFolder(userId: string, name: string) {
     return this.prisma.exportFolder.create({
@@ -179,17 +232,33 @@ export class ExportHistoryService {
     });
 
     if (record.filePath) {
-      const fullPath = path.isAbsolute(record.filePath)
-        ? record.filePath
-        : path.join(process.cwd(), record.filePath);
-      
-      try {
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-          this.logger.log(`Deleted export file on disk: ${fullPath}`);
+      if (record.filePath.startsWith('s3://')) {
+        const s3Key = record.filePath.replace('s3://', '');
+        await this.uploadService.deleteS3Object(s3Key);
+      } else if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+        const cdnHost = process.env.AWS_S3_CDN_URL || process.env.CDN_URL;
+        let s3Key: string | null = null;
+        if (cdnHost && record.filePath.includes(cdnHost)) {
+          s3Key = record.filePath.split(cdnHost).pop()?.replace(/^\//, '') || null;
+        } else if (record.filePath.includes('.amazonaws.com/')) {
+          s3Key = record.filePath.split('.amazonaws.com/').pop() || null;
         }
-      } catch (err) {
-        this.logger.warn(`Could not delete file ${fullPath}: ${err.message}`);
+        if (s3Key) {
+          await this.uploadService.deleteS3Object(s3Key);
+        }
+      } else {
+        const fullPath = path.isAbsolute(record.filePath)
+          ? record.filePath
+          : path.join(process.cwd(), record.filePath);
+        
+        try {
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            this.logger.log(`Deleted export file on disk: ${fullPath}`);
+          }
+        } catch (err: any) {
+          this.logger.warn(`Could not delete file ${fullPath}: ${err.message}`);
+        }
       }
     }
 
@@ -204,6 +273,27 @@ export class ExportHistoryService {
       throw new NotFoundException(`Export record not found`);
     }
 
+    try {
+      await this.prisma.exportHistory.update({
+        where: { id: exportId },
+        data: {
+          downloadCount: { increment: 1 },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Could not update export download count: ${err.message}`);
+    }
+
+    if (record.filePath.startsWith('s3://')) {
+      const s3Key = record.filePath.replace('s3://', '');
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      return res.redirect(signedUrl, 302);
+    }
+
+    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      return res.redirect(record.filePath, 302);
+    }
+
     const filePath = path.isAbsolute(record.filePath)
       ? record.filePath
       : path.join(process.cwd(), record.filePath);
@@ -213,17 +303,6 @@ export class ExportHistoryService {
     }
 
     const stat = fs.statSync(filePath);
-
-    try {
-      await this.prisma.exportHistory.update({
-        where: { id: exportId },
-        data: {
-          downloadCount: { increment: 1 },
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Could not update export download count: ${err.message}`);
-    }
 
     const isPdf = record.fileName.endsWith('.pdf');
     const isXlsx = record.fileName.endsWith('.xlsx');
@@ -269,16 +348,32 @@ export class ExportHistoryService {
 
     for (const record of records) {
       if (record.filePath) {
-        const fullPath = path.isAbsolute(record.filePath)
-          ? record.filePath
-          : path.join(process.cwd(), record.filePath);
-        try {
-          if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
-            this.logger.log(`[BulkDelete] Deleted file from disk: ${fullPath}`);
+        if (record.filePath.startsWith('s3://')) {
+          const s3Key = record.filePath.replace('s3://', '');
+          await this.uploadService.deleteS3Object(s3Key);
+        } else if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+          const cdnHost = process.env.AWS_S3_CDN_URL || process.env.CDN_URL;
+          let s3Key: string | null = null;
+          if (cdnHost && record.filePath.includes(cdnHost)) {
+            s3Key = record.filePath.split(cdnHost).pop()?.replace(/^\//, '') || null;
+          } else if (record.filePath.includes('.amazonaws.com/')) {
+            s3Key = record.filePath.split('.amazonaws.com/').pop() || null;
           }
-        } catch (err) {
-          this.logger.warn(`[BulkDelete] Could not delete file ${fullPath}: ${err.message}`);
+          if (s3Key) {
+            await this.uploadService.deleteS3Object(s3Key);
+          }
+        } else {
+          const fullPath = path.isAbsolute(record.filePath)
+            ? record.filePath
+            : path.join(process.cwd(), record.filePath);
+          try {
+            if (fs.existsSync(fullPath)) {
+              fs.unlinkSync(fullPath);
+              this.logger.log(`[BulkDelete] Deleted file from disk: ${fullPath}`);
+            }
+          } catch (err: any) {
+            this.logger.warn(`[BulkDelete] Could not delete file ${fullPath}: ${err.message}`);
+          }
         }
       }
     }
