@@ -32,7 +32,7 @@ export class ReconciliationExportProcessor {
     this.logger.log(`[ReconciliationExport ${jobId}] Starting background Excel export for user ${userId}`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
-    const sessionService = new PosSessionService(prisma, null as any, null as any, null as any);
+    const sessionService = new PosSessionService(prisma, null as any, null as any, null as any, null as any);
 
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
