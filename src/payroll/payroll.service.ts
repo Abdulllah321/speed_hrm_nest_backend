@@ -130,7 +130,11 @@ export class PayrollService {
       this.prisma.loanRequest.findMany({
         where: {
           employeeId: { in: ids },
-          OR: [{ approvalStatus: 'approved' }, { status: 'approved' }],
+          OR: [
+            { approvalStatus: 'approved' },
+            { status: 'approved' },
+            { status: 'disbursed' },
+          ],
         },
       }),
       this.prisma.advanceSalary.findMany({
@@ -600,6 +604,7 @@ export class PayrollService {
           },
           attendanceDeduction: 0,
           loanDeduction: 0,
+          loanDisbursement: 0,
           advanceSalaryDeduction: 0,
           eobiDeduction: 0,
           providentFundDeduction: 0,
@@ -732,8 +737,8 @@ export class PayrollService {
         await this.calculateEOBI_PF(employee, month, year, salaryBreakup);
 
       // H. Calculate Loans & Advances
-      const { loanDeduction, advanceSalaryDeduction } =
-        this.calculateLoansAndAdvances(
+      const { loanDeduction, loanDisbursement, advanceSalaryDeduction } =
+        await this.calculateLoansAndAdvances(
           employee,
           normalizedMonth,
           normalizedYear,
@@ -754,7 +759,7 @@ export class PayrollService {
         .add(totalAdHocDeductions);
 
       // Net Salary
-      const netSalary = grossSalary.minus(totalDeductionsSum);
+      const netSalary = grossSalary.minus(totalDeductionsSum).add(loanDisbursement);
 
       // Push to array (plain objects for frontend)
       previewData.push({
@@ -791,6 +796,7 @@ export class PayrollService {
         attendanceBreakup,
         attendanceDeduction: attendanceDeduction.toNumber(),
         loanDeduction: loanDeduction.toNumber(),
+        loanDisbursement: loanDisbursement.toNumber(),
         advanceSalaryDeduction: advanceSalaryDeduction.toNumber(),
         eobiDeduction: eobiDeduction.toNumber(),
         providentFundDeduction: providentFundDeduction.toNumber(),
@@ -879,6 +885,7 @@ export class PayrollService {
           totalDeductions: new Decimal(d.totalDeductions),
           attendanceDeduction: new Decimal(d.attendanceDeduction),
           loanDeduction: new Decimal(d.loanDeduction),
+          loanDisbursement: new Decimal(d.loanDisbursement || 0),
           advanceSalaryDeduction: new Decimal(d.advanceSalaryDeduction),
           eobiDeduction: new Decimal(d.eobiDeduction),
           providentFundDeduction: new Decimal(d.providentFundDeduction),
@@ -1936,23 +1943,97 @@ export class PayrollService {
     return { eobiDeduction, providentFundDeduction };
   }
 
-  private calculateLoansAndAdvances(
+  private async getUnconfirmedPayrollStartMonth(
+    startMonthYear: string,
+  ): Promise<string> {
+    let [year, month] = startMonthYear.split('-').map(Number);
+
+    while (true) {
+      const monthStr = String(month).padStart(2, '0');
+      const yearStr = String(year);
+
+      const payroll = await this.prisma.payroll.findFirst({
+        where: {
+          month: monthStr,
+          year: yearStr,
+        },
+        select: {
+          status: true,
+        },
+      });
+
+      if (!payroll || payroll.status !== 'confirmed') {
+        return `${yearStr}-${monthStr}`;
+      }
+
+      month++;
+      if (month > 12) {
+        month = 1;
+        year++;
+      }
+    }
+  }
+
+  private async calculateLoansAndAdvances(
     employee: any,
     month: string,
     year: string,
   ) {
     let loanDeduction = new Decimal(0);
+    let loanDisbursement = new Decimal(0);
     let advanceSalaryDeduction = new Decimal(0);
+
+    const normalizedMonthForComparison = String(Number(month)).padStart(
+      2,
+      '0',
+    );
+    const normalizedYearForComparison = String(year);
 
     // Loans
     const emp = employee as any;
     if (emp.loanRequests && emp.loanRequests.length > 0) {
       for (const loan of emp.loanRequests) {
+        // Only process if the loan status is 'disbursed'
+        const loanStatus = (loan.status || '').toLowerCase();
+        if (loanStatus !== 'disbursed') {
+          continue;
+        }
+
+        // 1. Calculate Disbursement (Addition)
+        // Check if the loan was disbursed in the current payroll month/year
+        let matchesDisbursementMonth = false;
+        if (loan.disbursedAt) {
+          const disbursedDate = new Date(loan.disbursedAt);
+          const disbursedM = String(disbursedDate.getMonth() + 1).padStart(2, '0');
+          const disbursedY = String(disbursedDate.getFullYear());
+          matchesDisbursementMonth =
+            disbursedM === normalizedMonthForComparison &&
+            disbursedY === normalizedYearForComparison;
+        } else if (loan.updatedAt) {
+          // Fallback to checking updatedAt
+          const updatedDate = new Date(loan.updatedAt);
+          const updatedM = String(updatedDate.getMonth() + 1).padStart(2, '0');
+          const updatedY = String(updatedDate.getFullYear());
+          matchesDisbursementMonth =
+            updatedM === normalizedMonthForComparison &&
+            updatedY === normalizedYearForComparison;
+        }
+
+        if (matchesDisbursementMonth) {
+          loanDisbursement = loanDisbursement.add(new Decimal(loan.amount));
+        }
+
+        // 2. Calculate Deduction
         if (!loan.repaymentStartMonthYear || !loan.numberOfInstallments) {
           continue;
         }
 
-        const [startYear, startMonth] = loan.repaymentStartMonthYear
+        // Shift the repayment start month to the first unconfirmed payroll period
+        const shiftedStartMonthYear = await this.getUnconfirmedPayrollStartMonth(
+          loan.repaymentStartMonthYear,
+        );
+
+        const [startYear, startMonth] = shiftedStartMonthYear
           .split('-')
           .map(Number);
         const currentY = Number(year);
@@ -1997,7 +2078,7 @@ export class PayrollService {
       }
     }
 
-    return { loanDeduction, advanceSalaryDeduction };
+    return { loanDeduction, loanDisbursement, advanceSalaryDeduction };
   }
 
   private calculateEffectiveSalary(
