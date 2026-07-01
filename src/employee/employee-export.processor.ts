@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
 
 export interface EmployeeExportJobData {
   jobId: string;
@@ -105,6 +106,7 @@ export class EmployeeExportProcessor {
 
   constructor(
     private readonly notificationsService: NotificationsService,
+    private readonly exportHistoryService: ExportHistoryService,
   ) {}
 
   @Process()
@@ -200,9 +202,8 @@ export class EmployeeExportProcessor {
       headerRow.height = 20;
       headerRow.commit();
 
-      // ── Data rows — cursor-paginated in chunks of 500 ────────────────────
+      // ── Data rows — paginated in chunks of 500 ────────────────────
       const CHUNK = 500;
-      let cursor: string | undefined;
       let rowIdx = 0;
       let processed = 0;
 
@@ -211,7 +212,7 @@ export class EmployeeExportProcessor {
           where,
           orderBy: { createdAt: 'desc' },
           take: CHUNK,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+          skip: processed,
           include: {
             department:         { select: { name: true } },
             subDepartment:      { select: { name: true } },
@@ -314,7 +315,6 @@ export class EmployeeExportProcessor {
         }
 
         processed += chunk.length;
-        cursor = chunk[chunk.length - 1].id;
 
         const pct = total > 0 ? Math.round((processed / total) * 95) : 50;
         await job.progress(pct);
@@ -356,9 +356,19 @@ export class EmployeeExportProcessor {
       });
 
       await workbook.commit();
+
+      // Upload to S3/CDN and update export history
+      await this.exportHistoryService.completeAndUploadExport(
+        prisma,
+        jobId,
+        filePath,
+        `employees-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+
       await job.progress(100);
 
-      this.logger.log(`[EmployeeExport ${jobId}] File written (${rowIdx} rows)`);
+      this.logger.log(`[EmployeeExport ${jobId}] Finished processing successfully (${rowIdx} rows)`);
 
       await this.notificationsService.create({
         userId,
@@ -367,7 +377,7 @@ export class EmployeeExportProcessor {
         category: 'export',
         priority: 'high',
         actionType: 'employee-export.ready',
-        actionPayload: { jobId },
+        actionPayload: JSON.stringify({ jobId }),
         entityType: 'employee-export',
         entityId: jobId,
         channels: ['inApp'],
@@ -375,7 +385,13 @@ export class EmployeeExportProcessor {
 
     } catch (error: any) {
       this.logger.error(`[EmployeeExport ${jobId}] FAILED: ${error.message}`, error.stack);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (err) {}
+      }
+
+      await this.exportHistoryService.failExport(prisma, jobId);
 
       await this.notificationsService.create({
         userId,

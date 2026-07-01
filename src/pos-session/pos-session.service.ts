@@ -9,6 +9,7 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 import { JournalVoucherService } from '../finance/journal-voucher/journal-voucher.service';
+import { ReceiptVoucherService } from '../finance/receipt-voucher/receipt-voucher.service';
 import { Logger } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { InjectQueue } from '@nestjs/bull';
@@ -25,6 +26,7 @@ export class PosSessionService {
     private readonly prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
     private readonly journalVoucherService: JournalVoucherService,
+    private readonly receiptVoucherService: ReceiptVoucherService,
     @InjectQueue('reconciliation-export') private readonly exportQueue?: Queue,
   ) {}
 
@@ -317,14 +319,14 @@ export class PosSessionService {
       );
 
       runInBackground(
-        'Generate POS Journal Voucher',
+        'Generate POS Receipt Voucher',
         this.generateReconciliationVoucher(
           currentStatus.session.id,
           closedSession.posId,
           ctx,
         ).catch((err) =>
           this.logger.error(
-            `Failed to generate JV for session ${currentStatus.session.id}`,
+            `Failed to generate RV for session ${currentStatus.session.id}`,
             err,
           ),
         ),
@@ -452,10 +454,10 @@ export class PosSessionService {
 
     if (session.status === 'closed' && !skipJvRegen) {
       runInBackground(
-        'Regenerate POS Journal Voucher on fetch',
+        'Regenerate POS RS-RV Voucher on fetch',
         this.generateReconciliationVoucher(session.id, session.posId).catch((err) =>
           this.logger.error(
-            `Failed to regenerate JV for session ${session.id}`,
+            `Failed to regenerate RS-RV for session ${session.id}`,
             err,
           ),
         ),
@@ -2031,18 +2033,22 @@ export class PosSessionService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const session = await this.prisma.posSession.findUnique({
+      const sessionData = await this.prisma.posSession.findUnique({
         where: { id: sessionId },
+        include: { pos: { include: { location: true } } },
       });
-      if (!session) return;
+      if (!sessionData) return;
+      const session = sessionData;
+
+      const locationShortCode = sessionData?.pos?.location?.shortCode || sessionData?.pos?.location?.code || 'LOC';
 
       // Clean up all existing pending JVs for this session first (both old format and new format)
-      const sessionPrefix = `RS RV-${sessionId.substring(0, 8).toUpperCase()}`;
+      const oldSessionPrefix = `RS RV-${sessionId.substring(0, 8).toUpperCase()}`;
       const existingJvs = await this.prisma.journalVoucher.findMany({
         where: {
           OR: [
-            { jvNo: { startsWith: sessionPrefix } },
-            { jvNo: sessionPrefix }
+            { jvNo: { startsWith: oldSessionPrefix } },
+            { jvNo: oldSessionPrefix }
           ]
         }
       });
@@ -2058,6 +2064,33 @@ export class PosSessionService {
             });
           });
           this.logger.log(`Cleaned up existing pending JV: ${existingJv.jvNo}`);
+        }
+      }
+
+      // Clean up all existing pending RVs for this session first (both old format and new format)
+      const newSessionPrefix = `RS-RV-${locationShortCode}-`;
+      const existingRvs = await this.prisma.receiptVoucher.findMany({
+        where: {
+          OR: [
+            { rvNo: { startsWith: oldSessionPrefix } },
+            { rvNo: oldSessionPrefix },
+            { rvNo: { startsWith: newSessionPrefix } },
+            { rvNo: newSessionPrefix }
+          ]
+        }
+      });
+
+      for (const existingRv of existingRvs) {
+        if (existingRv.status === 'pending') {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.receiptVoucherDetail.deleteMany({
+              where: { receiptVoucherId: existingRv.id },
+            });
+            await tx.receiptVoucher.delete({
+              where: { id: existingRv.id },
+            });
+          });
+          this.logger.log(`Cleaned up existing pending RV: ${existingRv.rvNo}`);
         }
       }
 
@@ -2194,17 +2227,14 @@ export class PosSessionService {
         );
 
         // 3. Cash && Cash - Gift Vouchers Issued
-        const sessionData = await this.prisma.posSession.findUnique({
-          where: { id: sessionId },
-          include: { pos: { include: { location: true } } },
-        });
         const cashGl = sessionData?.pos?.location?.cashGLCode || '31090001';
         if (cashGl) {
           // Cash Sales entry
+          const netCashSale = metrics.cashBreakdown.sale - metrics.cashBreakdown.refundVouchers;
           await addLine(
             cashGl,
             locationCode,
-            metrics.cashBreakdown.sale,
+            netCashSale,
             0,
             `CASH SALES | ${jvDateStr}`,
           );
@@ -2238,7 +2268,7 @@ export class PosSessionService {
             );
           } else if (v.type === 'Gift Vouchers') {
             await addLine(
-              '12070007',
+              '80180012',
               locationCode,
               v.amount,
               0,
@@ -2411,13 +2441,13 @@ export class PosSessionService {
 
         if (details.length === 0) {
           this.logger.log(
-            `No entries to generate JV for session ${sessionId} on ${dateStr}`,
+            `No entries to generate RV for session ${sessionId} on ${dateStr}`,
           );
           continue;
         }
 
-        // Generate JV
-        const jvNo = `RS RV-${sessionId.substring(0, 8).toUpperCase()}-${dateStr}`;
+        // Generate RV
+        const rvNo = `RS-RV-${locationShortCode}-${dateStr}`;
 
         // Auto-balance the voucher if debits and credits do not match
         let totalDebit = 0;
@@ -2449,37 +2479,63 @@ export class PosSessionService {
             tagAccountId: null,
             debit: balDebit,
             credit: balCredit,
-            narration: `[AUTO-BALANCING LINE] To balance JV. Total Debit was ${totalDebit.toFixed(2)}, Total Credit was ${totalCredit.toFixed(2)}`,
+            narration: `[AUTO-BALANCING LINE] To balance RV. Total Debit was ${totalDebit.toFixed(2)}, Total Credit was ${totalCredit.toFixed(2)}`,
           });
           description += `\n\nATTENTION: Voucher was unbalanced by ${diff.toFixed(2)}. An auto-balancing line was added. Please review and correct.`;
+
+          // Re-calculate totals
+          totalDebit = 0;
+          totalCredit = 0;
+          details.forEach((d) => {
+            totalDebit += d.debit;
+            totalCredit += d.credit;
+          });
         }
 
-        // Check if JV already exists (it would only exist if it's approved and was not deleted)
-        const approvedJv = await this.prisma.journalVoucher.findUnique({
-          where: { jvNo },
-        });
-
-        if (approvedJv) {
-          this.logger.log(`Journal Voucher ${jvNo} already exists and is not pending. Skipping.`);
+        if (totalDebit === 0) {
+          this.logger.log(
+            `Total debit is 0 for session ${sessionId} on ${dateStr}, skipping Receipt Voucher generation.`,
+          );
           continue;
         }
 
-        await this.journalVoucherService.create(
-          {
-            jvNo,
-            jvDate: date,
-            description,
-            status: 'pending',
-            details,
-          },
-          ctx,
-        );
+        // Check if RV already exists (it would only exist if it's approved and was not deleted)
+        const approvedRv = await this.prisma.receiptVoucher.findUnique({
+          where: { rvNo },
+        });
 
-        this.logger.log(`Generated JV ${jvNo} for session ${sessionId}`);
+        if (approvedRv) {
+          this.logger.log(`Receipt Voucher ${rvNo} already exists and is not pending. Skipping.`);
+          continue;
+        }
+
+        const firstDebitLine = details.find((d) => d.debit > 0);
+        const debitAccountId = firstDebitLine
+          ? firstDebitLine.accountId
+          : (await this.prisma.chartOfAccount.findFirst())?.id || 'MISSING';
+
+        await this.receiptVoucherService.create({
+          type: 'cash',
+          rvNo,
+          rvDate: date,
+          debitAccountId,
+          debitAmount: totalDebit,
+          description,
+          status: 'pending',
+          details: details.map((d) => ({
+            accountId: d.accountId,
+            tagAccountId: d.tagAccountId || undefined,
+            debit: d.debit,
+            credit: d.credit,
+            narration: d.narration,
+          })),
+        });
+
+        this.logger.log(`Generated RV ${rvNo} for session ${sessionId}`);
       }
     } catch (error) {
       this.logger.error(
-        `Error generating Reconciliation JV for session ${sessionId}:`,
+        `Error generating Reconciliation RV for session ${sessionId}:`,
         error,
       );
     }

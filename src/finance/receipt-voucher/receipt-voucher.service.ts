@@ -53,7 +53,9 @@ export class ReceiptVoucherService {
     }
 
     return this.prisma.$transaction(async (prisma) => {
-      const sequentialRvNo = await generateNextRvNumber(prisma, data.type, data.rvDate);
+      const finalRvNo = data.rvNo && data.rvNo !== 'AUTO'
+        ? data.rvNo
+        : await generateNextRvNumber(prisma, data.type, data.rvDate);
       const sequentialFolio = await generateNextFolioNumber(prisma, data.rvDate);
 
       // Derive debitAccountId from the first debit detail line
@@ -67,7 +69,7 @@ export class ReceiptVoucherService {
       const rv = await prisma.receiptVoucher.create({
         data: {
           type: data.type,
-          rvNo: sequentialRvNo,
+          rvNo: finalRvNo,
           folio: sequentialFolio,
           rvDate: data.rvDate,
           refBillNo: data.refBillNo,
