@@ -236,6 +236,7 @@ model PayrollDetail {
   totalDeductions                  Decimal   @default(0) @db.Decimal(10, 2)
   attendanceDeduction              Decimal   @default(0) @db.Decimal(10, 2)
   loanDeduction                    Decimal   @default(0) @db.Decimal(10, 2)
+  loanDisbursement                 Decimal   @default(0) @db.Decimal(10, 2)
   advanceSalaryDeduction           Decimal   @default(0) @db.Decimal(10, 2)
   eobiDeduction                    Decimal   @default(0) @db.Decimal(10, 2)
   providentFundDeduction           Decimal   @default(0) @db.Decimal(10, 2)
