@@ -2268,7 +2268,7 @@ export class PosSessionService {
             );
           } else if (v.type === 'Gift Vouchers') {
             await addLine(
-              '80180012',
+              '12070007',
               locationCode,
               v.amount,
               0,
@@ -2360,6 +2360,16 @@ export class PosSessionService {
             );
           }
         }
+
+        // Gift Voucher Discount
+        const giftVoucherDiscountAmt = metrics.issuedVouchers.totalGiftVoucherDiscount || 0;
+        await addLine(
+          '80180012',
+          locationCode,
+          giftVoucherDiscountAmt,
+          0,
+          `Gift Voucher Discount | ${jvDateStr}`,
+        );
         for (const rv of metrics.issuedVouchers.refundVouchers) {
           await addLine(
             '12070002',
