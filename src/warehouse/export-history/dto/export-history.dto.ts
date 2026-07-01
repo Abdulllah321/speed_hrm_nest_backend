@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsArray, ArrayNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateFolderDto {
@@ -31,3 +31,41 @@ export class UpdateExportDto {
   @IsString()
   folderId?: string | null;
 }
+
+export class BulkDeleteDto {
+  @ApiProperty({ example: ['id-1', 'id-2'] })
+  @IsNotEmpty()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ids: string[];
+}
+
+export class BulkMoveDto {
+  @ApiProperty({ example: ['id-1', 'id-2'] })
+  @IsNotEmpty()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ids: string[];
+
+  @ApiProperty({ example: 'folder-uuid', nullable: true })
+  @IsOptional()
+  @IsString()
+  folderId: string | null;
+}
+
+export class BulkRenameDto {
+  @ApiProperty({ example: ['id-1', 'id-2'] })
+  @IsNotEmpty()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ids: string[];
+
+  @ApiProperty({ example: 'Sequential Report Name' })
+  @IsNotEmpty()
+  @IsString()
+  baseName: string;
+}
+

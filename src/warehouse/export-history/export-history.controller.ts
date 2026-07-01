@@ -14,7 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ExportHistoryService } from './export-history.service';
-import { CreateFolderDto, RenameFolderDto, UpdateExportDto } from './dto/export-history.dto';
+import { CreateFolderDto, RenameFolderDto, UpdateExportDto, BulkDeleteDto, BulkMoveDto, BulkRenameDto } from './dto/export-history.dto';
 
 @ApiTags('Export History')
 @Controller('api/export-history')
@@ -117,5 +117,29 @@ export class ExportHistoryController {
       const statusCode = err?.status ?? 404;
       res.status(statusCode).send({ status: false, message: err?.message ?? 'Export file not found' });
     }
+  }
+
+  @Delete('bulk')
+  @ApiOperation({ summary: 'Bulk delete export history items' })
+  async bulkDelete(@Req() req: any, @Body() dto: BulkDeleteDto) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.service.bulkDelete(userId, dto.ids);
+    return { status: true, data: result };
+  }
+
+  @Patch('bulk/move')
+  @ApiOperation({ summary: 'Bulk move export history items to a folder' })
+  async bulkMove(@Req() req: any, @Body() dto: BulkMoveDto) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.service.bulkMove(userId, dto.ids, dto.folderId);
+    return { status: true, data: result };
+  }
+
+  @Patch('bulk/rename')
+  @ApiOperation({ summary: 'Bulk sequential rename of export history items' })
+  async bulkRename(@Req() req: any, @Body() dto: BulkRenameDto) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.service.bulkRename(userId, dto.ids, dto.baseName);
+    return { status: true, data: result };
   }
 }
