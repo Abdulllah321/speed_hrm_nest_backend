@@ -19,11 +19,13 @@ import { ItemValidatorService } from '../../common/services/item-validator.servi
 import { ItemUpdateValidatorService } from '../../common/services/item-update-validator.service';
 import { UploadEventsService } from './upload-events.service';
 import { ExportHistoryModule } from '../../warehouse/export-history/export-history.module';
+import { UploadModule } from '../../upload/upload.module';
 
 @Module({
     imports: [
         DatabaseModule,
         ExportHistoryModule,
+        UploadModule,
         BullModule.registerQueue(
             { name: 'item-upload' },
             { name: 'item-export' },
