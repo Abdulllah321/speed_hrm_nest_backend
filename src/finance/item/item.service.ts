@@ -279,9 +279,11 @@ export class ItemService {
         : {
             ...(dto.discountRate !== undefined && {
               discountRate: dto.discountRate,
+              discountAmount: 0,
             }),
             ...(dto.discountAmount !== undefined && {
               discountAmount: dto.discountAmount,
+              discountRate: 0,
             }),
             ...(dto.discountStartDate !== undefined && {
               discountStartDate: dto.discountStartDate,
@@ -301,9 +303,11 @@ export class ItemService {
           overrideMap.set(ov.id, {
             ...(ov.discountRate !== undefined && {
               discountRate: ov.discountRate,
+              discountAmount: 0,
             }),
             ...(ov.discountAmount !== undefined && {
               discountAmount: ov.discountAmount,
+              discountRate: 0,
             }),
           });
         }

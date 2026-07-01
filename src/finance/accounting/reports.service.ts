@@ -889,7 +889,12 @@ export class ReportsService {
     // 1. Opening Balance aggregation
     const openingWhere: any = {
       AND: [
-        { tagAccountId: { in: targetIds } },
+        {
+          OR: [
+            { tagAccountId: { in: targetIds } },
+            { accountId: { in: targetIds } },
+          ],
+        },
       ],
     };
     if (fromDate) {
@@ -909,7 +914,12 @@ export class ReportsService {
     // 2. Activity aggregation
     const activityWhere: any = {
       AND: [
-        { tagAccountId: { in: targetIds } },
+        {
+          OR: [
+            { tagAccountId: { in: targetIds } },
+            { accountId: { in: targetIds } },
+          ],
+        },
         { sourceType: { not: 'OPENING_BALANCE' } },
       ],
     };
@@ -922,12 +932,12 @@ export class ReportsService {
 
     const [openingAggs, activityAggs] = await Promise.all([
       this.prisma.accountTransaction.groupBy({
-        by: ['tagAccountId'],
+        by: ['accountId', 'tagAccountId'],
         where: openingWhere,
         _sum: { debit: true, credit: true },
       }),
       this.prisma.accountTransaction.groupBy({
-        by: ['tagAccountId'],
+        by: ['accountId', 'tagAccountId'],
         where: activityWhere,
         _sum: { debit: true, credit: true },
       }),
@@ -935,20 +945,24 @@ export class ReportsService {
 
     const openingMap = new Map<string, { debit: number; credit: number }>();
     openingAggs.forEach((agg) => {
-      if (agg.tagAccountId) {
-        openingMap.set(agg.tagAccountId, {
-          debit: Number(agg._sum.debit ?? 0),
-          credit: Number(agg._sum.credit ?? 0),
+      const eid = agg.tagAccountId || agg.accountId;
+      if (eid) {
+        const existing = openingMap.get(eid) || { debit: 0, credit: 0 };
+        openingMap.set(eid, {
+          debit: existing.debit + Number(agg._sum.debit ?? 0),
+          credit: existing.credit + Number(agg._sum.credit ?? 0),
         });
       }
     });
 
     const activityMap = new Map<string, { debit: number; credit: number }>();
     activityAggs.forEach((agg) => {
-      if (agg.tagAccountId) {
-        activityMap.set(agg.tagAccountId, {
-          debit: Number(agg._sum.debit ?? 0),
-          credit: Number(agg._sum.credit ?? 0),
+      const eid = agg.tagAccountId || agg.accountId;
+      if (eid) {
+        const existing = activityMap.get(eid) || { debit: 0, credit: 0 };
+        activityMap.set(eid, {
+          debit: existing.debit + Number(agg._sum.debit ?? 0),
+          credit: existing.credit + Number(agg._sum.credit ?? 0),
         });
       }
     });
