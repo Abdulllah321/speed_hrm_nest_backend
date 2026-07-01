@@ -13,12 +13,16 @@ import { EmployeeExportController } from './employee-export.controller';
 import { EmployeeExportService } from './employee-export.service';
 import { EmployeeExportProcessor } from './employee-export.processor';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ExportHistoryModule } from '../warehouse/export-history/export-history.module';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
   imports: [
     PrismaModule,
     DatabaseModule,
     NotificationsModule,
+    ExportHistoryModule,
+    UploadModule,
     BullModule.registerQueue(
       { name: 'employee-upload' },
       { name: 'employee-export' },

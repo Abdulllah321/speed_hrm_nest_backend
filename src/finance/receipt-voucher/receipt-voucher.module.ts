@@ -8,5 +8,6 @@ import { AccountingModule } from '../accounting/accounting.module';
   imports: [PrismaModule, AccountingModule],
   controllers: [ReceiptVoucherController],
   providers: [ReceiptVoucherService],
+  exports: [ReceiptVoucherService],
 })
 export class ReceiptVoucherModule {}
