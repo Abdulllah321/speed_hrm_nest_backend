@@ -1,3 +1,15 @@
+model ExportFolder {
+  id        String          @id @default(uuid())
+  name      String
+  userId    String          @map("user_id")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  exports   ExportHistory[]
+
+  @@index([userId])
+  @@map("export_folders")
+}
+
 model ExportHistory {
   id            String    @id @default(uuid())
   userId        String    @map("user_id")
@@ -10,7 +22,16 @@ model ExportHistory {
   createdAt     DateTime  @default(now()) @map("created_at")
   completedAt   DateTime? @map("completed_at")
 
+  // Folder system relations
+  folderId      String?        @map("folder_id")
+  folder        ExportFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  // Favorites
+  isFavorite    Boolean        @default(false) @map("is_favorite")
+
   @@index([userId])
   @@index([moduleName])
+  @@index([folderId])
   @@map("export_histories")
 }
+

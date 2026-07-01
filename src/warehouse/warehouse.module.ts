@@ -18,6 +18,7 @@ import { DeliveryNoteExportService } from './delivery-note-export.service';
 import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
 import { StockRequisitionController } from './stock-requisition/stock-requisition.controller';
 import { StockRequisitionService } from './stock-requisition/stock-requisition.service';
+import { ExportHistoryModule } from './export-history/export-history.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { StockRequisitionService } from './stock-requisition/stock-requisition.s
     StockAdjustmentModule,
     NotificationsModule,
     BullModule.registerQueue({ name: 'delivery-note-export' }),
+    ExportHistoryModule,
   ],
   controllers: [
     WarehouseController,
@@ -53,7 +55,9 @@ import { StockRequisitionService } from './stock-requisition/stock-requisition.s
     DeliveryNoteExportService,
     StockAdjustmentModule,
     StockRequisitionService,
+    ExportHistoryModule,
   ],
 })
 export class WarehouseModule { }
+
 
