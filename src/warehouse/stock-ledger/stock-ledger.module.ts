@@ -8,12 +8,14 @@ import { StockActivityExportProcessor } from './stock-activity-export.processor'
 import { PrismaModule } from '../../prisma/prisma.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
 import { ExportHistoryModule } from '../export-history/export-history.module';
+import { UploadModule } from '../../upload/upload.module';
 
 @Module({
   imports: [
     PrismaModule,
     NotificationsModule,
     ExportHistoryModule,
+    UploadModule,
     BullModule.registerQueue(
       { name: 'stock-ledger-export' },
       { name: 'stock-activity-export' },

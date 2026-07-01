@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UploadService } from '../../upload/upload.service';
 
 export interface QueueStockActivityExportOptions {
   userId: string;
@@ -29,6 +30,7 @@ export class StockActivityExportService {
   constructor(
     @InjectQueue('stock-activity-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
+    private readonly uploadService: UploadService,
   ) {}
 
   async queueExport(opts: QueueStockActivityExportOptions): Promise<{ jobId: string }> {
@@ -99,14 +101,6 @@ export class StockActivityExportService {
       throw new NotFoundException(`Export record ${jobId} not found in database`);
     }
 
-    const filePath = path.join(process.cwd(), record.filePath);
-
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
-    }
-
-    const stat = fs.statSync(filePath);
-
     // Increment download count in ExportHistory
     try {
       await this.prisma.exportHistory.update({
@@ -115,9 +109,27 @@ export class StockActivityExportService {
           downloadCount: { increment: 1 },
         },
       });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
     }
+
+    if (record.filePath.startsWith('s3://')) {
+      const s3Key = record.filePath.replace('s3://', '');
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      return res.redirect(signedUrl, 302);
+    }
+
+    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      return res.redirect(record.filePath, 302);
+    }
+
+    const filePath = path.join(process.cwd(), record.filePath);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+    }
+
+    const stat = fs.statSync(filePath);
 
     const stream = fs.createReadStream(filePath);
     stream.on('error', (err) => {

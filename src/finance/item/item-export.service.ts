@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../database/prisma.service';
+import { UploadService } from '../../upload/upload.service';
 
 export interface QueueExportOptions {
   userId: string;
@@ -24,6 +25,7 @@ export class ItemExportService {
   constructor(
     @InjectQueue('item-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
+    private readonly uploadService: UploadService,
   ) {}
 
   async queueExport(opts: QueueExportOptions): Promise<{ jobId: string }> {
@@ -81,21 +83,47 @@ export class ItemExportService {
     return { state, progress };
   }
 
-  /**
-   * Stream the completed export file to the response.
-   * Deletes the file after streaming so disk doesn't fill up.
-   */
   async streamExportFile(jobId: string, res: any): Promise<void> {
-    const filePath = path.join(process.cwd(), 'uploads', 'exports', `export-${jobId}.xlsx`);
+    const record = await this.prisma.exportHistory.findUnique({
+      where: { id: jobId },
+      select: { fileName: true, filePath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Export record ${jobId} not found in database`);
+    }
+
+    // Increment download count in ExportHistory
+    try {
+      await this.prisma.exportHistory.update({
+        where: { id: jobId },
+        data: {
+          downloadCount: { increment: 1 },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+    }
+
+    if (record.filePath.startsWith('s3://')) {
+      const s3Key = record.filePath.replace('s3://', '');
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      return res.redirect(signedUrl, 302);
+    }
+
+    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      return res.redirect(record.filePath, 302);
+    }
+
+    const filePath = path.isAbsolute(record.filePath)
+      ? record.filePath
+      : path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
     }
 
     const stat = fs.statSync(filePath);
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `items-export-${timestamp}.xlsx`;
-
     const stream = fs.createReadStream(filePath);
 
     // Clean up file after the stream is fully consumed
@@ -109,12 +137,8 @@ export class ItemExportService {
       this.logger.error(`[Export] Stream error for ${filePath}: ${err.message}`);
     });
 
-    // Use Fastify's res.send(stream) — this is the correct pattern.
-    // res.header() + res.send() lets Fastify write headers and body together
-    // through its own lifecycle, avoiding the raw-socket hijack issue that
-    // causes "Failed to fetch" on the client.
     res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${filename}"`);
+    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
