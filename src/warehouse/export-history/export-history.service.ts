@@ -58,7 +58,14 @@ export class ExportHistoryService {
 
   async listExports(
     userId: string,
-    filters: { folderId?: string | null; isFavorite?: boolean; search?: string; moduleName?: string },
+    filters: {
+      folderId?: string | null;
+      isFavorite?: boolean;
+      search?: string;
+      moduleName?: string;
+      page?: number;
+      limit?: number;
+    },
   ) {
     const whereClause: any = { userId };
 
@@ -85,15 +92,34 @@ export class ExportHistoryService {
       }
     }
 
-    return this.prisma.exportHistory.findMany({
-      where: whereClause,
-      include: {
-        folder: {
-          select: { id: true, name: true }
-        }
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.max(1, filters.limit || 10);
+    const skip = (page - 1) * limit;
+
+    const [totalCount, records] = await Promise.all([
+      this.prisma.exportHistory.count({ where: whereClause }),
+      this.prisma.exportHistory.findMany({
+        where: whereClause,
+        include: {
+          folder: {
+            select: { id: true, name: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data: records,
+      meta: {
+        totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit),
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    };
   }
 
   async updateExport(userId: string, exportId: string, data: UpdateExportDto) {

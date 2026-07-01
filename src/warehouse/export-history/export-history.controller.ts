@@ -67,18 +67,24 @@ export class ExportHistoryController {
     @Query('isFavorite') isFavorite?: string,
     @Query('search') search?: string,
     @Query('moduleName') moduleName?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const userId = req.user?.userId || req.user?.id;
     
     const favoriteBool = isFavorite === 'true' ? true : isFavorite === 'false' ? false : undefined;
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
 
     const result = await this.service.listExports(userId, {
       folderId,
       isFavorite: favoriteBool,
       search,
       moduleName,
+      page: pageNum,
+      limit: limitNum,
     });
-    return { status: true, data: result };
+    return { status: true, data: result.data, meta: result.meta };
   }
 
   @Patch(':id')
