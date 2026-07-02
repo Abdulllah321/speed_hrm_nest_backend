@@ -14,6 +14,8 @@ export interface JournalLine {
     refBillNo?: string;       // bill/ref number for this specific line
     refBillNo2?: string;      // secondary reference number
     taxType?: string; // withholding tax type for this line
+    sourceDetailId?: string;
+    cprNo?: string;
 }
 
 export interface PostOptions {
@@ -93,6 +95,8 @@ export class AccountingService {
                     taxType: line.taxType ?? 'Taxable',
                     description: options.description ?? null,
                     transactionDate: date,
+                    sourceDetailId: line.sourceDetailId ?? null,
+                    cprNo: line.cprNo ?? null,
                 },
             });
 

@@ -51,6 +51,7 @@ model PaymentVoucherDetail {
   refBillNo        String?         // Bill/ref number for this specific line
   refBillNo2       String?
   taxType          String          @default("Taxable")
+  cprNo            String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   account          ChartOfAccount  @relation("PVDetailAccount", fields: [accountId], references: [id])

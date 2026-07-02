@@ -10,11 +10,13 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { PaymentVoucherService } from './payment-voucher.service';
 import { CreatePaymentVoucherDto } from './dto/create-payment-voucher.dto';
 import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { UpdateVoucherCprDto } from './dto/update-cpr.dto';
 import { ApiQuery, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -165,6 +167,22 @@ export class PaymentVoucherController {
     @Body() updateStatusDto: UpdateStatusDto,
   ) {
     return this.paymentVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks);
+  }
+
+  @Patch(':id/cpr')
+  @Permissions('erp.finance.payment-voucher.update')
+  @ApiOperation({ summary: 'Update CPR numbers for a payment voucher' })
+  @ApiResponse({ status: 200, description: 'CPR numbers updated successfully' })
+  updateCpr(
+    @Param('id') id: string,
+    @Body() updateVoucherCprDto: UpdateVoucherCprDto,
+    @Req() req: any,
+  ) {
+    return this.paymentVoucherService.updateCpr(id, updateVoucherCprDto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Delete(':id')

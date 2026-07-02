@@ -498,7 +498,11 @@ export class PosSalesService implements OnModuleInit {
                 
                 // Recalculate total with the chosen discount
                 const totalDiscount = finalLineItemDiscount + globalDiscAmt;
-                const fbrPosFee = 1; // FBR POS Fee
+                const location = await tx.location.findUnique({
+                    where: { id: locationId },
+                    select: { fbrEnabled: true, fbrNtn: true }
+                });
+                const fbrPosFee = (location?.fbrEnabled && location?.fbrNtn) ? 1 : 0;
                 const grandTotal = Math.max(0, Math.round(subtotal - totalDiscount + finalTotalTax + fbrPosFee));
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
 
