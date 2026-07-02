@@ -15,8 +15,14 @@ export interface QueueNetSalesSummaryExportOptions {
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
+  showSalesperson?: boolean;
+  showYear?: boolean;
+  showMonth?: boolean;
+  showDay?: boolean;
+  showDocument?: boolean;
   showBrand?: boolean;
   showDivision?: boolean;
+  showSalesTax?: boolean;
   showCategory?: boolean;
   showGender?: boolean;
   showSilhouette?: boolean;
@@ -64,8 +70,14 @@ export class NetSalesSummaryExportService {
         cashierUserId: opts.cashierUserId,
         format: opts.format,
         summaryOnly: !!opts.summaryOnly,
+        showSalesperson: opts.showSalesperson,
+        showYear: opts.showYear,
+        showMonth: opts.showMonth,
+        showDay: opts.showDay,
+        showDocument: opts.showDocument,
         showBrand: opts.showBrand,
         showDivision: opts.showDivision,
+        showSalesTax: opts.showSalesTax,
         showCategory: opts.showCategory,
         showGender: opts.showGender,
         showSilhouette: opts.showSilhouette,
