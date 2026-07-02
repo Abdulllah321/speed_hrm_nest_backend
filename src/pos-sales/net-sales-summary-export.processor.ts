@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as puppeteer from 'puppeteer';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
 
@@ -20,8 +21,14 @@ export interface NetSalesSummaryExportJobData {
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
+  showSalesperson?: boolean;
+  showYear?: boolean;
+  showMonth?: boolean;
+  showDay?: boolean;
+  showDocument?: boolean;
   showBrand?: boolean;
   showDivision?: boolean;
+  showSalesTax?: boolean;
   showCategory?: boolean;
   showGender?: boolean;
   showSilhouette?: boolean;
@@ -36,7 +43,7 @@ const GROUP_COLORS: Record<string, string> = {
 };
 
 const COLUMNS = [
-  { header: 'GPC / Category / Product', key: 'sku', width: 35, group: 'General' },
+  { header: 'Year | Month | Day | Document Type & # / Product', key: 'sku', width: 35, group: 'General' },
   { header: 'Size', key: 'size', width: 10, group: 'General', align: 'center' as const },
   { header: 'Qty', key: 'qty', width: 10, group: 'General', align: 'right' as const },
   { header: 'Retail Price (Rs.)', key: 'retailPrice', width: 18, group: 'General', align: 'right' as const, numFmt: '#,##0.00' },
@@ -82,11 +89,13 @@ export class NetSalesSummaryExportProcessor {
   async handleExport(job: Job<NetSalesSummaryExportJobData>): Promise<void> {
     const {
       jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, cashierUserId, format, summaryOnly,
-      showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
+      showSalesperson, showYear, showMonth, showDay, showDocument,
+      showBrand, showDivision, showSalesTax, showCategory, showGender, showSilhouette, showArticle, showVariant
     } = job.data;
     this.logger.log(`[NetSalesSummaryExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prismaMaster = new PrismaMasterService();
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
@@ -119,6 +128,7 @@ export class NetSalesSummaryExportProcessor {
           },
         },
         include: {
+          salesOrder: true,
           item: {
             include: {
               brand: true,
@@ -133,10 +143,17 @@ export class NetSalesSummaryExportProcessor {
         },
       });
 
-      await job.progress(40);
+      await job.progress(35);
+
+      const sSalesperson = showSalesperson === true;
+      const sYear = showYear === true;
+      const sMonth = showMonth === true;
+      const sDay = showDay === true;
+      const sDocument = showDocument === true;
 
       const sBrand = showBrand !== false;
       const sDivision = showDivision !== false;
+      const sSalesTax = showSalesTax === true;
       const sCategory = showCategory !== false;
       const sGender = showGender !== false;
       const sSilhouette = showSilhouette !== false;
@@ -144,8 +161,14 @@ export class NetSalesSummaryExportProcessor {
       const sVariant = showVariant !== undefined ? showVariant : !summaryOnly;
 
       const levels: string[] = [];
+      if (sSalesperson) levels.push('salesperson');
+      if (sYear) levels.push('year');
+      if (sMonth) levels.push('month');
+      if (sDay) levels.push('day');
+      if (sDocument) levels.push('document');
       if (sBrand) levels.push('brand');
       if (sDivision) levels.push('division');
+      if (sSalesTax) levels.push('salesTax');
       if (sCategory) levels.push('category');
       if (sGender) levels.push('gender');
       if (sSilhouette) levels.push('silhouette');
@@ -153,8 +176,41 @@ export class NetSalesSummaryExportProcessor {
       if (sVariant) levels.push('variant');
 
       if (levels.length === 0) {
-        levels.push('brand');
+        levels.push('salesperson');
       }
+
+      // Resolve cashier names if grouping by salesperson
+      const cashierNameMap = new Map<string, string>();
+      if (sSalesperson || levels.includes('salesperson')) {
+        const cashierUserIds = [...new Set(orderItems.map(oi => oi.salesOrder?.cashierUserId).filter(Boolean))] as string[];
+        const cashierUsers = cashierUserIds.length
+            ? await prismaMaster.user.findMany({
+                where: { id: { in: cashierUserIds } },
+                select: { id: true, firstName: true, lastName: true },
+              })
+            : [];
+        const cashierEmployees = cashierUserIds.length
+            ? await prisma.employee.findMany({
+                where: {
+                    OR: [
+                        { id: { in: cashierUserIds } },
+                        { userId: { in: cashierUserIds } }
+                    ]
+                },
+                select: { id: true, userId: true, employeeName: true }
+            })
+            : [];
+
+        for (const u of cashierUsers) {
+            cashierNameMap.set(u.id, `${u.firstName} ${u.lastName}`);
+        }
+        for (const emp of cashierEmployees) {
+            if (emp.userId) cashierNameMap.set(emp.userId, emp.employeeName);
+            cashierNameMap.set(emp.id, emp.employeeName);
+        }
+      }
+
+      await job.progress(45);
 
       const root: any[] = [];
 
@@ -218,10 +274,34 @@ export class NetSalesSummaryExportProcessor {
           let nodeVal = '';
           let extraFields: any = {};
 
-          if (levelName === 'brand') {
+          if (levelName === 'salesperson') {
+            const cid = orderItem.salesOrder?.cashierUserId || '';
+            nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+          } else if (levelName === 'year') {
+            nodeVal = orderItem.salesOrder ? String(orderItem.salesOrder.createdAt.getFullYear()) : 'Unknown Year';
+          } else if (levelName === 'month') {
+            if (orderItem.salesOrder) {
+              const date = orderItem.salesOrder.createdAt;
+              nodeVal = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+            } else {
+              nodeVal = 'Unknown Month';
+            }
+          } else if (levelName === 'day') {
+            if (orderItem.salesOrder) {
+              const date = orderItem.salesOrder.createdAt;
+              nodeVal = date.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+            } else {
+              nodeVal = 'Unknown Day';
+            }
+          } else if (levelName === 'document') {
+            nodeVal = orderItem.salesOrder ? `POS Sale - ${orderItem.salesOrder.orderNumber}` : 'Unknown Document';
+          } else if (levelName === 'brand') {
             nodeVal = orderItem.item.brand?.name || 'No Brand';
           } else if (levelName === 'division') {
             nodeVal = orderItem.item.division?.name || 'No Division';
+          } else if (levelName === 'salesTax') {
+            const rate = Number(orderItem.taxPercent || 0);
+            nodeVal = rate > 0 ? `${rate}% Tax` : 'No Tax';
           } else if (levelName === 'category') {
             nodeVal = orderItem.item.category?.name || 'No Category';
           } else if (levelName === 'gender') {
@@ -399,13 +479,19 @@ export class NetSalesSummaryExportProcessor {
           indent: number;
           prefix: string;
         }> = {
+          salesperson: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: '' },
+          year: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: '' },
+          month: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: '' },
+          day: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: '' },
+          document: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: '' },
           brand: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
           division: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
-          category: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'CATEGORY: ' },
-          gender: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'GENDER: ' },
-          silhouette: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'SILHOUETTE: ' },
-          article: { bgHex: 'F1F5F9', fgHex: '1E293B', fontSize: 9, bold: true, indent: 10, prefix: 'SKU: ' },
-          variant: { bgHex: 'FFFFFF', fgHex: '475569', fontSize: 9, bold: false, indent: 12, prefix: '' },
+          salesTax: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'TAX RATE: ' },
+          category: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'CATEGORY: ' },
+          gender: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'GENDER: ' },
+          silhouette: { bgHex: 'CBD5E1', fgHex: '1E293B', fontSize: 9, bold: true, indent: 10, prefix: 'SILHOUETTE: ' },
+          article: { bgHex: 'F1F5F9', fgHex: '1E293B', fontSize: 9, bold: true, indent: 12, prefix: 'SKU: ' },
+          variant: { bgHex: 'FFFFFF', fgHex: '475569', fontSize: 9, bold: false, indent: 14, prefix: '' },
         };
 
         const writeNodeToExcel = (node: any) => {
@@ -539,6 +625,8 @@ export class NetSalesSummaryExportProcessor {
       this.logger.error(`[NetSalesSummaryExport ${jobId}] Failed: ${err.message}`, err.stack);
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
+    } finally {
+      await prismaMaster.$disconnect();
     }
   }
 
@@ -559,13 +647,19 @@ export class NetSalesSummaryExportProcessor {
       indentStyles: string;
       prefix: string;
     }> = {
+      salesperson: { className: 'brand-row', indentStyles: '', prefix: '' },
+      year: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: '' },
+      month: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: '' },
+      day: { className: 'gender-row', indentStyles: 'padding-left: 30px;', prefix: '' },
+      document: { className: 'silhouette-row', indentStyles: 'padding-left: 40px;', prefix: '' },
       brand: { className: 'brand-row', indentStyles: '', prefix: 'BRAND: ' },
       division: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: 'DIVISION: ' },
-      category: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: 'CATEGORY: ' },
-      gender: { className: 'gender-row', indentStyles: 'padding-left: 30px;', prefix: 'GENDER: ' },
-      silhouette: { className: 'silhouette-row', indentStyles: 'padding-left: 40px;', prefix: 'SILHOUETTE: ' },
-      article: { className: 'article-row', indentStyles: 'padding-left: 50px;', prefix: 'SKU: ' },
-      variant: { className: 'variant-row', indentStyles: 'padding-left: 60px;', prefix: '' },
+      salesTax: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: 'TAX RATE: ' },
+      category: { className: 'category-row', indentStyles: 'padding-left: 30px;', prefix: 'CATEGORY: ' },
+      gender: { className: 'gender-row', indentStyles: 'padding-left: 40px;', prefix: 'GENDER: ' },
+      silhouette: { className: 'silhouette-row', indentStyles: 'padding-left: 50px;', prefix: 'SILHOUETTE: ' },
+      article: { className: 'article-row', indentStyles: 'padding-left: 60px;', prefix: 'SKU: ' },
+      variant: { className: 'variant-row', indentStyles: 'padding-left: 70px;', prefix: '' },
     };
 
     const buildHtmlRows = (node: any): string => {

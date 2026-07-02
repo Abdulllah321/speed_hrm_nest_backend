@@ -499,8 +499,14 @@ export class PosSalesController {
         @Query('endDate') endDate?: string,
         @Query('cashierUserId') cashierUserId?: string,
         @Query('summaryOnly') summaryOnly?: string,
+        @Query('showSalesperson') showSalesperson?: string,
+        @Query('showYear') showYear?: string,
+        @Query('showMonth') showMonth?: string,
+        @Query('showDay') showDay?: string,
+        @Query('showDocument') showDocument?: string,
         @Query('showBrand') showBrand?: string,
         @Query('showDivision') showDivision?: string,
+        @Query('showSalesTax') showSalesTax?: string,
         @Query('showCategory') showCategory?: string,
         @Query('showGender') showGender?: string,
         @Query('showSilhouette') showSilhouette?: string,
@@ -513,8 +519,14 @@ export class PosSalesController {
             endDate,
             cashierUserId,
             summaryOnly: summaryOnly === 'true',
+            showSalesperson: showSalesperson === 'true',
+            showYear: showYear === 'true',
+            showMonth: showMonth === 'true',
+            showDay: showDay === 'true',
+            showDocument: showDocument === 'true',
             showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
             showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
+            showSalesTax: showSalesTax === 'true',
             showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
             showGender: showGender !== undefined ? showGender === 'true' : undefined,
             showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
@@ -534,8 +546,14 @@ export class PosSalesController {
             cashierUserId?: string;
             format: 'xlsx' | 'pdf';
             summaryOnly?: boolean;
+            showSalesperson?: boolean;
+            showYear?: boolean;
+            showMonth?: boolean;
+            showDay?: boolean;
+            showDocument?: boolean;
             showBrand?: boolean;
             showDivision?: boolean;
+            showSalesTax?: boolean;
             showCategory?: boolean;
             showGender?: boolean;
             showSilhouette?: boolean;
@@ -552,8 +570,14 @@ export class PosSalesController {
             cashierUserId: body.cashierUserId,
             format: body.format,
             summaryOnly: body.summaryOnly,
+            showSalesperson: body.showSalesperson,
+            showYear: body.showYear,
+            showMonth: body.showMonth,
+            showDay: body.showDay,
+            showDocument: body.showDocument,
             showBrand: body.showBrand,
             showDivision: body.showDivision,
+            showSalesTax: body.showSalesTax,
             showCategory: body.showCategory,
             showGender: body.showGender,
             showSilhouette: body.showSilhouette,

@@ -3703,8 +3703,14 @@ export class PosSalesService implements OnModuleInit {
         endDate?: string;
         cashierUserId?: string;
         summaryOnly?: boolean;
+        showSalesperson?: boolean;
+        showYear?: boolean;
+        showMonth?: boolean;
+        showDay?: boolean;
+        showDocument?: boolean;
         showBrand?: boolean;
         showDivision?: boolean;
+        showSalesTax?: boolean;
         showCategory?: boolean;
         showGender?: boolean;
         showSilhouette?: boolean;
@@ -3716,8 +3722,15 @@ export class PosSalesService implements OnModuleInit {
             throw new BadRequestException('locationId is required');
         }
 
+        const sSalesperson = options.showSalesperson === true;
+        const sYear = options.showYear === true;
+        const sMonth = options.showMonth === true;
+        const sDay = options.showDay === true;
+        const sDocument = options.showDocument === true;
+
         const sBrand = options.showBrand !== false;
         const sDivision = options.showDivision !== false;
+        const sSalesTax = options.showSalesTax === true;
         const sCategory = options.showCategory !== false;
         const sGender = options.showGender !== false;
         const sSilhouette = options.showSilhouette !== false;
@@ -3725,8 +3738,14 @@ export class PosSalesService implements OnModuleInit {
         const sVariant = options.showVariant !== undefined ? options.showVariant : !options.summaryOnly;
 
         const levels: string[] = [];
+        if (sSalesperson) levels.push('salesperson');
+        if (sYear) levels.push('year');
+        if (sMonth) levels.push('month');
+        if (sDay) levels.push('day');
+        if (sDocument) levels.push('document');
         if (sBrand) levels.push('brand');
         if (sDivision) levels.push('division');
+        if (sSalesTax) levels.push('salesTax');
         if (sCategory) levels.push('category');
         if (sGender) levels.push('gender');
         if (sSilhouette) levels.push('silhouette');
@@ -3734,7 +3753,7 @@ export class PosSalesService implements OnModuleInit {
         if (sVariant) levels.push('variant');
 
         if (levels.length === 0) {
-            levels.push('brand');
+            levels.push('salesperson');
         }
 
         const now = new Date();
@@ -3753,6 +3772,7 @@ export class PosSalesService implements OnModuleInit {
                 },
             },
             include: {
+                salesOrder: true,
                 item: {
                     include: {
                         brand: true,
@@ -3766,6 +3786,37 @@ export class PosSalesService implements OnModuleInit {
                 },
             },
         });
+
+        // Resolve cashier names if grouping by salesperson
+        const cashierNameMap = new Map<string, string>();
+        if (sSalesperson || levels.includes('salesperson')) {
+            const cashierUserIds = [...new Set(orderItems.map(oi => oi.salesOrder?.cashierUserId).filter(Boolean))] as string[];
+            const cashierUsers = cashierUserIds.length
+                ? await this.prismaMaster.user.findMany({
+                    where: { id: { in: cashierUserIds } },
+                    select: { id: true, firstName: true, lastName: true },
+                  })
+                : [];
+            const cashierEmployees = cashierUserIds.length
+                ? await this.prisma.employee.findMany({
+                    where: {
+                        OR: [
+                            { id: { in: cashierUserIds } },
+                            { userId: { in: cashierUserIds } }
+                        ]
+                    },
+                    select: { id: true, userId: true, employeeName: true }
+                })
+                : [];
+
+            for (const u of cashierUsers) {
+                cashierNameMap.set(u.id, `${u.firstName} ${u.lastName}`);
+            }
+            for (const emp of cashierEmployees) {
+                if (emp.userId) cashierNameMap.set(emp.userId, emp.employeeName);
+                cashierNameMap.set(emp.id, emp.employeeName);
+            }
+        }
 
         const root: any[] = [];
 
@@ -3829,10 +3880,34 @@ export class PosSalesService implements OnModuleInit {
                 let nodeVal = '';
                 let extraFields: any = {};
 
-                if (levelName === 'brand') {
+                if (levelName === 'salesperson') {
+                    const cid = orderItem.salesOrder?.cashierUserId || '';
+                    nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+                } else if (levelName === 'year') {
+                    nodeVal = orderItem.salesOrder ? String(orderItem.salesOrder.createdAt.getFullYear()) : 'Unknown Year';
+                } else if (levelName === 'month') {
+                    if (orderItem.salesOrder) {
+                        const date = orderItem.salesOrder.createdAt;
+                        nodeVal = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                    } else {
+                        nodeVal = 'Unknown Month';
+                    }
+                } else if (levelName === 'day') {
+                    if (orderItem.salesOrder) {
+                        const date = orderItem.salesOrder.createdAt;
+                        nodeVal = date.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+                    } else {
+                        nodeVal = 'Unknown Day';
+                    }
+                } else if (levelName === 'document') {
+                    nodeVal = orderItem.salesOrder ? `POS Sale - ${orderItem.salesOrder.orderNumber}` : 'Unknown Document';
+                } else if (levelName === 'brand') {
                     nodeVal = orderItem.item.brand?.name || 'No Brand';
                 } else if (levelName === 'division') {
                     nodeVal = orderItem.item.division?.name || 'No Division';
+                } else if (levelName === 'salesTax') {
+                    const rate = Number(orderItem.taxPercent || 0);
+                    nodeVal = rate > 0 ? `${rate}% Tax` : 'No Tax';
                 } else if (levelName === 'category') {
                     nodeVal = orderItem.item.category?.name || 'No Category';
                 } else if (levelName === 'gender') {
