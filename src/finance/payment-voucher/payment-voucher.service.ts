@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentVoucherDto } from './dto/create-payment-voucher.dto';
 import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
+import { UpdateVoucherCprDto } from './dto/update-cpr.dto';
 import { AccountingService } from '../accounting/accounting.service';
 import { FinanceAccountConfigService } from '../finance-account-config/finance-account-config.service';
 import { AccountRoleKey } from '../finance-account-config/dto/finance-account-config.dto';
@@ -127,7 +128,8 @@ export class PaymentVoucherService {
                 narration:       d.narration  || data.description || null,
                 refBillNo:       d.refBillNo  || data.refBillNo   || null,
                 refBillNo2:      d.refBillNo2 || null,
-                taxType: d.taxType ?? data.taxType ?? 'Taxable',
+                taxType:         d.taxType ?? data.taxType ?? 'Taxable',
+                cprNo:           d.cprNo || null,
               })),
           },
         },
@@ -320,7 +322,8 @@ export class PaymentVoucherService {
                   narration:       d.narration  || data.description || null,
                   refBillNo:       d.refBillNo  || data.refBillNo   || null,
                   refBillNo2:      d.refBillNo2 || null,
-                  taxType: d.taxType ?? data.taxType ?? 'Taxable',
+                  taxType:         d.taxType ?? data.taxType ?? 'Taxable',
+                  cprNo:           d.cprNo || null,
                 })),
             },
           },
@@ -479,7 +482,9 @@ export class PaymentVoucherService {
           narration:       d.narration  || voucher.description || undefined,
           refBillNo:       d.refBillNo  || voucher.refBillNo   || undefined,
           refBillNo2:      d.refBillNo2 || undefined,
-          taxType: d.taxType ?? voucher.taxType ?? 'Taxable',
+          taxType:         d.taxType ?? voucher.taxType ?? 'Taxable',
+          sourceDetailId:  d.id,
+          cprNo:           d.cprNo || undefined,
         }));
       await this.accounting.postLines(allLines, {
         sourceType: 'PAYMENT_VOUCHER',
@@ -757,6 +762,78 @@ export class PaymentVoucherService {
       }
 
       return updated;
+    });
+  }
+
+  async updateCpr(id: string, dto: UpdateVoucherCprDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+    const voucher = await this.prisma.paymentVoucher.findUnique({
+      where: { id },
+      include: { details: true },
+    });
+
+    if (!voucher) {
+      throw new NotFoundException(`Payment Voucher with ID ${id} not found`);
+    }
+
+    return this.prisma.$transaction(async (prisma) => {
+      // 1. Update CPR number on PaymentVoucherDetail rows
+      for (const item of dto.details) {
+        const detail = voucher.details.find(d => d.id === item.id);
+        if (!detail) {
+          throw new BadRequestException(`Voucher detail row with ID ${item.id} not found in this voucher`);
+        }
+
+        await prisma.paymentVoucherDetail.update({
+          where: { id: item.id },
+          data: { cprNo: item.cprNo || null },
+        });
+
+        // 2. If voucher is approved, sync cprNo to corresponding AccountTransaction rows
+        if (voucher.status === 'approved') {
+          await prisma.accountTransaction.updateMany({
+            where: {
+              sourceType: 'PAYMENT_VOUCHER',
+              sourceId: id,
+              sourceDetailId: item.id,
+            },
+            data: { cprNo: item.cprNo || null },
+          });
+        }
+      }
+
+      // Fetch the updated voucher
+      const updatedVoucher = await prisma.paymentVoucher.findUnique({
+        where: { id },
+        include: {
+          details: {
+            include: {
+              account: true,
+              tagAccount: true,
+            },
+          },
+          creditAccount: true,
+          supplier: true,
+        },
+      });
+
+      runInBackground(
+        'Update Payment Voucher CPR Numbers',
+        this.activityLogs.log({
+          userId:      ctx?.userId,
+          action:      'update',
+          module:      'finance',
+          entity:      'PaymentVoucher',
+          entityId:    id,
+          description: `Updated CPR numbers for payment voucher ${voucher.pvNo}`,
+          oldValues:   JSON.stringify(voucher.details.map(d => ({ id: d.id, cprNo: d.cprNo }))),
+          newValues:   JSON.stringify(dto.details),
+          ipAddress:   ctx?.ipAddress,
+          userAgent:   ctx?.userAgent,
+          status:      'success',
+        }),
+      );
+
+      return updatedVoucher;
     });
   }
 

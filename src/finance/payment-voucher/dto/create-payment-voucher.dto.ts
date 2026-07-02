@@ -44,6 +44,10 @@ export class CreatePaymentVoucherDetailDto {
   @IsString()
   @IsOptional()
   taxType?: string;
+
+  @IsString()
+  @IsOptional()
+  cprNo?: string;
 }
 
 export class CreatePaymentVoucherInvoiceDto {

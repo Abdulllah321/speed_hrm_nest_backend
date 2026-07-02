@@ -17,6 +17,8 @@ model AccountTransaction {
   sourceId        String
   /// Human-readable reference e.g. BP/2026/5/4069, JV-2026-0001
   sourceRef       String
+  sourceDetailId  String?
+  cprNo           String?
 
   // ── Per-line details ──────────────────────────────────────────────────────
   /// Per-line narration (overrides voucher-level description for this line)
