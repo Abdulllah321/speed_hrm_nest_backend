@@ -490,11 +490,6 @@ export class PosSalesController {
     }
 
     // ─── Net Sales Summary Endpoints ───────────────────────────────
-    @Get('cashiers')
-    @ApiOperation({ summary: 'Get list of cashiers for a location' })
-    async getCashiers(@Query('locationId') locationId: string) {
-        return this.posSalesService.listCashiers(locationId);
-    }
 
     @Get('reports/net-sales-summary')
     @ApiOperation({ summary: 'Get Net Sales Summary Report' })
