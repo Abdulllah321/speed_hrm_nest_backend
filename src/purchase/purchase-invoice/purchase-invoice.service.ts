@@ -9,6 +9,7 @@ import { MovementType, Prisma } from '@prisma/client';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { generateNextJvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 
 @Injectable()
 export class PurchaseInvoiceService {
@@ -789,6 +790,10 @@ export class PurchaseInvoiceService {
         include: { chartOfAccounts: { select: { id: true } } },
       });
 
+      if (!supplier) {
+        throw new BadRequestException('Supplier not found for this purchase invoice.');
+      }
+
       return this.prisma.$transaction(async (tx) => {
         const updated = await tx.purchaseInvoice.update({
           where: { id },
@@ -843,25 +848,242 @@ export class PurchaseInvoiceService {
           }));
         }
 
-        // Build and post journal lines only if finance configuration is present
-        if (purchasesAccountId && payableAccounts.length > 0) {
-          const creditPerAccount = totalAmount / payableAccounts.length;
-          const creditLines = payableAccounts.map(acc => ({
-            accountId: acc.accountId,
-            tagAccountId: acc.tagAccountId,
+        if (supplier?.type === 'IMPORT') {
+          // Build and post journal lines only if finance configuration is present
+          if (purchasesAccountId && payableAccounts.length > 0) {
+            const creditPerAccount = totalAmount / payableAccounts.length;
+            const creditLines = payableAccounts.map(acc => ({
+              accountId: acc.accountId,
+              tagAccountId: acc.tagAccountId,
+              debit: 0,
+              credit: creditPerAccount,
+            }));
+
+            const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
+
+            await this.accounting.postLines([...debitLines, ...creditLines], {
+              sourceType: 'PURCHASE_INVOICE',
+              sourceId: id,
+              sourceRef: invoice.invoiceNumber,
+              description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
+              transactionDate: new Date(),
+            }, tx);
+          }
+        } else {
+          // Generate auto draft Journal Voucher for LOCAL purchase
+          const jvDate = new Date();
+          const sequentialJvNo = await generateNextJvNumber(tx, jvDate);
+          const sequentialFolio = await generateNextFolioNumber(tx, jvDate);
+
+          const itemsWithBrand = await tx.purchaseInvoiceItem.findMany({
+            where: { purchaseInvoiceId: id },
+            include: {
+              item: {
+                include: {
+                  brand: true
+                }
+              }
+            }
+          });
+
+          const brandGroups: { [brandName: string]: { quantity: number; lineTotalExclTax: number } } = {};
+          for (const item of itemsWithBrand) {
+            const brandName = item.item.brand?.name || 'Unknown';
+            if (!brandGroups[brandName]) {
+              brandGroups[brandName] = { quantity: 0, lineTotalExclTax: 0 };
+            }
+            const qty = Number(item.quantity);
+            const price = Number(item.unitPrice);
+            const discount = Number(item.discountAmount || 0);
+            brandGroups[brandName].quantity += qty;
+            brandGroups[brandName].lineTotalExclTax += (qty * price - discount);
+          }
+
+          const detailsData: any[] = [];
+          const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+          const totalQuantity = itemsWithBrand.reduce((sum, item) => sum + Number(item.quantity), 0);
+          const brandListStr = Object.keys(brandGroups).join(' & ');
+
+          // 1. Debit lines for purchases (60020002) grouped by brand
+          const purchasesParent = await tx.chartOfAccount.findFirst({
+            where: { code: '60020002' }
+          });
+          if (!purchasesParent) {
+            throw new BadRequestException('Purchases Local account (60020002) not found in Chart of Accounts.');
+          }
+
+          for (const [brandName, group] of Object.entries(brandGroups)) {
+            const tagAccount = await tx.chartOfAccount.findFirst({
+              where: {
+                parentId: purchasesParent.id,
+                name: { equals: brandName, mode: 'insensitive' }
+              }
+            });
+            if (!tagAccount) {
+              throw new BadRequestException(`Tag account for brand "${brandName}" not found under Purchases Local account (60020002).`);
+            }
+
+            let brandDebitValue = group.lineTotalExclTax;
+            if (Number(invoice.discountAmount) > 0 && Number(invoice.subtotal) > 0) {
+              brandDebitValue = brandDebitValue - (brandDebitValue / Number(invoice.subtotal)) * Number(invoice.discountAmount);
+            }
+
+            detailsData.push({
+              accountId: purchasesParent.id,
+              tagAccountId: tagAccount.id,
+              debit: roundToTwo(brandDebitValue),
+              credit: 0,
+              narration: `REC ${group.quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoice.invoiceNumber} ref 2 is ${invoice.grn?.grnNumber || ''}`,
+              refBillNo: invoice.invoiceNumber,
+              refBillNo2: invoice.grn?.grnNumber || '',
+              taxType: 'Taxable',
+            });
+          }
+
+          // 2. Sales tax line (31070003) - Debit
+          if (Number(invoice.taxAmount) > 0) {
+            const taxParent = await tx.chartOfAccount.findFirst({
+              where: { code: '31070003' }
+            });
+            if (!taxParent) {
+              throw new BadRequestException('Sales Tax account (31070003) not found in Chart of Accounts.');
+            }
+
+            const tagAccount = await tx.chartOfAccount.findFirst({
+              where: {
+                parentId: taxParent.id,
+                code: supplier.code
+              }
+            });
+            if (!tagAccount) {
+              throw new BadRequestException(`Tag account with code "${supplier.code}" not found under Sales Tax account (31070003).`);
+            }
+
+            detailsData.push({
+              accountId: taxParent.id,
+              tagAccountId: tagAccount.id,
+              debit: roundToTwo(Number(invoice.taxAmount)),
+              credit: 0,
+              narration: `REC Sales Tax for ${totalQuantity} Pcs. of ${brandListStr} Shipment. ref 1 is ${invoice.invoiceNumber} ref 2 is ${invoice.grn?.grnNumber || ''}`,
+              refBillNo: invoice.invoiceNumber,
+              refBillNo2: invoice.grn?.grnNumber || '',
+              taxType: 'Taxable',
+            });
+          }
+
+          // 3. Advance tax line (31080002) - Debit
+          if (Number(invoice.advanceTaxAmount) > 0) {
+            const advTaxParent = await tx.chartOfAccount.findFirst({
+              where: { code: '31080002' }
+            });
+            if (!advTaxParent) {
+              throw new BadRequestException('Advance Tax account (31080002) not found in Chart of Accounts.');
+            }
+
+            const tagAccount = await tx.chartOfAccount.findFirst({
+              where: {
+                parentId: advTaxParent.id,
+                code: supplier.code
+              }
+            });
+            if (!tagAccount) {
+              throw new BadRequestException(`Tag account with code "${supplier.code}" not found under Advance Tax account (31080002).`);
+            }
+
+            detailsData.push({
+              accountId: advTaxParent.id,
+              tagAccountId: tagAccount.id,
+              debit: roundToTwo(Number(invoice.advanceTaxAmount)),
+              credit: 0,
+              narration: `REC Advance Tax for ${totalQuantity} Pcs. of ${brandListStr} Shipment. ref 1 is ${invoice.invoiceNumber} ref 2 is ${invoice.grn?.grnNumber || ''}`,
+              refBillNo: invoice.invoiceNumber,
+              refBillNo2: invoice.grn?.grnNumber || '',
+              taxType: 'Taxable',
+            });
+          }
+
+          // 4. Bills payable line (12010004) - Credit
+          const billsPayableParent = await tx.chartOfAccount.findFirst({
+            where: { code: '12010004' }
+          });
+          if (!billsPayableParent) {
+            throw new BadRequestException('Bills Payable-Local account (12010004) not found in Chart of Accounts.');
+          }
+
+          const bpTagAccount = await tx.chartOfAccount.findFirst({
+            where: {
+              parentId: billsPayableParent.id,
+              code: supplier.code
+            }
+          });
+          if (!bpTagAccount) {
+            throw new BadRequestException(`Tag account with code "${supplier.code}" not found under Bills Payable-Local account (12010004).`);
+          }
+
+          const valueInclSalesTax = Number(invoice.subtotal) + Number(invoice.taxAmount) - Number(invoice.discountAmount);
+          detailsData.push({
+            accountId: billsPayableParent.id,
+            tagAccountId: bpTagAccount.id,
             debit: 0,
-            credit: creditPerAccount,
-          }));
+            credit: roundToTwo(valueInclSalesTax),
+            narration: `REC ${totalQuantity} Pcs. of ${brandListStr} Shipment. ref 1 is ${invoice.invoiceNumber} ref 2 is ${invoice.grn?.grnNumber || ''}`,
+            refBillNo: invoice.invoiceNumber,
+            refBillNo2: invoice.grn?.grnNumber || '',
+            taxType: 'Taxable',
+          });
 
-          const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
+          // 5. Bills payable advance tax line (12010004) - Credit
+          if (Number(invoice.advanceTaxAmount) > 0) {
+            detailsData.push({
+              accountId: billsPayableParent.id,
+              tagAccountId: bpTagAccount.id,
+              debit: 0,
+              credit: roundToTwo(Number(invoice.advanceTaxAmount)),
+              narration: `REC Advance Tax for ${totalQuantity} Pcs. of ${brandListStr} Shipment. ref 1 is ${invoice.invoiceNumber} ref 2 is ${invoice.grn?.grnNumber || ''}`,
+              refBillNo: invoice.invoiceNumber,
+              refBillNo2: invoice.grn?.grnNumber || '',
+              taxType: 'Taxable',
+            });
+          }
 
-          await this.accounting.postLines([...debitLines, ...creditLines], {
-            sourceType: 'PURCHASE_INVOICE',
-            sourceId: id,
-            sourceRef: invoice.invoiceNumber,
-            description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
-            transactionDate: new Date(),
-          }, tx);
+          // Balanced check correction
+          let totalDebitSum = 0;
+          let totalCreditSum = 0;
+          for (const line of detailsData) {
+            totalDebitSum += line.debit;
+            totalCreditSum += line.credit;
+          }
+
+          const diff = roundToTwo(totalCreditSum - totalDebitSum);
+          if (Math.abs(diff) > 0 && detailsData.length > 0) {
+            const firstPurchaseLine = detailsData.find(d => d.accountId === purchasesParent.id);
+            if (firstPurchaseLine) {
+              firstPurchaseLine.debit = roundToTwo(firstPurchaseLine.debit + diff);
+            }
+          }
+
+          // Create the draft Journal Voucher
+          await tx.journalVoucher.create({
+            data: {
+              jvNo: sequentialJvNo,
+              folio: sequentialFolio,
+              jvDate: jvDate,
+              description: `Auto Generated JV from Approved Purchase Invoice ${invoice.invoiceNumber}`,
+              status: 'pending', // Draft
+              details: {
+                create: detailsData.map(d => ({
+                  accountId: d.accountId,
+                  tagAccountId: d.tagAccountId,
+                  debit: d.debit,
+                  credit: d.credit,
+                  narration: d.narration,
+                  refBillNo: d.refBillNo,
+                  refBillNo2: d.refBillNo2,
+                  taxType: d.taxType,
+                })),
+              },
+            },
+          });
         }
 
         // ── Write supplier ledger credit entry ───────────────────────────────
@@ -990,6 +1212,10 @@ export class PurchaseInvoiceService {
             include: { chartOfAccounts: { select: { id: true } } },
           });
 
+          if (!supplier) {
+            throw new BadRequestException('Supplier not found for this purchase invoice.');
+          }
+
           let purchasesAccount: string | null = null;
           try {
             purchasesAccount = await this.financeConfig.resolveAccount(
@@ -1034,27 +1260,29 @@ export class PurchaseInvoiceService {
             }));
           }
 
-          if (purchasesAccount && payableAccounts.length > 0) {
-            const totalAmount = Number(invoice.totalAmount);
-            const creditPerAccount = totalAmount / payableAccounts.length;
+          if (supplier?.type === 'IMPORT') {
+            if (purchasesAccount && payableAccounts.length > 0) {
+              const totalAmount = Number(invoice.totalAmount);
+              const creditPerAccount = totalAmount / payableAccounts.length;
 
-            const originalLines = [
-              { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
-              ...payableAccounts.map(acc => ({
-                accountId: acc.accountId,
-                tagAccountId: acc.tagAccountId,
-                debit: 0,
-                credit: creditPerAccount,
-              })),
-            ];
+              const originalLines = [
+                { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
+                ...payableAccounts.map(acc => ({
+                  accountId: acc.accountId,
+                  tagAccountId: acc.tagAccountId,
+                  debit: 0,
+                  credit: creditPerAccount,
+                })),
+              ];
 
-            await this.accounting.reverseLines(originalLines, {
-              sourceType: 'PURCHASE_INVOICE',
-              sourceId: id,
-              sourceRef: invoice.invoiceNumber,
-              description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
-              transactionDate: new Date(),
-            }, tx);
+              await this.accounting.reverseLines(originalLines, {
+                sourceType: 'PURCHASE_INVOICE',
+                sourceId: id,
+                sourceRef: invoice.invoiceNumber,
+                description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
+                transactionDate: new Date(),
+              }, tx);
+            }
           }
 
           // ── DIRECT invoice: reverse warehouse inventory on cancellation ──────
