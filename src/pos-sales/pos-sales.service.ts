@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -3694,5 +3694,181 @@ export class PosSalesService implements OnModuleInit {
         const uniqueCashiers = Array.from(new Map(cashierList.map(c => [c.userId, c])).values());
 
         return { status: true, data: uniqueCashiers };
+    }
+
+    // ─── Net Sales Summary Report ──────────────────────────────────
+    async getNetSalesSummaryReport(options: {
+        locationId: string;
+        startDate?: string;
+        endDate?: string;
+        cashierUserId?: string;
+        summaryOnly?: boolean;
+        showBrand?: boolean;
+        showDivision?: boolean;
+        showCategory?: boolean;
+        showGender?: boolean;
+        showSilhouette?: boolean;
+        showArticle?: boolean;
+        showVariant?: boolean;
+    }) {
+        const { locationId, startDate: startStr, endDate: endStr, cashierUserId } = options;
+        if (!locationId) {
+            throw new BadRequestException('locationId is required');
+        }
+
+        const sBrand = options.showBrand !== false;
+        const sDivision = options.showDivision !== false;
+        const sCategory = options.showCategory !== false;
+        const sGender = options.showGender !== false;
+        const sSilhouette = options.showSilhouette !== false;
+        const sArticle = options.showArticle !== false;
+        const sVariant = options.showVariant !== undefined ? options.showVariant : !options.summaryOnly;
+
+        const levels: string[] = [];
+        if (sBrand) levels.push('brand');
+        if (sDivision) levels.push('division');
+        if (sCategory) levels.push('category');
+        if (sGender) levels.push('gender');
+        if (sSilhouette) levels.push('silhouette');
+        if (sArticle) levels.push('article');
+        if (sVariant) levels.push('variant');
+
+        if (levels.length === 0) {
+            levels.push('brand');
+        }
+
+        const now = new Date();
+        const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+        const endDate = endStr ? new Date(endStr) : new Date(now);
+        endDate.setHours(23, 59, 59, 999);
+
+        // Fetch sales order items
+        const orderItems = await this.prisma.salesOrderItem.findMany({
+            where: {
+                salesOrder: {
+                    locationId,
+                    status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
+                    createdAt: { gte: startDate, lte: endDate },
+                    ...(cashierUserId ? { cashierUserId } : {}),
+                },
+            },
+            include: {
+                item: {
+                    include: {
+                        brand: true,
+                        division: true,
+                        category: true,
+                        gender: true,
+                        silhouette: true,
+                        size: true,
+                        color: true,
+                    },
+                },
+            },
+        });
+
+        const root: any[] = [];
+
+        const createEmptyTotals = () => ({
+            qty: 0,
+            totalRetailValue: 0,
+            totalPriceWost: 0,
+            discountAmount: 0,
+            valueExclTax: 0,
+            salesTaxAmount: 0,
+            additionalSalesTaxAmount: 0,
+            totalTax: 0,
+            valueInclTax: 0,
+        });
+
+        const addTotals = (target: any, source: any) => {
+            target.qty += source.qty;
+            target.totalRetailValue += source.totalRetailValue;
+            target.totalPriceWost += source.totalPriceWost;
+            target.discountAmount += source.discountAmount;
+            target.valueExclTax += source.valueExclTax;
+            target.salesTaxAmount += source.salesTaxAmount;
+            target.additionalSalesTaxAmount += source.additionalSalesTaxAmount;
+            target.totalTax += source.totalTax;
+            target.valueInclTax += source.valueInclTax;
+        };
+
+        for (const orderItem of orderItems) {
+            if (!orderItem.item) continue;
+
+            const qty = Number(orderItem.quantity || 0);
+            const retailPrice = Number(orderItem.unitPrice || 0);
+            const taxRate = Number(orderItem.taxPercent || 0);
+            const taxRate2 = Number(orderItem.item.taxRate2 || 0);
+
+            const taxDivisor = 1 + (taxRate / 100);
+            const wostPerUnit = retailPrice / taxDivisor;
+            const totalPriceWost = qty * wostPerUnit;
+            const discountAmount = Number(orderItem.discountAmount || 0);
+            const valueExclTax = totalPriceWost - discountAmount;
+            const salesTaxAmount = Number(orderItem.taxAmount || 0);
+            const additionalSalesTaxAmount = valueExclTax * (taxRate2 / 100);
+            const totalTax = salesTaxAmount + additionalSalesTaxAmount;
+            const valueInclTax = valueExclTax + totalTax;
+
+            const variantMetrics = {
+                qty,
+                totalRetailValue: qty * retailPrice,
+                totalPriceWost,
+                discountAmount,
+                valueExclTax,
+                salesTaxAmount,
+                additionalSalesTaxAmount,
+                totalTax,
+                valueInclTax,
+            };
+
+            let currentLevelNodes = root;
+            for (let i = 0; i < levels.length; i++) {
+                const levelName = levels[i];
+                let nodeVal = '';
+                let extraFields: any = {};
+
+                if (levelName === 'brand') {
+                    nodeVal = orderItem.item.brand?.name || 'No Brand';
+                } else if (levelName === 'division') {
+                    nodeVal = orderItem.item.division?.name || 'No Division';
+                } else if (levelName === 'category') {
+                    nodeVal = orderItem.item.category?.name || 'No Category';
+                } else if (levelName === 'gender') {
+                    nodeVal = orderItem.item.gender?.name || 'No Gender';
+                } else if (levelName === 'silhouette') {
+                    nodeVal = orderItem.item.silhouette?.name || 'No Silhouette';
+                } else if (levelName === 'article') {
+                    nodeVal = orderItem.item.sku;
+                    extraFields.sku = orderItem.item.sku;
+                    extraFields.articleName = orderItem.item.description || 'Unknown Article';
+                } else if (levelName === 'variant') {
+                    nodeVal = `${orderItem.item.color?.name || 'Default'}-${orderItem.item.size?.name || 'Default'}`;
+                    extraFields.color = orderItem.item.color?.name || 'Default';
+                    extraFields.size = orderItem.item.size?.name || 'Default';
+                }
+
+                let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+                if (!existingNode) {
+                    existingNode = {
+                        level: levelName,
+                        value: nodeVal,
+                        totals: createEmptyTotals(),
+                        ...extraFields,
+                        children: [],
+                    };
+                    currentLevelNodes.push(existingNode);
+                }
+
+                addTotals(existingNode.totals, variantMetrics);
+
+                if (i < levels.length - 1) {
+                    currentLevelNodes = existingNode.children;
+                }
+            }
+        }
+
+        return root;
     }
 }
