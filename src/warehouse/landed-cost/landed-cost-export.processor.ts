@@ -150,8 +150,8 @@ export class LandedCostExportProcessor {
         { header: 'AST', key: 'additionalSalesTaxAmount', width: 12, group: 'Duty & Tax Calculation', align: 'right', numFmt: '#,##0' },
         { header: 'vIT', key: 'vIT', width: 14, group: 'Duty & Tax Calculation', align: 'right', numFmt: '#,##0' },
         { header: 'IT', key: 'incomeTaxAmount', width: 12, group: 'Duty & Tax Calculation', align: 'right', numFmt: '#,##0' },
-        { header: 'Excise', key: 'exciseChargesAmount', width: 12, group: 'Duty & Tax Calculation', align: 'right', numFmt: '#,##0' },
         { header: 'Total Duty', key: 'totalDuty', width: 16, group: 'Duty & Tax Calculation', align: 'right', numFmt: '#,##0' },
+        { header: 'Excise', key: 'exciseChargesAmount', width: 12, group: 'Duty & Tax Calculation', align: 'right', numFmt: '#,##0' },
       ];
 
       const COLUMNS_IMPORT_FREIGHT = [
@@ -293,7 +293,7 @@ export class LandedCostExportProcessor {
         const exciseChargesAmountVal = Math.round(Number(item.exciseChargesAmount || 0));
 
         const itemDutyVal = customsDutyAmountVal + regulatoryDutyAmountVal + additionalCustomsDutyAmountVal + salesTaxAmountVal + additionalSalesTaxAmountVal + incomeTaxAmountVal;
-        const totalDutyVal = itemDutyVal + exciseChargesAmountVal;
+        const totalDutyVal = itemDutyVal;
 
         const misFreightPKRVal = Math.round(Number(item.misFreightPKR || 0));
         const misFreightUSDVal = Math.round(Number(item.misFreightUSD || 0));
