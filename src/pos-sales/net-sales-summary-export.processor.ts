@@ -51,7 +51,6 @@ const COLUMNS = [
   { header: 'Discount Amount (Rs.)', key: 'discountAmount', width: 20, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Value Excluding Sales Tax (Rs.)', key: 'valueExclTax', width: 25, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Sales Tax Amount (Rs.)', key: 'salesTaxAmount', width: 20, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Additional Sales Tax Amount (Rs.)', key: 'additionalSalesTaxAmount', width: 25, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Total Tax (Rs.)', key: 'totalTax', width: 18, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Value Including Sales Tax (Rs.)', key: 'valueInclTax', width: 25, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
 ];
@@ -221,7 +220,6 @@ export class NetSalesSummaryExportProcessor {
         discountAmount: 0,
         valueExclTax: 0,
         salesTaxAmount: 0,
-        additionalSalesTaxAmount: 0,
         totalTax: 0,
         valueInclTax: 0,
       });
@@ -233,7 +231,6 @@ export class NetSalesSummaryExportProcessor {
         target.discountAmount += source.discountAmount;
         target.valueExclTax += source.valueExclTax;
         target.salesTaxAmount += source.salesTaxAmount;
-        target.additionalSalesTaxAmount += source.additionalSalesTaxAmount;
         target.totalTax += source.totalTax;
         target.valueInclTax += source.valueInclTax;
       };
@@ -244,7 +241,6 @@ export class NetSalesSummaryExportProcessor {
         const qty = Number(orderItem.quantity || 0);
         const retailPrice = Number(orderItem.unitPrice || 0);
         const taxRate = Number(orderItem.taxPercent || 0);
-        const taxRate2 = Number(orderItem.item.taxRate2 || 0);
 
         const taxDivisor = 1 + (taxRate / 100);
         const wostPerUnit = retailPrice / taxDivisor;
@@ -252,8 +248,7 @@ export class NetSalesSummaryExportProcessor {
         const discountAmount = Number(orderItem.discountAmount || 0);
         const valueExclTax = totalPriceWost - discountAmount;
         const salesTaxAmount = Number(orderItem.taxAmount || 0);
-        const additionalSalesTaxAmount = valueExclTax * (taxRate2 / 100);
-        const totalTax = salesTaxAmount + additionalSalesTaxAmount;
+        const totalTax = salesTaxAmount;
         const valueInclTax = valueExclTax + totalTax;
 
         const variantMetrics = {
@@ -263,7 +258,6 @@ export class NetSalesSummaryExportProcessor {
           discountAmount,
           valueExclTax,
           salesTaxAmount,
-          additionalSalesTaxAmount,
           totalTax,
           valueInclTax,
         };
@@ -521,14 +515,13 @@ export class NetSalesSummaryExportProcessor {
             discountAmount: node.totals.discountAmount,
             valueExclTax: node.totals.valueExclTax,
             salesTaxAmount: node.totals.salesTaxAmount,
-            additionalSalesTaxAmount: node.totals.additionalSalesTaxAmount,
             totalTax: node.totals.totalTax,
             valueInclTax: node.totals.valueInclTax,
           };
 
           const row = ws.addRow(rowData);
           
-          for (let colNum = 1; colNum <= 11; colNum++) {
+          for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
             const cell = row.getCell(colNum);
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
             cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
@@ -567,7 +560,6 @@ export class NetSalesSummaryExportProcessor {
           discountAmount: grandTotals.discountAmount,
           valueExclTax: grandTotals.valueExclTax,
           salesTaxAmount: grandTotals.salesTaxAmount,
-          additionalSalesTaxAmount: grandTotals.additionalSalesTaxAmount,
           totalTax: grandTotals.totalTax,
           valueInclTax: grandTotals.valueInclTax,
         });
@@ -679,7 +671,6 @@ export class NetSalesSummaryExportProcessor {
             <td class="num">${formatVal(node.totals.discountAmount)}</td>
             <td class="num">${formatVal(node.totals.valueExclTax)}</td>
             <td class="num">${formatVal(node.totals.salesTaxAmount)}</td>
-            <td class="num">${formatVal(node.totals.additionalSalesTaxAmount)}</td>
             <td class="num">${formatVal(node.totals.totalTax)}</td>
             <td class="num">${formatVal(node.totals.valueInclTax)}</td>
           </tr>
@@ -695,7 +686,6 @@ export class NetSalesSummaryExportProcessor {
             <td class="num">${formatVal(node.totals.discountAmount)}</td>
             <td class="num">${formatVal(node.totals.valueExclTax)}</td>
             <td class="num">${formatVal(node.totals.salesTaxAmount)}</td>
-            <td class="num">${formatVal(node.totals.additionalSalesTaxAmount)}</td>
             <td class="num">${formatVal(node.totals.totalTax)}</td>
             <td class="num">${formatVal(node.totals.valueInclTax)}</td>
           </tr>
@@ -711,7 +701,6 @@ export class NetSalesSummaryExportProcessor {
             <td class="num">${formatVal(node.totals.discountAmount)}</td>
             <td class="num">${formatVal(node.totals.valueExclTax)}</td>
             <td class="num">${formatVal(node.totals.salesTaxAmount)}</td>
-            <td class="num">${formatVal(node.totals.additionalSalesTaxAmount)}</td>
             <td class="num">${formatVal(node.totals.totalTax)}</td>
             <td class="num">${formatVal(node.totals.valueInclTax)}</td>
           </tr>
@@ -833,16 +822,15 @@ export class NetSalesSummaryExportProcessor {
         <table>
           <thead>
             <tr>
-              <th style="width: 25%;">GPC / Category / Product</th>
+              <th style="width: 30%;">GPC / Category / Product</th>
               <th style="width: 8%;">Size</th>
               <th style="width: 5%;">Qty</th>
               <th style="width: 8%;">Retail Price</th>
               <th style="width: 9%;">Total WOST</th>
               <th style="width: 9%;">Discount</th>
               <th style="width: 9%;">Val Excl Tax</th>
-              <th style="width: 9%;">Sales Tax</th>
-              <th style="width: 9%;">Add Tax</th>
-              <th style="width: 9%;">Total Tax</th>
+              <th style="width: 11%;">Sales Tax</th>
+              <th style="width: 11%;">Total Tax</th>
               <th style="width: 10%;">Val Incl Tax</th>
             </tr>
           </thead>
@@ -857,7 +845,6 @@ export class NetSalesSummaryExportProcessor {
               <td class="num">${formatVal(grandTotals.discountAmount)}</td>
               <td class="num">${formatVal(grandTotals.valueExclTax)}</td>
               <td class="num">${formatVal(grandTotals.salesTaxAmount)}</td>
-              <td class="num">${formatVal(grandTotals.additionalSalesTaxAmount)}</td>
               <td class="num">${formatVal(grandTotals.totalTax)}</td>
               <td class="num">${formatVal(grandTotals.valueInclTax)}</td>
             </tr>

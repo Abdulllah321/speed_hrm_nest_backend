@@ -982,14 +982,14 @@ export class PosSalesService implements OnModuleInit {
             include: { permissions: { include: { permission: true } } },
         });
 
-        const userPerms = role?.permissions.map(p => p.permission.name) || [];
-        const canViewAll = userPerms.includes('*') || userPerms.includes('pos.sales.history.view_all') ||
-            ['super_admin', 'admin'].includes(role?.name.toLowerCase() || '');
+        // const userPerms = role?.permissions.map(p => p.permission.name) || [];
+        // const canViewAll = userPerms.includes('*') || userPerms.includes('pos.sales.history.view_all') ||
+        //     ['super_admin', 'admin'].includes(role?.name.toLowerCase() || '');
 
-        if (!canViewAll) {
-            // Only see their own orders
-            where.cashierUserId = user.id;
-        }
+        // if (!canViewAll) {
+        //     // Only see their own orders
+        //     where.cashierUserId = user.id;
+        // }
 
         const [rawOrders, total] = await Promise.all([
             this.prisma.salesOrder.findMany({
@@ -1227,13 +1227,13 @@ export class PosSalesService implements OnModuleInit {
             include: { permissions: { include: { permission: true } } },
         });
 
-        const userPerms = role?.permissions.map(p => p.permission.name) || [];
-        const canViewAll = userPerms.includes('*') || userPerms.includes('pos.sales.history.view_all') ||
-            ['super_admin', 'admin'].includes(role?.name.toLowerCase() || '');
+        // const userPerms = role?.permissions.map(p => p.permission.name) || [];
+        // const canViewAll = userPerms.includes('*') || userPerms.includes('pos.sales.history.view_all') ||
+        //     ['super_admin', 'admin'].includes(role?.name.toLowerCase() || '');
 
-        if (!canViewAll) {
-            where.cashierUserId = user.id;
-        }
+        // if (!canViewAll) {
+        //     where.cashierUserId = user.id;
+        // }
 
         // ── Determine Date Range ──
         let start: Date | undefined = undefined;
@@ -3280,20 +3280,20 @@ export class PosSalesService implements OnModuleInit {
             where: { id: user.roleId },
             include: { permissions: { include: { permission: true } } },
         });
-        const userPerms = role?.permissions.map((p: any) => p.permission.name) || [];
-        const canViewAll =
-            userPerms.includes('*') ||
-            userPerms.includes('pos.sales.history.view_all') ||
-            ['super_admin', 'admin'].includes(role?.name?.toLowerCase() || '');
+        // const userPerms = role?.permissions.map((p: any) => p.permission.name) || [];
+        // const canViewAll =
+        //     userPerms.includes('*') ||
+        //     userPerms.includes('pos.sales.history.view_all') ||
+        //     ['super_admin', 'admin'].includes(role?.name?.toLowerCase() || '');
 
         // ── Build where clause ────────────────────────────────────────
         const where: any = {
             status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged', 'voided'] },
         };
 
-        if (!canViewAll) {
-            where.cashierUserId = user.id;
-        }
+        // if (!canViewAll) {
+        //     where.cashierUserId = user.id;
+        // }
 
         if (filters.locationId) where.locationId = filters.locationId;
         if (filters.cashierUserId) where.cashierUserId = filters.cashierUserId;
@@ -3850,7 +3850,6 @@ export class PosSalesService implements OnModuleInit {
             const qty = Number(orderItem.quantity || 0);
             const retailPrice = Number(orderItem.unitPrice || 0);
             const taxRate = Number(orderItem.taxPercent || 0);
-            const taxRate2 = Number(orderItem.item.taxRate2 || 0);
 
             const taxDivisor = 1 + (taxRate / 100);
             const wostPerUnit = retailPrice / taxDivisor;
@@ -3858,7 +3857,7 @@ export class PosSalesService implements OnModuleInit {
             const discountAmount = Number(orderItem.discountAmount || 0);
             const valueExclTax = totalPriceWost - discountAmount;
             const salesTaxAmount = Number(orderItem.taxAmount || 0);
-            const additionalSalesTaxAmount = valueExclTax * (taxRate2 / 100);
+            const additionalSalesTaxAmount = 0; // Set to 0 for POS sales report
             const totalTax = salesTaxAmount + additionalSalesTaxAmount;
             const valueInclTax = valueExclTax + totalTax;
 
