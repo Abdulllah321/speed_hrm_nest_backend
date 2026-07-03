@@ -2026,6 +2026,9 @@ export const PERMISSIONS = [
 
   // ── POS — Dashboard ─────────────────────────────────────────────────────────
   { name: 'pos.dashboard.view', description: 'View POS Dashboard & Stats' },
+  { name: 'pos.report.view', description: 'View POS Reports' },
+
+
 
   // ── Profile Management ──────────────────────────────────────────────────────
   { name: 'profile.update', description: 'Update Own Profile Information' },
