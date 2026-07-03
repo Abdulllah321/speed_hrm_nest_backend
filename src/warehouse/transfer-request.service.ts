@@ -255,7 +255,7 @@ export class TransferRequestService {
             where: {
                 toLocationId: locationId,
                 transferType: 'WAREHOUSE_TO_OUTLET',
-                status: 'PENDING',
+                status: { in: ['PENDING', 'APPROVED'] },
             },
             include: {
                 items: {
@@ -280,7 +280,7 @@ export class TransferRequestService {
             where: {
                 fromLocationId: locationId,
                 transferType: 'OUTLET_TO_WAREHOUSE',
-                status: 'PENDING',
+                status: { in: ['PENDING', 'APPROVED'] },
             },
             include: {
                 items: {
@@ -708,8 +708,8 @@ export class TransferRequestService {
             return this.prisma.$transaction(async (tx) => {
                 if (request.transferType === 'WAREHOUSE_TO_OUTLET') {
                     // Normal transfer: Warehouse → Outlet
-                    if (request.status !== 'PENDING') {
-                        throw new BadRequestException(`Request is not in PENDING status (Current: ${request.status})`);
+                    if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+                        throw new BadRequestException(`Request is not in PENDING or APPROVED status (Current: ${request.status})`);
                     }
 
                     for (const item of request.items) {
@@ -726,8 +726,8 @@ export class TransferRequestService {
                     }
                 } else if (request.transferType === 'OUTLET_TO_WAREHOUSE') {
                     // Return transfer: Outlet → Warehouse
-                    if (request.status !== 'PENDING') {
-                        throw new BadRequestException(`Request is not in PENDING status (Current: ${request.status})`);
+                    if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+                        throw new BadRequestException(`Request is not in PENDING or APPROVED status (Current: ${request.status})`);
                     }
 
                     // Check if this is a claim-based transfer (items need to be added to POS first)
@@ -929,8 +929,8 @@ export class TransferRequestService {
                 throw new BadRequestException('This endpoint is only for claim-based transfers');
             }
 
-            if (request.status !== 'PENDING') {
-                throw new BadRequestException(`Request is not in PENDING status (Current: ${request.status})`);
+            if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+                throw new BadRequestException(`Request is not in PENDING or APPROVED status (Current: ${request.status})`);
             }
 
             console.log('🔄 [PLM Acknowledgment] Starting claim acknowledgment:', {
