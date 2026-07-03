@@ -51,6 +51,7 @@ const COLUMNS = [
   { header: 'Discount Amount (Rs.)', key: 'discountAmount', width: 20, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Value Excluding Sales Tax (Rs.)', key: 'valueExclTax', width: 25, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Sales Tax Amount (Rs.)', key: 'salesTaxAmount', width: 20, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
+  { header: 'Additional Sales Tax Amount (Rs.)', key: 'additionalSalesTaxAmount', width: 25, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Total Tax (Rs.)', key: 'totalTax', width: 18, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
   { header: 'Value Including Sales Tax (Rs.)', key: 'valueInclTax', width: 25, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
 ];
@@ -142,6 +143,51 @@ export class NetSalesSummaryExportProcessor {
         },
       });
 
+      // Query approved claim items for this period
+      const approvedClaimItems = await prisma.posClaimItem.findMany({
+        where: {
+          itemStatus: 'APPROVED',
+          approvedQty: { gt: 0 },
+          claim: {
+            status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
+            reviewedAt: { gte: startDate, lte: endDate },
+            salesOrder: {
+              locationId,
+              ...(cashierUserId ? { cashierUserId } : {}),
+            },
+          },
+        },
+        include: {
+          claim: {
+            include: {
+              salesOrder: true,
+            },
+          },
+          item: {
+            include: {
+              brand: true,
+              division: true,
+              category: true,
+              gender: true,
+              silhouette: true,
+              size: true,
+              color: true,
+            },
+          },
+        },
+      });
+
+      const salesOrderItemIds = approvedClaimItems.map(ci => ci.salesOrderItemId).filter(Boolean);
+      const originalSalesOrderItems = salesOrderItemIds.length
+        ? await prisma.salesOrderItem.findMany({
+            where: { id: { in: salesOrderItemIds } },
+          })
+        : [];
+      const originalSalesOrderItemMap = new Map<string, any>();
+      for (const oi of originalSalesOrderItems) {
+        originalSalesOrderItemMap.set(oi.id, oi);
+      }
+
       await job.progress(35);
 
       const sSalesperson = showSalesperson === true;
@@ -181,7 +227,11 @@ export class NetSalesSummaryExportProcessor {
       // Resolve cashier names if grouping by salesperson
       const cashierNameMap = new Map<string, string>();
       if (sSalesperson || levels.includes('salesperson')) {
-        const cashierUserIds = [...new Set(orderItems.map(oi => oi.salesOrder?.cashierUserId).filter(Boolean))] as string[];
+        const claimCashierIds = approvedClaimItems.map(ci => ci.claim.salesOrder?.cashierUserId).filter(Boolean);
+        const cashierUserIds = [...new Set([
+            ...orderItems.map(oi => oi.salesOrder?.cashierUserId).filter(Boolean),
+            ...claimCashierIds
+        ])] as string[];
         const cashierUsers = cashierUserIds.length
             ? await prismaMaster.user.findMany({
                 where: { id: { in: cashierUserIds } },
@@ -220,6 +270,7 @@ export class NetSalesSummaryExportProcessor {
         discountAmount: 0,
         valueExclTax: 0,
         salesTaxAmount: 0,
+        additionalSalesTaxAmount: 0,
         totalTax: 0,
         valueInclTax: 0,
       });
@@ -231,6 +282,7 @@ export class NetSalesSummaryExportProcessor {
         target.discountAmount += source.discountAmount;
         target.valueExclTax += source.valueExclTax;
         target.salesTaxAmount += source.salesTaxAmount;
+        target.additionalSalesTaxAmount += source.additionalSalesTaxAmount;
         target.totalTax += source.totalTax;
         target.valueInclTax += source.valueInclTax;
       };
@@ -248,7 +300,8 @@ export class NetSalesSummaryExportProcessor {
         const discountAmount = Number(orderItem.discountAmount || 0);
         const valueExclTax = totalPriceWost - discountAmount;
         const salesTaxAmount = Number(orderItem.taxAmount || 0);
-        const totalTax = salesTaxAmount;
+        const additionalSalesTaxAmount = 0; // Force to 0 for POS sales
+        const totalTax = salesTaxAmount + additionalSalesTaxAmount;
         const valueInclTax = valueExclTax + totalTax;
 
         const variantMetrics = {
@@ -258,6 +311,7 @@ export class NetSalesSummaryExportProcessor {
           discountAmount,
           valueExclTax,
           salesTaxAmount,
+          additionalSalesTaxAmount,
           totalTax,
           valueInclTax,
         };
@@ -310,6 +364,110 @@ export class NetSalesSummaryExportProcessor {
             nodeVal = `${orderItem.item.color?.name || 'Default'}-${orderItem.item.size?.name || 'Default'}`;
             extraFields.color = orderItem.item.color?.name || 'Default';
             extraFields.size = orderItem.item.size?.name || 'Default';
+          }
+
+          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          if (!existingNode) {
+            existingNode = {
+              level: levelName,
+              value: nodeVal,
+              totals: createEmptyTotals(),
+              ...extraFields,
+              children: [],
+            };
+            currentLevelNodes.push(existingNode);
+          }
+
+          addTotals(existingNode.totals, variantMetrics);
+
+          if (i < levels.length - 1) {
+            currentLevelNodes = existingNode.children;
+          }
+        }
+      }
+
+      for (const claimItem of approvedClaimItems) {
+        if (!claimItem.item) continue;
+        const originalOi = originalSalesOrderItemMap.get(claimItem.salesOrderItemId);
+        if (!originalOi) continue;
+
+        const approvedQty = Number(claimItem.approvedQty || 0);
+        const qty = -approvedQty;
+        const retailPrice = Number(originalOi.unitPrice || 0);
+        const taxRate = Number(originalOi.taxPercent || 0);
+
+        const taxDivisor = 1 + (taxRate / 100);
+        const wostPerUnit = retailPrice / taxDivisor;
+        const totalPriceWost = qty * wostPerUnit;
+
+        const originalQty = Number(originalOi.quantity || 1);
+        const discountAmount = -((Number(originalOi.discountAmount || 0) / originalQty) * approvedQty);
+        const salesTaxAmount = -((Number(originalOi.taxAmount || 0) / originalQty) * approvedQty);
+        const additionalSalesTaxAmount = 0;
+        const totalTax = salesTaxAmount + additionalSalesTaxAmount;
+        const valueExclTax = totalPriceWost - discountAmount;
+        const valueInclTax = valueExclTax + totalTax;
+
+        const variantMetrics = {
+          qty,
+          totalRetailValue: qty * retailPrice,
+          totalPriceWost,
+          discountAmount,
+          valueExclTax,
+          salesTaxAmount,
+          additionalSalesTaxAmount,
+          totalTax,
+          valueInclTax,
+        };
+
+        let currentLevelNodes = root;
+        for (let i = 0; i < levels.length; i++) {
+          const levelName = levels[i];
+          let nodeVal = '';
+          let extraFields: any = {};
+
+          if (levelName === 'salesperson') {
+            const cid = claimItem.claim.salesOrder?.cashierUserId || '';
+            nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+          } else if (levelName === 'year') {
+            nodeVal = claimItem.claim.reviewedAt ? String(claimItem.claim.reviewedAt.getFullYear()) : (claimItem.claim.createdAt ? String(claimItem.claim.createdAt.getFullYear()) : 'Unknown Year');
+          } else if (levelName === 'month') {
+            const date = claimItem.claim.reviewedAt || claimItem.claim.createdAt;
+            if (date) {
+              nodeVal = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+            } else {
+              nodeVal = 'Unknown Month';
+            }
+          } else if (levelName === 'day') {
+            const date = claimItem.claim.reviewedAt || claimItem.claim.createdAt;
+            if (date) {
+              nodeVal = date.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+            } else {
+              nodeVal = 'Unknown Day';
+            }
+          } else if (levelName === 'document') {
+            nodeVal = claimItem.claim ? `POS Claim - ${claimItem.claim.claimNumber}` : 'Unknown Document';
+          } else if (levelName === 'brand') {
+            nodeVal = claimItem.item.brand?.name || 'No Brand';
+          } else if (levelName === 'division') {
+            nodeVal = claimItem.item.division?.name || 'No Division';
+          } else if (levelName === 'salesTax') {
+            const rate = Number(originalOi.taxPercent || 0);
+            nodeVal = rate > 0 ? `${rate}% Tax` : 'No Tax';
+          } else if (levelName === 'category') {
+            nodeVal = claimItem.item.category?.name || 'No Category';
+          } else if (levelName === 'gender') {
+            nodeVal = claimItem.item.gender?.name || 'No Gender';
+          } else if (levelName === 'silhouette') {
+            nodeVal = claimItem.item.silhouette?.name || 'No Silhouette';
+          } else if (levelName === 'article') {
+            nodeVal = claimItem.item.sku;
+            extraFields.sku = claimItem.item.sku;
+            extraFields.articleName = claimItem.item.description || 'Unknown Article';
+          } else if (levelName === 'variant') {
+            nodeVal = `${claimItem.item.color?.name || 'Default'}-${claimItem.item.size?.name || 'Default'}`;
+            extraFields.color = claimItem.item.color?.name || 'Default';
+            extraFields.size = claimItem.item.size?.name || 'Default';
           }
 
           let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
@@ -515,6 +673,7 @@ export class NetSalesSummaryExportProcessor {
             discountAmount: node.totals.discountAmount,
             valueExclTax: node.totals.valueExclTax,
             salesTaxAmount: node.totals.salesTaxAmount,
+            additionalSalesTaxAmount: node.totals.additionalSalesTaxAmount,
             totalTax: node.totals.totalTax,
             valueInclTax: node.totals.valueInclTax,
           };
@@ -560,6 +719,7 @@ export class NetSalesSummaryExportProcessor {
           discountAmount: grandTotals.discountAmount,
           valueExclTax: grandTotals.valueExclTax,
           salesTaxAmount: grandTotals.salesTaxAmount,
+          additionalSalesTaxAmount: grandTotals.additionalSalesTaxAmount,
           totalTax: grandTotals.totalTax,
           valueInclTax: grandTotals.valueInclTax,
         });
@@ -671,6 +831,7 @@ export class NetSalesSummaryExportProcessor {
             <td class="num">${formatVal(node.totals.discountAmount)}</td>
             <td class="num">${formatVal(node.totals.valueExclTax)}</td>
             <td class="num">${formatVal(node.totals.salesTaxAmount)}</td>
+            <td class="num">${formatVal(node.totals.additionalSalesTaxAmount)}</td>
             <td class="num">${formatVal(node.totals.totalTax)}</td>
             <td class="num">${formatVal(node.totals.valueInclTax)}</td>
           </tr>
@@ -686,6 +847,7 @@ export class NetSalesSummaryExportProcessor {
             <td class="num">${formatVal(node.totals.discountAmount)}</td>
             <td class="num">${formatVal(node.totals.valueExclTax)}</td>
             <td class="num">${formatVal(node.totals.salesTaxAmount)}</td>
+            <td class="num">${formatVal(node.totals.additionalSalesTaxAmount)}</td>
             <td class="num">${formatVal(node.totals.totalTax)}</td>
             <td class="num">${formatVal(node.totals.valueInclTax)}</td>
           </tr>
@@ -701,6 +863,7 @@ export class NetSalesSummaryExportProcessor {
             <td class="num">${formatVal(node.totals.discountAmount)}</td>
             <td class="num">${formatVal(node.totals.valueExclTax)}</td>
             <td class="num">${formatVal(node.totals.salesTaxAmount)}</td>
+            <td class="num">${formatVal(node.totals.additionalSalesTaxAmount)}</td>
             <td class="num">${formatVal(node.totals.totalTax)}</td>
             <td class="num">${formatVal(node.totals.valueInclTax)}</td>
           </tr>
@@ -822,15 +985,16 @@ export class NetSalesSummaryExportProcessor {
         <table>
           <thead>
             <tr>
-              <th style="width: 30%;">GPC / Category / Product</th>
+              <th style="width: 25%;">GPC / Category / Product</th>
               <th style="width: 8%;">Size</th>
               <th style="width: 5%;">Qty</th>
               <th style="width: 8%;">Retail Price</th>
               <th style="width: 9%;">Total WOST</th>
               <th style="width: 9%;">Discount</th>
               <th style="width: 9%;">Val Excl Tax</th>
-              <th style="width: 11%;">Sales Tax</th>
-              <th style="width: 11%;">Total Tax</th>
+              <th style="width: 9%;">Sales Tax</th>
+              <th style="width: 9%;">Add Tax</th>
+              <th style="width: 9%;">Total Tax</th>
               <th style="width: 10%;">Val Incl Tax</th>
             </tr>
           </thead>
@@ -845,6 +1009,7 @@ export class NetSalesSummaryExportProcessor {
               <td class="num">${formatVal(grandTotals.discountAmount)}</td>
               <td class="num">${formatVal(grandTotals.valueExclTax)}</td>
               <td class="num">${formatVal(grandTotals.salesTaxAmount)}</td>
+              <td class="num">${formatVal(grandTotals.additionalSalesTaxAmount)}</td>
               <td class="num">${formatVal(grandTotals.totalTax)}</td>
               <td class="num">${formatVal(grandTotals.valueInclTax)}</td>
             </tr>
