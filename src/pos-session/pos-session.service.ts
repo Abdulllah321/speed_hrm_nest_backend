@@ -720,6 +720,9 @@ export class PosSessionService {
             amountToUse = Number(v.faceValue);
           } else if (v.voucherType === 'OUTLET_GIFT') {
             type = 'Outlet Gift Vouchers';
+          } else if (v.voucherType === 'REFUND') {
+            type = 'Refund Vouchers';
+            amountToUse = Number(v.faceValue);
           }
 
           totalVouchersReceivedAmt += amountToUse;
@@ -1394,6 +1397,9 @@ export class PosSessionService {
             amountToUse = Number(v.faceValue);
           } else if (v.voucherType === 'OUTLET_GIFT') {
             type = 'Outlet Gift Vouchers';
+          } else if (v.voucherType === 'REFUND') {
+            type = 'Refund Vouchers';
+            amountToUse = Number(v.faceValue);
           }
 
           totalVouchersReceivedAmt += amountToUse;
@@ -2298,6 +2304,15 @@ export class PosSessionService {
               0,
               `Exchange Voucher Collected | EV#${v.from} | ${jvDateStr}`,
             );
+          } else if (v.type === 'Refund Vouchers') {
+            const refundCode = v.from.startsWith('RF#') ? v.from : `RF#${v.from}`;
+            await addLine(
+              '12070015',
+              locationCode,
+              v.amount,
+              0,
+              `Refund Voucher Collected | ${refundCode} | ${jvDateStr}`,
+            );
           }
         }
 
@@ -2371,12 +2386,13 @@ export class PosSessionService {
           `Gift Voucher Discount | ${jvDateStr}`,
         );
         for (const rv of metrics.issuedVouchers.refundVouchers) {
+          const refundCode = rv.from.startsWith('RF#') ? rv.from : `RF#${rv.from}`;
           await addLine(
-            '12070002',
+            '12070015',
             locationCode,
             0,
             rv.amount,
-            `Refund Voucher Issued | ${rv.from} | ${jvDateStr}`,
+            `Refund Voucher Issued | ${refundCode} | ${jvDateStr}`,
           );
         }
 
