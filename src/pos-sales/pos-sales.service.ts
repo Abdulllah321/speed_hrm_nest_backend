@@ -3832,13 +3832,54 @@ export class PosSalesService implements OnModuleInit {
             originalSalesOrderItemMap.set(oi.id, oi);
         }
 
+        // Fetch direct returns/refunds from StockLedger within the date range
+        const returnLedgerEntries = await this.prisma.stockLedger.findMany({
+            where: {
+                referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+                createdAt: { gte: startDate, lte: endDate },
+                locationId,
+            },
+            include: {
+                item: {
+                    include: {
+                        brand: true,
+                        division: true,
+                        category: true,
+                        gender: true,
+                        silhouette: true,
+                        size: true,
+                        color: true,
+                    },
+                },
+            },
+        });
+
+        const referenceOrderIds = [...new Set(returnLedgerEntries.map(e => e.referenceId).filter(Boolean))];
+        const referenceOrders = referenceOrderIds.length
+            ? await this.prisma.salesOrder.findMany({
+                  where: {
+                      id: { in: referenceOrderIds },
+                      ...(cashierUserId ? { cashierUserId } : {}),
+                  },
+                  include: {
+                      items: true,
+                  },
+              })
+            : [];
+        const referenceOrderMap = new Map<string, any>();
+        for (const order of referenceOrders) {
+            referenceOrderMap.set(order.id, order);
+        }
+
         // Resolve cashier names if grouping by salesperson
         const cashierNameMap = new Map<string, string>();
         if (sSalesperson || levels.includes('salesperson')) {
             const claimCashierIds = approvedClaimItems.map(ci => ci.claim.salesOrder?.cashierUserId).filter(Boolean);
+            const ledgerCashierIds = referenceOrders.map(o => o.cashierUserId).filter(Boolean);
             const cashierUserIds = [...new Set([
                 ...orderItems.map(oi => oi.salesOrder?.cashierUserId).filter(Boolean),
-                ...claimCashierIds
+                ...claimCashierIds,
+                ...ledgerCashierIds
             ])] as string[];
             const cashierUsers = cashierUserIds.length
                 ? await this.prismaMaster.user.findMany({
@@ -4074,6 +4115,116 @@ export class PosSalesService implements OnModuleInit {
                     nodeVal = `${claimItem.item.color?.name || 'Default'}-${claimItem.item.size?.name || 'Default'}`;
                     extraFields.color = claimItem.item.color?.name || 'Default';
                     extraFields.size = claimItem.item.size?.name || 'Default';
+                }
+
+                let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+                if (!existingNode) {
+                    existingNode = {
+                        level: levelName,
+                        value: nodeVal,
+                        totals: createEmptyTotals(),
+                        ...extraFields,
+                        children: [],
+                    };
+                    currentLevelNodes.push(existingNode);
+                }
+
+                addTotals(existingNode.totals, variantMetrics);
+
+                if (i < levels.length - 1) {
+                    currentLevelNodes = existingNode.children;
+                }
+            }
+        }
+
+        for (const ledgerEntry of returnLedgerEntries) {
+            if (!ledgerEntry.item) continue;
+            const originalOrder = referenceOrderMap.get(ledgerEntry.referenceId);
+            if (!originalOrder) continue;
+
+            const originalOi = originalOrder.items.find(oi => oi.itemId === ledgerEntry.itemId);
+            if (!originalOi) continue;
+
+            const returnedQty = Math.abs(Number(ledgerEntry.qty));
+            if (returnedQty <= 0) continue;
+
+            const qty = -returnedQty;
+            const retailPrice = Number(originalOi.unitPrice || 0);
+            const taxRate = Number(originalOi.taxPercent || 0);
+
+            const taxDivisor = 1 + (taxRate / 100);
+            const wostPerUnit = retailPrice / taxDivisor;
+            const totalPriceWost = qty * wostPerUnit;
+
+            const originalQty = Number(originalOi.quantity || 1);
+            const discountAmount = -((Number(originalOi.discountAmount || 0) / originalQty) * returnedQty);
+            const salesTaxAmount = -((Number(originalOi.taxAmount || 0) / originalQty) * returnedQty);
+            const additionalSalesTaxAmount = 0;
+            const totalTax = salesTaxAmount + additionalSalesTaxAmount;
+            const valueExclTax = totalPriceWost - discountAmount;
+            const valueInclTax = valueExclTax + totalTax;
+
+            const variantMetrics = {
+                qty,
+                totalRetailValue: qty * retailPrice,
+                totalPriceWost,
+                discountAmount,
+                valueExclTax,
+                salesTaxAmount,
+                additionalSalesTaxAmount,
+                totalTax,
+                valueInclTax,
+            };
+
+            let currentLevelNodes = root;
+            for (let i = 0; i < levels.length; i++) {
+                const levelName = levels[i];
+                let nodeVal = '';
+                let extraFields: any = {};
+
+                if (levelName === 'salesperson') {
+                    const cid = originalOrder.cashierUserId || '';
+                    nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+                } else if (levelName === 'year') {
+                    nodeVal = ledgerEntry.createdAt ? String(ledgerEntry.createdAt.getFullYear()) : 'Unknown Year';
+                } else if (levelName === 'month') {
+                    if (ledgerEntry.createdAt) {
+                        nodeVal = ledgerEntry.createdAt.toLocaleString('default', { month: 'long', year: 'numeric' });
+                    } else {
+                        nodeVal = 'Unknown Month';
+                    }
+                } else if (levelName === 'day') {
+                    if (ledgerEntry.createdAt) {
+                        nodeVal = ledgerEntry.createdAt.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+                    } else {
+                        nodeVal = 'Unknown Day';
+                    }
+                } else if (levelName === 'document') {
+                    const docNum = ledgerEntry.referenceType === 'POS_REFUND' 
+                        ? (originalOrder.refundNumber || `Refund for ${originalOrder.orderNumber}`)
+                        : (originalOrder.returnNumber || `Return for ${originalOrder.orderNumber}`);
+                    nodeVal = `POS Return - ${docNum}`;
+                } else if (levelName === 'brand') {
+                    nodeVal = ledgerEntry.item.brand?.name || 'No Brand';
+                } else if (levelName === 'division') {
+                    nodeVal = ledgerEntry.item.division?.name || 'No Division';
+                } else if (levelName === 'salesTax') {
+                    const rate = Number(originalOi.taxPercent || 0);
+                    nodeVal = rate > 0 ? `${rate}% Tax` : 'No Tax';
+                } else if (levelName === 'category') {
+                    nodeVal = ledgerEntry.item.category?.name || 'No Category';
+                } else if (levelName === 'gender') {
+                    nodeVal = ledgerEntry.item.gender?.name || 'No Gender';
+                } else if (levelName === 'silhouette') {
+                    nodeVal = ledgerEntry.item.silhouette?.name || 'No Silhouette';
+                } else if (levelName === 'article') {
+                    nodeVal = ledgerEntry.item.sku;
+                    extraFields.sku = ledgerEntry.item.sku;
+                    extraFields.articleName = ledgerEntry.item.description || 'Unknown Article';
+                } else if (levelName === 'variant') {
+                    nodeVal = `${ledgerEntry.item.color?.name || 'Default'}-${ledgerEntry.item.size?.name || 'Default'}`;
+                    extraFields.color = ledgerEntry.item.color?.name || 'Default';
+                    extraFields.size = ledgerEntry.item.size?.name || 'Default';
                 }
 
                 let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
