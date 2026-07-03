@@ -18,6 +18,12 @@ import { DeliveryNoteExportService } from './delivery-note-export.service';
 import { DeliveryNoteExportProcessor } from './delivery-note-export.processor';
 import { StockRequisitionController } from './stock-requisition/stock-requisition.controller';
 import { StockRequisitionService } from './stock-requisition/stock-requisition.service';
+import { SrnBulkUploadController } from './stock-requisition/srn-bulk-upload.controller';
+import { SrnBulkUploadService } from './stock-requisition/srn-bulk-upload.service';
+import { SrnUploadProcessor } from '../queue/processors/srn-upload.processor';
+import { SrnCsvParserService } from '../common/services/srn-csv-parser.service';
+import { SrnValidatorService } from '../common/services/srn-validator.service';
+import { UploadEventsService } from '../finance/item/upload-events.service';
 import { ExportHistoryModule } from './export-history/export-history.module';
 
 @Module({
@@ -28,6 +34,7 @@ import { ExportHistoryModule } from './export-history/export-history.module';
     StockAdjustmentModule,
     NotificationsModule,
     BullModule.registerQueue({ name: 'delivery-note-export' }),
+    BullModule.registerQueue({ name: 'srn-upload' }),
     ExportHistoryModule,
   ],
   controllers: [
@@ -37,6 +44,7 @@ import { ExportHistoryModule } from './export-history/export-history.module';
     TransferRequestController,
     DeliveryNoteExportController,
     StockRequisitionController,
+    SrnBulkUploadController,
   ],
   providers: [
     WarehouseService,
@@ -46,6 +54,11 @@ import { ExportHistoryModule } from './export-history/export-history.module';
     DeliveryNoteExportService,
     DeliveryNoteExportProcessor,
     StockRequisitionService,
+    SrnBulkUploadService,
+    SrnUploadProcessor,
+    SrnCsvParserService,
+    SrnValidatorService,
+    UploadEventsService,
   ],
   exports: [
     WarehouseService,
