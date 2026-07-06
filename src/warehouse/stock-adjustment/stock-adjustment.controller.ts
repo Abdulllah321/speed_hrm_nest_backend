@@ -81,9 +81,13 @@ export class StockAdjustmentController {
   }
 
   @Post(':id/submit')
-  async submit(@Param('id') id: string, @Req() req: any) {
+  async submit(
+    @Param('id') id: string,
+    @Body() dto: { items?: { itemId: string; physicalQty: number; rate?: number }[]; notes?: string },
+    @Req() req: any,
+  ) {
     this.logger.log(`Stock adjustment submit request received for ID: ${id}`);
-    return this.service.submit(id, {
+    return this.service.submit(id, dto, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
@@ -91,9 +95,13 @@ export class StockAdjustmentController {
   }
 
   @Post(':id/reject')
-  async reject(@Param('id') id: string, @Req() req: any) {
+  async reject(
+    @Param('id') id: string,
+    @Body() dto: { notes?: string },
+    @Req() req: any,
+  ) {
     this.logger.log(`Stock adjustment reject request received for ID: ${id}`);
-    return this.service.reject(id, {
+    return this.service.reject(id, dto, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
