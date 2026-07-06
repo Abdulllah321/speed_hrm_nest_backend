@@ -35,6 +35,7 @@ export class StockAdjustmentController {
   @Get()
   async findAll(
     @Query('warehouseId') warehouseId?: string,
+    @Query('locationId') locationId?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -42,6 +43,7 @@ export class StockAdjustmentController {
   ) {
     return this.service.findAll({
       warehouseId,
+      locationId,
       status,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
