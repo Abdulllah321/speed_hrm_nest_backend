@@ -1679,6 +1679,7 @@ export class PosSalesService implements OnModuleInit {
         const order = await this.prisma.salesOrder.findUnique({
             where: { id },
             include: {
+                customer: true,
                 items: { include: { item: { include: { size: true, color: true } } } },
                 promo: { select: { name: true, code: true } },
                 coupon: { select: { code: true, description: true } },
@@ -1688,6 +1689,36 @@ export class PosSalesService implements OnModuleInit {
             },
         });
         if (!order) return { status: false, message: 'Order not found' };
+
+        let cashier: { name: string; empCode: string | null; email: string | null } | null = null;
+        if (order.cashierUserId) {
+            try {
+                const emp = await this.prisma.employee.findFirst({
+                    where: {
+                        OR: [
+                            { userId: order.cashierUserId },
+                            { id: order.cashierUserId }
+                        ]
+                    },
+                    select: { id: true, employeeName: true, employeeId: true }
+                });
+                
+                const user = await this.prismaMaster.user.findUnique({
+                    where: { id: order.cashierUserId },
+                    select: { id: true, firstName: true, lastName: true, email: true }
+                });
+
+                if (emp || user) {
+                    cashier = {
+                        name: emp?.employeeName || (user ? `${user.firstName} ${user.lastName}`.trim() : 'Unknown'),
+                        empCode: emp?.employeeId || null,
+                        email: user?.email || null
+                    };
+                }
+            } catch (err) {
+                this.logger.error(`Failed to fetch cashier details: ${err.message}`);
+            }
+        }
 
         // Fetch returned quantities for this order
         const returnEntries = await this.prisma.stockLedger.findMany({
@@ -1811,7 +1842,7 @@ export class PosSalesService implements OnModuleInit {
             select: { code: true, faceValue: true, expiresAt: true },
         });
 
-        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers, hasReturn, hasRefund } };
+        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers, hasReturn, hasRefund, cashier } };
     }
 
     // ─── Partial return ───────────────────────────────────────────────
