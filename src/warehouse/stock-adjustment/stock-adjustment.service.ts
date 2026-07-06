@@ -54,7 +54,19 @@ export class StockAdjustmentService {
           warehouse: { select: { name: true, code: true } },
           items: {
             include: {
-              item: { select: { sku: true, description: true } },
+              item: {
+                select: {
+                  id: true,
+                  itemId: true,
+                  sku: true,
+                  description: true,
+                  unitPrice: true,
+                  category: { select: { id: true, name: true } },
+                  color: { select: { id: true, name: true } },
+                  division: { select: { id: true, name: true } },
+                  size: { select: { id: true, name: true } },
+                },
+              },
             },
           },
         },
@@ -90,11 +102,21 @@ export class StockAdjustmentService {
       ),
     ] as string[];
 
-    const swapItemMap = new Map<string, { sku: string; description: string | null }>();
+    const swapItemMap = new Map<string, any>();
     if (swapItemIds.length > 0) {
       const items = await this.prisma.item.findMany({
         where: { id: { in: swapItemIds } },
-        select: { id: true, sku: true, description: true },
+        select: {
+          id: true,
+          itemId: true,
+          sku: true,
+          description: true,
+          unitPrice: true,
+          category: { select: { id: true, name: true } },
+          color: { select: { id: true, name: true } },
+          division: { select: { id: true, name: true } },
+          size: { select: { id: true, name: true } },
+        },
       });
       for (const item of items) {
         swapItemMap.set(item.id, item);
@@ -124,7 +146,19 @@ export class StockAdjustmentService {
         warehouse: { select: { id: true, name: true, code: true } },
         items: {
           include: {
-            item: { select: { id: true, itemId: true, sku: true, description: true } },
+            item: {
+              select: {
+                id: true,
+                itemId: true,
+                sku: true,
+                description: true,
+                unitPrice: true,
+                category: { select: { id: true, name: true } },
+                color: { select: { id: true, name: true } },
+                division: { select: { id: true, name: true } },
+                size: { select: { id: true, name: true } },
+              },
+            },
           },
         },
       },
@@ -148,11 +182,21 @@ export class StockAdjustmentService {
     }
 
     const swapItemIds = adj.items.map((item) => item.swapItemId).filter(Boolean) as string[];
-    const swapItemMap = new Map<string, { id: string; itemId: string; sku: string; description: string | null }>();
+    const swapItemMap = new Map<string, any>();
     if (swapItemIds.length > 0) {
       const items = await this.prisma.item.findMany({
         where: { id: { in: swapItemIds } },
-        select: { id: true, itemId: true, sku: true, description: true },
+        select: {
+          id: true,
+          itemId: true,
+          sku: true,
+          description: true,
+          unitPrice: true,
+          category: { select: { id: true, name: true } },
+          color: { select: { id: true, name: true } },
+          division: { select: { id: true, name: true } },
+          size: { select: { id: true, name: true } },
+        },
       });
       for (const item of items) {
         swapItemMap.set(item.id, item);
@@ -186,12 +230,12 @@ export class StockAdjustmentService {
     // Get current stock levels and rates for all items
     const resolvedItems = await Promise.all(
       dto.items.map(async (item) => {
-        // Query item UUID and unit cost
+        // Query item UUID and unit price
         const itemRecord = await this.prisma.item.findFirst({
           where: {
             OR: [{ id: item.itemId }, { itemId: item.itemId }],
           },
-          select: { id: true, unitCost: true },
+          select: { id: true, unitPrice: true },
         });
 
         if (!itemRecord) {
@@ -210,7 +254,7 @@ export class StockAdjustmentService {
 
         const currentQty = existingStock ? Number(existingStock.quantity) : 0;
         const adjustedQty = item.physicalQty - currentQty;
-        const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitCost || 0);
+        const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitPrice || 0);
 
         return {
           itemId: itemRecord.id,
@@ -284,7 +328,7 @@ export class StockAdjustmentService {
           where: {
             OR: [{ id: item.itemId }, { itemId: item.itemId }],
           },
-          select: { id: true, unitCost: true },
+          select: { id: true, unitPrice: true },
         });
 
         if (!itemRecord) {
@@ -302,7 +346,7 @@ export class StockAdjustmentService {
 
         const currentQty = existingStock ? Number(existingStock.quantity) : 0;
         const adjustedQty = item.physicalQty - currentQty;
-        const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitCost || 0);
+        const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitPrice || 0);
 
         return {
           itemId: itemRecord.id,
