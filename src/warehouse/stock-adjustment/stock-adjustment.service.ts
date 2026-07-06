@@ -393,7 +393,14 @@ export class StockAdjustmentService {
     return { status: true, message: 'Stock adjustment deleted successfully' };
   }
 
-  async submit(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async submit(
+    id: string,
+    dto?: {
+      items?: { itemId: string; physicalQty: number; rate?: number }[];
+      notes?: string;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const adj = await this.prisma.stockAdjustment.findUnique({
       where: { id },
       include: { items: true },
@@ -408,7 +415,41 @@ export class StockAdjustmentService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      for (const line of adj.items) {
+      // If manager updated quantities or instructions during approval
+      if (dto) {
+        if (dto.notes !== undefined) {
+          await tx.stockAdjustment.update({
+            where: { id },
+            data: { notes: dto.notes },
+          });
+        }
+
+        if (dto.items && dto.items.length > 0) {
+          for (const updatedItem of dto.items) {
+            const existingItem = adj.items.find((i) => i.itemId === updatedItem.itemId);
+            if (existingItem) {
+              const adjustedQty = updatedItem.physicalQty - Number(existingItem.currentQty);
+              await tx.stockAdjustmentItem.update({
+                where: { id: existingItem.id },
+                data: {
+                  physicalQty: new Prisma.Decimal(updatedItem.physicalQty),
+                  adjustedQty: new Prisma.Decimal(adjustedQty),
+                  rate: updatedItem.rate !== undefined ? new Prisma.Decimal(updatedItem.rate) : existingItem.rate,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Re-fetch adjustment items to get updated quantities
+      const updatedAdj = await tx.stockAdjustment.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+      const linesToPost = updatedAdj ? updatedAdj.items : adj.items;
+
+      for (const line of linesToPost) {
         const adjustedQty = Number(line.adjustedQty);
         if (adjustedQty === 0) continue;
 
@@ -504,7 +545,11 @@ export class StockAdjustmentService {
     });
   }
 
-  async reject(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async reject(
+    id: string,
+    dto?: { notes?: string },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const adj = await this.prisma.stockAdjustment.findUnique({
       where: { id },
     });
@@ -522,6 +567,7 @@ export class StockAdjustmentService {
       data: {
         status: 'REJECTED',
         approvedById: ctx?.userId,
+        ...(dto?.notes !== undefined && { notes: dto.notes }),
       },
     });
 
