@@ -16,16 +16,24 @@ export class StockAdjustmentService {
 
   async findAll(options?: {
     warehouseId?: string;
+    locationId?: string;
     status?: string;
     page?: number;
     limit?: number;
     search?: string;
   }) {
-    const { warehouseId, status, page = 1, limit = 50, search } = options || {};
+    const { warehouseId, locationId, status, page = 1, limit = 50, search } = options || {};
     const skip = (page - 1) * limit;
 
     const where: Prisma.StockAdjustmentWhereInput = {
       ...(warehouseId && { warehouseId }),
+      ...(locationId && {
+        items: {
+          some: {
+            locationId,
+          },
+        },
+      }),
       ...(status && { status }),
       ...(search && {
         OR: [
