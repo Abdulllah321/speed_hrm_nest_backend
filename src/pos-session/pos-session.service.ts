@@ -720,9 +720,6 @@ export class PosSessionService {
             amountToUse = Number(v.faceValue);
           } else if (v.voucherType === 'OUTLET_GIFT') {
             type = 'Outlet Gift Vouchers';
-          } else if (v.voucherType === 'REFUND') {
-            type = 'Refund Vouchers';
-            amountToUse = Number(v.faceValue);
           }
 
           totalVouchersReceivedAmt += amountToUse;
@@ -1397,9 +1394,6 @@ export class PosSessionService {
             amountToUse = Number(v.faceValue);
           } else if (v.voucherType === 'OUTLET_GIFT') {
             type = 'Outlet Gift Vouchers';
-          } else if (v.voucherType === 'REFUND') {
-            type = 'Refund Vouchers';
-            amountToUse = Number(v.faceValue);
           }
 
           totalVouchersReceivedAmt += amountToUse;
@@ -2304,15 +2298,20 @@ export class PosSessionService {
               0,
               `Exchange Voucher Collected | EV#${v.from} | ${jvDateStr}`,
             );
-          } else if (v.type === 'Refund Vouchers') {
-            const refundCode = v.from.startsWith('RF#') ? v.from : `RF#${v.from}`;
-            await addLine(
-              '12070015',
-              locationCode,
-              v.amount,
-              0,
-              `Refund Voucher Collected | ${refundCode} | ${jvDateStr}`,
-            );
+          } else if (v.type === 'Vouchers') {
+            const voucher = await this.prisma.voucher.findFirst({
+              where: { code: v.from },
+            });
+            if (voucher && voucher.voucherType === 'REFUND') {
+              const refundCode = v.from.startsWith('RF#') ? v.from : `RF#${v.from}`;
+              await addLine(
+                '12070015',
+                locationCode,
+                v.amount,
+                0,
+                `Refund Voucher Collected | ${refundCode} | ${jvDateStr}`,
+              );
+            }
           }
         }
 
