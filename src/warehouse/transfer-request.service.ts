@@ -241,7 +241,7 @@ export class TransferRequestService {
                 toWarehouse: { select: { name: true, code: true } },
                 fromLocation: { select: { name: true, code: true } },
                 toLocation: { select: { name: true, code: true } },
-                stockRequisition: { select: { requisitionNo: true } },
+                stockRequisition: { select: { id: true, requisitionNo: true } },
             },
             orderBy: { createdAt: 'desc' },
         });
