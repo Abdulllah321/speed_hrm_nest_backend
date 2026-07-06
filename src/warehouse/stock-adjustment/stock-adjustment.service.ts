@@ -164,6 +164,17 @@ export class StockAdjustmentService {
   async create(dto: CreateStockAdjustmentDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const adjustmentNo = `SADJ-${Date.now()}`;
 
+    let warehouseId = dto.warehouseId;
+    if (!warehouseId) {
+      const warehouse = await this.prisma.warehouse.findFirst({
+        where: { isActive: true, isDeleted: false },
+      });
+      if (!warehouse) {
+        throw new BadRequestException('No active warehouse found in the system');
+      }
+      warehouseId = warehouse.id;
+    }
+
     // Get current stock levels and rates for all items
     const resolvedItems = await Promise.all(
       dto.items.map(async (item) => {
@@ -182,7 +193,7 @@ export class StockAdjustmentService {
         // Query current stock levels
         const existingStock = await this.prisma.inventoryItem.findFirst({
           where: {
-            warehouseId: dto.warehouseId,
+            warehouseId,
             locationId: item.locationId || null,
             itemId: itemRecord.id,
             status: 'AVAILABLE',
@@ -208,7 +219,7 @@ export class StockAdjustmentService {
     const adj = await this.prisma.stockAdjustment.create({
       data: {
         adjustmentNo,
-        warehouseId: dto.warehouseId,
+        warehouseId,
         reason: dto.reason,
         notes: dto.notes,
         status: dto.status || 'DRAFT',
@@ -256,6 +267,8 @@ export class StockAdjustmentService {
       throw new BadRequestException('Can only update stock adjustments in DRAFT or PENDING_APPROVAL status');
     }
 
+    const warehouseId = dto.warehouseId || existing.warehouseId;
+
     // Resolve items
     const resolvedItems = await Promise.all(
       dto.items.map(async (item) => {
@@ -272,7 +285,7 @@ export class StockAdjustmentService {
 
         const existingStock = await this.prisma.inventoryItem.findFirst({
           where: {
-            warehouseId: dto.warehouseId,
+            warehouseId,
             locationId: item.locationId || null,
             itemId: itemRecord.id,
             status: 'AVAILABLE',
@@ -305,7 +318,7 @@ export class StockAdjustmentService {
       const updated = await tx.stockAdjustment.update({
         where: { id },
         data: {
-          warehouseId: dto.warehouseId,
+          warehouseId,
           reason: dto.reason,
           notes: dto.notes,
           status: dto.status || existing.status,
