@@ -26,6 +26,10 @@ export class CreateStockAdjustmentItemDto {
   @IsOptional()
   @Min(0)
   rate?: number;
+
+  @IsString()
+  @IsOptional()
+  swapItemId?: string;
 }
 
 export class CreateStockAdjustmentDto {
@@ -40,6 +44,14 @@ export class CreateStockAdjustmentDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  adjustmentType?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
