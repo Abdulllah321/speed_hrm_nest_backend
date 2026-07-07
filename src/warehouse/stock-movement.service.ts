@@ -149,6 +149,29 @@ export class StockMovementService {
       rate: itemRate,
     }, tx);
 
+    // 1b. Decrease InventoryItem Stock in Warehouse (locationId: null)
+    const warehouseStock = await tx.inventoryItem.findFirst({
+      where: {
+        itemId: dto.itemId,
+        warehouseId: dto.fromWarehouseId,
+        locationId: null,
+        status: 'AVAILABLE',
+      },
+    });
+
+    if (warehouseStock) {
+      const currentQty = Number(warehouseStock.quantity);
+      if (currentQty < dto.quantity) {
+        throw new BadRequestException(`Insufficient stock for item ${dto.itemId} in warehouse ${dto.fromWarehouseId}. Available: ${currentQty}, Requested: ${dto.quantity}`);
+      }
+      await tx.inventoryItem.update({
+        where: { id: warehouseStock.id },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+    } else {
+      throw new BadRequestException(`No available inventory found for item ${dto.itemId} in warehouse ${dto.fromWarehouseId}`);
+    }
+
     // 2. Increase Stock in Outlet (Location-specific InventoryItem)
     const existingStock = await tx.inventoryItem.findFirst({
       where: {
