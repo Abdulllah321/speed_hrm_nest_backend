@@ -3788,9 +3788,35 @@ export class PosSalesService implements OnModuleInit {
         }
 
         const now = new Date();
-        const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
-        const endDate = endStr ? new Date(endStr) : new Date(now);
-        endDate.setHours(23, 59, 59, 999);
+
+        // Helper to parse dates robustly in local timezone if plain date strings are passed
+        const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+            if (!dateStr) {
+                if (isEndOfDay) {
+                    const d = new Date(now);
+                    d.setHours(23, 59, 59, 999);
+                    return d;
+                } else {
+                    return new Date(now.getFullYear(), now.getMonth(), 1);
+                }
+            }
+            
+            // If it has a time indicator, parse it as-is (e.g. ISO string)
+            if (dateStr.includes('T') || dateStr.includes('Z')) {
+                const d = new Date(dateStr);
+                if (isEndOfDay && !dateStr.includes('T23:59:59')) {
+                    d.setHours(23, 59, 59, 999);
+                }
+                return d;
+            }
+            
+            // Plain date string like YYYY-MM-DD
+            const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+            return new Date(`${dateStr}${timePart}`);
+        };
+
+        const startDate = parseLocalDate(startStr, false);
+        const endDate = parseLocalDate(endStr, true);
 
         // Fetch sales order items
         const orderItems = await this.prisma.salesOrderItem.findMany({

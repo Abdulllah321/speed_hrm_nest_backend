@@ -705,4 +705,164 @@ export class StockRequisitionService {
 
     return resolvedItems;
   }
+
+  /**
+   * Get replenishment candidates based on POS net sales summary and warehouse stock availability
+   */
+  async getReplenishmentCandidates(query: {
+    locationId: string;
+    fromWarehouseId: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { locationId, fromWarehouseId, startDate: startStr, endDate: endStr } = query;
+
+    if (!locationId || !fromWarehouseId) {
+      throw new BadRequestException('locationId and fromWarehouseId are required');
+    }
+
+    const now = new Date();
+    
+    // Helper to parse dates robustly in local timezone if plain date strings are passed
+    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+      if (!dateStr) {
+        if (isEndOfDay) {
+          const d = new Date(now);
+          d.setHours(23, 59, 59, 999);
+          return d;
+        } else {
+          return new Date(now.getFullYear(), now.getMonth(), 1);
+        }
+      }
+      
+      // If it has a time indicator, parse it as-is (e.g. ISO string)
+      if (dateStr.includes('T') || dateStr.includes('Z')) {
+        const d = new Date(dateStr);
+        if (isEndOfDay && !dateStr.includes('T23:59:59')) {
+          d.setHours(23, 59, 59, 999);
+        }
+        return d;
+      }
+      
+      // Plain date string like YYYY-MM-DD
+      const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+      return new Date(`${dateStr}${timePart}`);
+    };
+
+    const startDate = parseLocalDate(startStr, false);
+    const endDate = parseLocalDate(endStr, true);
+
+    console.log('getReplenishmentCandidates params:', {
+      locationId,
+      fromWarehouseId,
+      startStr,
+      endStr,
+      parsedStartDate: startDate.toISOString(),
+      parsedEndDate: endDate.toISOString(),
+    });
+
+    // 1. Group sold items at the POS location by itemId
+    const salesItems = await this.prisma.salesOrderItem.groupBy({
+      by: ['itemId'],
+      where: {
+        salesOrder: {
+          locationId,
+          status: { in: ['completed', 'partially_returned', 'exchanged'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    if (salesItems.length === 0) {
+      return [];
+    }
+
+    const itemIds = salesItems.map((si) => si.itemId);
+
+    // 2. Fetch master items
+    const items = await this.prisma.item.findMany({
+      where: { id: { in: itemIds } },
+      include: {
+        color: true,
+        size: true,
+        category: true,
+        gender: true,
+        segment: true,
+      },
+    });
+
+    // 3. Fetch physical available stock in warehouse
+    const stockItems = await this.prisma.inventoryItem.findMany({
+      where: {
+        warehouseId: fromWarehouseId,
+        locationId: null,
+        itemId: { in: itemIds },
+        status: 'AVAILABLE',
+      },
+      select: {
+        itemId: true,
+        quantity: true,
+      },
+    });
+
+    // 4. Fetch active reservations in warehouse
+    const reservations = await this.prisma.stockReserve.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        warehouseId: fromWarehouseId,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gte: new Date() } }
+        ]
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    // Map stocks and reservations
+    const physicalStockMap = new Map<string, number>();
+    for (const stock of stockItems) {
+      physicalStockMap.set(stock.itemId, (physicalStockMap.get(stock.itemId) || 0) + Number(stock.quantity));
+    }
+
+    const reservedStockMap = new Map<string, number>();
+    for (const res of reservations) {
+      reservedStockMap.set(res.itemId, Number(res._sum.quantity || 0));
+    }
+
+    // 5. Combine and calculate replenishment qty
+    const candidates = items.map((item) => {
+      const salesEntry = salesItems.find((si) => si.itemId === item.id);
+      const soldQty = salesEntry ? Number(salesEntry._sum.quantity || 0) : 0;
+
+      const physicalQty = physicalStockMap.get(item.id) || 0;
+      const reservedQty = reservedStockMap.get(item.id) || 0;
+      const netAvailable = Math.max(0, physicalQty - reservedQty);
+
+      const replenishQty = Math.min(soldQty, netAvailable);
+
+      return {
+        itemId: item.id,
+        sku: item.sku,
+        description: item.description || '',
+        color: item.color?.name || null,
+        size: item.size?.name || null,
+        category: item.category ? { id: item.category.id, name: item.category.name } : null,
+        gender: item.gender ? { id: item.gender.id, name: item.gender.name } : null,
+        segment: item.segment ? { id: item.segment.id, name: item.segment.name } : null,
+        unitPrice: Number(item.unitPrice || 0),
+        soldQty,
+        warehouseAvailableQty: netAvailable,
+        quantity: replenishQty, // Suggest this qty
+      };
+    });
+
+    return candidates;
+  }
 }
+
