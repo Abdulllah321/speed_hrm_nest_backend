@@ -52,6 +52,24 @@ export class StockRequisitionController {
     return { status: true, data, message: 'Excel sheet parsed successfully' };
   }
 
+  @Get('replenishment-candidates')
+  @Permissions('erp.inventory.stock-transfer.read')
+  @ApiOperation({ summary: 'Get replenishment candidates based on POS net sales summary and warehouse availability' })
+  async getReplenishmentCandidates(
+    @Query('locationId') locationId: string,
+    @Query('fromWarehouseId') fromWarehouseId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const data = await this.requisitionService.getReplenishmentCandidates({
+      locationId,
+      fromWarehouseId,
+      startDate,
+      endDate,
+    });
+    return { status: true, data };
+  }
+
   @Get()
   @Permissions('erp.inventory.stock-transfer.read')
   @ApiOperation({ summary: 'Get all stock requisitions' })
