@@ -21,6 +21,8 @@ import { NetSalesSummaryExportProcessor } from './net-sales-summary-export.proce
 import { PosSalesActivityExportController } from './pos-sales-activity-export.controller';
 import { PosSalesActivityExportService } from './pos-sales-activity-export.service';
 import { PosSalesActivityExportProcessor } from './pos-sales-activity-export.processor';
+import { SalesRegisterExportService } from './sales-register-export.service';
+import { SalesRegisterExportProcessor } from './sales-register-export.processor';
 
 @Module({
     imports: [
@@ -34,7 +36,8 @@ import { PosSalesActivityExportProcessor } from './pos-sales-activity-export.pro
         BullModule.registerQueue(
             { name: 'sales-history-upload' },
             { name: 'net-sales-summary-export' },
-            { name: 'pos-sales-activity-export' }
+            { name: 'pos-sales-activity-export' },
+            { name: 'sales-register-export' }
         ),
     ],
     controllers: [
@@ -54,11 +57,14 @@ import { PosSalesActivityExportProcessor } from './pos-sales-activity-export.pro
         NetSalesSummaryExportProcessor,
         PosSalesActivityExportService,
         PosSalesActivityExportProcessor,
+        SalesRegisterExportService,
+        SalesRegisterExportProcessor,
     ],
     exports: [
         PosSalesService, 
         NetSalesSummaryExportService,
         PosSalesActivityExportService,
+        SalesRegisterExportService,
     ],
 })
 export class PosSalesModule { }
