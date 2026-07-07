@@ -295,6 +295,24 @@ export class PosConfigController {
         return this.voucherService.validateVoucher(body.code, locationId, body.customerId);
     }
 
+    @Post('vouchers/validate/alliances')
+    @ApiOperation({ summary: 'Validate an alliance voucher code at checkout' })
+    async validateAllianceVoucher(
+        @Req() req: any,
+        @Body() body: { code: string; locationId?: string; customerId?: string; allianceId?: string; billAmount?: number },
+    ) {
+        let locationId = body.locationId || '';
+        const posTerminalToken = req.cookies?.['posTerminalToken'];
+        if (posTerminalToken) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded: any = jwt.decode(posTerminalToken);
+                if (decoded?.locationId) locationId = decoded.locationId;
+            } catch { /* ignore */ }
+        }
+        return this.voucherService.validateAllianceVoucher(body.code, locationId, body.customerId, body.allianceId, body.billAmount);
+    }
+
     @Put('vouchers/:id/void')
     @UseGuards(JwtAuthGuard, PermissionsGuard)
     @Permissions('pos.voucher.void')
