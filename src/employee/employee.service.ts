@@ -185,10 +185,7 @@ export class EmployeeService {
     providentFund?: string;
     locationId?: string;
   }) {
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 100; // Dropdowns might want more by default
     const search = query?.search || '';
-    const skip = (page - 1) * limit;
 
     const where: Prisma.EmployeeWhereInput = {
       status: 'active',
@@ -218,11 +215,21 @@ export class EmployeeService {
       ];
     }
 
+    let skip: number | undefined = undefined;
+    let take: number | undefined = undefined;
+
+    if (query?.page || query?.limit) {
+      const pageVal = Number(query.page) || 1;
+      const limitVal = Number(query.limit) || 100;
+      skip = (pageVal - 1) * limitVal;
+      take = limitVal;
+    }
+
     const [employees, total] = await Promise.all([
       this.prisma.employee.findMany({
         where,
-        skip,
-        take: limit,
+        ...(skip !== undefined ? { skip } : {}),
+        ...(take !== undefined ? { take } : {}),
         select: {
           id: true,
           employeeId: true,
@@ -256,14 +263,17 @@ export class EmployeeService {
       personalEmail: emp.personalEmail,
     }));
 
+    const pageVal = query?.page ? Number(query.page) : 1;
+    const limitVal = take !== undefined ? take : total;
+
     return {
       status: true,
       data: result,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: pageVal,
+        limit: limitVal,
+        totalPages: take !== undefined ? Math.ceil(total / limitVal) : 1,
       },
     };
   }
@@ -1744,9 +1754,7 @@ export class EmployeeService {
             const lastName = nameParts.slice(1).join(' ') || '';
 
             // Generate temporary password and hash it
-            const tempPassword =
-              'Welcome@' + Math.random().toString(36).substring(2, 10);
-
+            const tempPassword = "Access@123";
             const hashedPassword: string = await bcrypt.hash(tempPassword, 10);
 
             user = await this.prismaMaster.user.create({

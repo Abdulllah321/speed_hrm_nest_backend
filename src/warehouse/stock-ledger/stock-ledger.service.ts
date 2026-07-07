@@ -532,11 +532,37 @@ export class StockLedgerService {
       bfMap.set(row.itemId, Number(row._sum.qty || 0));
     }
 
+    // Query and add any OPENING_BALANCE entries that were created within the date range
+    const inRangeOpeningGroup = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: {
+        locationId,
+        itemId: { in: matchedItemIds },
+        createdAt: { gte: startDate, lte: endDate },
+        OR: [
+          { movementType: MovementType.OPENING_BALANCE },
+          { referenceType: 'OPENING_BALANCE' },
+          { referenceType: 'BULK_STOCK_UPLOAD' }
+        ]
+      },
+      _sum: { qty: true },
+    });
+
+    for (const row of inRangeOpeningGroup) {
+      const currentBf = bfMap.get(row.itemId) || 0;
+      bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+    }
+
     const ledgerEntries = await this.prisma.stockLedger.findMany({
       where: {
         locationId,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
+        NOT: [
+          { movementType: MovementType.OPENING_BALANCE },
+          { referenceType: 'OPENING_BALANCE' },
+          { referenceType: 'BULK_STOCK_UPLOAD' }
+        ]
       },
       select: {
         itemId: true,
@@ -601,7 +627,7 @@ export class StockLedgerService {
       const ref = entry.referenceType || '';
       const mov = entry.movementType;
 
-      if (mov === MovementType.ADJUSTMENT) {
+      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
         m.adj += qty;
       } else if (qty > 0) {
         if (ref === 'TRANSFER_REQUEST') {

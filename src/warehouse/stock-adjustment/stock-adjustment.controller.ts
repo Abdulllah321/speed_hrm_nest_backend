@@ -9,11 +9,14 @@ import {
   Query,
   Req,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { StockAdjustmentService } from './stock-adjustment.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('api/stock-adjustments')
+@UseGuards(JwtAuthGuard)
 export class StockAdjustmentController {
   private readonly logger = new Logger(StockAdjustmentController.name);
 
@@ -32,6 +35,7 @@ export class StockAdjustmentController {
   @Get()
   async findAll(
     @Query('warehouseId') warehouseId?: string,
+    @Query('locationId') locationId?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -39,6 +43,7 @@ export class StockAdjustmentController {
   ) {
     return this.service.findAll({
       warehouseId,
+      locationId,
       status,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
@@ -76,9 +81,27 @@ export class StockAdjustmentController {
   }
 
   @Post(':id/submit')
-  async submit(@Param('id') id: string, @Req() req: any) {
+  async submit(
+    @Param('id') id: string,
+    @Body() dto: { items?: { itemId: string; physicalQty: number; rate?: number }[]; notes?: string },
+    @Req() req: any,
+  ) {
     this.logger.log(`Stock adjustment submit request received for ID: ${id}`);
-    return this.service.submit(id, {
+    return this.service.submit(id, dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post(':id/reject')
+  async reject(
+    @Param('id') id: string,
+    @Body() dto: { notes?: string },
+    @Req() req: any,
+  ) {
+    this.logger.log(`Stock adjustment reject request received for ID: ${id}`);
+    return this.service.reject(id, dto, {
       userId: req.user?.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],

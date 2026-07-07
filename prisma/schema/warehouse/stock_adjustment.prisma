@@ -4,6 +4,7 @@ model StockAdjustment {
   warehouseId    String                @map("warehouse_id")
   adjustmentDate DateTime              @default(now()) @map("adjustment_date")
   status         String                @default("DRAFT") // DRAFT, SUBMITTED, CANCELLED
+  adjustmentType String                @default("STANDARD") @map("adjustment_type") // STANDARD, SWAP
   reason         String?               @map("reason")
   notes          String?               @map("notes")
   createdById    String?               @map("created_by_id")
@@ -28,6 +29,8 @@ model StockAdjustmentItem {
   physicalQty       Decimal         @map("physical_qty") @db.Decimal(15, 4)
   adjustedQty       Decimal         @map("adjusted_qty") @db.Decimal(15, 4)
   rate              Decimal         @map("rate") @db.Decimal(15, 4)
+  
+  swapItemId        String?         @map("swap_item_id")
   
   stockAdjustment   StockAdjustment @relation(fields: [stockAdjustmentId], references: [id], onDelete: Cascade)
   item              Item            @relation(fields: [itemId], references: [id])
