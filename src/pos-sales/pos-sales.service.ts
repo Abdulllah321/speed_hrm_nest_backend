@@ -296,16 +296,21 @@ export class PosSalesService implements OnModuleInit {
                     if (hasCashTender) {
                         throw new Error('Alliance discount cannot be applied when cash payment is selected.');
                     }
-                    if (!dto.allianceMeta || !dto.allianceMeta.cardLast4 || dto.allianceMeta.cardLast4.trim().length !== 4) {
-                        throw new Error('Card number (last 4 digits) is mandatory when Alliance is selected.');
+                    const hasCardTender = tenders.some(t => t.method === 'card' || t.method === 'bank_transfer');
+                    const hasVoucherTender = tenders.some(t => t.method === 'voucher');
+
+                    if (!hasCardTender && !hasVoucherTender) {
+                        throw new Error('A card, bank transfer, or voucher payment is required when Alliance is selected.');
                     }
-                    const hasCardTender = tenders.some(t => t.method === 'card');
-                    if (!hasCardTender) {
-                        throw new Error('A card payment is required when Alliance is selected.');
-                    }
-                    for (const t of tenders) {
-                        if (t.method === 'card' && (!t.cardLast4 || t.cardLast4.trim().length !== 4)) {
-                            throw new Error('Card number (last 4 digits) is mandatory for card payments when Alliance is selected.');
+
+                    if (hasCardTender) {
+                        if (!dto.allianceMeta || !dto.allianceMeta.cardLast4 || dto.allianceMeta.cardLast4.trim().length !== 4) {
+                            throw new Error('Card number (last 4 digits) is mandatory when Alliance is selected.');
+                        }
+                        for (const t of tenders) {
+                            if ((t.method === 'card' || t.method === 'bank_transfer') && (!t.cardLast4 || t.cardLast4.trim().length !== 4)) {
+                                throw new Error('Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.');
+                            }
                         }
                     }
                 }

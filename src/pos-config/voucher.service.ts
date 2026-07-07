@@ -413,6 +413,82 @@ export class VoucherService {
         }
     }
 
+    async validateAllianceVoucher(
+        code: string,
+        locationId: string,
+        customerId?: string,
+        allianceId?: string,
+        billAmount?: number,
+    ) {
+        // Condition 1: Basic Voucher Validation
+        const standardResult = await this.validateVoucher(code, locationId, customerId);
+        if (!standardResult.status || !standardResult.data) {
+            return standardResult;
+        }
+
+        const voucher = standardResult.data;
+
+        // Condition 2: Must be an EXCHANGE voucher
+        if (voucher.voucherType !== 'EXCHANGE') {
+            return {
+                status: false,
+                message: 'Voucher is invalid. Only EXCHANGE vouchers are allowed for Alliance discounts.',
+            };
+        }
+
+        // Condition 4: Bill amount must be >= Voucher amount
+        if (billAmount !== undefined && Number(billAmount) < Number(voucher.faceValue)) {
+            return {
+                status: false,
+                message: `Alliance voucher cannot be applied. The current bill amount (Rs. ${Number(billAmount).toLocaleString()}) must be greater than or equal to the voucher amount (Rs. ${Number(voucher.faceValue).toLocaleString()}).`,
+            };
+        }
+
+        if (allianceId) {
+            const alliance = await this.prisma.allianceDiscount.findFirst({
+                where: { id: allianceId, isDeleted: false },
+            });
+            if (!alliance) {
+                return { status: false, message: 'Alliance partner not found' };
+            }
+
+            // Condition 3: Voucher must be issued against a sale in which the same alliance discount was used
+            // Fetch the voucher from DB to check sourceOrderId relation
+            const dbVoucher = await this.prisma.voucher.findUnique({
+                where: { id: voucher.id },
+                select: { sourceOrderId: true },
+            });
+
+            if (!dbVoucher || !dbVoucher.sourceOrderId) {
+                return {
+                    status: false,
+                    message: 'Alliance voucher is invalid because its originating sales invoice cannot be determined.',
+                };
+            }
+
+            const sourceOrder = await this.prisma.salesOrder.findUnique({
+                where: { id: dbVoucher.sourceOrderId },
+                select: { allianceId: true, orderNumber: true },
+            });
+
+            if (!sourceOrder) {
+                return {
+                    status: false,
+                    message: 'Originating sales invoice for this voucher was not found.',
+                };
+            }
+
+            if (sourceOrder.allianceId !== allianceId) {
+                return {
+                    status: false,
+                    message: `This voucher was issued against Invoice #${sourceOrder.orderNumber} which did not use the same alliance discount.`,
+                };
+            }
+        }
+
+        return standardResult;
+    }
+
     // ── Redeem voucher(s) during order creation (called inside tx) ─
     async redeemVouchers(
         voucherRedemptions: { voucherId: string; amountUsed: number }[],
