@@ -4280,4 +4280,280 @@ export class PosSalesService implements OnModuleInit {
 
         return root;
     }
+
+    async getSalesRegisterReport(options: {
+        locationId: string;
+        startDate?: string;
+        endDate?: string;
+        cashierUserId?: string;
+        search?: string;
+    }) {
+        const { locationId, startDate: startStr, endDate: endStr, cashierUserId, search } = options;
+        if (!locationId) {
+            throw new BadRequestException('locationId is required');
+        }
+        const now = new Date();
+        const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+        const endDate = endStr ? new Date(endStr) : new Date(now);
+        endDate.setHours(23, 59, 59, 999);
+
+        const orders = await this.prisma.salesOrder.findMany({
+            where: {
+                locationId,
+                status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
+                createdAt: { gte: startDate, lte: endDate },
+                ...(cashierUserId ? { cashierUserId } : {}),
+                ...(search ? { orderNumber: { contains: search, mode: 'insensitive' } } : {}),
+            },
+            include: {
+                alliance: true,
+                voucherRedemptions: {
+                    include: {
+                        voucher: true
+                    }
+                },
+                items: {
+                    include: {
+                        item: true
+                    }
+                }
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        const returnLedgerEntries = await this.prisma.stockLedger.findMany({
+            where: {
+                referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+                createdAt: { gte: startDate, lte: endDate },
+                locationId,
+            },
+            include: {
+                item: true,
+            },
+        });
+
+        const referenceOrderIds = [...new Set(returnLedgerEntries.map(e => e.referenceId).filter(Boolean))];
+        const referenceOrders = referenceOrderIds.length
+            ? await this.prisma.salesOrder.findMany({
+                where: {
+                    id: { in: referenceOrderIds },
+                    ...(cashierUserId ? { cashierUserId } : {}),
+                },
+                include: {
+                    items: { include: { item: true } },
+                    alliance: true,
+                    voucherRedemptions: { include: { voucher: true } },
+                },
+            })
+            : [];
+
+        const referenceOrderMap = new Map<string, any>();
+        for (const o of referenceOrders) {
+            referenceOrderMap.set(o.id, o);
+        }
+
+        const rows: any[] = [];
+
+        for (const order of orders) {
+            let grossSale = 0;
+            let grossSaleWost = 0;
+
+            for (const item of order.items) {
+                const qty = Number(item.quantity || 0);
+                const price = Number(item.unitPrice || 0);
+                const taxRate = Number(item.taxPercent || 0);
+
+                grossSale += qty * price;
+                grossSaleWost += qty * (price / (1 + taxRate / 100));
+            }
+
+            let cash = Number(order.cashAmount || 0);
+            let cardAmount = Number(order.cardAmount || 0);
+            let postex = 0;
+            let leopard = 0;
+
+            const pm = order.paymentMethod?.toLowerCase();
+            if (pm === 'postex') {
+                postex = cardAmount || Number(order.grandTotal);
+                cardAmount = 0;
+            } else if (pm === 'leopard') {
+                leopard = cardAmount || Number(order.grandTotal);
+                cardAmount = 0;
+            }
+
+            let giftVoucherAmt = 0;
+            let giftVoucherCodes: string[] = [];
+            let creditAmt = 0;
+            let creditCodes: string[] = [];
+            let claimAmt = 0;
+            let claimCodes: string[] = [];
+            let corporateAmt = 0;
+            let corporateCodes: string[] = [];
+            let exchangeAmt = 0;
+            let exchangeCodes: string[] = [];
+
+            for (const red of order.voucherRedemptions) {
+                const type = red.voucher?.voucherType;
+                const code = red.voucher?.code || '';
+                const amt = Number(red.amountUsed);
+
+                if (type === 'GIFT' || type === 'OUTLET_GIFT') {
+                    giftVoucherAmt += amt;
+                    giftVoucherCodes.push(code);
+                } else if (type === 'CREDIT') {
+                    creditAmt += amt;
+                    creditCodes.push(code);
+                } else if (type === 'CLAIM') {
+                    claimAmt += amt;
+                    claimCodes.push(code);
+                } else if (type === 'CORPORATE') {
+                    corporateAmt += amt;
+                    corporateCodes.push(code);
+                } else if (type === 'EXCHANGE') {
+                    exchangeAmt += amt;
+                    exchangeCodes.push(code);
+                }
+            }
+
+            let cardNo = '';
+            const notesStr = order.notes || '';
+            const cardMatch = notesStr.match(/Card:\s*\*\*\*\*(\d{4})/i);
+            if (cardMatch) {
+                cardNo = cardMatch[1];
+            }
+
+            let allianceDetails = '';
+            if (order.alliance) {
+                allianceDetails = `${order.alliance.partnerName} (${order.alliance.discountPercent}%)`;
+            }
+
+            const overrideDiscPct = order.items
+                .map((i: any) => i.overrideDiscountPercent ? `${i.overrideDiscountPercent}%` : null)
+                .filter(Boolean)
+                .join(', ');
+
+            const overrideDiscNote = order.items
+                .map((i: any) => i.overrideDiscountNote)
+                .filter(Boolean)
+                .join('; ');
+
+            rows.push({
+                id: order.id,
+                cmNo: order.orderNumber,
+                date: order.createdAt,
+                grossSale,
+                grossSaleWost,
+                disc: Number(order.discountAmount || 0),
+                sTax: Number(order.taxAmount || 0),
+                netSale: Number(order.grandTotal),
+                cash,
+                postex,
+                leopard,
+                cardNo,
+                cardAmount,
+                allianceDetails,
+                giftVoucherAmt,
+                giftVoucherCode: giftVoucherCodes.join(', '),
+                creditAmt,
+                creditCode: creditCodes.join(', '),
+                claimAmt,
+                claimCode: claimCodes.join(', '),
+                corporateAmt,
+                corporateCode: corporateCodes.join(', '),
+                exchangeAmt,
+                exchangeCode: exchangeCodes.join(', '),
+                manualDiscPct: order.globalDiscountPercent ? `${order.globalDiscountPercent}%` : '',
+                manualDiscAmt: Number(order.globalDiscountAmount || 0),
+                manualDiscNote: order.manualDiscountNote || '',
+                overrideDiscPct,
+                overrideDiscNote,
+            });
+        }
+
+        const groupedReturns = new Map<string, any[]>();
+        for (const entry of returnLedgerEntries) {
+            if (!entry.referenceId) continue;
+            const list = groupedReturns.get(entry.referenceId) || [];
+            list.push(entry);
+            groupedReturns.set(entry.referenceId, list);
+        }
+
+        for (const [refId, entries] of groupedReturns.entries()) {
+            const order = referenceOrderMap.get(refId);
+            if (!order) continue;
+
+            let grossSale = 0;
+            let grossSaleWost = 0;
+            let disc = 0;
+            let sTax = 0;
+
+            for (const entry of entries) {
+                const qty = Math.abs(Number(entry.qty));
+                const orderItem = order.items.find((oi: any) => oi.itemId === entry.itemId);
+                if (!orderItem) continue;
+
+                const price = Number(orderItem.unitPrice || 0);
+                const taxRate = Number(orderItem.taxPercent || 0);
+                const itemQty = Number(orderItem.quantity || 1);
+
+                grossSale += qty * price;
+                grossSaleWost += qty * (price / (1 + taxRate / 100));
+                disc += (qty / itemQty) * Number(orderItem.discountAmount || 0);
+                sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
+            }
+
+            const netSale = grossSaleWost - disc + sTax;
+
+            let cash = 0;
+            let creditAmt = 0;
+            let exchangeAmt = 0;
+
+            const isRefund = entries[0].referenceType === 'POS_REFUND';
+            if (isRefund) {
+                cash = -netSale;
+            } else {
+                exchangeAmt = -netSale;
+            }
+
+            const docNum = isRefund
+                ? (order.refundNumber || `Refund for ${order.orderNumber}`)
+                : (order.returnNumber || `Return for ${order.orderNumber}`);
+
+            rows.push({
+                id: `${refId}-return`,
+                cmNo: docNum,
+                date: entries[0].createdAt,
+                grossSale: -grossSale,
+                grossSaleWost: -grossSaleWost,
+                disc: -disc,
+                sTax: -sTax,
+                netSale: -netSale,
+                cash,
+                postex: 0,
+                leopard: 0,
+                cardNo: '',
+                cardAmount: 0,
+                allianceDetails: '',
+                giftVoucherAmt: 0,
+                giftVoucherCode: '',
+                creditAmt,
+                creditCode: '',
+                claimAmt: 0,
+                claimCode: '',
+                corporateAmt: 0,
+                corporateCode: '',
+                exchangeAmt,
+                exchangeCode: '',
+                manualDiscPct: '',
+                manualDiscAmt: 0,
+                manualDiscNote: '',
+                overrideDiscPct: '',
+                overrideDiscNote: '',
+            });
+        }
+
+        rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        return { status: true, data: rows };
+    }
 }

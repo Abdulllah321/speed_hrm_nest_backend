@@ -12,6 +12,7 @@ import {
     Patch,
 } from '@nestjs/common';
 import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
+import { SalesRegisterExportService } from './sales-register-export.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -31,6 +32,7 @@ export class PosSalesController {
         private readonly posSalesService: PosSalesService,
         private readonly customerService: CustomerService,
         private readonly netSalesSummaryExportService: NetSalesSummaryExportService,
+        private readonly salesRegisterExportService: SalesRegisterExportService,
     ) { }
 
     // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -599,6 +601,70 @@ export class PosSalesController {
     async downloadNetSalesSummaryExport(@Param('jobId') jobId: string, @Res() res: any) {
         try {
             await this.netSalesSummaryExportService.streamExportFile(jobId, res);
+        } catch (err: any) {
+            const status = err?.status ?? 404;
+            res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+        }
+    }
+
+    // ─── Sales Register Report Endpoints ────────────────────────────
+
+    @Get('reports/sales-register')
+    @ApiOperation({ summary: 'Get Sales Register Report' })
+    async getSalesRegister(
+        @Query('locationId') locationId: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('cashierUserId') cashierUserId?: string,
+        @Query('search') search?: string,
+    ) {
+        return this.posSalesService.getSalesRegisterReport({
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            search,
+        });
+    }
+
+    @Post('reports/sales-register/export/queue')
+    @ApiOperation({ summary: 'Queue Sales Register Export' })
+    async queueSalesRegisterExport(
+        @Req() req: any,
+        @Body() body: {
+            locationId: string;
+            startDate?: string;
+            endDate?: string;
+            cashierUserId?: string;
+            format: 'xlsx' | 'pdf';
+            search?: string;
+        },
+    ) {
+        const userId = req.user?.userId || req.user?.id;
+        const result = await this.salesRegisterExportService.queueExport({
+            userId,
+            locationId: body.locationId,
+            startDate: body.startDate,
+            endDate: body.endDate,
+            cashierUserId: body.cashierUserId,
+            format: body.format,
+            search: body.search,
+        });
+        return { status: true, data: result };
+    }
+
+    @Get('reports/sales-register/export/:jobId/status')
+    @ApiOperation({ summary: 'Get Sales Register Export Status' })
+    async getSalesRegisterExportStatus(@Param('jobId') jobId: string) {
+        const result = await this.salesRegisterExportService.getJobStatus(jobId);
+        return { status: true, data: result };
+    }
+
+    @Get('reports/sales-register/export/:jobId/download')
+    @ApiOperation({ summary: 'Download Sales Register Export' })
+    async downloadSalesRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
+        try {
+            await this.salesRegisterExportService.streamExportFile(jobId, res);
         } catch (err: any) {
             const status = err?.status ?? 404;
             res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
