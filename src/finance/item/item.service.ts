@@ -640,14 +640,20 @@ export class ItemService {
         return { status: true, data: [] };
       }
 
-      // 1. Fetch matching items' parent itemIds
+      const conditions = barcodes.flatMap((code) => {
+        const trimmed = code.trim();
+        if (!trimmed) return [];
+        return [
+          { sku: { startsWith: trimmed, mode: 'insensitive' as const } },
+          { barCode: { startsWith: trimmed, mode: 'insensitive' as const } },
+          { itemId: { startsWith: trimmed, mode: 'insensitive' as const } },
+        ];
+      });
+
+      // 1. Fetch matching items' parent itemIds using prefix matches
       const matched = await this.prisma.item.findMany({
         where: {
-          OR: [
-            { barCode: { in: barcodes } },
-            { sku: { in: barcodes } },
-            { itemId: { in: barcodes } },
-          ],
+          OR: conditions,
         },
         select: {
           itemId: true,
