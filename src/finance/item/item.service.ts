@@ -269,18 +269,19 @@ export class ItemService {
       // ── 1. Resolve parent itemIds (business codes) for the selected items ──
       const selectedItems = await this.prisma.item.findMany({
         where: { id: { in: normalizedItemIds } },
-        select: { id: true, itemId: true },
+        select: { id: true, sku: true },
       });
 
-      const parentItemIds = Array.from(
-        new Set(selectedItems.map((i) => i.itemId).filter(Boolean)),
+      const parentSkus = Array.from(
+        new Set(selectedItems.map((i) => i.sku).filter(Boolean)),
       );
 
       // ── 2. Fetch all sibling variants (sizes/colors) sharing those parents ──
       const allVariantItems = await this.prisma.item.findMany({
-        where: { itemId: { in: parentItemIds } },
+        where: { sku: { in: parentSkus } },
         select: {
           id: true,
+          sku: true,
           itemId: true,
           discountRate: true,
           discountAmount: true,
@@ -299,19 +300,19 @@ export class ItemService {
       >();
 
       if (!dto.clearDiscount && dto.overrides?.length) {
-        // Resolve parent itemIds for override items
+        // Resolve parent SKUs for override items
         const overrideItemIds = dto.overrides.map((ov) => ov.id.toLowerCase());
         const overrideItems = await this.prisma.item.findMany({
           where: { id: { in: overrideItemIds } },
-          select: { id: true, itemId: true },
+          select: { id: true, sku: true },
         });
 
-        const idToParentMap = new Map(overrideItems.map((i) => [i.id.toLowerCase(), i.itemId]));
+        const idToParentMap = new Map(overrideItems.map((i) => [i.id.toLowerCase(), i.sku]));
 
         for (const ov of dto.overrides) {
-          const parentId = idToParentMap.get(ov.id.toLowerCase());
-          if (parentId) {
-            parentToOverrideMap.set(parentId, {
+          const parentSku = idToParentMap.get(ov.id.toLowerCase());
+          if (parentSku) {
+            parentToOverrideMap.set(parentSku, {
               ...(ov.discountRate !== undefined && {
                 discountRate: ov.discountRate,
                 discountAmount: 0,
@@ -331,8 +332,8 @@ export class ItemService {
         { discountRate?: number; discountAmount?: number }
       >();
       for (const item of allVariantItems) {
-        if (item.itemId) {
-          const ov = parentToOverrideMap.get(item.itemId);
+        if (item.sku) {
+          const ov = parentToOverrideMap.get(item.sku);
           if (ov) {
             overrideMap.set(item.id.toLowerCase(), ov);
           }
@@ -663,7 +664,7 @@ export class ItemService {
         },
       });
 
-      let matchedItemIds = exactMatched.map((m) => m.itemId).filter(Boolean);
+      let matchedSkus = exactMatched.map((m) => m.sku).filter(Boolean);
 
       // Determine which barcodes are still unmatched
       const foundCodes = new Set([
@@ -687,25 +688,25 @@ export class ItemService {
             OR: prefixConditions,
           },
           select: {
-            itemId: true,
+            sku: true,
           },
         });
 
-        matchedItemIds = matchedItemIds.concat(
-          prefixMatched.map((m) => m.itemId).filter(Boolean)
+        matchedSkus = matchedSkus.concat(
+          prefixMatched.map((m) => m.sku).filter(Boolean)
         );
       }
 
-      matchedItemIds = Array.from(new Set(matchedItemIds));
+      matchedSkus = Array.from(new Set(matchedSkus));
 
-      if (matchedItemIds.length === 0) {
+      if (matchedSkus.length === 0) {
         return { status: true, data: [] };
       }
 
-      // 2. Fetch all items matching those itemIds, including only required fields
+      // 3. Fetch all items matching those SKUs, including only required fields
       const items = await this.prisma.item.findMany({
         where: {
-          itemId: { in: matchedItemIds },
+          sku: { in: matchedSkus },
         },
         select: {
           id: true,
