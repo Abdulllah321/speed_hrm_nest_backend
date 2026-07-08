@@ -732,7 +732,6 @@ export class UploadProcessor {
             barCode: data.barCode ? String(data.barCode) : null,
             description: data.description ? String(data.description) : null,
             unitPrice: data.unitPrice ? Number(data.unitPrice) : 0,
-            unitCost: data.unitCost ? Number(data.unitCost) : 0,
             fob: data.fob ? Number(data.fob) : 0,
             taxRate1: data.taxRate1 ? Number(data.taxRate1) : 0,
             taxRate2: data.taxRate2 ? Number(data.taxRate2) : 0,
