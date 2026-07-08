@@ -325,66 +325,78 @@ export class ItemService {
           ? 'percent'
           : 'fixed';
 
-      const campaign = await this.prisma.$transaction(async (tx) => {
-        // Fast path: single updateMany for items with no override
-        if (bulkIds.length > 0) {
-          await tx.item.updateMany({
-            where: { id: { in: bulkIds } },
-            data: sharedData,
-          });
-        }
+      const campaign = await this.prisma.$transaction(
+        async (tx) => {
+          // Fast path: single updateMany for items with no override
+          if (bulkIds.length > 0) {
+            await tx.item.updateMany({
+              where: { id: { in: bulkIds } },
+              data: sharedData,
+            });
+          }
 
-        // Individual updates only for items with overrides
-        for (const id of overriddenItemIds) {
-          const override = overrideMap.get(id)!;
-          await tx.item.update({
-            where: { id },
-            data: { ...sharedData, ...override },
-          });
-        }
-
-        // Persist campaign record with items + locations
-        return tx.discountCampaign.create({
-          data: {
-            name: dto.campaignName,
-            discountType,
-            discountRate: dto.discountRate ?? 0,
-            discountAmount: dto.discountAmount ?? 0,
-            startDate: dto.discountStartDate ?? null,
-            endDate: dto.discountEndDate ?? null,
-            notes: dto.notes ?? null,
-            clearMode: dto.clearDiscount ?? false,
-            itemCount: dto.itemIds.length,
-            appliedById: dto.appliedById ?? null,
-            items: {
-              create: dto.itemIds.map((itemId) => {
-                const snap = snapshotMap.get(itemId);
-                const ov = overrideMap.get(itemId);
-                return {
-                  itemId,
-                  overrideRate: ov?.discountRate ?? null,
-                  overrideAmount: ov?.discountAmount ?? null,
-                  prevDiscountRate: snap?.discountRate ?? null,
-                  prevDiscountAmount: snap?.discountAmount ?? null,
-                  prevStartDate: snap?.discountStartDate ?? null,
-                  prevEndDate: snap?.discountEndDate ?? null,
-                };
+          // Individual updates in chunks to run concurrently and prevent timeouts
+          const CHUNK_SIZE = 100;
+          for (let i = 0; i < overriddenItemIds.length; i += CHUNK_SIZE) {
+            const chunk = overriddenItemIds.slice(i, i + CHUNK_SIZE);
+            await Promise.all(
+              chunk.map((id) => {
+                const override = overrideMap.get(id)!;
+                return tx.item.update({
+                  where: { id },
+                  data: { ...sharedData, ...override },
+                });
               }),
+            );
+          }
+
+          // Persist campaign record with items + locations
+          return tx.discountCampaign.create({
+            data: {
+              name: dto.campaignName,
+              discountType,
+              discountRate: dto.discountRate ?? 0,
+              discountAmount: dto.discountAmount ?? 0,
+              startDate: dto.discountStartDate ?? null,
+              endDate: dto.discountEndDate ?? null,
+              notes: dto.notes ?? null,
+              clearMode: dto.clearDiscount ?? false,
+              itemCount: dto.itemIds.length,
+              appliedById: dto.appliedById ?? null,
+              items: {
+                create: dto.itemIds.map((itemId) => {
+                  const snap = snapshotMap.get(itemId);
+                  const ov = overrideMap.get(itemId);
+                  return {
+                    itemId,
+                    overrideRate: ov?.discountRate ?? null,
+                    overrideAmount: ov?.discountAmount ?? null,
+                    prevDiscountRate: snap?.discountRate ?? null,
+                    prevDiscountAmount: snap?.discountAmount ?? null,
+                    prevStartDate: snap?.discountStartDate ?? null,
+                    prevEndDate: snap?.discountEndDate ?? null,
+                  };
+                }),
+              },
+              ...(dto.locationIds?.length
+                ? {
+                    locations: {
+                      create: dto.locationIds.map((locationId, idx) => ({
+                        locationId,
+                        locationName: dto.locationNames?.[idx] ?? null,
+                      })),
+                    },
+                  }
+                : {}),
             },
-            ...(dto.locationIds?.length
-              ? {
-                  locations: {
-                    create: dto.locationIds.map((locationId, idx) => ({
-                      locationId,
-                      locationName: dto.locationNames?.[idx] ?? null,
-                    })),
-                  },
-                }
-              : {}),
-          },
-          include: { locations: true },
-        });
-      });
+            include: { locations: true },
+          });
+        },
+        {
+          maxWait: 15000,
+          timeout: 90000,
+        },
+      );
 
       return {
         status: true,
