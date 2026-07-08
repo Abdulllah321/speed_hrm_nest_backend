@@ -266,11 +266,22 @@ export class ItemService {
       // Normalize all item IDs to lowercase to prevent casing mismatches in comparison
       const normalizedItemIds = dto.itemIds.map((id) => id.toLowerCase());
 
-      // ── 1. Fetch current discount state for snapshot ───────────────────
-      const currentItems = await this.prisma.item.findMany({
+      // ── 1. Resolve parent itemIds (business codes) for the selected items ──
+      const selectedItems = await this.prisma.item.findMany({
         where: { id: { in: normalizedItemIds } },
+        select: { id: true, itemId: true },
+      });
+
+      const parentItemIds = Array.from(
+        new Set(selectedItems.map((i) => i.itemId).filter(Boolean)),
+      );
+
+      // ── 2. Fetch all sibling variants (sizes/colors) sharing those parents ──
+      const allVariantItems = await this.prisma.item.findMany({
+        where: { itemId: { in: parentItemIds } },
         select: {
           id: true,
+          itemId: true,
           discountRate: true,
           discountAmount: true,
           discountStartDate: true,
@@ -278,9 +289,57 @@ export class ItemService {
         },
       });
 
-      const snapshotMap = new Map(currentItems.map((i) => [i.id.toLowerCase(), i]));
+      const allVariantIds = allVariantItems.map((i) => i.id.toLowerCase());
+      const snapshotMap = new Map(allVariantItems.map((i) => [i.id.toLowerCase(), i]));
 
-      // ── 2. Build shared item update payload ────────────────────────────
+      // ── 3. Build per-item override map and propagate to siblings ──
+      const parentToOverrideMap = new Map<
+        string,
+        { discountRate?: number; discountAmount?: number }
+      >();
+
+      if (!dto.clearDiscount && dto.overrides?.length) {
+        // Resolve parent itemIds for override items
+        const overrideItemIds = dto.overrides.map((ov) => ov.id.toLowerCase());
+        const overrideItems = await this.prisma.item.findMany({
+          where: { id: { in: overrideItemIds } },
+          select: { id: true, itemId: true },
+        });
+
+        const idToParentMap = new Map(overrideItems.map((i) => [i.id.toLowerCase(), i.itemId]));
+
+        for (const ov of dto.overrides) {
+          const parentId = idToParentMap.get(ov.id.toLowerCase());
+          if (parentId) {
+            parentToOverrideMap.set(parentId, {
+              ...(ov.discountRate !== undefined && {
+                discountRate: ov.discountRate,
+                discountAmount: 0,
+              }),
+              ...(ov.discountAmount !== undefined && {
+                discountAmount: ov.discountAmount,
+                discountRate: 0,
+              }),
+            });
+          }
+        }
+      }
+
+      // Propagate overrides to all variant sibling IDs
+      const overrideMap = new Map<
+        string,
+        { discountRate?: number; discountAmount?: number }
+      >();
+      for (const item of allVariantItems) {
+        if (item.itemId) {
+          const ov = parentToOverrideMap.get(item.itemId);
+          if (ov) {
+            overrideMap.set(item.id.toLowerCase(), ov);
+          }
+        }
+      }
+
+      // ── 4. Build shared item update payload ────────────────────────────
       const sharedData: any = dto.clearDiscount
         ? {
             discountRate: 0,
@@ -305,36 +364,17 @@ export class ItemService {
             }),
           };
 
-      // ── 3. Build per-item override map ─────────────────────────────────
-      const overrideMap = new Map<
-        string,
-        { discountRate?: number; discountAmount?: number }
-      >();
-      if (!dto.clearDiscount && dto.overrides?.length) {
-        for (const ov of dto.overrides) {
-          overrideMap.set(ov.id.toLowerCase(), {
-            ...(ov.discountRate !== undefined && {
-              discountRate: ov.discountRate,
-              discountAmount: 0,
-            }),
-            ...(ov.discountAmount !== undefined && {
-              discountAmount: ov.discountAmount,
-              discountRate: 0,
-            }),
-          });
-        }
-      }
-
-      // ── 4. Apply item updates + persist campaign atomically ───────────
+      // ── 5. Apply item updates + persist campaign atomically ───────────
       const overriddenIds = new Set(overrideMap.keys());
-      const bulkIds = normalizedItemIds.filter((id) => !overriddenIds.has(id));
-      const overriddenItemIds = normalizedItemIds.filter((id) =>
+      const bulkIds = allVariantIds.filter((id) => !overriddenIds.has(id));
+      const overriddenItemIds = allVariantIds.filter((id) =>
         overriddenIds.has(id),
       );
 
-      console.log('[bulkDiscount] Partition results:', {
+      console.log('[bulkDiscount] Partition results (including all variants):', {
         bulkIdsLength: bulkIds.length,
         overriddenItemIdsLength: overriddenItemIds.length,
+        totalResolvedVariants: allVariantIds.length,
       });
 
       const discountType = dto.clearDiscount
@@ -380,10 +420,10 @@ export class ItemService {
               endDate: dto.discountEndDate ?? null,
               notes: dto.notes ?? null,
               clearMode: dto.clearDiscount ?? false,
-              itemCount: dto.itemIds.length,
+              itemCount: allVariantIds.length,
               appliedById: dto.appliedById ?? null,
               items: {
-                create: normalizedItemIds.map((itemId) => {
+                create: allVariantIds.map((itemId) => {
                   const snap = snapshotMap.get(itemId);
                   const ov = overrideMap.get(itemId);
                   return {
