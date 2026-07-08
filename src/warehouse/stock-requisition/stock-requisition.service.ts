@@ -70,7 +70,7 @@ export class StockRequisitionService {
     }
 
     const requisitionNo = `SRN-${Date.now()}`;
-    const status = data.status || (data.documentType === 'Outlet Request' ? 'DRAFT' : 'PENDING');
+    const status = data.status || 'PENDING';
     const isDraft = status === 'DRAFT';
 
     // Perform check and block in a transaction to prevent race conditions
