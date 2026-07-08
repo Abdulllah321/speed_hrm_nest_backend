@@ -254,6 +254,15 @@ export class ItemService {
         return { status: false, message: 'No item IDs provided' };
       }
 
+      console.log('[bulkDiscount] Received request:', {
+        campaignName: dto.campaignName,
+        itemIdsLength: dto.itemIds.length,
+        overridesLength: dto.overrides?.length ?? 0,
+        clearDiscount: dto.clearDiscount,
+        discountRate: dto.discountRate,
+        discountAmount: dto.discountAmount,
+      });
+
       // ── 1. Fetch current discount state for snapshot ───────────────────
       const currentItems = await this.prisma.item.findMany({
         where: { id: { in: dto.itemIds } },
@@ -319,6 +328,12 @@ export class ItemService {
       const overriddenItemIds = dto.itemIds.filter((id) =>
         overriddenIds.has(id),
       );
+
+      console.log('[bulkDiscount] Partition results:', {
+        bulkIdsLength: bulkIds.length,
+        overriddenItemIdsLength: overriddenItemIds.length,
+      });
+
       const discountType = dto.clearDiscount
         ? 'clear'
         : dto.discountRate !== undefined
@@ -342,6 +357,7 @@ export class ItemService {
             await Promise.all(
               chunk.map((id) => {
                 const override = overrideMap.get(id)!;
+                console.log(`[bulkDiscount] Overriding item ${id}:`, { ...sharedData, ...override });
                 return tx.item.update({
                   where: { id },
                   data: { ...sharedData, ...override },
