@@ -568,7 +568,9 @@ export class ItemService {
       if (!barcodes || barcodes.length === 0) {
         return { status: true, data: [] };
       }
-      const items = await this.prisma.item.findMany({
+
+      // 1. Fetch matching items' parent itemIds
+      const matched = await this.prisma.item.findMany({
         where: {
           OR: [
             { barCode: { in: barcodes } },
@@ -576,8 +578,42 @@ export class ItemService {
             { itemId: { in: barcodes } },
           ],
         },
-        include: includeMasterData,
+        select: {
+          itemId: true,
+        },
       });
+
+      const matchedItemIds = Array.from(
+        new Set(matched.map((m) => m.itemId).filter(Boolean)),
+      );
+
+      if (matchedItemIds.length === 0) {
+        return { status: true, data: [] };
+      }
+
+      // 2. Fetch all items matching those itemIds, including only required fields
+      const items = await this.prisma.item.findMany({
+        where: {
+          itemId: { in: matchedItemIds },
+        },
+        select: {
+          id: true,
+          itemId: true,
+          sku: true,
+          barCode: true,
+          description: true,
+          unitPrice: true,
+          discountRate: true,
+          discountAmount: true,
+          discountStartDate: true,
+          discountEndDate: true,
+          brand: { select: { name: true } },
+          category: { select: { name: true } },
+          size: { select: { name: true } },
+          color: { select: { name: true } },
+        },
+      });
+
       return { status: true, data: items };
     } catch (error: any) {
       return { status: false, message: error.message };
