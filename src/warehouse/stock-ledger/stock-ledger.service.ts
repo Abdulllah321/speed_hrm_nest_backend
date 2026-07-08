@@ -184,7 +184,7 @@ export class StockLedgerService {
     const warehouseIds = [...new Set(groupBy.map((r) => r.warehouseId))];
     const locationIds = [...new Set(groupBy.map((r) => r.locationId).filter(Boolean))] as string[];
 
-    const [items, warehouses, locations] = await Promise.all([
+    const [items, warehouses, locations, reservations] = await Promise.all([
       this.prisma.item.findMany({
         where: { id: { in: itemIds } },
         select: { id: true, itemId: true, sku: true, description: true },
@@ -199,20 +199,48 @@ export class StockLedgerService {
             select: { id: true, name: true, code: true },
           })
         : Promise.resolve([] as { id: string; name: string; code: string }[]),
+      this.prisma.stockReserve.groupBy({
+        by: ['itemId', 'warehouseId'],
+        where: {
+          itemId: { in: itemIds },
+          warehouseId: { in: warehouseIds },
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } }
+          ]
+        },
+        _sum: {
+          quantity: true,
+        }
+      })
     ]);
 
     const itemMap = new Map(items.map((i) => [i.id, i]));
     const warehouseMap = new Map(warehouses.map((w) => [w.id, w]));
     const locationMap = new Map(locations.map((l) => [l.id, l]));
 
+    const resMap = new Map<string, number>();
+    for (const res of reservations) {
+      const key = `${res.itemId}_${res.warehouseId}`;
+      resMap.set(key, Number(res._sum.quantity || 0));
+    }
+
     return groupBy.map((row) => {
       const loc = row.locationId ? locationMap.get(row.locationId) : null;
       const wh = warehouseMap.get(row.warehouseId);
+
+      let totalQty = Number(row._sum.qty || 0);
+      if (!row.locationId) {
+        const key = `${row.itemId}_${row.warehouseId}`;
+        const reserved = resMap.get(key) || 0;
+        totalQty = Math.max(0, totalQty - reserved);
+      }
+
       return {
         itemId: row.itemId,
         warehouseId: row.warehouseId,
         locationId: row.locationId ?? null,
-        totalQty: Number(row._sum.qty || 0),
+        totalQty,
         item: itemMap.get(row.itemId) ?? null,
         warehouse: wh ? { name: wh.name, code: wh.code } : null,
         location: loc
