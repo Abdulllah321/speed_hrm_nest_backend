@@ -263,9 +263,12 @@ export class ItemService {
         discountAmount: dto.discountAmount,
       });
 
+      // Normalize all item IDs to lowercase to prevent casing mismatches in comparison
+      const normalizedItemIds = dto.itemIds.map((id) => id.toLowerCase());
+
       // ── 1. Fetch current discount state for snapshot ───────────────────
       const currentItems = await this.prisma.item.findMany({
-        where: { id: { in: dto.itemIds } },
+        where: { id: { in: normalizedItemIds } },
         select: {
           id: true,
           discountRate: true,
@@ -275,7 +278,7 @@ export class ItemService {
         },
       });
 
-      const snapshotMap = new Map(currentItems.map((i) => [i.id, i]));
+      const snapshotMap = new Map(currentItems.map((i) => [i.id.toLowerCase(), i]));
 
       // ── 2. Build shared item update payload ────────────────────────────
       const sharedData: any = dto.clearDiscount
@@ -309,7 +312,7 @@ export class ItemService {
       >();
       if (!dto.clearDiscount && dto.overrides?.length) {
         for (const ov of dto.overrides) {
-          overrideMap.set(ov.id, {
+          overrideMap.set(ov.id.toLowerCase(), {
             ...(ov.discountRate !== undefined && {
               discountRate: ov.discountRate,
               discountAmount: 0,
@@ -324,8 +327,8 @@ export class ItemService {
 
       // ── 4. Apply item updates + persist campaign atomically ───────────
       const overriddenIds = new Set(overrideMap.keys());
-      const bulkIds = dto.itemIds.filter((id) => !overriddenIds.has(id));
-      const overriddenItemIds = dto.itemIds.filter((id) =>
+      const bulkIds = normalizedItemIds.filter((id) => !overriddenIds.has(id));
+      const overriddenItemIds = normalizedItemIds.filter((id) =>
         overriddenIds.has(id),
       );
 
@@ -380,7 +383,7 @@ export class ItemService {
               itemCount: dto.itemIds.length,
               appliedById: dto.appliedById ?? null,
               items: {
-                create: dto.itemIds.map((itemId) => {
+                create: normalizedItemIds.map((itemId) => {
                   const snap = snapshotMap.get(itemId);
                   const ov = overrideMap.get(itemId);
                   return {
