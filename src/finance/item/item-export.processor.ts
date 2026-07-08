@@ -149,15 +149,16 @@ export class ItemExportProcessor {
       const direction = sortOrder === 'asc' ? 'asc' : 'desc';
       let orderBy: any[];
       if (directSortFields.has(sortBy ?? '')) {
-        orderBy = [{ [sortBy!]: direction }];
+        orderBy = [{ [sortBy!]: direction }, { id: 'asc' }];
       } else if (relationalSortFields[sortBy ?? '']) {
-        orderBy = [{ [relationalSortFields[sortBy!]]: direction }];
+        orderBy = [{ [relationalSortFields[sortBy!]]: direction }, { id: 'asc' }];
       } else {
         orderBy = [
           { division: { name: 'asc' } },
           { brand: { name: 'asc' } },
           { category: { name: 'asc' } },
-          { sku: 'asc' }
+          { sku: 'asc' },
+          { id: 'asc' }
         ];
       }
 
