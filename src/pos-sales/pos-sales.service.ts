@@ -307,9 +307,17 @@ export class PosSalesService implements OnModuleInit {
                         if (!dto.allianceMeta || !dto.allianceMeta.cardLast4 || dto.allianceMeta.cardLast4.trim().length !== 4) {
                             throw new Error('Card number (last 4 digits) is mandatory when Alliance is selected.');
                         }
+                        if (!dto.allianceMeta.merchantSlip || !dto.allianceMeta.merchantSlip.trim()) {
+                            throw new Error('Auth ID / Approval Code is mandatory when Alliance is selected.');
+                        }
                         for (const t of tenders) {
-                            if ((t.method === 'card' || t.method === 'bank_transfer') && (!t.cardLast4 || t.cardLast4.trim().length !== 4)) {
-                                throw new Error('Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.');
+                            if (t.method === 'card' || t.method === 'bank_transfer') {
+                                if (!t.cardLast4 || t.cardLast4.trim().length !== 4) {
+                                    throw new Error('Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.');
+                                }
+                                if (!t.slipNo || !t.slipNo.trim()) {
+                                    throw new Error('Auth ID / Approval Code is mandatory for card/bank payments when Alliance is selected.');
+                                }
                             }
                         }
                     }
