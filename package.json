@@ -33,6 +33,8 @@
     "seed:opening-balances": "bun scripts/seed-opening-balances.ts",
     "seed:hscodes": "bun scripts/seed-hscodes.ts",
     "update:employee-locations": "bun scripts/update-employee-locations.ts",
+    "seed:brands-divisions": "bun scripts/seed-brands-divisions.ts",
+    "seed:categories": "bun scripts/seed-categories.ts",
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
     "prisma:studio": "prisma studio"
   },
