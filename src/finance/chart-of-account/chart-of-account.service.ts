@@ -422,7 +422,6 @@ export class ChartOfAccountService {
       }
 
       const created: any[] = [];
-      const skipped: any[] = [];
 
       for (const item of items) {
         const existing = await this.prisma.chartOfAccount.findFirst({
@@ -433,11 +432,22 @@ export class ChartOfAccountService {
         });
 
         if (existing) {
-          skipped.push({
+          const updateData: any = {
             name: item.name,
-            code: item.code,
-            reason: 'Account code already exists under this parent',
+            type: parent.type,
+          };
+
+          if (item.type === 'SUPPLIER' || item.type === 'MERCHANDISE') {
+            updateData.suppliers = {
+              connect: [{ id: item.referenceId }],
+            };
+          }
+
+          const account = await this.prisma.chartOfAccount.update({
+            where: { id: existing.id },
+            data: updateData,
           });
+          created.push(account);
           continue;
         }
 
@@ -470,7 +480,7 @@ export class ChartOfAccountService {
           action: 'create',
           module: 'finance',
           entity: 'ChartOfAccount',
-          description: `Bulk created ${created.length} sub-accounts under ${parent.name} (${parent.code}). Skipped ${skipped.length}.`,
+          description: `Bulk created/updated ${created.length} sub-accounts under ${parent.name} (${parent.code}).`,
           newValues: JSON.stringify(body),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
@@ -480,11 +490,11 @@ export class ChartOfAccountService {
 
       return {
         status: true,
-        message: `Successfully created ${created.length} sub-accounts.`,
+        message: `Successfully created/updated ${created.length} sub-accounts.`,
         createdCount: created.length,
-        skippedCount: skipped.length,
+        skippedCount: 0,
         created,
-        skipped,
+        skipped: [],
       };
     } catch (error: any) {
       runInBackground(
