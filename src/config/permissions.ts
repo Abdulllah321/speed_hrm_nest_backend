@@ -1221,6 +1221,38 @@ export const PERMISSIONS = [
     description: 'Approve Receipt Voucher',
   },
 
+  // Finance Reports
+  {
+    name: 'erp.finance.general-ledger.read',
+    module: 'erp.finance.general-ledger',
+    action: 'read',
+    description: 'Read General Ledger',
+  },
+  {
+    name: 'erp.finance.general-ledger-summary.read',
+    module: 'erp.finance.general-ledger-summary',
+    action: 'read',
+    description: 'Read General Ledger Summary',
+  },
+  {
+    name: 'erp.finance.trial-balance.read',
+    module: 'erp.finance.trial-balance',
+    action: 'read',
+    description: 'Read Trial Balance',
+  },
+  {
+    name: 'erp.finance.balance-sheet.read',
+    module: 'erp.finance.balance-sheet',
+    action: 'read',
+    description: 'Read Balance Sheet',
+  },
+  {
+    name: 'erp.finance.profit-loss.read',
+    module: 'erp.finance.profit-loss',
+    action: 'read',
+    description: 'Read Profit & Loss',
+  },
+
   // Brand
   {
     name: 'master.brand.create',
