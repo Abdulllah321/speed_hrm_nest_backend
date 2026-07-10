@@ -463,6 +463,10 @@ export class PosConfigService {
     //  No location restriction — redeemable at any POS terminal
     // ══════════════════════════════════════════════════════════════
 
+    /**
+     * @deprecated Use VoucherService.listVouchers instead. 
+     * This older implementation operates on CouponCode and is unused.
+     */
     async listVouchers() {
         try {
             const vouchers = await this.prisma.couponCode.findMany({

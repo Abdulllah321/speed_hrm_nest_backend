@@ -222,6 +222,13 @@ export class CsvParserService {
             // Movement Name — new field
             movementName: this.normalizeValue(this.getValue(row, 'Movement Name')),
 
+            // Unique No — new field
+            uniqueNo: this.normalizeValue(
+                this.getValue(row, 'Unique No.') ||
+                this.getValue(row, 'Unique No') ||
+                this.getValue(row, 'UniqueNo')
+            ),
+
             // Heel Height — new header: "Heel Height" (with space), legacy: "HeelHeight"
             heelHeight: this.normalizeValue(
                 this.getValue(row, 'Heel Height') || this.getValue(row, 'HeelHeight'),
