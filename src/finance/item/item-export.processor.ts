@@ -83,6 +83,7 @@ const COLUMNS: {
   { header: 'Band',          key: 'band',              width: 12, group: 'Attributes' },
   { header: 'Movement Type', key: 'movementType',      width: 16, group: 'Attributes' },
   { header: 'Movement Name', key: 'movementName',      width: 16, group: 'Attributes' },
+  { header: 'Unique No',     key: 'uniqueNo',          width: 16, group: 'Attributes' },
   { header: 'Heel Height',   key: 'heelHeight',        width: 12, group: 'Attributes' },
   { header: 'Width',         key: 'width',             width: 10, group: 'Attributes' },
   { header: 'Launch Date',   key: 'launchDate',        width: 14, group: 'Attributes',      numFmt: 'dd-mmm-yyyy', align: 'center' },
@@ -131,6 +132,7 @@ export class ItemExportProcessor {
             { sku:         { contains: t, mode: 'insensitive' } },
             { description: { contains: t, mode: 'insensitive' } },
             { barCode:     { contains: t, mode: 'insensitive' } },
+            { uniqueNo:    { contains: t, mode: 'insensitive' } },
             { brand:    { name: { contains: t, mode: 'insensitive' } } },
             { category: { name: { contains: t, mode: 'insensitive' } } },
             { division: { name: { contains: t, mode: 'insensitive' } } },
@@ -144,7 +146,7 @@ export class ItemExportProcessor {
       const where: any = andClauses.length ? { AND: andClauses } : {};
 
       // ── Build ORDER BY ───────────────────────────────────────────────────
-      const directSortFields = new Set(['itemId','sku','unitPrice','isActive','createdAt','updatedAt','description','barCode','hsCode']);
+      const directSortFields = new Set(['itemId','sku','unitPrice','isActive','createdAt','updatedAt','description','barCode','hsCode','uniqueNo']);
       const relationalSortFields: Record<string, string> = { brand: 'brandId', category: 'categoryId', division: 'divisionId' };
       const direction = sortOrder === 'asc' ? 'asc' : 'desc';
       let orderBy: any[];
@@ -286,6 +288,7 @@ export class ItemExportProcessor {
             band:              item.band ?? '',
             movementType:      item.movementType ?? '',
             movementName:      item.movementName ?? '',
+            uniqueNo:          item.uniqueNo ?? '',
             heelHeight:        item.heelHeight ?? '',
             width:             item.width ?? '',
             launchDate:        item.launchDate ? new Date(item.launchDate) : null,

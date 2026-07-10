@@ -212,11 +212,21 @@ export class PosConfigController {
     @Permissions('pos.voucher.view')
     @ApiOperation({ summary: 'List vouchers' })
     async listVouchers(
+        @Req() req: any,
         @Query('voucherType') voucherType?: string,
-        @Query('locationId') locationId?: string,
+        @Query('locationId') locationIdQuery?: string,
         @Query('search') search?: string,
         @Query('includeVoided') includeVoided?: string,
     ) {
+        let locationId = locationIdQuery;
+        const posTerminalToken = req.cookies?.['posTerminalToken'];
+        if (!locationId && posTerminalToken) {
+            try {
+                const jwt = require('jsonwebtoken');
+                const decoded: any = jwt.decode(posTerminalToken);
+                if (decoded?.locationId) locationId = decoded.locationId;
+            } catch { /* ignore */ }
+        }
         return this.voucherService.listVouchers({
             voucherType,
             locationId,
