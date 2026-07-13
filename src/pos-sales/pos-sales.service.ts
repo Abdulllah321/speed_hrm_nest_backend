@@ -1849,13 +1849,13 @@ export class PosSalesService implements OnModuleInit {
             }
         }
 
-        // Fetch any credit vouchers issued from this order
+        // Fetch any vouchers issued from this order
         const creditVouchers = await this.prisma.voucher.findMany({
-            where: { sourceOrderId: id, voucherType: 'CREDIT', isDeleted: false },
-            select: { code: true, faceValue: true, expiresAt: true },
+            where: { sourceOrderId: id, isDeleted: false },
+            select: { code: true, faceValue: true, expiresAt: true, voucherType: true },
         });
 
-        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers, hasReturn, hasRefund, cashier } };
+        return { status: true, data: { ...order, items: enrichedItems, tenders, creditVouchers, issuedVouchers: creditVouchers, hasReturn, hasRefund, cashier } };
     }
 
     // ─── Partial return ───────────────────────────────────────────────
@@ -3634,45 +3634,168 @@ export class PosSalesService implements OnModuleInit {
     async updateTender(
         id: string,
         tenders: { method: string; amount: number; cardLast4?: string; slipNo?: string }[],
+        merchantId?: string,
         ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
     ) {
         try {
-            const order = await this.prisma.salesOrder.findUnique({ where: { id } });
-            if (!order) return { status: false, message: 'Order not found' };
-            if (order.status === 'voided') return { status: false, message: 'Cannot update tender on a voided order' };
+            const updated = await this.prisma.$transaction(async (tx) => {
+                const order = await tx.salesOrder.findUnique({
+                    where: { id },
+                    include: { voucherRedemptions: { include: { voucher: true } } },
+                });
+                if (!order) throw new Error('Order not found');
+                if (order.status === 'voided') throw new Error('Cannot update tender on a voided order');
 
-            const totalPaid = tenders.reduce((acc, t) => acc + Number(t.amount), 0);
-            const tenderMethods = [...new Set(tenders.map((t) => t.method))];
-            const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
-            const cashAmount = tenders.filter((t) => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
-            const voucherAmount = tenders.filter((t) => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
-            const cardAmount = tenders.filter((t) => t.method !== 'cash' && t.method !== 'voucher' && t.method !== 'credit_account').reduce((a, t) => a + Number(t.amount), 0);
-            const grandTotal = Number(order.grandTotal);
+                // ── Check if any voucher was issued from this order ──
+                const issuedVouchers = await tx.voucher.findMany({
+                    where: { sourceOrderId: id, isDeleted: false },
+                });
+                if (issuedVouchers.length > 0) {
+                    throw new Error('Cannot update tender because a voucher has been issued from this order');
+                }
 
-            const totalPaidRounded = Math.round(totalPaid * 100) / 100;
-            const grandTotalRounded = Math.round(grandTotal * 100) / 100;
-            const changeAmount = Math.max(0, totalPaidRounded - grandTotalRounded);
+                // ── Check alliance order tender constraints ──
+                if (order.allianceId) {
+                    const originalCash = Number(order.cashAmount ?? 0);
+                    const originalCard = Number(order.cardAmount ?? 0);
+                    const originalVoucher = (order.voucherRedemptions || []).reduce((s, r) => s + Number(r.amountUsed), 0);
+                    
+                    const newCash = tenders.filter(t => t.method === 'cash').reduce((s, t) => s + Number(t.amount), 0);
+                    const newCard = tenders.filter(t => t.method === 'card' || t.method === 'bank_transfer').reduce((s, t) => s + Number(t.amount), 0);
+                    const newVoucher = tenders.filter(t => t.method === 'voucher').reduce((s, t) => s + Number(t.amount), 0);
+                    
+                    if (originalCash !== newCash || originalCard !== newCard || originalVoucher !== newVoucher) {
+                        throw new Error('Tender amounts cannot be modified for Alliance orders. Only the merchant terminal can be updated.');
+                    }
+                }
 
-            let paymentStatus: string;
-            if (totalPaidRounded >= grandTotalRounded) {
-                paymentStatus = 'paid';
-            } else if (totalPaidRounded > 0) {
-                paymentStatus = 'partial';
-            } else {
-                paymentStatus = 'unpaid';
-            }
+                // ── Check voucher payment changes ──
+                const originalVouchers = (order.voucherRedemptions || []).map(vr => ({
+                    code: vr.voucher?.code || '',
+                    amount: Number(vr.amountUsed)
+                })).sort((a, b) => a.code.localeCompare(b.code));
+                
+                const newVouchers = tenders.filter(t => t.method === 'voucher').map(t => ({
+                    code: t.slipNo || '',
+                    amount: Number(t.amount)
+                })).sort((a, b) => a.code.localeCompare(b.code));
+                
+                const vouchersMatch = originalVouchers.length === newVouchers.length &&
+                    originalVouchers.every((v, i) => v.code === newVouchers[i].code && v.amount === newVouchers[i].amount);
+                
+                if (!vouchersMatch) {
+                    throw new Error('Modifying applied vouchers is not allowed');
+                }
 
-            const updated = await this.prisma.salesOrder.update({
-                where: { id },
-                data: {
-                    paymentMethod,
-                    tenderType: paymentMethod,
-                    cashAmount: cashAmount || undefined,
-                    cardAmount: cardAmount || undefined,
-                    voucherAmount: voucherAmount || undefined,
-                    changeAmount: changeAmount || undefined,
-                    paymentStatus,
-                },
+                // ── Update notes for card/bank transfer details ──
+                let notes = order.notes || '';
+                const cardTender = tenders.find(t => (t.method === 'card' || t.method === 'bank_transfer') && t.cardLast4);
+                if (cardTender) {
+                    if (order.allianceId) {
+                        const alliancePrefix = '[Alliance]';
+                        const parts: string[] = [];
+                        const cardholderMatch = notes.match(/Cardholder:\s*([^|\]]+)/i);
+                        if (cardholderMatch) {
+                            parts.push(`Cardholder: ${cardholderMatch[1].trim()}`);
+                        }
+                        parts.push(`Card: ****${cardTender.cardLast4}`);
+                        if (cardTender.slipNo) {
+                            parts.push(`Slip: ${cardTender.slipNo}`);
+                        }
+                        const allianceNote = `${alliancePrefix} ${parts.join(' | ')}`;
+                        
+                        notes = notes.replace(/\[Alliance\].*?($|\n)/, '').trim();
+                        notes = notes ? `${notes}\n${allianceNote}` : allianceNote;
+                    } else {
+                        const cardNote = `Card: ****${cardTender.cardLast4}${cardTender.slipNo ? ` | Slip: ${cardTender.slipNo}` : ''}`;
+                        notes = notes.replace(/Card:.*?($|\n)/, '').trim();
+                        notes = notes ? `${notes}\n${cardNote}` : cardNote;
+                    }
+                }
+
+                // ── Sync VoucherRedemption records ──
+                const originalRedemptions = order.voucherRedemptions || [];
+                const newVoucherTenders = tenders.filter(t => t.method === 'voucher');
+                
+                // 1. Remove removed vouchers
+                const redemptionsToRemove = originalRedemptions.filter(or => 
+                    !newVoucherTenders.some(nt => nt.slipNo === or.voucher?.code)
+                );
+                for (const red of redemptionsToRemove) {
+                    await tx.voucher.update({
+                        where: { id: red.voucherId },
+                        data: { isRedeemed: false, isActive: true },
+                    });
+                    await tx.voucherRedemption.delete({
+                        where: { id: red.id },
+                    });
+                    await tx.voucherTransaction.deleteMany({
+                        where: { orderId: id, voucherId: red.voucherId, action: 'REDEEMED' },
+                    });
+                }
+
+                // 2. Redeem new vouchers
+                const vouchersToAdd = newVoucherTenders.filter(nt =>
+                    !originalRedemptions.some(or => or.voucher?.code === nt.slipNo)
+                );
+                if (vouchersToAdd.length > 0) {
+                    const voucherCodes = vouchersToAdd.map(v => v.slipNo).filter(Boolean) as string[];
+                    const dbVouchers = await tx.voucher.findMany({
+                        where: { code: { in: voucherCodes } },
+                    });
+                    
+                    const toRedeem = vouchersToAdd.map(v => {
+                        const dbV = dbVouchers.find(x => x.code === v.slipNo);
+                        if (!dbV) {
+                            throw new Error(`Voucher ${v.slipNo} not found in database`);
+                        }
+                        return { voucherId: dbV.id, amountUsed: v.amount };
+                    });
+                    
+                    await this.voucherService.redeemVouchers(
+                        toRedeem,
+                        order.id,
+                        order.locationId || '',
+                        tx,
+                        ctx,
+                    );
+                }
+
+                const totalPaid = tenders.reduce((acc, t) => acc + Number(t.amount), 0);
+                const tenderMethods = [...new Set(tenders.map((t) => t.method))];
+                const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
+                const cashAmount = tenders.filter((t) => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
+                const voucherAmount = tenders.filter((t) => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
+                const cardAmount = tenders.filter((t) => t.method !== 'cash' && t.method !== 'voucher' && t.method !== 'credit_account').reduce((a, t) => a + Number(t.amount), 0);
+                const grandTotal = Number(order.grandTotal);
+
+                const totalPaidRounded = Math.round(totalPaid * 100) / 100;
+                const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+                const changeAmount = Math.max(0, totalPaidRounded - grandTotalRounded);
+
+                let paymentStatus: string;
+                if (totalPaidRounded >= grandTotalRounded) {
+                    paymentStatus = 'paid';
+                } else if (totalPaidRounded > 0) {
+                    paymentStatus = 'partial';
+                } else {
+                    paymentStatus = 'unpaid';
+                }
+
+                return tx.salesOrder.update({
+                    where: { id },
+                    data: {
+                        paymentMethod,
+                        tenderType: paymentMethod,
+                        cashAmount: cashAmount || undefined,
+                        cardAmount: cardAmount || undefined,
+                        voucherAmount: voucherAmount || undefined,
+                        changeAmount: changeAmount || undefined,
+                        paymentStatus,
+                        merchantId: merchantId || undefined,
+                        notes: notes || undefined,
+                    },
+                });
             });
 
             runInBackground(
@@ -3683,7 +3806,7 @@ export class PosSalesService implements OnModuleInit {
                     module: 'pos-sales',
                     entity: 'SalesOrder',
                     entityId: id,
-                    description: `Updated tender for order ${order.orderNumber}`,
+                    description: `Updated tender for order ${updated.orderNumber}`,
                     newValues: JSON.stringify({ tenders }),
                     ipAddress: ctx?.ipAddress,
                     userAgent: ctx?.userAgent,
