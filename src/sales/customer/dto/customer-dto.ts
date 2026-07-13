@@ -24,6 +24,10 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsOptional()
+  cnicNo?: string;
+
+  @IsString()
+  @IsOptional()
   @IsIn(['ERP', 'POS', 'BOTH'])
   customerType?: 'ERP' | 'POS' | 'BOTH';
 }
@@ -49,6 +53,10 @@ export class UpdateCustomerDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsString()
+  @IsOptional()
+  cnicNo?: string;
 
   @IsString()
   @IsOptional()

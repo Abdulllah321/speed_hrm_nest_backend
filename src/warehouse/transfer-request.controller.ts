@@ -19,10 +19,11 @@ export class TransferRequestController {
         fromWarehouseId?: string;
         fromLocationId?: string;
         toLocationId?: string;
-        transferType?: 'WAREHOUSE_TO_OUTLET' | 'OUTLET_TO_WAREHOUSE';
+        transferType?: 'WAREHOUSE_TO_OUTLET' | 'OUTLET_TO_WAREHOUSE' | 'OUTLET_TO_OUTLET';
         items: { itemId: string; quantity: number }[];
         createdById?: string;
         notes?: string;
+        isDirectTransfer?: boolean;
     }, @Req() req: any) {
         const data = await this.transferRequestService.createRequest(dto, {
             userId: req.user?.id,
