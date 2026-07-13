@@ -18,6 +18,7 @@ model Item {
   band                 String?
   movementType         String?
   movementName         String?               @map("movement_name")
+  uniqueNo             String?               @map("unique_no")
   heelHeight           String?
   width                String?
   uom                  String?               @map("uom")

@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET_GIFT' | 'REFUND';
 
@@ -31,6 +32,7 @@ export class VoucherService {
     constructor(
         private prisma: PrismaService,
         private activityLogs: ActivityLogsService,
+        private notificationsService: NotificationsService,
     ) {}
 
     // ── List vouchers (admin) ─────────────────────────────────────
@@ -56,10 +58,7 @@ export class VoucherService {
                 ];
             }
             if (filters?.locationId) {
-                where.OR = [
-                    { locations: { some: { locationId: filters.locationId } } },
-                    { locations: { none: {} } }, // no restriction = all locations
-                ];
+                where.issuedByLocationId = filters.locationId;
             }
 
             const vouchers = await this.prisma.voucher.findMany({
@@ -92,7 +91,7 @@ export class VoucherService {
             const locations = locationIds.length > 0
                 ? await this.prisma.location.findMany({
                     where: { id: { in: locationIds } },
-                    select: { id: true, name: true, code: true },
+                    select: { id: true, name: true, code: true, shortCode: true },
                 })
                 : [];
 
@@ -112,6 +111,7 @@ export class VoucherService {
                         id: issuedByLocation.id,
                         name: issuedByLocation.name,
                         code: issuedByLocation.code,
+                        shortCode: issuedByLocation.shortCode,
                     } : null,
                 };
             });
@@ -528,6 +528,50 @@ export class VoucherService {
             await tx.voucherRedemption.create({
                 data: { voucherId: r.voucherId, orderId, amountUsed: r.amountUsed },
             });
+
+            // ── Cross-location notification ──
+            if (voucher.issuedByLocationId && voucher.issuedByLocationId !== locationId) {
+                try {
+                    // Fetch location short codes
+                    const locs = await tx.location.findMany({
+                        where: { id: { in: [voucher.issuedByLocationId, locationId] } },
+                        select: { id: true, shortCode: true, name: true }
+                    });
+                    const locMap = new Map<string, any>(locs.map((l: any) => [l.id, l]));
+                    const issuedLoc = locMap.get(voucher.issuedByLocationId) as any;
+                    const redeemedLoc = locMap.get(locationId) as any;
+
+                    const issuedCode = issuedLoc?.shortCode || issuedLoc?.name || 'Unknown';
+                    const redeemedCode = redeemedLoc?.shortCode || redeemedLoc?.name || 'Unknown';
+
+                    // Fetch employee user IDs at issuing location
+                    const employees = await tx.employee.findMany({
+                        where: { locationId: voucher.issuedByLocationId, isDeleted: false, userId: { not: null } },
+                        select: { userId: true }
+                    });
+                    const userIds = employees.map((emp: any) => emp.userId).filter(Boolean) as string[];
+
+                    if (userIds.length > 0) {
+                        runInBackground(
+                            'Notify Cross-Location Voucher Redemption',
+                            ...userIds.map(userId =>
+                                this.notificationsService.create({
+                                    userId,
+                                    title: 'Cross-Location Voucher Used',
+                                    message: `Voucher ${voucher.code} (issued by ${issuedCode}) was used/redeemed at ${redeemedCode}.`,
+                                    category: 'general',
+                                    priority: 'normal',
+                                    entityType: 'voucher',
+                                    entityId: voucher.id,
+                                    channels: ['inApp'],
+                                })
+                            )
+                        );
+                    }
+                } catch (err) {
+                    console.error('Failed to process cross-location voucher notification:', err);
+                }
+            }
 
             // ── Generate remaining balance voucher ──
             if (remainingBalance > 0) {
