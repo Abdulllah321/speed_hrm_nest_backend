@@ -210,6 +210,11 @@ export class PosSalesService implements OnModuleInit {
                 if (!locationId) {
                     throw new Error('Location ID is required to create a sales order.');
                 }
+                const location = await tx.location.findUnique({
+                    where: { id: locationId },
+                    select: { fbrEnabled: true, fbrNtn: true }
+                });
+                const fbrPosFee = (location?.fbrEnabled && location?.fbrNtn) ? 1 : 0;
                 const orderNumber = await this.generateOrderNumber(locationId, tx);
 
                 // If resuming from hold, reverse the stock deduction and delete old items first
@@ -439,7 +444,11 @@ export class PosSalesService implements OnModuleInit {
                 if (dto.allianceId) {
                     const alliance = await tx.allianceDiscount.findFirst({ where: { id: dto.allianceId, isDeleted: false } });
                     if (alliance) {
-                        const calculatedDiscount = Math.round(subtotal * (Number(alliance.discountPercent) / 100) * 100) / 100;
+                        const grandTotalBeforeAlliance = Math.round((subtotal - lineItemDiscount + recalculatedTotalTax + fbrPosFee) * 100) / 100;
+                        const wostRatio = grandTotalBeforeAlliance > 0 ? subtotal / grandTotalBeforeAlliance : 1;
+                        const allianceBase = Math.max(0, (grandTotalBeforeAlliance - voucherAmount) * wostRatio);
+
+                        const calculatedDiscount = Math.round(allianceBase * (Number(alliance.discountPercent) / 100) * 100) / 100;
                         if (alliance.maxDiscount) {
                             allianceDiscount = Math.min(calculatedDiscount, Number(alliance.maxDiscount));
                         } else {
@@ -548,11 +557,6 @@ export class PosSalesService implements OnModuleInit {
                 
                 // Recalculate total with the chosen discount
                 const totalDiscount = finalLineItemDiscount + globalDiscAmt;
-                const location = await tx.location.findUnique({
-                    where: { id: locationId },
-                    select: { fbrEnabled: true, fbrNtn: true }
-                });
-                const fbrPosFee = (location?.fbrEnabled && location?.fbrNtn) ? 1 : 0;
                 const grandTotal = Math.max(0, Math.round(subtotal - totalDiscount + finalTotalTax + fbrPosFee));
                 const changeAmount = Math.max(0, totalPaid - grandTotal);
 
