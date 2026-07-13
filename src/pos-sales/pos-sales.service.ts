@@ -292,6 +292,13 @@ export class PosSalesService implements OnModuleInit {
                 const cardAmount = tenders.filter(t => t.method !== 'cash' && t.method !== 'voucher' && t.method !== 'credit_account').reduce((a, t) => a + Number(t.amount), 0);
 
                 if (dto.allianceId) {
+                    const alliance = await tx.allianceDiscount.findFirst({
+                        where: { id: dto.allianceId, isDeleted: false },
+                    });
+                    if (!alliance) {
+                        throw new Error('Selected Alliance discount is invalid or expired.');
+                    }
+
                     const hasCashTender = tenders.some(t => t.method === 'cash');
                     if (hasCashTender) {
                         throw new Error('Alliance discount cannot be applied when cash payment is selected.');
@@ -301,6 +308,15 @@ export class PosSalesService implements OnModuleInit {
 
                     if (!hasCardTender && !hasVoucherTender) {
                         throw new Error('A card, bank transfer, or voucher payment is required when Alliance is selected.');
+                    }
+
+                    if (alliance.binNumbers && alliance.binNumbers.length > 0) {
+                        if (!dto.allianceMeta || !dto.allianceMeta.binNumber) {
+                            throw new Error('BIN number selection is mandatory for this Alliance.');
+                        }
+                        if (!alliance.binNumbers.includes(dto.allianceMeta.binNumber)) {
+                            throw new Error(`Invalid BIN number: ${dto.allianceMeta.binNumber} is not allowed for this Alliance.`);
+                        }
                     }
 
                     if (hasCardTender) {
@@ -538,6 +554,7 @@ export class PosSalesService implements OnModuleInit {
                     if (m.cardholderName) parts.push(`Cardholder: ${m.cardholderName}`);
                     if (m.cardLast4) parts.push(`Card: ****${m.cardLast4}`);
                     if (m.merchantSlip) parts.push(`Slip: ${m.merchantSlip}`);
+                    if (m.binNumber) parts.push(`BIN: ${m.binNumber}`);
                     if (parts.length) notesParts.push(`[Alliance] ${parts.join(' | ')}`);
                 }
 
