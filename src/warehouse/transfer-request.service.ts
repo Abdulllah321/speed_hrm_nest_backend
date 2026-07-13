@@ -36,10 +36,12 @@ export class TransferRequestService {
         items: { itemId: string; quantity: number }[];
         createdById?: string;
         notes?: string;
+        isDirectTransfer?: boolean;
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const requestNo = `TR-${Date.now()}`;
             const transferType = data.transferType || 'WAREHOUSE_TO_OUTLET';
+            const isDirect = data.isDirectTransfer && transferType === 'OUTLET_TO_OUTLET';
 
             // Validation based on transfer type
             if (transferType === 'WAREHOUSE_TO_OUTLET') {
@@ -78,73 +80,119 @@ export class TransferRequestService {
                 }
             }
 
-            // Validate stock availability based on transfer type
-            for (const item of data.items) {
-                let availableQty = 0;
-                if (transferType === 'WAREHOUSE_TO_OUTLET') {
-                    const stock = await this.prisma.inventoryItem.findFirst({
-                        where: {
-                            warehouseId: data.fromWarehouseId,
-                            locationId: null, // Ensure we check warehouse main stock
-                            itemId: item.itemId,
-                            status: 'AVAILABLE'
-                        }
-                    });
-                    const physicalQty = stock ? Number(stock.quantity) : 0;
+            const created = await this.prisma.$transaction(async (tx) => {
+                // Validate stock availability based on transfer type
+                for (const item of data.items) {
+                    let availableQty = 0;
+                    if (transferType === 'WAREHOUSE_TO_OUTLET') {
+                        const stock = await tx.inventoryItem.findFirst({
+                            where: {
+                                warehouseId: data.fromWarehouseId,
+                                locationId: null, // Ensure we check warehouse main stock
+                                itemId: item.itemId,
+                                status: 'AVAILABLE'
+                            }
+                        });
+                        const physicalQty = stock ? Number(stock.quantity) : 0;
 
-                    // Deduct active reservations
-                    const reservations = await this.prisma.stockReserve.aggregate({
-                        where: {
-                            itemId: item.itemId,
-                            warehouseId: data.fromWarehouseId,
-                            OR: [
-                                { expiresAt: null },
-                                { expiresAt: { gte: new Date() } }
-                            ]
+                        // Deduct active reservations
+                        const reservations = await tx.stockReserve.aggregate({
+                            where: {
+                                itemId: item.itemId,
+                                warehouseId: data.fromWarehouseId,
+                                OR: [
+                                    { expiresAt: null },
+                                    { expiresAt: { gte: new Date() } }
+                                ]
+                            },
+                            _sum: {
+                                quantity: true
+                            }
+                        });
+                        const reservedQty = reservations._sum.quantity ? Number(reservations._sum.quantity) : 0;
+                        availableQty = Math.max(0, physicalQty - reservedQty);
+                    } else {
+                        const stock = await tx.inventoryItem.findFirst({
+                            where: {
+                                locationId: data.fromLocationId,
+                                itemId: item.itemId,
+                                status: 'AVAILABLE'
+                            }
+                        });
+                        availableQty = stock ? Number(stock.quantity) : 0;
+                    }
+
+                    if (availableQty < item.quantity) {
+                        throw new BadRequestException(`Insufficient stock for item ID: ${item.itemId}. Available (unreserved): ${availableQty}, Requested: ${item.quantity}`);
+                    }
+                }
+
+                const createdById = data.createdById || ctx?.userId || null;
+                const createdRequest = await tx.transferRequest.create({
+                    data: {
+                        requestNo,
+                        fromWarehouseId: data.fromWarehouseId || null,
+                        fromLocationId: data.fromLocationId || null,
+                        toLocationId: data.toLocationId || null,
+                        transferType,
+                        status: isDirect ? 'SOURCE_APPROVED' : (transferType === 'OUTLET_TO_OUTLET' ? 'PENDING' : 'PENDING_CHECKER'),
+                        requiresSourceApproval: transferType === 'OUTLET_TO_OUTLET' && !isDirect,
+                        createdById,
+                        notes: data.notes,
+                        sourceApprovedById: isDirect ? createdById : null,
+                        sourceApprovedAt: isDirect ? new Date() : null,
+                        items: {
+                            create: data.items.map((item) => ({
+                                itemId: item.itemId,
+                                quantity: new Prisma.Decimal(item.quantity),
+                            })),
                         },
-                        _sum: {
-                            quantity: true
-                        }
-                    });
-                    const reservedQty = reservations._sum.quantity ? Number(reservations._sum.quantity) : 0;
-                    availableQty = Math.max(0, physicalQty - reservedQty);
-                } else {
-                    const stock = await this.prisma.inventoryItem.findFirst({
-                        where: {
-                            locationId: data.fromLocationId,
-                            itemId: item.itemId,
-                            status: 'AVAILABLE'
-                        }
-                    });
-                    availableQty = stock ? Number(stock.quantity) : 0;
-                }
-
-                if (availableQty < item.quantity) {
-                    throw new BadRequestException(`Insufficient stock for item ID: ${item.itemId}. Available (unreserved): ${availableQty}, Requested: ${item.quantity}`);
-                }
-            }
-
-            const created = await this.prisma.transferRequest.create({
-                data: {
-                    requestNo,
-                    fromWarehouseId: data.fromWarehouseId,
-                    fromLocationId: data.fromLocationId,
-                    toLocationId: data.toLocationId,
-                    transferType,
-                    status: transferType === 'OUTLET_TO_OUTLET' ? 'PENDING' : 'PENDING_CHECKER',
-                    requiresSourceApproval: transferType === 'OUTLET_TO_OUTLET',
-                    createdById: data.createdById || ctx?.userId || null,
-                    notes: data.notes,
-                    items: {
-                        create: data.items.map((item) => ({
-                            itemId: item.itemId,
-                            quantity: new Prisma.Decimal(item.quantity),
-                        })),
                     },
-                },
-                include: {
-                    items: true,
-                },
+                    include: {
+                        items: true,
+                    },
+                });
+
+                // If isDirect is true, decrement stock and create the ledger entry immediately
+                if (isDirect) {
+                    for (const item of createdRequest.items) {
+                        const sourceStock = await tx.inventoryItem.findFirst({
+                            where: {
+                                locationId: data.fromLocationId!,
+                                itemId: item.itemId,
+                                status: 'AVAILABLE',
+                            },
+                        });
+
+                        if (!sourceStock || Number(sourceStock.quantity) < Number(item.quantity)) {
+                            throw new BadRequestException(`Insufficient stock for item ${item.itemId} at source outlet. Current: ${sourceStock?.quantity || 0}, Requested: ${item.quantity}`);
+                        }
+
+                        // Decrease source outlet stock
+                        await tx.inventoryItem.update({
+                            where: { id: sourceStock.id },
+                            data: { quantity: { decrement: Number(item.quantity) } },
+                        });
+
+                        // Use actual warehouseId from the inventoryItem record
+                        const actualWarehouseId = sourceStock.warehouseId;
+                        const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+                        // Create outbound ledger entry
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: actualWarehouseId,
+                            locationId: data.fromLocationId!,
+                            qty: -Number(item.quantity),
+                            movementType: 'OUTBOUND' as any,
+                            referenceType: 'OUTLET_TRANSFER_OUT',
+                            referenceId: createdRequest.id,
+                            rate: transferRate,
+                        }, tx);
+                    }
+                }
+
+                return createdRequest;
             });
 
             runInBackground(
