@@ -6,6 +6,7 @@ model Customer {
   address      String? // Full address like "OFFICE NO 4, 109-WEST, SARDAR BEGUM PLAZA"
   contactNo    String? // Contact No from your data
   email        String?
+  cnicNo       String?  @map("cnic_no")  // CNIC / NIC number
   balance      Decimal      @default(0) // Current outstanding balance
   customerType CustomerType @default(ERP) @map("customer_type")
 

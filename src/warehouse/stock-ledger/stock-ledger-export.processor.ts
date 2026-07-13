@@ -56,8 +56,8 @@ const COLUMNS: {
   { header: 'Movement Type',   key: 'movementType',    width: 16, group: 'Details',   align: 'center' },
   { header: 'Quantity',        key: 'qty',             width: 14, group: 'Details',   numFmt: '#,##0.00', align: 'right' },
   // Financial
-  { header: 'Unit Price',      key: 'rate',            width: 14, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Total Cost',      key: 'totalCost',       width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Unit Price',      key: 'unitPrice',       width: 14, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Total Price',     key: 'totalPrice',      width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
   // Reference
   { header: 'Source',          key: 'referenceType',   width: 18, group: 'Reference', align: 'center' },
   { header: 'Reference ID',    key: 'referenceId',     width: 36, group: 'Reference', align: 'center' },
@@ -244,7 +244,7 @@ export class StockLedgerExportProcessor {
             referenceId: true,
             locationId: true,
             createdAt: true,
-            item: { select: { itemId: true, sku: true, description: true } },
+            item: { select: { itemId: true, sku: true, description: true, unitPrice: true } },
             warehouse: { select: { name: true } },
           },
         });
@@ -269,9 +269,8 @@ export class StockLedgerExportProcessor {
           const locationName = entry.locationId ? (locationMap.get(entry.locationId)?.name ?? '') : '';
 
           const qtyNum = Number(entry.qty ?? 0);
-          const rateNum = Number(entry.rate ?? 0);
-          const unitCostNum = Number(entry.unitCost ?? 0);
-          const totalCostNum = qtyNum * rateNum;
+          const unitPriceNum = Number(entry.item?.unitPrice ?? 0);
+          const totalPriceNum = qtyNum * unitPriceNum;
 
           const rowData: Record<string, any> = {
             sku: entry.item?.sku || entry.itemId,
@@ -280,9 +279,8 @@ export class StockLedgerExportProcessor {
             location: locationName,
             movementType: entry.movementType,
             qty: qtyNum,
-            unitCost: entry.unitCost ? unitCostNum : null,
-            rate: entry.rate ? rateNum : null,
-            totalCost: entry.rate && entry.qty ? Math.abs(totalCostNum) : null,
+            unitPrice: unitPriceNum || null,
+            totalPrice: entry.item?.unitPrice && entry.qty ? Math.abs(totalPriceNum) : null,
             referenceType: entry.referenceType,
             referenceId: entry.referenceId,
             createdAt: new Date(entry.createdAt),
@@ -299,7 +297,7 @@ export class StockLedgerExportProcessor {
             if (col.key === 'qty') {
               const isOut = qtyNum < 0;
               cell.font = { bold: true, size: 9, color: { argb: isOut ? `FF${INACTIVE_FG}` : `FF${ACTIVE_FG}` } };
-            } else if (['rate', 'totalCost'].includes(col.key)) {
+            } else if (['unitPrice', 'totalPrice'].includes(col.key)) {
               cell.font = { size: 9, color: { argb: `FF${AMOUNT_FG}` } };
             } else {
               cell.font = { size: 9 };

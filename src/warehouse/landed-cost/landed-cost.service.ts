@@ -391,6 +391,9 @@ export class LandedCostService {
         });
 
         return landedCost;
+      }, {
+        maxWait: 15000,
+        timeout: 60000,
       });
 
       runInBackground(
@@ -531,42 +534,42 @@ export class LandedCostService {
         );
       }
 
+      // 1) Resolve items to UUIDs and prepare for creation (outside transaction)
+      const resolvedItems = await Promise.all(
+        dto.items.map(async (item) => {
+          const itemRecord = await this.prisma.item.findFirst({
+            where: {
+              OR: [{ id: item.itemId }, { itemId: item.itemId }],
+            },
+            select: { id: true },
+          });
+
+          if (!itemRecord) {
+            throw new BadRequestException(
+              `Item with ID or code ${item.itemId} not found`,
+            );
+          }
+
+          const normalizedRate = this.resolveInboundUnitRate({
+            qty: item.qty,
+            unitPrice: item.unitPrice || item.unitFob,
+            unitCostPKR: item.unitCostPKR,
+            totalCostPKR: item.totalCostPKR,
+          });
+
+          return {
+            ...item,
+            itemId: itemRecord.id,
+            normalizedRate,
+          };
+        }),
+      );
+
       // Generate Landed Cost Number
       const count = await this.prisma.landedCost.count();
       const landedCostNumber = `LC-${(count + 1).toString().padStart(6, '0')}`;
 
       const landedCost = await this.prisma.$transaction(async (tx) => {
-        // 1) Resolve items to UUIDs and prepare for creation
-        const resolvedItems = await Promise.all(
-          dto.items.map(async (item) => {
-            const itemRecord = await tx.item.findFirst({
-              where: {
-                OR: [{ id: item.itemId }, { itemId: item.itemId }],
-              },
-              select: { id: true },
-            });
-
-            if (!itemRecord) {
-              throw new BadRequestException(
-                `Item with ID or code ${item.itemId} not found`,
-              );
-            }
-
-            const normalizedRate = this.resolveInboundUnitRate({
-              qty: item.qty,
-              unitPrice: item.unitPrice || item.unitFob,
-              unitCostPKR: item.unitCostPKR,
-              totalCostPKR: item.totalCostPKR,
-            });
-
-            return {
-              ...item,
-              itemId: itemRecord.id,
-              normalizedRate,
-            };
-          }),
-        );
-
         // 2) Create Landed Cost Header
         const landedCost = await tx.landedCost.create({
           data: {
@@ -706,6 +709,9 @@ export class LandedCostService {
         }
 
         return landedCost;
+      }, {
+        maxWait: 15000,
+        timeout: 60000,
       });
 
       runInBackground(
@@ -756,45 +762,63 @@ export class LandedCostService {
         throw new BadRequestException('GRN already valued');
       }
 
-      const result = await this.prisma.$transaction(async (tx) => {
-        // Simple posting logic - just mark GRN as valued and create stock entries
-        for (const grnItem of grn.items) {
-          const itemRecord = await tx.item.findFirst({
+      // Resolve item IDs outside the transaction
+      const itemRecordIds = await Promise.all(
+        grn.items.map(async (grnItem) => {
+          const itemRecord = await this.prisma.item.findFirst({
             where: {
               OR: [{ id: grnItem.itemId }, { itemId: grnItem.itemId }],
             },
             select: { id: true },
           });
-          if (!itemRecord) continue;
-          const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
-            tx,
-            itemRecord.id,
-            grn.warehouseId,
-            grnItem.receivedQty,
-            new Prisma.Decimal(0),
-          );
+          return {
+            grnItemId: grnItem.id,
+            resolvedItemId: itemRecord?.id || null,
+          };
+        }),
+      );
+      const itemMap = new Map(itemRecordIds.map((x) => [x.grnItemId, x.resolvedItemId]));
 
-          await this.stockLedgerService.createEntry(
-            {
-              itemId: itemRecord.id,
-              warehouseId: grn.warehouseId,
-              qty: Number(grnItem.receivedQty),
-              movementType: MovementType.INBOUND,
-              referenceType: 'LANDED_COST',
-              referenceId: grn.id,
-              rate: weightedAvgRate,
-            },
-            tx,
-          );
-        }
+      const result = await this.prisma.$transaction(
+        async (tx) => {
+          // Simple posting logic - just mark GRN as valued and create stock entries
+          for (const grnItem of grn.items) {
+            const resolvedItemId = itemMap.get(grnItem.id);
+            if (!resolvedItemId) continue;
+            const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
+              tx,
+              resolvedItemId,
+              grn.warehouseId,
+              grnItem.receivedQty,
+              new Prisma.Decimal(0),
+            );
 
-        await tx.goodsReceiptNote.update({
-          where: { id: grn.id },
-          data: { status: 'VALUED' },
-        });
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: resolvedItemId,
+                warehouseId: grn.warehouseId,
+                qty: Number(grnItem.receivedQty),
+                movementType: MovementType.INBOUND,
+                referenceType: 'LANDED_COST',
+                referenceId: grn.id,
+                rate: weightedAvgRate,
+              },
+              tx,
+            );
+          }
 
-        return { success: true, grnStatus: 'VALUED' };
-      });
+          await tx.goodsReceiptNote.update({
+            where: { id: grn.id },
+            data: { status: 'VALUED' },
+          });
+
+          return { success: true, grnStatus: 'VALUED' };
+        },
+        {
+          maxWait: 15000,
+          timeout: 60000,
+        },
+      );
 
       runInBackground(
         'Post Landed Cost',
