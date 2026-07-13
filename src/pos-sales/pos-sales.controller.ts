@@ -434,10 +434,10 @@ export class PosSalesController {
     @ApiOperation({ summary: 'Update payment tender on an existing order' })
     async updateTender(
         @Param('id') id: string,
-        @Body() body: { tenders: { method: string; amount: number; cardLast4?: string; slipNo?: string }[] },
+        @Body() body: { tenders: { method: string; amount: number; cardLast4?: string; slipNo?: string }[], merchantId?: string },
         @Req() req: any,
     ) {
-        return this.posSalesService.updateTender(id, body.tenders, {
+        return this.posSalesService.updateTender(id, body.tenders, body.merchantId, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers?.['user-agent'],
