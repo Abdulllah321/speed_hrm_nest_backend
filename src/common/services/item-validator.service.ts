@@ -137,6 +137,10 @@ export class ItemValidatorService {
             errors.push(err('BarCode', data.barCode, 'BarCode is too long (max 50 characters).'));
         }
 
+        if (data.uniqueNo && String(data.uniqueNo).length > 100) {
+            errors.push(err('Unique No', data.uniqueNo, 'Unique No is too long (max 100 characters).'));
+        }
+
         if (data.description && String(data.description).length > 1000) {
             errors.push(err('Description', data.description, 'Description is too long (max 1000 characters).'));
         }

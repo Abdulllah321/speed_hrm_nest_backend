@@ -125,6 +125,7 @@ export class ItemService {
       'description',
       'barCode',
       'hsCode',
+      'uniqueNo',
     ]);
 
     const relationalSortFields: Record<string, string> = {
@@ -145,6 +146,7 @@ export class ItemService {
           { sku: { contains: searchTerm, mode: 'insensitive' } },
           { description: { contains: searchTerm, mode: 'insensitive' } },
           { barCode: { contains: searchTerm, mode: 'insensitive' } },
+          { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
           { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
           { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
           { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
