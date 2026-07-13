@@ -289,7 +289,20 @@ export class PosSalesService implements OnModuleInit {
                 const paymentMethod = tenderMethods.length === 1 ? tenderMethods[0] : 'split';
                 const cashAmount = tenders.filter(t => t.method === 'cash').reduce((a, t) => a + Number(t.amount), 0);
                 const voucherAmount = tenders.filter(t => t.method === 'voucher').reduce((a, t) => a + Number(t.amount), 0);
+
                 const cardAmount = tenders.filter(t => t.method !== 'cash' && t.method !== 'voucher' && t.method !== 'credit_account').reduce((a, t) => a + Number(t.amount), 0);
+
+                // General card/bank payment slip format validation (must be 6 digits numeric if present)
+                for (const t of tenders) {
+                    if (t.method === 'card' || t.method === 'bank_transfer') {
+                        if (t.slipNo) {
+                            const trimmedSlip = t.slipNo.trim();
+                            if (trimmedSlip.length !== 6 || !/^\d+$/.test(trimmedSlip)) {
+                                throw new Error('Auth ID / Approval Code must be exactly a 6-digit numeric code.');
+                            }
+                        }
+                    }
+                }
 
                 if (dto.allianceId) {
                     const alliance = await tx.allianceDiscount.findFirst({
@@ -326,6 +339,10 @@ export class PosSalesService implements OnModuleInit {
                         if (!dto.allianceMeta.merchantSlip || !dto.allianceMeta.merchantSlip.trim()) {
                             throw new Error('Auth ID / Approval Code is mandatory when Alliance is selected.');
                         }
+                        const trimmedMerchantSlip = dto.allianceMeta.merchantSlip.trim();
+                        if (trimmedMerchantSlip.length !== 6 || !/^\d+$/.test(trimmedMerchantSlip)) {
+                            throw new Error('Auth ID / Approval Code must be exactly a 6-digit numeric code.');
+                        }
                         for (const t of tenders) {
                             if (t.method === 'card' || t.method === 'bank_transfer') {
                                 if (!t.cardLast4 || t.cardLast4.trim().length !== 4) {
@@ -333,6 +350,10 @@ export class PosSalesService implements OnModuleInit {
                                 }
                                 if (!t.slipNo || !t.slipNo.trim()) {
                                     throw new Error('Auth ID / Approval Code is mandatory for card/bank payments when Alliance is selected.');
+                                }
+                                const trimmedTenderSlip = t.slipNo.trim();
+                                if (trimmedTenderSlip.length !== 6 || !/^\d+$/.test(trimmedTenderSlip)) {
+                                    throw new Error('Auth ID / Approval Code must be exactly a 6-digit numeric code.');
                                 }
                             }
                         }
