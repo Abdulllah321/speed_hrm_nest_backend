@@ -538,7 +538,13 @@ export class PosSalesService implements OnModuleInit {
         } else if (dto.globalDiscountAmount) {
           const maxFlatDiscount =
             Math.round(grandTotalBeforeManual * 0.5 * 100) / 100;
-          manualDiscount = Math.min(dto.globalDiscountAmount, maxFlatDiscount);
+          const cappedWstDiscount = Math.min(dto.globalDiscountAmount, maxFlatDiscount);
+          const totalWstPrice = itemsData.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
+          if (totalWstPrice > 0) {
+            manualDiscount = Math.round(cappedWstDiscount * (subtotal / totalWstPrice) * 100) / 100;
+          } else {
+            manualDiscount = 0;
+          }
         }
         // 2. Alliance discount (calculated on subtotal AFTER item discounts)
         if (dto.allianceId) {
