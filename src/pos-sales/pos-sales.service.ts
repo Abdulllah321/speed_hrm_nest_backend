@@ -365,83 +365,85 @@ export class PosSalesService implements OnModuleInit {
             );
           }
 
-          const hasCashTender = tenders.some((t) => t.method === 'cash');
-          if (hasCashTender) {
-            throw new Error(
-              'Alliance discount cannot be applied when cash payment is selected.',
+          if (!dto.globalDiscountAmount && !dto.globalDiscountPercent) {
+            const hasCashTender = tenders.some((t) => t.method === 'cash');
+            if (hasCashTender) {
+              throw new Error(
+                'Alliance discount cannot be applied when cash payment is selected.',
+              );
+            }
+            const hasCardTender = tenders.some(
+              (t) => t.method === 'card' || t.method === 'bank_transfer',
             );
-          }
-          const hasCardTender = tenders.some(
-            (t) => t.method === 'card' || t.method === 'bank_transfer',
-          );
-          const hasVoucherTender = tenders.some((t) => t.method === 'voucher');
+            const hasVoucherTender = tenders.some((t) => t.method === 'voucher');
 
-          if (!hasCardTender && !hasVoucherTender) {
-            throw new Error(
-              'A card, bank transfer, or voucher payment is required when Alliance is selected.',
-            );
-          }
+            if (!hasCardTender && !hasVoucherTender) {
+              throw new Error(
+                'A card, bank transfer, or voucher payment is required when Alliance is selected.',
+              );
+            }
 
-          if (alliance.binNumbers && alliance.binNumbers.length > 0) {
-            if (!dto.allianceMeta || !dto.allianceMeta.binNumber) {
-              throw new Error(
-                'BIN number selection is mandatory for this Alliance.',
-              );
+            if (alliance.binNumbers && alliance.binNumbers.length > 0) {
+              if (!dto.allianceMeta || !dto.allianceMeta.binNumber) {
+                throw new Error(
+                  'BIN number selection is mandatory for this Alliance.',
+                );
+              }
+              if (!alliance.binNumbers.includes(dto.allianceMeta.binNumber)) {
+                throw new Error(
+                  `Invalid BIN number: ${dto.allianceMeta.binNumber} is not allowed for this Alliance.`,
+                );
+              }
             }
-            if (!alliance.binNumbers.includes(dto.allianceMeta.binNumber)) {
-              throw new Error(
-                `Invalid BIN number: ${dto.allianceMeta.binNumber} is not allowed for this Alliance.`,
-              );
-            }
-          }
 
-          if (hasCardTender) {
-            if (
-              !dto.allianceMeta ||
-              !dto.allianceMeta.cardLast4 ||
-              dto.allianceMeta.cardLast4.trim().length !== 4
-            ) {
-              throw new Error(
-                'Card number (last 4 digits) is mandatory when Alliance is selected.',
-              );
-            }
-            if (
-              !dto.allianceMeta.merchantSlip ||
-              !dto.allianceMeta.merchantSlip.trim()
-            ) {
-              throw new Error(
-                'Auth ID / Approval Code is mandatory when Alliance is selected.',
-              );
-            }
-            const trimmedMerchantSlip = dto.allianceMeta.merchantSlip.trim();
-            if (
-              trimmedMerchantSlip.length !== 6 ||
-              !/^\d+$/.test(trimmedMerchantSlip)
-            ) {
-              throw new Error(
-                'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
-              );
-            }
-            for (const t of tenders) {
-              if (t.method === 'card' || t.method === 'bank_transfer') {
-                if (!t.cardLast4 || t.cardLast4.trim().length !== 4) {
-                  throw new Error(
-                    'Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.',
-                  );
-                }
-                if (!t.slipNo || !t.slipNo.trim()) {
-                  throw new Error(
-                    'Auth ID / Approval Code is mandatory for card/bank payments when Alliance is selected.',
-                  );
-                }
-                const trimmedTenderSlip = t.slipNo.trim();
-                if (
-                  trimmedTenderSlip.length !== 6 ||
-                  !/^\d+$/.test(trimmedTenderSlip)
-                ) {
-                  throw new Error(
-                    'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
-                  );
+            if (hasCardTender) {
+              if (
+                !dto.allianceMeta ||
+                !dto.allianceMeta.cardLast4 ||
+                dto.allianceMeta.cardLast4.trim().length !== 4
+              ) {
+                throw new Error(
+                  'Card number (last 4 digits) is mandatory when Alliance is selected.',
+                );
+              }
+              if (
+                !dto.allianceMeta.merchantSlip ||
+                !dto.allianceMeta.merchantSlip.trim()
+              ) {
+                throw new Error(
+                  'Auth ID / Approval Code is mandatory when Alliance is selected.',
+                );
+              }
+              const trimmedMerchantSlip = dto.allianceMeta.merchantSlip.trim();
+              if (
+                trimmedMerchantSlip.length !== 6 ||
+                !/^\d+$/.test(trimmedMerchantSlip)
+              ) {
+                throw new Error(
+                  'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
+                );
+              }
+              for (const t of tenders) {
+                if (t.method === 'card' || t.method === 'bank_transfer') {
+                  if (!t.cardLast4 || t.cardLast4.trim().length !== 4) {
+                    throw new Error(
+                      'Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.',
+                    );
+                  }
+                  if (!t.slipNo || !t.slipNo.trim()) {
+                    throw new Error(
+                      'Auth ID / Approval Code is mandatory for card/bank payments when Alliance is selected.',
+                    );
+                  }
+                  const trimmedTenderSlip = t.slipNo.trim();
+                  if (
+                    trimmedTenderSlip.length !== 6 ||
+                    !/^\d+$/.test(trimmedTenderSlip)
+                  ) {
+                    throw new Error(
+                      'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
+                    );
+                  }
                 }
               }
             }
@@ -547,7 +549,7 @@ export class PosSalesService implements OnModuleInit {
           }
         }
         // 2. Alliance discount (calculated on subtotal AFTER item discounts)
-        if (dto.allianceId) {
+        if (dto.allianceId && !dto.globalDiscountAmount && !dto.globalDiscountPercent) {
           const alliance = await tx.allianceDiscount.findFirst({
             where: { id: dto.allianceId, isDeleted: false },
           });
@@ -624,6 +626,9 @@ export class PosSalesService implements OnModuleInit {
           globalDiscAmt = manualDiscount;
           finalLineItemDiscount = 0; // Remove item discounts when manual discount is applied
           appliedDiscountType = 'manual';
+          if (dto.allianceId) {
+            dto.manualDiscountNote = `[Manual Alliance] ${dto.manualDiscountNote || ''}`.trim();
+          }
         }
 
         // If any global/order-level discount (Alliance, Coupon, Manual) is applied,
