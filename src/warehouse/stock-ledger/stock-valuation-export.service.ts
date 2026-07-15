@@ -284,6 +284,8 @@ export class StockValuationExportService {
       // Stage totals inside range
       let openingQty = 0;
       let openingWac = defaultCost;
+      let periodOpeningQty = 0;
+      let periodOpeningVal = 0;
 
       let purchaseQty = 0;
       let purchaseVal = 0;
@@ -321,12 +323,19 @@ export class StockValuationExportService {
           qtyBalance += entryQty;
 
           if (!isBeforePeriod) {
-            // Check if it is a purchase vs. adjustment
+            // Check if it is a purchase vs. adjustment vs. opening
             const ref = entry.referenceType || '';
+            const isOpening =
+              entry.movementType === 'OPENING_BALANCE' ||
+              entry.referenceType === 'OPENING_BALANCE' ||
+              entry.referenceType === 'BULK_STOCK_UPLOAD';
             const isPurchase = ref === 'GRN' || ref === 'PURCHASE' || entry.movementType === 'INBOUND';
             const isAdjustment = entry.movementType === 'ADJUSTMENT' || ref === 'ADJUSTMENT' || ref === 'STOCK_ADJUSTMENT';
 
-            if (isPurchase) {
+            if (isOpening) {
+              periodOpeningQty += entryQty;
+              periodOpeningVal += entryQty * entryCost;
+            } else if (isPurchase) {
               purchaseQty += entryQty;
               purchaseVal += entryQty * entryCost;
             } else if (isAdjustment) {
@@ -384,25 +393,28 @@ export class StockValuationExportService {
       }
 
       // Calculations of final stage values
-      const openingValue = openingQty * openingWac;
+      const openingValue = (openingQty * openingWac) + periodOpeningVal;
+      const finalOpeningQty = openingQty + periodOpeningQty;
+      const finalOpeningWac = finalOpeningQty > 0 ? openingValue / finalOpeningQty : defaultCost;
       
       const purchaseCost = purchaseQty > 0 ? purchaseVal / purchaseQty : 0;
       const purchaseRetCost = purchaseRetQty > 0 ? purchaseRetVal / purchaseRetQty : 0;
 
-      const availableQty = openingQty + purchaseQty - purchaseRetQty;
+      const availableQty = finalOpeningQty + purchaseQty - purchaseRetQty;
       const availableVal = openingValue + purchaseVal - purchaseRetVal;
       const availableCost = availableQty > 0 ? availableVal / availableQty : 0;
 
       const salesCost = salesQty > 0 ? salesVal / salesQty : 0;
+
       const adjCost = adjQty !== 0 ? adjVal / adjQty : 0;
 
-      const closingQty = qtyBalance;
+      const closingQty = availableQty - salesQty + adjQty;
       const closingVal = availableVal - salesVal + adjVal;
       const closingCost = closingQty > 0 ? closingVal / closingQty : 0;
 
       itemMetricsMap.set(item.id, {
-        openingQty,
-        openingCost: openingWac,
+        openingQty: finalOpeningQty,
+        openingCost: finalOpeningWac,
         openingValue,
         purchaseQty,
         purchaseCost,
