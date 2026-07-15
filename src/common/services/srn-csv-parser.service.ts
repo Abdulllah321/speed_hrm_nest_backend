@@ -6,7 +6,6 @@ export interface SrnParsedRecord {
     row: number;
     data: {
         barCode?: string;   // from BarCode column
-        sku?: string;       // from SKU column
         quantity?: number;
         // Resolved from DB in processor
         itemId?: string;
@@ -27,9 +26,8 @@ export class SrnCsvParserService {
 
     private isEmptyRow(row: any): boolean {
         const barCode = this.getValue(row, ['BarCode', 'Barcode', 'bar_code', 'barCode', 'Code']);
-        const sku     = this.getValue(row, ['SKU', 'Sku', 'sku', 'ItemCode', 'item_code', 'ItemId']);
         const quantity = this.getValue(row, ['Quantity', 'Qty', 'quantity', 'qty']);
-        return !this.normalizeValue(barCode) && !this.normalizeValue(sku) && !this.normalizeValue(quantity);
+        return !this.normalizeValue(barCode) && !this.normalizeValue(quantity);
     }
 
     private getValue(row: any, keys: string[]): any {
@@ -52,7 +50,6 @@ export class SrnCsvParserService {
     private mapColumns(row: any): SrnParsedRecord['data'] {
         return {
             barCode: this.normalizeValue(this.getValue(row, ['BarCode', 'Barcode', 'bar_code', 'barCode', 'Code'])) ?? undefined,
-            sku:     this.normalizeValue(this.getValue(row, ['SKU', 'Sku', 'sku', 'ItemCode', 'item_code', 'ItemId'])) ?? undefined,
             quantity: this.parseNumber(this.getValue(row, ['Quantity', 'Qty', 'quantity', 'qty'])) ?? undefined,
         };
     }
