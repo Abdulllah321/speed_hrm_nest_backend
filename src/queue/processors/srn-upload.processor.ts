@@ -145,30 +145,22 @@ export class SrnUploadProcessor {
                 const basicErrors = allParsedRecords.flatMap(r => this.validator.validateRecord(r));
                 allValidationErrors.push(...basicErrors);
 
-                // 2. BarCode / SKU existence check against DB
+                // 2. BarCode existence check against DB
                 const barcodes = [...new Set(allParsedRecords.map(r => r.data.barCode?.trim()).filter(Boolean) as string[])];
-                const skus     = [...new Set(allParsedRecords.map(r => r.data.sku?.trim()).filter(Boolean) as string[])];
 
                 const items = await (prisma as any).item.findMany({
                     where: {
-                        OR: [
-                            ...(barcodes.length > 0 ? [{ barCode: { in: barcodes } }] : []),
-                            ...(skus.length > 0 ? [{ sku: { in: skus } }] : []),
-                        ],
+                        ...(barcodes.length > 0 ? { barCode: { in: barcodes } } : { id: 'none' }),
                     },
-                    select: { id: true, barCode: true, sku: true },
+                    select: { id: true, barCode: true },
                 });
                 const foundBarcodes = new Set(items.map((i: any) => i.barCode?.trim()).filter(Boolean));
-                const foundSkus     = new Set(items.map((i: any) => i.sku?.trim()).filter(Boolean));
 
                 for (const record of allParsedRecords) {
                     const barCode = record.data.barCode?.trim();
-                    const sku     = record.data.sku?.trim();
-                    // If a row provides a barCode, it must exist; same for SKU
+                    // If a row provides a barCode, it must exist
                     if (barCode && !foundBarcodes.has(barCode)) {
                         allValidationErrors.push({ row: record.row, field: 'barCode', value: barCode, reason: `BarCode "${barCode}" not found in item master.` });
-                    } else if (!barCode && sku && !foundSkus.has(sku)) {
-                        allValidationErrors.push({ row: record.row, field: 'SKU', value: sku, reason: `SKU "${sku}" not found in item master.` });
                     }
                 }
 
@@ -272,37 +264,30 @@ export class SrnUploadProcessor {
         const notes = metadata?.notes || null;
         const brandId = metadata?.brandId && metadata.brandId !== 'none' ? metadata.brandId : null;
 
-        // Resolve all items by barCode OR SKU in one batch query
+        // Resolve all items by barCode in one batch query
         const barcodes = [...new Set(records.map(r => r.data.barCode?.trim()).filter(Boolean) as string[])];
-        const skus     = [...new Set(records.map(r => r.data.sku?.trim()).filter(Boolean) as string[])];
 
         const items = await (prisma as any).item.findMany({
             where: {
-                OR: [
-                    ...(barcodes.length > 0 ? [{ barCode: { in: barcodes } }] : []),
-                    ...(skus.length > 0 ? [{ sku: { in: skus } }] : []),
-                ],
+                ...(barcodes.length > 0 ? { barCode: { in: barcodes } } : { id: 'none' }),
             },
-            select: { id: true, barCode: true, sku: true, description: true },
+            select: { id: true, barCode: true, description: true },
         });
 
-        // Build lookup maps for both identifiers
+        // Build lookup maps for barcode identifier
         const barCodeMap = new Map<string, any>(items.filter((i: any) => i.barCode).map((i: any) => [i.barCode.trim(), i]));
-        const skuMap     = new Map<string, any>(items.filter((i: any) => i.sku).map((i: any) => [i.sku.trim(), i]));
 
         const itemsData: { itemId: string; quantity: Decimal }[] = [];
 
         for (const record of records) {
             const barCode = record.data.barCode?.trim();
-            const sku     = record.data.sku?.trim();
 
-            // barCode takes priority; fall back to SKU
-            const item = (barCode ? barCodeMap.get(barCode) : undefined) ?? (sku ? skuMap.get(sku) : undefined);
-            const identifier = barCode || sku || 'unknown';
+            const item = barCode ? barCodeMap.get(barCode) : undefined;
+            const identifier = barCode || 'unknown';
 
             if (!item) {
                 progress.failedRecords++;
-                progress.errors.push({ row: record.row, reason: `"${identifier}" not found in item master`, data: { field: barCode ? 'barCode' : 'SKU', value: identifier } });
+                progress.errors.push({ row: record.row, reason: `"${identifier}" not found in item master`, data: { field: 'barCode', value: identifier } });
                 continue;
             }
 
@@ -336,9 +321,9 @@ export class SrnUploadProcessor {
                 const requestedQty = Number(reqItem.quantity);
 
                 if (netAvailable < requestedQty) {
-                    const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true } });
+                    const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { barCode: true } });
                     throw new Error(
-                        `Insufficient stock for ${itemDetail?.sku || reqItem.itemId}. Available (unreserved): ${netAvailable}, Requested: ${requestedQty}`,
+                        `Insufficient stock for ${itemDetail?.barCode || reqItem.itemId}. Available (unreserved): ${netAvailable}, Requested: ${requestedQty}`,
                     );
                 }
             }
