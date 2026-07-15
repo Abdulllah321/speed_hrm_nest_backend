@@ -270,11 +270,14 @@ export class StockValuationExportService {
     for (const item of items) {
       const setting = settingMap.get(item.id);
       const valuationMethod = setting?.valuationMethod || 'WEIGHTED_AVG';
-      const defaultCost = Number(
+      let defaultCost = Number(
         valuationMethod === 'STANDARD'
           ? (setting?.standardCost || 0)
           : (setting?.averageCost || 0)
       );
+      if (defaultCost === 0) {
+        defaultCost = Number(item.unitCost || item.fob || 0);
+      }
 
       const entries = ledgerMap.get(item.id) || [];
       
