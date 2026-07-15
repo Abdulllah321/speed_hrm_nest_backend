@@ -324,6 +324,25 @@ export class StockLedgerService {
           }
         }
 
+        // Resolve rate from TenantItemSetting (or fallback to Item unitCost) if not provided
+        let resolvedRate = rate;
+        if (resolvedRate === undefined || resolvedRate === null) {
+          const setting = await transaction.tenantItemSetting.findUnique({
+            where: { itemId },
+            select: { averageCost: true, standardCost: true, valuationMethod: true },
+          });
+          if (setting) {
+            resolvedRate = (setting.valuationMethod === 'STANDARD' ? setting.standardCost : setting.averageCost) ?? undefined;
+          }
+          if (resolvedRate === undefined || resolvedRate === null) {
+            const item = await transaction.item.findUnique({
+              where: { id: itemId },
+              select: { unitCost: true },
+            });
+            resolvedRate = item?.unitCost ? new Prisma.Decimal(item.unitCost) : new Prisma.Decimal(0);
+          }
+        }
+
         // Create Immutable Ledger Entry
         const entry = await transaction.stockLedger.create({
           data: {
@@ -334,8 +353,8 @@ export class StockLedgerService {
             referenceType,
             referenceId,
             locationId,
-            rate: rate ? new Prisma.Decimal(rate) : null,
-            unitCost: rate ? new Prisma.Decimal(rate) : null,
+            rate: resolvedRate ? new Prisma.Decimal(resolvedRate) : null,
+            unitCost: resolvedRate ? new Prisma.Decimal(resolvedRate) : null,
           },
         });
 
