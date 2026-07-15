@@ -202,15 +202,7 @@ export class StockValuationExportService {
     const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
-    // Fetch items
-    const inventoryItems = await prisma.inventoryItem.findMany({
-      where: {
-        status: 'AVAILABLE',
-        ...(locationId ? { locationId } : {}),
-      },
-      select: { itemId: true },
-    });
-
+    // Discover all distinct items from the StockLedger (location-agnostic when no locationId is provided)
     const ledgerItems = await prisma.stockLedger.findMany({
       where: {
         ...(locationId ? { locationId } : {}),
@@ -219,10 +211,7 @@ export class StockValuationExportService {
       distinct: ['itemId'],
     });
 
-    const uniqueItemIds = [...new Set([
-      ...inventoryItems.map(i => i.itemId),
-      ...ledgerItems.map(l => l.itemId),
-    ])];
+    const uniqueItemIds = [...new Set(ledgerItems.map(l => l.itemId))];
 
     if (uniqueItemIds.length === 0) {
       return { root: [], grandTotals: this.createEmptyValuationTotals() };
