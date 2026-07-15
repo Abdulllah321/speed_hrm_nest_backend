@@ -8,10 +8,9 @@ export class SrnValidatorService {
         const { data, row } = record;
 
         const hasBarCode = data.barCode && data.barCode.trim() !== '';
-        const hasSku     = data.sku && data.sku.trim() !== '';
 
-        if (!hasBarCode && !hasSku) {
-            errors.push({ row, field: 'barCode/SKU', value: '', reason: 'Either BarCode or SKU is required.' });
+        if (!hasBarCode) {
+            errors.push({ row, field: 'barCode', value: '', reason: 'BarCode is required.' });
         }
 
         if (data.quantity === null || data.quantity === undefined || isNaN(data.quantity)) {
