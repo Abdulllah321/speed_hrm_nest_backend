@@ -9,7 +9,7 @@ import { UploadService } from '../../upload/upload.service';
 
 export interface QueueStockValuationExportOptions {
   userId: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -146,7 +146,7 @@ export class StockValuationExportService {
 
   // Get report data in memory for inline UI rendering
   async getValuationReportData(opts: {
-    locationId: string;
+    locationId?: string;
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
@@ -171,7 +171,7 @@ export class StockValuationExportService {
   async generateValuationReportDataInternal(
     prisma: PrismaService,
     opts: {
-      locationId: string;
+      locationId?: string;
       startDate?: string;
       endDate?: string;
       summaryOnly?: boolean;
@@ -204,12 +204,17 @@ export class StockValuationExportService {
 
     // Fetch items
     const inventoryItems = await prisma.inventoryItem.findMany({
-      where: { locationId, status: 'AVAILABLE' },
+      where: {
+        status: 'AVAILABLE',
+        ...(locationId ? { locationId } : {}),
+      },
       select: { itemId: true },
     });
 
     const ledgerItems = await prisma.stockLedger.findMany({
-      where: { locationId },
+      where: {
+        ...(locationId ? { locationId } : {}),
+      },
       select: { itemId: true },
       distinct: ['itemId'],
     });
@@ -247,7 +252,7 @@ export class StockValuationExportService {
     // Fetch ALL stock ledger entries for the matched items up to the endDate to compute historical WAC
     const allLedgerEntries = await prisma.stockLedger.findMany({
       where: {
-        locationId,
+        ...(locationId ? { locationId } : {}),
         itemId: { in: matchedItemIds },
         createdAt: { lte: endDate },
       },

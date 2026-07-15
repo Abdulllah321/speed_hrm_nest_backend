@@ -15,7 +15,7 @@ export interface StockValuationExportJobData {
   userId: string;
   tenantId: string;
   tenantDbUrl: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -120,11 +120,14 @@ export class StockValuationExportProcessor {
     try {
       await job.progress(10);
 
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+      let locationName = 'All Locations';
+      if (locationId) {
+        const location = await prisma.location.findUnique({
+          where: { id: locationId },
+          select: { name: true },
+        });
+        locationName = location?.name || 'Store';
+      }
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);

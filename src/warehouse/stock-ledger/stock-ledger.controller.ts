@@ -175,7 +175,7 @@ export class StockLedgerController {
   @Get('valuation-report')
   @UseGuards(JwtAuthGuard)
   async getValuationReport(
-    @Query('locationId') locationId: string,
+    @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
@@ -208,7 +208,7 @@ export class StockLedgerController {
   async queueValuationReportExport(
     @Req() req: any,
     @Body() body: {
-      locationId: string;
+      locationId?: string;
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
