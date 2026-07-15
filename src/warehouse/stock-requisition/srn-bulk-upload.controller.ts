@@ -78,9 +78,9 @@ export class SrnBulkUploadController {
     @ApiOperation({ summary: 'Download SRN CSV template' })
     async downloadTemplate(@Res() res: any) {
         const template = [
-            'BarCode,SKU,Quantity',
-            '889362319896,,10',
-            ',ABC-001-BLK-M,25',
+            'BarCode,Quantity',
+            '889362319896,10',
+            '889362319897,25',
         ].join('\n');
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', 'attachment; filename="srn-upload-template.csv"');
