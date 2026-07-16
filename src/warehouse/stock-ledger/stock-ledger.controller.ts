@@ -3,6 +3,7 @@ import { StockLedgerService } from './stock-ledger.service';
 import { StockActivityExportService } from './stock-activity-export.service';
 import { StockValuationExportService } from './stock-valuation-export.service';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
+import { AvailableStockSummaryExportService } from './available-stock-summary-export.service';
 import { MovementType } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -13,6 +14,7 @@ export class StockLedgerController {
     private readonly stockActivityExportService: StockActivityExportService,
     private readonly stockValuationExportService: StockValuationExportService,
     private readonly stockTransactionDetailExportService: StockTransactionDetailExportService,
+    private readonly availableStockSummaryExportService: AvailableStockSummaryExportService,
   ) { }
 
   @Get('levels')
@@ -349,6 +351,92 @@ export class StockLedgerController {
   async downloadTransactionDetailReportExport(@Param('jobId') jobId: string, @Res() res: any) {
     try {
       await this.stockTransactionDetailExportService.streamExportFile(jobId, res);
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+    }
+  }
+
+  @Get('available-stock-summary')
+  @UseGuards(JwtAuthGuard)
+  async getAvailableStockSummaryReport(
+    @Query('locationId') locationId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('summaryOnly') summaryOnly?: string,
+    @Query('showBrand') showBrand?: string,
+    @Query('showDivision') showDivision?: string,
+    @Query('showCategory') showCategory?: string,
+    @Query('showGender') showGender?: string,
+    @Query('showSilhouette') showSilhouette?: string,
+    @Query('showArticle') showArticle?: string,
+    @Query('showVariant') showVariant?: string,
+  ) {
+    const data = await this.availableStockSummaryExportService.getAvailableStockSummaryReportData({
+      locationId,
+      startDate,
+      endDate,
+      summaryOnly: summaryOnly === 'true',
+      showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
+      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
+      showGender: showGender !== undefined ? showGender === 'true' : undefined,
+      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
+      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
+    });
+    return { status: true, data };
+  }
+
+  @Post('available-stock-summary/export/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueAvailableStockSummaryExport(
+    @Req() req: any,
+    @Body() body: {
+      locationId: string;
+      startDate?: string;
+      endDate?: string;
+      format: 'xlsx' | 'pdf';
+      summaryOnly?: boolean;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.availableStockSummaryExportService.queueExport({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      format: body.format,
+      summaryOnly: body.summaryOnly,
+      showBrand: body.showBrand,
+      showDivision: body.showDivision,
+      showCategory: body.showCategory,
+      showGender: body.showGender,
+      showSilhouette: body.showSilhouette,
+      showArticle: body.showArticle,
+      showVariant: body.showVariant,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('available-stock-summary/export/:jobId/status')
+  @UseGuards(JwtAuthGuard)
+  async getAvailableStockSummaryStatus(@Param('jobId') jobId: string) {
+    const result = await this.availableStockSummaryExportService.getJobStatus(jobId);
+    return { status: true, data: result };
+  }
+
+  @Get('available-stock-summary/export/:jobId/download')
+  async downloadAvailableStockSummaryExport(@Param('jobId') jobId: string, @Res() res: any) {
+    try {
+      await this.availableStockSummaryExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
       res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
