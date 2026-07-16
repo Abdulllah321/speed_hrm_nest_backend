@@ -12,7 +12,8 @@ export enum ReturnType {
   DEFECTIVE = 'DEFECTIVE',
   EXCESS = 'EXCESS',
   WRONG_ITEM = 'WRONG_ITEM',
-  DAMAGED = 'DAMAGED'
+  DAMAGED = 'DAMAGED',
+  SHORTAGE = 'SHORTAGE'
 }
 
 export class CreatePurchaseReturnItemDto {
