@@ -279,6 +279,7 @@ export class PosSalesService implements OnModuleInit {
           throw new Error('Location ID is required to create a sales order.');
         }
         const orderNumber = await this.generateOrderNumber(locationId, tx);
+        const warehouseId = await this.resolveWarehouseId(tx, locationId, dto.items?.[0]?.itemId);
 
         // If resuming from hold, reverse the stock deduction and delete old items first
         const isResumedHold = !!dto.holdOrderId;
@@ -293,7 +294,6 @@ export class PosSalesService implements OnModuleInit {
 
 
           // Reverse stock deduction done at hold time
-          const warehouseId = await this.resolveWarehouseId(tx, locationId, oldOrder.items[0]?.itemId);
 
           if (warehouseId) {
             for (const item of oldOrder.items) {
