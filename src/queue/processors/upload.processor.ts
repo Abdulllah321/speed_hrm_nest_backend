@@ -868,7 +868,6 @@ export class UploadProcessor {
     const [
       brandId,
       itemClassId,
-      categoryId,
       sizeId,
       colorId,
       genderId,
@@ -880,10 +879,6 @@ export class UploadProcessor {
     ] = await Promise.all([
       tenantMasterData.getOrCreateBrand(data.concept as string),
       tenantMasterData.getOrCreateItemClass(data.class as string),
-      // "Department" in the sheet is a top-level product category (e.g. "Footwear").
-      // "ProductCategory/Series" is its child (e.g. "Shoes").
-      // We resolve the department-level category first so productCategory can be nested under it.
-      tenantMasterData.getOrCreateCategory(data.department as string),
       tenantMasterData.getOrCreateSize(data.size as string),
       tenantMasterData.getOrCreateColor(data.color as string),
       tenantMasterData.getOrCreateGender(data.gender as string),
@@ -896,17 +891,29 @@ export class UploadProcessor {
       ),
     ]);
 
-    // Step 2: Dependent master data (needs brandId / itemClassId / categoryId from above)
-    // productCategory is a child of the department-level category resolved above
-    const [divisionId, itemSubclassId, subCategoryId] = await Promise.all([
+    // Step 2: Category and dependent master data resolution
+    // Supports fallback when "Department" (top-level category) is missing/N/A,
+    // in which case "Product Category/Series" acts as the main Category.
+    let categoryId: string | null = null;
+    let subCategoryId: string | null = null;
+
+    if (data.department) {
+      categoryId = await tenantMasterData.getOrCreateCategory(data.department as string);
+      if (data.productCategory) {
+        subCategoryId = await tenantMasterData.getOrCreateSubCategory(
+          data.productCategory as string,
+          categoryId,
+        );
+      }
+    } else if (data.productCategory) {
+      categoryId = await tenantMasterData.getOrCreateCategory(data.productCategory as string);
+    }
+
+    const [divisionId, itemSubclassId] = await Promise.all([
       tenantMasterData.getOrCreateDivision(data.division as string, brandId),
       tenantMasterData.getOrCreateItemSubclass(
         data.subclass as string,
         itemClassId,
-      ),
-      tenantMasterData.getOrCreateSubCategory(
-        data.productCategory as string,
-        categoryId,
       ),
     ]);
 
