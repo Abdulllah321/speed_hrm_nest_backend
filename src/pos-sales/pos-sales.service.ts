@@ -191,6 +191,49 @@ export class PosSalesService implements OnModuleInit {
         return { status: true, data: enriched[0] };
     }
 
+    private async resolveWarehouseId(
+        tx: any,
+        locationId: string | null | undefined,
+        itemId?: string
+    ): Promise<string> {
+        if (locationId) {
+            const loc = await tx.location.findUnique({
+                where: { id: locationId },
+                select: { warehouseId: true }
+            });
+            if (loc?.warehouseId) {
+                return loc.warehouseId;
+            }
+
+            if (itemId) {
+                const stock = await tx.inventoryItem.findFirst({
+                    where: { locationId, itemId, status: 'AVAILABLE' },
+                    select: { warehouseId: true }
+                });
+                if (stock?.warehouseId) {
+                    return stock.warehouseId;
+                }
+            }
+
+            const anyStock = await tx.inventoryItem.findFirst({
+                where: { locationId, status: 'AVAILABLE' },
+                select: { warehouseId: true }
+            });
+            if (anyStock?.warehouseId) {
+                return anyStock.warehouseId;
+            }
+        }
+
+        const activeWarehouse = await tx.warehouse.findFirst({
+            where: { isActive: true, isDeleted: false },
+            select: { id: true }
+        });
+        if (!activeWarehouse) {
+            throw new Error('No active warehouse found');
+        }
+        return activeWarehouse.id;
+    }
+
     // ─── Create sales order ───────────────────────────────────────────
     async createOrder(dto: CreateSalesOrderDto, cashierUserId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         let itemsData: Array<{
@@ -224,40 +267,36 @@ export class PosSalesService implements OnModuleInit {
                     }
 
                     // Reverse stock deduction done at hold time
-                    const warehouse = await tx.warehouse.findFirst({
-                        where: { isActive: true, isDeleted: false },
-                    });
-                    if (warehouse) {
-                        for (const item of oldOrder.items) {
-                            await this.stockLedgerService.createEntry({
-                                itemId: item.itemId,
-                                warehouseId: warehouse.id,
-                                locationId: oldOrder.locationId || locationId,
-                                qty: item.quantity, // Positive to reverse OUTBOUND
-                                movementType: MovementType.INBOUND,
-                                referenceType: 'POS_HOLD_CANCELLED',
-                                referenceId: oldOrder.id,
-                            }, tx);
+                    for (const item of oldOrder.items) {
+                        const warehouseId = await this.resolveWarehouseId(tx, oldOrder.locationId || locationId, item.itemId);
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId,
+                            locationId: oldOrder.locationId || locationId,
+                            qty: item.quantity, // Positive to reverse OUTBOUND
+                            movementType: MovementType.INBOUND,
+                            referenceType: 'POS_HOLD_CANCELLED',
+                            referenceId: oldOrder.id,
+                        }, tx);
 
-                            const existing = await tx.inventoryItem.findFirst({
-                                where: { itemId: item.itemId, locationId: oldOrder.locationId || locationId, status: 'AVAILABLE' },
+                        const existing = await tx.inventoryItem.findFirst({
+                            where: { itemId: item.itemId, locationId: oldOrder.locationId || locationId, status: 'AVAILABLE' },
+                        });
+                        if (existing) {
+                            await tx.inventoryItem.update({
+                                where: { id: existing.id },
+                                data: { quantity: { increment: item.quantity } },
                             });
-                            if (existing) {
-                                await tx.inventoryItem.update({
-                                    where: { id: existing.id },
-                                    data: { quantity: { increment: item.quantity } },
-                                });
-                            } else {
-                                await tx.inventoryItem.create({
-                                    data: {
-                                        itemId: item.itemId,
-                                        locationId: oldOrder.locationId || locationId,
-                                        warehouseId: warehouse.id,
-                                        quantity: item.quantity,
-                                        status: 'AVAILABLE',
-                                    },
-                                });
-                            }
+                        } else {
+                            await tx.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    locationId: oldOrder.locationId || locationId,
+                                    warehouseId,
+                                    quantity: item.quantity,
+                                    status: 'AVAILABLE',
+                                },
+                            });
                         }
                     }
 
@@ -267,11 +306,7 @@ export class PosSalesService implements OnModuleInit {
                     });
                 }
 
-                // ── Resolve default warehouse ───────────────────────────
-                const warehouse = await tx.warehouse.findFirst({
-                    where: { isActive: true, isDeleted: false },
-                });
-                if (!warehouse) throw new Error('No active warehouse found');
+                // ── Resolve default warehouse (not needed, handled dynamically) ──
 
                 // ── Check if this is a credit sale ─────────────────────
                 const isCreditSale = dto.isCreditSale || false;
@@ -710,9 +745,10 @@ export class PosSalesService implements OnModuleInit {
 
                 // ── Update Stock (Deduct) ───────────────────────────────
                 for (const item of itemsData) {
+                    const warehouseId = await this.resolveWarehouseId(tx, locationId, item.itemId);
                     await this.stockLedgerService.createEntry({
                         itemId: item.itemId,
-                        warehouseId: warehouse.id,
+                        warehouseId,
                         locationId: locationId,
                         qty: -item.quantity, // Negative for OUTBOUND
                         movementType: MovementType.OUTBOUND,
@@ -744,7 +780,7 @@ export class PosSalesService implements OnModuleInit {
                             data: {
                                 itemId: item.itemId,
                                 locationId: locationId,
-                                warehouseId: warehouse.id,
+                                warehouseId,
                                 quantity: -item.quantity,
                                 status: 'AVAILABLE',
                             }
@@ -1907,8 +1943,7 @@ export class PosSalesService implements OnModuleInit {
                 if (!order) throw new Error('Order not found');
                 if (order.status === 'voided') throw new Error('Order is already voided');
 
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-                if (!warehouse) throw new Error('No active warehouse found');
+                // Warehouse resolved dynamically per-item
 
                 // Determine effective location for return (where stock goes back)
                 const effectiveLocationId = returnLocationId || order.locationId;
@@ -2045,9 +2080,11 @@ export class PosSalesService implements OnModuleInit {
                         priceAdjusted,
                     });
 
+                    const warehouseId = await this.resolveWarehouseId(tx, effectiveLocationId, returnItem.itemId);
+
                     await this.stockLedgerService.createEntry({
                         itemId: returnItem.itemId,
-                        warehouseId: warehouse.id,
+                        warehouseId,
                         locationId: effectiveLocationId,
                         qty: returnItem.quantity,
                         movementType: MovementType.INBOUND,
@@ -2068,7 +2105,7 @@ export class PosSalesService implements OnModuleInit {
                             data: {
                                 itemId: returnItem.itemId,
                                 locationId: effectiveLocationId,
-                                warehouseId: warehouse.id,
+                                warehouseId,
                                 quantity: returnItem.quantity,
                                 status: 'AVAILABLE',
                             },
@@ -2432,18 +2469,15 @@ export class PosSalesService implements OnModuleInit {
                     data: { status: 'voided' },
                 });
 
-                // Resolve default warehouse
-                const warehouse = await tx.warehouse.findFirst({
-                    where: { isActive: true, isDeleted: false },
-                });
-                if (!warehouse) throw new Error('No active warehouse found');
+                // Resolve default warehouse (handled dynamically per-item)
 
                 // Restore inventory for each item
                 for (const item of order.items) {
+                    const warehouseId = await this.resolveWarehouseId(tx, order.locationId, item.itemId);
                     // Create stock ledger entry to restore stock
                     await this.stockLedgerService.createEntry({
                         itemId: item.itemId,
-                        warehouseId: warehouse.id,
+                        warehouseId,
                         locationId: order.locationId,
                         qty: item.quantity, // Positive to restore stock
                         movementType: MovementType.INBOUND,
@@ -2472,7 +2506,7 @@ export class PosSalesService implements OnModuleInit {
                             data: {
                                 itemId: item.itemId,
                                 locationId: order.locationId,
-                                warehouseId: warehouse.id,
+                                warehouseId,
                                 quantity: item.quantity,
                                 status: 'AVAILABLE',
                             }
@@ -2564,16 +2598,17 @@ export class PosSalesService implements OnModuleInit {
                 if (!order) throw new Error('Order not found');
                 if (order.status === 'voided') throw new Error('Order is already voided');
 
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-                if (!warehouse) throw new Error('No active warehouse found');
+                // Warehouse resolved dynamically per-item
 
                 // ── Restore returned items ──────────────────────────────
                 for (const ri of returnedItems) {
                     const orderItem = order.items.find(i => i.id === ri.orderItemId);
                     if (!orderItem || ri.quantity > orderItem.quantity) continue;
 
+                    const warehouseId = await this.resolveWarehouseId(tx, order.locationId, ri.itemId);
+
                     await this.stockLedgerService.createEntry({
-                        itemId: ri.itemId, warehouseId: warehouse.id, locationId: order.locationId,
+                        itemId: ri.itemId, warehouseId, locationId: order.locationId,
                         qty: ri.quantity, movementType: MovementType.INBOUND,
                         referenceType: 'POS_EXCHANGE_IN', referenceId: order.id,
                     }, tx);
@@ -2584,14 +2619,16 @@ export class PosSalesService implements OnModuleInit {
                     if (existing) {
                         await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: ri.quantity } } });
                     } else {
-                        await tx.inventoryItem.create({ data: { itemId: ri.itemId, locationId: order.locationId, warehouseId: warehouse.id, quantity: ri.quantity, status: 'AVAILABLE' } });
+                        await tx.inventoryItem.create({ data: { itemId: ri.itemId, locationId: order.locationId, warehouseId, quantity: ri.quantity, status: 'AVAILABLE' } });
                     }
                 }
 
                 // ── Deduct new items ────────────────────────────────────
                 for (const ni of newItems) {
+                    const warehouseId = await this.resolveWarehouseId(tx, order.locationId, ni.itemId);
+
                     await this.stockLedgerService.createEntry({
-                        itemId: ni.itemId, warehouseId: warehouse.id, locationId: order.locationId,
+                        itemId: ni.itemId, warehouseId, locationId: order.locationId,
                         qty: -ni.quantity, movementType: MovementType.OUTBOUND,
                         referenceType: 'POS_EXCHANGE_OUT', referenceId: order.id,
                     }, tx);
@@ -2602,7 +2639,7 @@ export class PosSalesService implements OnModuleInit {
                     if (existing) {
                         await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { decrement: ni.quantity } } });
                     } else {
-                        await tx.inventoryItem.create({ data: { itemId: ni.itemId, locationId: order.locationId, warehouseId: warehouse.id, quantity: -ni.quantity, status: 'AVAILABLE' } });
+                        await tx.inventoryItem.create({ data: { itemId: ni.itemId, locationId: order.locationId, warehouseId, quantity: -ni.quantity, status: 'AVAILABLE' } });
                     }
                 }
 
@@ -2724,8 +2761,7 @@ export class PosSalesService implements OnModuleInit {
             // Use transaction to ensure inventory is restored atomically
             const result = await this.prisma.$transaction(async (tx) => {
                 // Find active warehouse
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-                if (!warehouse) throw new Error('No active warehouse found');
+                // Warehouse resolved dynamically per-item
 
                 const effectiveLocationId = order.locationId;
 
@@ -2764,10 +2800,12 @@ export class PosSalesService implements OnModuleInit {
                     const current = alreadyReturnedMap.get(orderItem.itemId) || 0;
                     alreadyReturnedMap.set(orderItem.itemId, current + orderItem.quantity);
 
+                    const warehouseId = await this.resolveWarehouseId(tx, effectiveLocationId, orderItem.itemId);
+
                     // Create stock ledger entry for refund
                     await this.stockLedgerService.createEntry({
                         itemId: orderItem.itemId,
-                        warehouseId: warehouse.id,
+                        warehouseId,
                         locationId: effectiveLocationId,
                         qty: orderItem.quantity,
                         movementType: MovementType.INBOUND,
@@ -2794,7 +2832,7 @@ export class PosSalesService implements OnModuleInit {
                             data: {
                                 itemId: orderItem.itemId,
                                 locationId: effectiveLocationId,
-                                warehouseId: warehouse.id,
+                                warehouseId,
                                 quantity: orderItem.quantity,
                                 status: 'AVAILABLE',
                             },
@@ -2988,38 +3026,36 @@ export class PosSalesService implements OnModuleInit {
                 });
 
                 // ── Deduct stock immediately on hold ────────────────────
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-                if (warehouse) {
-                    for (const item of itemsData) {
-                        await this.stockLedgerService.createEntry({
-                            itemId: item.itemId,
-                            warehouseId: warehouse.id,
-                            locationId: dto.locationId,
-                            qty: -item.quantity,
-                            movementType: MovementType.OUTBOUND,
-                            referenceType: 'POS_HOLD',
-                            referenceId: order.id,
-                        }, tx);
+                for (const item of itemsData) {
+                    const warehouseId = await this.resolveWarehouseId(tx, dto.locationId, item.itemId);
+                    await this.stockLedgerService.createEntry({
+                        itemId: item.itemId,
+                        warehouseId,
+                        locationId: dto.locationId,
+                        qty: -item.quantity,
+                        movementType: MovementType.OUTBOUND,
+                        referenceType: 'POS_HOLD',
+                        referenceId: order.id,
+                    }, tx);
 
-                        const existing = await tx.inventoryItem.findFirst({
-                            where: { itemId: item.itemId, locationId: dto.locationId, status: 'AVAILABLE' },
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { itemId: item.itemId, locationId: dto.locationId, status: 'AVAILABLE' },
+                    });
+                    if (existing) {
+                        await tx.inventoryItem.update({
+                            where: { id: existing.id },
+                            data: { quantity: { decrement: item.quantity } },
                         });
-                        if (existing) {
-                            await tx.inventoryItem.update({
-                                where: { id: existing.id },
-                                data: { quantity: { decrement: item.quantity } },
-                            });
-                        } else {
-                            await tx.inventoryItem.create({
-                                data: {
-                                    itemId: item.itemId,
-                                    locationId: dto.locationId,
-                                    warehouseId: warehouse.id,
-                                    quantity: -item.quantity,
-                                    status: 'AVAILABLE',
-                                },
-                            });
-                        }
+                    } else {
+                        await tx.inventoryItem.create({
+                            data: {
+                                itemId: item.itemId,
+                                locationId: dto.locationId,
+                                warehouseId,
+                                quantity: -item.quantity,
+                                status: 'AVAILABLE',
+                            },
+                        });
                     }
                 }
 
@@ -3119,28 +3155,26 @@ export class PosSalesService implements OnModuleInit {
                 if (order.status !== 'hold') throw new Error('Order is not on hold');
 
                 // Restore stock for each item
-                const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-                if (warehouse) {
-                    for (const item of order.items) {
-                        await this.stockLedgerService.createEntry({
-                            itemId: item.itemId,
-                            warehouseId: warehouse.id,
-                            locationId: order.locationId,
-                            qty: item.quantity,
-                            movementType: MovementType.INBOUND,
-                            referenceType: 'POS_HOLD_CANCELLED',
-                            referenceId: order.id,
-                        }, tx);
+                for (const item of order.items) {
+                    const warehouseId = await this.resolveWarehouseId(tx, order.locationId, item.itemId);
+                    await this.stockLedgerService.createEntry({
+                        itemId: item.itemId,
+                        warehouseId,
+                        locationId: order.locationId,
+                        qty: item.quantity,
+                        movementType: MovementType.INBOUND,
+                        referenceType: 'POS_HOLD_CANCELLED',
+                        referenceId: order.id,
+                    }, tx);
 
-                        const existing = await tx.inventoryItem.findFirst({
-                            where: { itemId: item.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { itemId: item.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    });
+                    if (existing) {
+                        await tx.inventoryItem.update({
+                            where: { id: existing.id },
+                            data: { quantity: { increment: item.quantity } },
                         });
-                        if (existing) {
-                            await tx.inventoryItem.update({
-                                where: { id: existing.id },
-                                data: { quantity: { increment: item.quantity } },
-                            });
-                        }
                     }
                 }
 
@@ -3204,32 +3238,30 @@ export class PosSalesService implements OnModuleInit {
 
         if (expiredOrders.length === 0) return { status: true, cleared: 0 };
 
-        const warehouse = await this.prisma.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
 
         for (const order of expiredOrders) {
             await this.prisma.$transaction(async (tx) => {
                 // Restore stock for each item
-                if (warehouse) {
-                    for (const item of order.items) {
-                        await this.stockLedgerService.createEntry({
-                            itemId: item.itemId,
-                            warehouseId: warehouse.id,
-                            locationId: order.locationId,
-                            qty: item.quantity,
-                            movementType: MovementType.INBOUND,
-                            referenceType: 'POS_HOLD_EXPIRED',
-                            referenceId: order.id,
-                        }, tx);
+                for (const item of order.items) {
+                    const warehouseId = await this.resolveWarehouseId(tx, order.locationId, item.itemId);
+                    await this.stockLedgerService.createEntry({
+                        itemId: item.itemId,
+                        warehouseId,
+                        locationId: order.locationId,
+                        qty: item.quantity,
+                        movementType: MovementType.INBOUND,
+                        referenceType: 'POS_HOLD_EXPIRED',
+                        referenceId: order.id,
+                    }, tx);
 
-                        const existing = await tx.inventoryItem.findFirst({
-                            where: { itemId: item.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    const existing = await tx.inventoryItem.findFirst({
+                        where: { itemId: item.itemId, locationId: order.locationId, status: 'AVAILABLE' },
+                    });
+                    if (existing) {
+                        await tx.inventoryItem.update({
+                            where: { id: existing.id },
+                            data: { quantity: { increment: item.quantity } },
                         });
-                        if (existing) {
-                            await tx.inventoryItem.update({
-                                where: { id: existing.id },
-                                data: { quantity: { increment: item.quantity } },
-                            });
-                        }
                     }
                 }
 
