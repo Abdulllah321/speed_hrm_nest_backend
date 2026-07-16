@@ -204,6 +204,7 @@ export class PurchaseInvoiceService {
         },
         landedCost: {
           include: {
+            grn: true,
             items: {
           include: {
             item: true,

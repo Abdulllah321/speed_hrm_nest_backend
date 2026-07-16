@@ -211,6 +211,50 @@ export class PosSalesService implements OnModuleInit {
     return { status: true, data: enriched[0] };
   }
 
+  
+    private async resolveWarehouseId(
+        tx: any,
+        locationId: string | null | undefined,
+        itemId?: string
+    ): Promise<string> {
+        if (locationId) {
+            const loc = await tx.location.findUnique({
+                where: { id: locationId },
+                select: { warehouseId: true }
+            });
+            if (loc?.warehouseId) {
+                return loc.warehouseId;
+            }
+
+            if (itemId) {
+                const stock = await tx.inventoryItem.findFirst({
+                    where: { locationId, itemId, status: 'AVAILABLE' },
+                    select: { warehouseId: true }
+                });
+                if (stock?.warehouseId) {
+                    return stock.warehouseId;
+                }
+            }
+
+            const anyStock = await tx.inventoryItem.findFirst({
+                where: { locationId, status: 'AVAILABLE' },
+                select: { warehouseId: true }
+            });
+            if (anyStock?.warehouseId) {
+                return anyStock.warehouseId;
+            }
+        }
+
+        const activeWarehouse = await tx.warehouse.findFirst({
+            where: { isActive: true, isDeleted: false },
+            select: { id: true }
+        });
+        if (!activeWarehouse) {
+            throw new Error('No active warehouse found');
+        }
+        return activeWarehouse.id;
+    }
+
   // ─── Create sales order ───────────────────────────────────────────
   async createOrder(
     dto: CreateSalesOrderDto,
@@ -247,16 +291,16 @@ export class PosSalesService implements OnModuleInit {
             throw new Error('Resumed hold order not found');
           }
 
+
           // Reverse stock deduction done at hold time
-          const warehouse = await tx.warehouse.findFirst({
-            where: { isActive: true, isDeleted: false },
-          });
-          if (warehouse) {
+          const warehouseId = await this.resolveWarehouseId(tx, locationId, oldOrder.items[0]?.itemId);
+
+          if (warehouseId) {
             for (const item of oldOrder.items) {
               await this.stockLedgerService.createEntry(
                 {
                   itemId: item.itemId,
-                  warehouseId: warehouse.id,
+                  warehouseId: warehouseId,
                   locationId: oldOrder.locationId || locationId,
                   qty: item.quantity, // Positive to reverse OUTBOUND
                   movementType: MovementType.INBOUND,
@@ -283,7 +327,7 @@ export class PosSalesService implements OnModuleInit {
                   data: {
                     itemId: item.itemId,
                     locationId: oldOrder.locationId || locationId,
-                    warehouseId: warehouse.id,
+                    warehouseId: warehouseId,
                     quantity: item.quantity,
                     status: 'AVAILABLE',
                   },

@@ -113,12 +113,24 @@ export class PurchaseReturnService {
       include: {
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                brand: true,
+              },
+            },
           },
         },
         grn: true,
-        landedCost: true,
-        purchaseInvoice: true,
+        landedCost: {
+          include: {
+            grn: true,
+          },
+        },
+        purchaseInvoice: {
+          include: {
+            grn: true,
+          },
+        },
         supplier: true,
         warehouse: true,
       },
@@ -139,6 +151,7 @@ export class PurchaseReturnService {
               include: {
                 size: true,
                 color: true,
+                brand: true,
               },
             },
           },
@@ -618,6 +631,12 @@ export class PurchaseReturnService {
       include: {
         supplier: true,
         warehouse: true,
+        grn: true,
+        landedCost: {
+          include: {
+            grn: true,
+          },
+        },
         items: {
           include: {
             item: {
@@ -635,6 +654,8 @@ export class PurchaseReturnService {
     return invoices.map(inv => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
+      grn: inv.grn,
+      landedCost: inv.landedCost,
       supplier: inv.supplier,
       warehouse: inv.warehouse,
       advanceTaxRate: Number(inv.advanceTaxRate || 0.5),

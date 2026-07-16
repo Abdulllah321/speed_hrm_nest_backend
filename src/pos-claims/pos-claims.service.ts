@@ -555,13 +555,27 @@ export class PosClaimsService {
 
               // ⚡ CLAIM SPECIFIC: Always send to PLM Warehouse (WH-PLM-002)
               console.log('🎯 Claim Return: Finding PLM Warehouse...');
-              const plmWarehouse = await tx.warehouse.findFirst({
+              let plmWarehouse = await tx.warehouse.findFirst({
                 where: {
                   code: 'WH-PLM-002',
                   isActive: true,
                 },
                 select: { id: true, name: true, code: true },
               });
+
+              if (!plmWarehouse) {
+                // Fallback: search for any active warehouse with "PLM" in its code or name
+                plmWarehouse = await tx.warehouse.findFirst({
+                  where: {
+                    isActive: true,
+                    OR: [
+                      { code: { contains: 'PLM', mode: 'insensitive' } },
+                      { name: { contains: 'PLM', mode: 'insensitive' } },
+                    ],
+                  },
+                  select: { id: true, name: true, code: true },
+                });
+              }
 
               if (!plmWarehouse) {
                 console.log('❌ PLM Warehouse (WH-PLM-002) not found!');
