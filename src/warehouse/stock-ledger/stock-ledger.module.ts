@@ -9,6 +9,8 @@ import { StockValuationExportService } from './stock-valuation-export.service';
 import { StockValuationExportProcessor } from './stock-valuation-export.processor';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
 import { StockTransactionDetailExportProcessor } from './stock-transaction-detail-export.processor';
+import { AvailableStockSummaryExportService } from './available-stock-summary-export.service';
+import { AvailableStockSummaryExportProcessor } from './available-stock-summary-export.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
 import { ExportHistoryModule } from '../export-history/export-history.module';
@@ -25,6 +27,7 @@ import { UploadModule } from '../../upload/upload.module';
       { name: 'stock-activity-export' },
       { name: 'stock-valuation-export' },
       { name: 'stock-transaction-detail-export' },
+      { name: 'available-stock-summary-export' },
     ),
   ],
   controllers: [StockLedgerController],
@@ -37,8 +40,16 @@ import { UploadModule } from '../../upload/upload.module';
     StockValuationExportProcessor,
     StockTransactionDetailExportService,
     StockTransactionDetailExportProcessor,
+    AvailableStockSummaryExportService,
+    AvailableStockSummaryExportProcessor,
   ],
-  exports: [StockLedgerService, StockActivityExportService, StockValuationExportService, StockTransactionDetailExportService],
+  exports: [
+    StockLedgerService,
+    StockActivityExportService,
+    StockValuationExportService,
+    StockTransactionDetailExportService,
+    AvailableStockSummaryExportService,
+  ],
 })
 export class StockLedgerModule {}
 
