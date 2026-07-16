@@ -342,12 +342,7 @@ export class PosSalesService implements OnModuleInit {
           });
         }
 
-        // ── Resolve default warehouse ───────────────────────────
-        const warehouse = await tx.warehouse.findFirst({
-          where: { isActive: true, isDeleted: false },
-        });
-        if (!warehouse) throw new Error('No active warehouse found');
-
+      
         // ── Check if this is a credit sale ─────────────────────
         const isCreditSale = dto.isCreditSale || false;
         const creditAmount = dto.creditAmount || 0;
@@ -981,7 +976,7 @@ export class PosSalesService implements OnModuleInit {
           await this.stockLedgerService.createEntry(
             {
               itemId: item.itemId,
-              warehouseId: warehouse.id,
+              warehouseId: warehouseId,
               locationId: locationId,
               qty: -item.quantity, // Negative for OUTBOUND
               movementType: MovementType.OUTBOUND,
@@ -1015,7 +1010,7 @@ export class PosSalesService implements OnModuleInit {
               data: {
                 itemId: item.itemId,
                 locationId: locationId,
-                warehouseId: warehouse.id,
+                warehouseId: warehouseId,
                 quantity: -item.quantity,
                 status: 'AVAILABLE',
               },
