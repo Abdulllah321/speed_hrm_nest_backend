@@ -19,6 +19,14 @@ export interface QueueGrossSalesExportOptions {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  showBrand?: boolean;
+  showDivision?: boolean;
+  showCategory?: boolean;
+  showGender?: boolean;
+  showSilhouette?: boolean;
+  showArticle?: boolean;
+  showVariant?: boolean;
+  showInvoices?: boolean;
   reportType: 'summary' | 'return'; // 'summary' (Gross Sales) or 'return' (Sales Return)
 }
 
@@ -67,6 +75,14 @@ export class GrossSalesExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        showBrand: opts.showBrand,
+        showDivision: opts.showDivision,
+        showCategory: opts.showCategory,
+        showGender: opts.showGender,
+        showSilhouette: opts.showSilhouette,
+        showArticle: opts.showArticle,
+        showVariant: opts.showVariant,
+        showInvoices: opts.showInvoices,
         reportType: opts.reportType,
       },
       {

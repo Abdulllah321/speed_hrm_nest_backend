@@ -768,6 +768,14 @@ export class PosSalesController {
         @Query('minAmount') minAmount?: string,
         @Query('maxAmount') maxAmount?: string,
         @Query('fbrOnly') fbrOnly?: string,
+        @Query('showBrand') showBrand?: string,
+        @Query('showDivision') showDivision?: string,
+        @Query('showCategory') showCategory?: string,
+        @Query('showGender') showGender?: string,
+        @Query('showSilhouette') showSilhouette?: string,
+        @Query('showArticle') showArticle?: string,
+        @Query('showVariant') showVariant?: string,
+        @Query('showInvoices') showInvoices?: string,
     ) {
         return this.posSalesService.getGrossSalesSummaryReport({
             locationId,
@@ -779,6 +787,14 @@ export class PosSalesController {
             minAmount: minAmount ? Number(minAmount) : undefined,
             maxAmount: maxAmount ? Number(maxAmount) : undefined,
             fbrOnly: fbrOnly === 'true' || fbrOnly === '1' ? true : undefined,
+            showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+            showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
+            showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
+            showGender: showGender !== undefined ? showGender === 'true' : undefined,
+            showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+            showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
+            showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
+            showInvoices: showInvoices !== undefined ? showInvoices === 'true' : undefined,
         });
     }
 
@@ -797,6 +813,14 @@ export class PosSalesController {
             minAmount?: number;
             maxAmount?: number;
             fbrOnly?: boolean;
+            showBrand?: boolean;
+            showDivision?: boolean;
+            showCategory?: boolean;
+            showGender?: boolean;
+            showSilhouette?: boolean;
+            showArticle?: boolean;
+            showVariant?: boolean;
+            showInvoices?: boolean;
         },
     ) {
         const userId = req.user?.userId || req.user?.id;
@@ -812,6 +836,14 @@ export class PosSalesController {
             minAmount: body.minAmount,
             maxAmount: body.maxAmount,
             fbrOnly: body.fbrOnly,
+            showBrand: body.showBrand,
+            showDivision: body.showDivision,
+            showCategory: body.showCategory,
+            showGender: body.showGender,
+            showSilhouette: body.showSilhouette,
+            showArticle: body.showArticle,
+            showVariant: body.showVariant,
+            showInvoices: body.showInvoices,
             reportType: 'summary',
         });
         return { status: true, data: result };
@@ -829,6 +861,14 @@ export class PosSalesController {
         @Query('minAmount') minAmount?: string,
         @Query('maxAmount') maxAmount?: string,
         @Query('fbrOnly') fbrOnly?: string,
+        @Query('showBrand') showBrand?: string,
+        @Query('showDivision') showDivision?: string,
+        @Query('showCategory') showCategory?: string,
+        @Query('showGender') showGender?: string,
+        @Query('showSilhouette') showSilhouette?: string,
+        @Query('showArticle') showArticle?: string,
+        @Query('showVariant') showVariant?: string,
+        @Query('showInvoices') showInvoices?: string,
     ) {
         return this.posSalesService.getGrossSalesReturnReport({
             locationId,
@@ -840,6 +880,14 @@ export class PosSalesController {
             minAmount: minAmount ? Number(minAmount) : undefined,
             maxAmount: maxAmount ? Number(maxAmount) : undefined,
             fbrOnly: fbrOnly === 'true' || fbrOnly === '1' ? true : undefined,
+            showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+            showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
+            showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
+            showGender: showGender !== undefined ? showGender === 'true' : undefined,
+            showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+            showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
+            showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
+            showInvoices: showInvoices !== undefined ? showInvoices === 'true' : undefined,
         });
     }
 
@@ -858,6 +906,14 @@ export class PosSalesController {
             minAmount?: number;
             maxAmount?: number;
             fbrOnly?: boolean;
+            showBrand?: boolean;
+            showDivision?: boolean;
+            showCategory?: boolean;
+            showGender?: boolean;
+            showSilhouette?: boolean;
+            showArticle?: boolean;
+            showVariant?: boolean;
+            showInvoices?: boolean;
         },
     ) {
         const userId = req.user?.userId || req.user?.id;
@@ -873,6 +929,14 @@ export class PosSalesController {
             minAmount: body.minAmount,
             maxAmount: body.maxAmount,
             fbrOnly: body.fbrOnly,
+            showBrand: body.showBrand,
+            showDivision: body.showDivision,
+            showCategory: body.showCategory,
+            showGender: body.showGender,
+            showSilhouette: body.showSilhouette,
+            showArticle: body.showArticle,
+            showVariant: body.showVariant,
+            showInvoices: body.showInvoices,
             reportType: 'return',
         });
         return { status: true, data: result };
