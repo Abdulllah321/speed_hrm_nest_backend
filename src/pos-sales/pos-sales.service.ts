@@ -6225,6 +6225,30 @@ export class PosSalesService implements OnModuleInit {
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
-    return { status: true, data: filteredRows };
+    const uniqueCashiers = await this.prisma.salesOrder.findMany({
+      where: {
+        locationId,
+        status: {
+          in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
+        },
+        createdAt: { gte: startDate, lte: endDate },
+        cashierUserId: { not: null },
+      },
+      select: {
+        cashierUserId: true,
+      },
+      distinct: ['cashierUserId'],
+    });
+
+    const cashierUserIds = uniqueCashiers.map((o) => o.cashierUserId as string);
+
+    const cashierUsers = cashierUserIds.length
+      ? await this.prismaMaster.user.findMany({
+          where: { id: { in: cashierUserIds } },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+        })
+      : [];
+
+    return { status: true, data: filteredRows, cashiers: cashierUsers };
   }
 }
