@@ -6262,6 +6262,14 @@ export class PosSalesService implements OnModuleInit {
     minAmount?: number;
     maxAmount?: number;
     fbrOnly?: boolean;
+    showBrand?: boolean;
+    showDivision?: boolean;
+    showCategory?: boolean;
+    showGender?: boolean;
+    showSilhouette?: boolean;
+    showArticle?: boolean;
+    showVariant?: boolean;
+    showInvoices?: boolean;
   }) {
     const {
       locationId,
@@ -6273,6 +6281,14 @@ export class PosSalesService implements OnModuleInit {
       minAmount,
       maxAmount,
       fbrOnly,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
+      showInvoices,
     } = options;
     if (!locationId) {
       throw new BadRequestException('locationId is required');
@@ -6281,6 +6297,28 @@ export class PosSalesService implements OnModuleInit {
     const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
+
+    const sBrand = showBrand !== false;
+    const sDivision = showDivision !== false;
+    const sCategory = showCategory !== false;
+    const sGender = showGender !== false;
+    const sSilhouette = showSilhouette !== false;
+    const sArticle = showArticle !== false;
+    const sVariant = showVariant !== false;
+    const sInvoices = showInvoices === true;
+
+    const levels: string[] = [];
+    if (sBrand) levels.push('brand');
+    if (sDivision) levels.push('division');
+    if (sCategory) levels.push('category');
+    if (sGender) levels.push('gender');
+    if (sSilhouette) levels.push('silhouette');
+    if (sArticle) levels.push('product');
+    if (sVariant) levels.push('variant');
+
+    if (levels.length === 0) {
+      levels.push('product');
+    }
 
     const orders = await this.prisma.salesOrder.findMany({
       where: {
@@ -6302,6 +6340,7 @@ export class PosSalesService implements OnModuleInit {
                 silhouette: true,
                 size: true,
                 color: true,
+                category: true,
               },
             },
           },
@@ -6337,11 +6376,13 @@ export class PosSalesService implements OnModuleInit {
       leaves: [] as any[],
     };
 
-    const getOrAddChild = (parent: any, key: string, type: string, label: string) => {
+    const getOrAddChild = (parent: any, key: string, type: string, label: string, size = '', color = '') => {
       if (!parent.children.has(key)) {
         parent.children.set(key, {
           type,
           label,
+          size,
+          color,
           qty: 0,
           totalPriceWost: 0,
           discountAmount: 0,
@@ -6394,52 +6435,111 @@ export class PosSalesService implements OnModuleInit {
         const it = item.item;
         const brandName = it.brand?.name || 'NO BRAND';
         const divisionName = it.division?.name || 'NO DIVISION';
+        const categoryName = it.category?.name || 'NO CATEGORY';
         const genderName = it.gender?.name || 'NO GENDER';
         const silhouetteName = it.silhouette?.name || 'NO SILHOUETTE';
         const productName = `${it.sku} ${it.description || ''}`.trim();
         const sizeName = it.size?.name || '-';
         const colorName = it.color?.name || '-';
 
-        const divisionLabel = `${divisionName} - Sales Tax: ${taxPercent.toFixed(2)}%`;
-        const divisionKey = `${divisionName}|${taxPercent}`;
-
         // Traverse & Aggregate
-        const bNode = getOrAddChild(root, brandName, 'brand', brandName);
-        const dNode = getOrAddChild(bNode, divisionKey, 'division', divisionLabel);
-        const gNode = getOrAddChild(dNode, genderName, 'gender', genderName);
-        const sNode = getOrAddChild(gNode, silhouetteName, 'silhouette', silhouetteName);
-        const pNode = getOrAddChild(sNode, productName, 'product', productName);
+        let currentNode = root;
+        for (let i = 0; i < levels.length; i++) {
+          const lvl = levels[i];
+          let key = '';
+          let type = '';
+          let label = '';
+          let size = '';
+          let color = '';
 
-        const leaf = {
-          invoiceNo: order.orderNumber,
-          date: order.createdAt,
-          size: sizeName,
-          color: colorName,
-          qty,
-          retailPrice,
-          totalPriceWost,
-          discountAmount,
-          excludingSalesTax,
-          salesTaxPercent: taxPercent,
-          salesTaxAmount,
-          furtherTaxAmount,
-          totalTax,
-          includingSalesTax,
-          salesPerson,
-        };
+          if (lvl === 'brand') {
+            key = brandName;
+            type = 'brand';
+            label = brandName;
+          } else if (lvl === 'division') {
+            key = `${divisionName}|${taxPercent}`;
+            type = 'division';
+            label = `${divisionName} - Sales Tax: ${taxPercent.toFixed(2)}%`;
+          } else if (lvl === 'category') {
+            key = categoryName;
+            type = 'category';
+            label = categoryName;
+          } else if (lvl === 'gender') {
+            key = genderName;
+            type = 'gender';
+            label = genderName;
+          } else if (lvl === 'silhouette') {
+            key = silhouetteName;
+            type = 'silhouette';
+            label = silhouetteName;
+          } else if (lvl === 'product') {
+            key = productName;
+            type = 'product';
+            label = productName;
+          } else if (lvl === 'variant') {
+            key = `${sizeName}|${colorName}`;
+            type = 'variant';
+            label = `Size: ${sizeName} / Color: ${colorName}`;
+            size = sizeName;
+            color = colorName;
+          }
 
-        pNode.leaves.push(leaf);
+          currentNode = getOrAddChild(currentNode, key, type, label, size, color);
+        }
 
-        // Update counts
-        for (const n of [root, bNode, dNode, gNode, sNode, pNode]) {
-          n.qty += qty;
-          n.totalPriceWost += totalPriceWost;
-          n.discountAmount += discountAmount;
-          n.excludingSalesTax += excludingSalesTax;
-          n.salesTaxAmount += salesTaxAmount;
-          n.furtherTaxAmount += furtherTaxAmount;
-          n.totalTax += totalTax;
-          n.includingSalesTax += includingSalesTax;
+        // Update counts along path
+        let updateNode = root;
+        updateNode.qty += qty;
+        updateNode.totalPriceWost += totalPriceWost;
+        updateNode.discountAmount += discountAmount;
+        updateNode.excludingSalesTax += excludingSalesTax;
+        updateNode.salesTaxAmount += salesTaxAmount;
+        updateNode.furtherTaxAmount += furtherTaxAmount;
+        updateNode.totalTax += totalTax;
+        updateNode.includingSalesTax += includingSalesTax;
+
+        for (let i = 0; i < levels.length; i++) {
+          const lvl = levels[i];
+          let key = '';
+          if (lvl === 'brand') key = brandName;
+          else if (lvl === 'division') key = `${divisionName}|${taxPercent}`;
+          else if (lvl === 'category') key = categoryName;
+          else if (lvl === 'gender') key = genderName;
+          else if (lvl === 'silhouette') key = silhouetteName;
+          else if (lvl === 'product') key = productName;
+          else if (lvl === 'variant') key = `${sizeName}|${colorName}`;
+
+          updateNode = updateNode.children.get(key);
+          if (updateNode) {
+            updateNode.qty += qty;
+            updateNode.totalPriceWost += totalPriceWost;
+            updateNode.discountAmount += discountAmount;
+            updateNode.excludingSalesTax += excludingSalesTax;
+            updateNode.salesTaxAmount += salesTaxAmount;
+            updateNode.furtherTaxAmount += furtherTaxAmount;
+            updateNode.totalTax += totalTax;
+            updateNode.includingSalesTax += includingSalesTax;
+          }
+        }
+
+        if (sInvoices) {
+          currentNode.leaves.push({
+            invoiceNo: order.orderNumber,
+            date: order.createdAt,
+            size: sizeName,
+            color: colorName,
+            qty,
+            retailPrice,
+            totalPriceWost,
+            discountAmount,
+            excludingSalesTax,
+            salesTaxPercent: taxPercent,
+            salesTaxAmount,
+            furtherTaxAmount,
+            totalTax,
+            includingSalesTax,
+            salesPerson,
+          });
         }
       }
     }
@@ -6451,6 +6551,8 @@ export class PosSalesService implements OnModuleInit {
           type: node.type,
           depth,
           label: node.label,
+          size: node.size || '',
+          color: node.color || '',
           qty: node.qty,
           totalPriceWost: node.totalPriceWost,
           discountAmount: node.discountAmount,
@@ -6473,7 +6575,7 @@ export class PosSalesService implements OnModuleInit {
         node.leaves.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
         for (const leaf of node.leaves) {
           flatRows.push({
-            type: 'variant',
+            type: 'invoice',
             depth: depth + 1,
             label: `${leaf.invoiceNo} ${new Date(leaf.date).toLocaleDateString()}`,
             invoiceNo: leaf.invoiceNo,
@@ -6498,7 +6600,6 @@ export class PosSalesService implements OnModuleInit {
 
     flatten(root, 0);
 
-    // Active Cashiers listing for filters
     const activeCashiers = cashierUserIds.length
       ? await this.prismaMaster.user.findMany({
           where: { id: { in: cashierUserIds } },
@@ -6519,6 +6620,14 @@ export class PosSalesService implements OnModuleInit {
     minAmount?: number;
     maxAmount?: number;
     fbrOnly?: boolean;
+    showBrand?: boolean;
+    showDivision?: boolean;
+    showCategory?: boolean;
+    showGender?: boolean;
+    showSilhouette?: boolean;
+    showArticle?: boolean;
+    showVariant?: boolean;
+    showInvoices?: boolean;
   }) {
     const {
       locationId,
@@ -6530,6 +6639,14 @@ export class PosSalesService implements OnModuleInit {
       minAmount,
       maxAmount,
       fbrOnly,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
+      showInvoices,
     } = options;
     if (!locationId) {
       throw new BadRequestException('locationId is required');
@@ -6538,6 +6655,28 @@ export class PosSalesService implements OnModuleInit {
     const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
+
+    const sBrand = showBrand !== false;
+    const sDivision = showDivision !== false;
+    const sCategory = showCategory !== false;
+    const sGender = showGender !== false;
+    const sSilhouette = showSilhouette !== false;
+    const sArticle = showArticle !== false;
+    const sVariant = showVariant !== false;
+    const sInvoices = showInvoices === true;
+
+    const levels: string[] = [];
+    if (sBrand) levels.push('brand');
+    if (sDivision) levels.push('division');
+    if (sCategory) levels.push('category');
+    if (sGender) levels.push('gender');
+    if (sSilhouette) levels.push('silhouette');
+    if (sArticle) levels.push('product');
+    if (sVariant) levels.push('variant');
+
+    if (levels.length === 0) {
+      levels.push('product');
+    }
 
     // 1. Fetch Returns/Refunds from StockLedger
     const returnLedgerEntries = await this.prisma.stockLedger.findMany({
@@ -6555,6 +6694,7 @@ export class PosSalesService implements OnModuleInit {
             silhouette: true,
             size: true,
             color: true,
+            category: true,
           },
         },
       },
@@ -6604,6 +6744,7 @@ export class PosSalesService implements OnModuleInit {
                 silhouette: true,
                 size: true,
                 color: true,
+                category: true,
               },
             },
           },
@@ -6643,11 +6784,13 @@ export class PosSalesService implements OnModuleInit {
       leaves: [] as any[],
     };
 
-    const getOrAddChild = (parent: any, key: string, type: string, label: string) => {
+    const getOrAddChild = (parent: any, key: string, type: string, label: string, size = '', color = '') => {
       if (!parent.children.has(key)) {
         parent.children.set(key, {
           type,
           label,
+          size,
+          color,
           qty: 0,
           totalPriceWost: 0,
           discountAmount: 0,
@@ -6663,7 +6806,7 @@ export class PosSalesService implements OnModuleInit {
       return parent.children.get(key);
     };
 
-    // Helper to process a leaf record
+    // Helper to process a leaf record and insert it into the tree
     const addLeafToTree = (leaf: any, it: any) => {
       if (fbrOnly && !leaf.fbr) return;
       if (search && !leaf.invoiceNo.toLowerCase().includes(search.toLowerCase())) return;
@@ -6672,33 +6815,95 @@ export class PosSalesService implements OnModuleInit {
 
       const brandName = it.brand?.name || 'NO BRAND';
       const divisionName = it.division?.name || 'NO DIVISION';
+      const categoryName = it.category?.name || 'NO CATEGORY';
       const genderName = it.gender?.name || 'NO GENDER';
       const silhouetteName = it.silhouette?.name || 'NO SILHOUETTE';
       const productName = `${it.sku} ${it.description || ''}`.trim();
       const sizeName = it.size?.name || '-';
       const colorName = it.color?.name || '-';
 
-      const divisionLabel = `${divisionName} - Sales Tax: ${leaf.salesTaxPercent.toFixed(2)}%`;
-      const divisionKey = `${divisionName}|${leaf.salesTaxPercent}`;
+      // Traverse & Aggregate
+      let currentNode = root;
+      for (let i = 0; i < levels.length; i++) {
+        const lvl = levels[i];
+        let key = '';
+        let type = '';
+        let label = '';
+        let size = '';
+        let color = '';
 
-      const bNode = getOrAddChild(root, brandName, 'brand', brandName);
-      const dNode = getOrAddChild(bNode, divisionKey, 'division', divisionLabel);
-      const gNode = getOrAddChild(dNode, genderName, 'gender', genderName);
-      const sNode = getOrAddChild(gNode, silhouetteName, 'silhouette', silhouetteName);
-      const pNode = getOrAddChild(sNode, productName, 'product', productName);
+        if (lvl === 'brand') {
+          key = brandName;
+          type = 'brand';
+          label = brandName;
+        } else if (lvl === 'division') {
+          key = `${divisionName}|${leaf.salesTaxPercent}`;
+          type = 'division';
+          label = `${divisionName} - Sales Tax: ${leaf.salesTaxPercent.toFixed(2)}%`;
+        } else if (lvl === 'category') {
+          key = categoryName;
+          type = 'category';
+          label = categoryName;
+        } else if (lvl === 'gender') {
+          key = genderName;
+          type = 'gender';
+          label = genderName;
+        } else if (lvl === 'silhouette') {
+          key = silhouetteName;
+          type = 'silhouette';
+          label = silhouetteName;
+        } else if (lvl === 'product') {
+          key = productName;
+          type = 'product';
+          label = productName;
+        } else if (lvl === 'variant') {
+          key = `${sizeName}|${colorName}`;
+          type = 'variant';
+          label = `Size: ${sizeName} / Color: ${colorName}`;
+          size = sizeName;
+          color = colorName;
+        }
 
-      pNode.leaves.push(leaf);
+        currentNode = getOrAddChild(currentNode, key, type, label, size, color);
+      }
 
-      // Aggregates
-      for (const n of [root, bNode, dNode, gNode, sNode, pNode]) {
-        n.qty += leaf.qty;
-        n.totalPriceWost += leaf.totalPriceWost;
-        n.discountAmount += leaf.discountAmount;
-        n.excludingSalesTax += leaf.excludingSalesTax;
-        n.salesTaxAmount += leaf.salesTaxAmount;
-        n.furtherTaxAmount += leaf.furtherTaxAmount;
-        n.totalTax += leaf.totalTax;
-        n.includingSalesTax += leaf.includingSalesTax;
+      // Update counts along path
+      let updateNode = root;
+      updateNode.qty += leaf.qty;
+      updateNode.totalPriceWost += leaf.totalPriceWost;
+      updateNode.discountAmount += leaf.discountAmount;
+      updateNode.excludingSalesTax += leaf.excludingSalesTax;
+      updateNode.salesTaxAmount += leaf.salesTaxAmount;
+      updateNode.furtherTaxAmount += leaf.furtherTaxAmount;
+      updateNode.totalTax += leaf.totalTax;
+      updateNode.includingSalesTax += leaf.includingSalesTax;
+
+      for (let i = 0; i < levels.length; i++) {
+        const lvl = levels[i];
+        let key = '';
+        if (lvl === 'brand') key = brandName;
+        else if (lvl === 'division') key = `${divisionName}|${leaf.salesTaxPercent}`;
+        else if (lvl === 'category') key = categoryName;
+        else if (lvl === 'gender') key = genderName;
+        else if (lvl === 'silhouette') key = silhouetteName;
+        else if (lvl === 'product') key = productName;
+        else if (lvl === 'variant') key = `${sizeName}|${colorName}`;
+
+        updateNode = updateNode.children.get(key);
+        if (updateNode) {
+          updateNode.qty += leaf.qty;
+          updateNode.totalPriceWost += leaf.totalPriceWost;
+          updateNode.discountAmount += leaf.discountAmount;
+          updateNode.excludingSalesTax += leaf.excludingSalesTax;
+          updateNode.salesTaxAmount += leaf.salesTaxAmount;
+          updateNode.furtherTaxAmount += leaf.furtherTaxAmount;
+          updateNode.totalTax += leaf.totalTax;
+          updateNode.includingSalesTax += leaf.includingSalesTax;
+        }
+      }
+
+      if (sInvoices) {
+        currentNode.leaves.push(leaf);
       }
     };
 
@@ -6814,12 +7019,6 @@ export class PosSalesService implements OnModuleInit {
           type: node.type,
           depth,
           label: node.label,
-          qty: node.qty,
-          totalPriceWost: node.totalPriceWost,
-          discountAmount: node.discountAmount,
-          excludingSalesTax: node.excludingSalesTax,
-          salesTaxAmount: node.salesTaxAmount,
-          furtherTaxAmount: node.furtherTaxAmount,
           totalTax: node.totalTax,
           includingSalesTax: node.includingSalesTax,
         });

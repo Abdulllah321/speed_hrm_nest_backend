@@ -26,6 +26,14 @@ interface GrossSalesExportJobData {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  showBrand?: boolean;
+  showDivision?: boolean;
+  showCategory?: boolean;
+  showGender?: boolean;
+  showSilhouette?: boolean;
+  showArticle?: boolean;
+  showVariant?: boolean;
+  showInvoices?: boolean;
   reportType: 'summary' | 'return';
 }
 
@@ -38,12 +46,12 @@ const COLUMNS = [
   { header: 'Total Price WOST', key: 'totalPriceWost', width: 18, align: 'right', numFmt: '#,##0.00' },
   { header: 'Discount Amount (Rs.)', key: 'discountAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
   { header: 'Excluding Sales Tax', key: 'excludingSalesTax', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax %', key: 'salesTaxPercent', width: 12, align: 'center', numFmt: '0.00%' },
+  { header: 'Sales Tax %', key: 'salesTaxPercent', width: 14, align: 'center', numFmt: '0.00%' },
   { header: 'Sales Tax Amount', key: 'salesTaxAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
   { header: 'Further Tax Amount', key: 'furtherTaxAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Total Tax', key: 'totalTax', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Including Sales Tax', key: 'includingSalesTax', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Person', key: 'salesPerson', width: 22, align: 'left' }
+  { header: 'Total Tax (Rs.)', key: 'totalTax', width: 18, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Including Sales Tax', key: 'includingSalesTax', width: 20, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Sales Person', key: 'salesPerson', width: 18, align: 'left' },
 ];
 
 @Processor('gross-sales-export')
@@ -51,9 +59,9 @@ export class GrossSalesExportProcessor {
   private readonly logger = new Logger(GrossSalesExportProcessor.name);
 
   constructor(
-    private readonly notificationsService: NotificationsService,
-    private readonly exportHistoryService: ExportHistoryService,
     private readonly posSalesService: PosSalesService,
+    private readonly exportHistoryService: ExportHistoryService,
+    private readonly notificationsService: NotificationsService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -85,6 +93,14 @@ export class GrossSalesExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
+      showInvoices,
       reportType,
     } = job.data;
 
@@ -120,6 +136,14 @@ export class GrossSalesExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
+          showBrand,
+          showDivision,
+          showCategory,
+          showGender,
+          showSilhouette,
+          showArticle,
+          showVariant,
+          showInvoices,
         });
       } else {
         result = await this.posSalesService.getGrossSalesSummaryReport({
@@ -132,6 +156,14 @@ export class GrossSalesExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
+          showBrand,
+          showDivision,
+          showCategory,
+          showGender,
+          showSilhouette,
+          showArticle,
+          showVariant,
+          showInvoices,
         });
       }
 
@@ -151,7 +183,7 @@ export class GrossSalesExportProcessor {
       };
 
       for (const r of rows) {
-        if (r.type === 'variant') {
+        if (r.depth === 1) {
           grandTotals.qty += r.qty || 0;
           grandTotals.totalPriceWost += r.totalPriceWost || 0;
           grandTotals.discountAmount += r.discountAmount || 0;
@@ -243,11 +275,11 @@ export class GrossSalesExportProcessor {
             size: r.size || '',
             color: r.color || '',
             qty: r.qty,
-            retailPrice: r.type === 'variant' ? r.retailPrice : '',
+            retailPrice: (r.type === 'variant' || r.type === 'invoice') ? r.retailPrice : '',
             totalPriceWost: r.totalPriceWost,
             discountAmount: r.discountAmount,
             excludingSalesTax: r.excludingSalesTax,
-            salesTaxPercent: r.type === 'variant' ? (r.salesTaxPercent / 100) : '',
+            salesTaxPercent: (r.type === 'variant' || r.type === 'invoice') ? (r.salesTaxPercent / 100) : '',
             salesTaxAmount: r.salesTaxAmount,
             furtherTaxAmount: r.furtherTaxAmount,
             totalTax: r.totalTax,
@@ -256,7 +288,7 @@ export class GrossSalesExportProcessor {
           };
 
           const row = ws.addRow(rowData);
-          const isGroup = r.type !== 'variant';
+          const isGroup = r.type !== 'variant' && r.type !== 'invoice';
 
           for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
             const cell = row.getCell(colNum);
