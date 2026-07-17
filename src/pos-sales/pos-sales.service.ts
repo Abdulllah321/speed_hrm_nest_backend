@@ -6368,10 +6368,11 @@ export class PosSalesService implements OnModuleInit {
       totalPriceWost: 0,
       discountAmount: 0,
       excludingSalesTax: 0,
+      salesTaxPercent: 0,
       salesTaxAmount: 0,
-      furtherTaxAmount: 0,
       totalTax: 0,
       includingSalesTax: 0,
+      salesPerson: '',
       children: new Map<string, any>(),
       leaves: [] as any[],
     };
@@ -6387,10 +6388,11 @@ export class PosSalesService implements OnModuleInit {
           totalPriceWost: 0,
           discountAmount: 0,
           excludingSalesTax: 0,
+          salesTaxPercent: 0,
           salesTaxAmount: 0,
-          furtherTaxAmount: 0,
           totalTax: 0,
           includingSalesTax: 0,
+          salesPerson: '',
           children: new Map<string, any>(),
           leaves: [] as any[],
         });
@@ -6494,7 +6496,6 @@ export class PosSalesService implements OnModuleInit {
         updateNode.discountAmount += discountAmount;
         updateNode.excludingSalesTax += excludingSalesTax;
         updateNode.salesTaxAmount += salesTaxAmount;
-        updateNode.furtherTaxAmount += furtherTaxAmount;
         updateNode.totalTax += totalTax;
         updateNode.includingSalesTax += includingSalesTax;
 
@@ -6516,9 +6517,11 @@ export class PosSalesService implements OnModuleInit {
             updateNode.discountAmount += discountAmount;
             updateNode.excludingSalesTax += excludingSalesTax;
             updateNode.salesTaxAmount += salesTaxAmount;
-            updateNode.furtherTaxAmount += furtherTaxAmount;
             updateNode.totalTax += totalTax;
             updateNode.includingSalesTax += includingSalesTax;
+            // Track salesTaxPercent and salesPerson on each node (variant has a fixed taxPercent; groups show last seen)
+            updateNode.salesTaxPercent = taxPercent;
+            updateNode.salesPerson = salesPerson;
           }
         }
 
@@ -6554,13 +6557,15 @@ export class PosSalesService implements OnModuleInit {
           size: node.size || '',
           color: node.color || '',
           qty: node.qty,
+          retailPrice: node.type === 'variant' ? (node.totalPriceWost / (node.qty || 1)) : undefined,
           totalPriceWost: node.totalPriceWost,
           discountAmount: node.discountAmount,
           excludingSalesTax: node.excludingSalesTax,
+          salesTaxPercent: node.salesTaxPercent,
           salesTaxAmount: node.salesTaxAmount,
-          furtherTaxAmount: node.furtherTaxAmount,
           totalTax: node.totalTax,
           includingSalesTax: node.includingSalesTax,
+          salesPerson: node.type === 'variant' ? node.salesPerson : undefined,
         });
       }
 
@@ -6589,7 +6594,6 @@ export class PosSalesService implements OnModuleInit {
             excludingSalesTax: leaf.excludingSalesTax,
             salesTaxPercent: leaf.salesTaxPercent,
             salesTaxAmount: leaf.salesTaxAmount,
-            furtherTaxAmount: leaf.furtherTaxAmount,
             totalTax: leaf.totalTax,
             includingSalesTax: leaf.includingSalesTax,
             salesPerson: leaf.salesPerson,
@@ -6776,10 +6780,11 @@ export class PosSalesService implements OnModuleInit {
       totalPriceWost: 0,
       discountAmount: 0,
       excludingSalesTax: 0,
+      salesTaxPercent: 0,
       salesTaxAmount: 0,
-      furtherTaxAmount: 0,
       totalTax: 0,
       includingSalesTax: 0,
+      salesPerson: '',
       children: new Map<string, any>(),
       leaves: [] as any[],
     };
@@ -6795,10 +6800,11 @@ export class PosSalesService implements OnModuleInit {
           totalPriceWost: 0,
           discountAmount: 0,
           excludingSalesTax: 0,
+          salesTaxPercent: 0,
           salesTaxAmount: 0,
-          furtherTaxAmount: 0,
           totalTax: 0,
           includingSalesTax: 0,
+          salesPerson: '',
           children: new Map<string, any>(),
           leaves: [] as any[],
         });
@@ -6874,7 +6880,6 @@ export class PosSalesService implements OnModuleInit {
       updateNode.discountAmount += leaf.discountAmount;
       updateNode.excludingSalesTax += leaf.excludingSalesTax;
       updateNode.salesTaxAmount += leaf.salesTaxAmount;
-      updateNode.furtherTaxAmount += leaf.furtherTaxAmount;
       updateNode.totalTax += leaf.totalTax;
       updateNode.includingSalesTax += leaf.includingSalesTax;
 
@@ -6896,9 +6901,11 @@ export class PosSalesService implements OnModuleInit {
           updateNode.discountAmount += leaf.discountAmount;
           updateNode.excludingSalesTax += leaf.excludingSalesTax;
           updateNode.salesTaxAmount += leaf.salesTaxAmount;
-          updateNode.furtherTaxAmount += leaf.furtherTaxAmount;
           updateNode.totalTax += leaf.totalTax;
           updateNode.includingSalesTax += leaf.includingSalesTax;
+          // Track salesTaxPercent and salesPerson per node
+          updateNode.salesTaxPercent = leaf.salesTaxPercent;
+          updateNode.salesPerson = leaf.salesPerson;
         }
       }
 
@@ -7019,8 +7026,18 @@ export class PosSalesService implements OnModuleInit {
           type: node.type,
           depth,
           label: node.label,
+          size: node.size || '',
+          color: node.color || '',
+          qty: node.qty,
+          retailPrice: node.type === 'variant' ? (node.totalPriceWost / (node.qty || 1)) : undefined,
+          totalPriceWost: node.totalPriceWost,
+          discountAmount: node.discountAmount,
+          excludingSalesTax: node.excludingSalesTax,
+          salesTaxPercent: node.salesTaxPercent,
+          salesTaxAmount: node.salesTaxAmount,
           totalTax: node.totalTax,
           includingSalesTax: node.includingSalesTax,
+          salesPerson: node.type === 'variant' ? node.salesPerson : undefined,
         });
       }
 
@@ -7035,7 +7052,7 @@ export class PosSalesService implements OnModuleInit {
         node.leaves.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
         for (const leaf of node.leaves) {
           flatRows.push({
-            type: 'variant',
+            type: 'invoice',
             depth: depth + 1,
             label: `${leaf.invoiceNo} ${new Date(leaf.date).toLocaleDateString()}`,
             invoiceNo: leaf.invoiceNo,
@@ -7049,7 +7066,6 @@ export class PosSalesService implements OnModuleInit {
             excludingSalesTax: leaf.excludingSalesTax,
             salesTaxPercent: leaf.salesTaxPercent,
             salesTaxAmount: leaf.salesTaxAmount,
-            furtherTaxAmount: leaf.furtherTaxAmount,
             totalTax: leaf.totalTax,
             includingSalesTax: leaf.includingSalesTax,
             salesPerson: leaf.salesPerson,
