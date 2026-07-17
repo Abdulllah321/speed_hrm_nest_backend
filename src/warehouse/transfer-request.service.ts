@@ -39,7 +39,6 @@ export class TransferRequestService {
         isDirectTransfer?: boolean;
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
-            const requestNo = `TR-${Date.now()}`;
             const transferType = data.transferType || 'WAREHOUSE_TO_OUTLET';
             const isDirect = data.isDirectTransfer && transferType === 'OUTLET_TO_OUTLET';
 
@@ -81,6 +80,9 @@ export class TransferRequestService {
             }
 
             const created = await this.prisma.$transaction(async (tx) => {
+                const { nextTransferNumber } = await this.getNextTransferNumber(tx);
+                const requestNo = nextTransferNumber;
+
                 // Validate stock availability based on transfer type
                 for (const item of data.items) {
                     let availableQty = 0;
@@ -1214,5 +1216,33 @@ export class TransferRequestService {
         } catch (error) {
             console.error('Failed to notify location users:', error);
         }
+    }
+
+    async getNextTransferNumber(tx?: Prisma.TransactionClient): Promise<{ nextTransferNumber: string }> {
+        const prismaClient = tx || this.prisma;
+        const currentYear = new Date().getFullYear();
+        const prefix = 'STN';
+        
+        const lastRequest = await prismaClient.transferRequest.findFirst({
+            where: {
+                requestNo: {
+                    startsWith: `${prefix}-${currentYear}`,
+                },
+            },
+            orderBy: {
+                requestNo: 'desc',
+            },
+        });
+
+        let nextNumber = 1;
+        if (lastRequest) {
+            const lastNumber = parseInt(lastRequest.requestNo.split('-').pop() || '0');
+            if (!isNaN(lastNumber)) {
+                nextNumber = lastNumber + 1;
+            }
+        }
+
+        const nextTransferNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+        return { nextTransferNumber };
     }
 }
