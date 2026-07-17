@@ -6251,4 +6251,624 @@ export class PosSalesService implements OnModuleInit {
 
     return { status: true, data: filteredRows, cashiers: cashierUsers };
   }
+
+  async getGrossSalesSummaryReport(options: {
+    locationId: string;
+    startDate?: string;
+    endDate?: string;
+    cashierUserId?: string;
+    search?: string;
+    paymentModeGroup?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    fbrOnly?: boolean;
+  }) {
+    const {
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = options;
+    if (!locationId) {
+      throw new BadRequestException('locationId is required');
+    }
+    const now = new Date();
+    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = endStr ? new Date(endStr) : new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    const orders = await this.prisma.salesOrder.findMany({
+      where: {
+        locationId,
+        status: {
+          in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
+        },
+        createdAt: { gte: startDate, lte: endDate },
+        ...(cashierUserId ? { cashierUserId } : {}),
+      },
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                brand: true,
+                division: true,
+                gender: true,
+                silhouette: true,
+                size: true,
+                color: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const cashierUserIds = [...new Set(orders.map((o) => o.cashierUserId).filter(Boolean))] as string[];
+    const cashierMap = new Map<string, string>();
+    if (cashierUserIds.length) {
+      const users = await this.prismaMaster.user.findMany({
+        where: { id: { in: cashierUserIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      for (const u of users) {
+        cashierMap.set(u.id, `${u.firstName} ${u.lastName}`.trim());
+      }
+    }
+
+    // Tree Construction
+    const root = {
+      type: 'root',
+      label: 'ROOT',
+      qty: 0,
+      totalPriceWost: 0,
+      discountAmount: 0,
+      excludingSalesTax: 0,
+      salesTaxAmount: 0,
+      furtherTaxAmount: 0,
+      totalTax: 0,
+      includingSalesTax: 0,
+      children: new Map<string, any>(),
+      leaves: [] as any[],
+    };
+
+    const getOrAddChild = (parent: any, key: string, type: string, label: string) => {
+      if (!parent.children.has(key)) {
+        parent.children.set(key, {
+          type,
+          label,
+          qty: 0,
+          totalPriceWost: 0,
+          discountAmount: 0,
+          excludingSalesTax: 0,
+          salesTaxAmount: 0,
+          furtherTaxAmount: 0,
+          totalTax: 0,
+          includingSalesTax: 0,
+          children: new Map<string, any>(),
+          leaves: [] as any[],
+        });
+      }
+      return parent.children.get(key);
+    };
+
+    for (const order of orders) {
+      const fbr = order.fbrInvoiceNumber ? 1 : 0;
+      if (fbrOnly && !fbr) continue;
+
+      if (search && !order.orderNumber.toLowerCase().includes(search.toLowerCase())) {
+        continue;
+      }
+
+      if (paymentModeGroup) {
+        if (paymentModeGroup === 'cash' && Number(order.cashAmount) === 0) continue;
+        if (paymentModeGroup === 'card' && Number(order.cardAmount) === 0) continue;
+        if (paymentModeGroup === 'credit' && order.paymentMethod !== 'credit_account' && order.tenderType !== 'credit_account') continue;
+      }
+
+      const salesPerson = order.cashierUserId ? (cashierMap.get(order.cashierUserId) || 'Unknown') : 'Unknown';
+
+      for (const item of order.items) {
+        const qty = item.quantity;
+        const retailPrice = Number(item.unitPrice);
+        const taxPercent = Number(item.taxPercent);
+        const discountAmount = Number(item.discountAmount);
+        const taxAmount = Number(item.taxAmount);
+        const lineTotal = Number(item.lineTotal);
+
+        const totalPriceWost = (retailPrice * qty) / (1 + taxPercent / 100);
+        const excludingSalesTax = totalPriceWost - discountAmount;
+        const salesTaxAmount = taxAmount;
+        const furtherTaxAmount = 0;
+        const totalTax = taxAmount;
+        const includingSalesTax = lineTotal;
+
+        if (minAmount !== undefined && includingSalesTax < minAmount) continue;
+        if (maxAmount !== undefined && includingSalesTax > maxAmount) continue;
+
+        const it = item.item;
+        const brandName = it.brand?.name || 'NO BRAND';
+        const divisionName = it.division?.name || 'NO DIVISION';
+        const genderName = it.gender?.name || 'NO GENDER';
+        const silhouetteName = it.silhouette?.name || 'NO SILHOUETTE';
+        const productName = `${it.sku} ${it.description || ''}`.trim();
+        const sizeName = it.size?.name || '-';
+        const colorName = it.color?.name || '-';
+
+        const divisionLabel = `${divisionName} - Sales Tax: ${taxPercent.toFixed(2)}%`;
+        const divisionKey = `${divisionName}|${taxPercent}`;
+
+        // Traverse & Aggregate
+        const bNode = getOrAddChild(root, brandName, 'brand', brandName);
+        const dNode = getOrAddChild(bNode, divisionKey, 'division', divisionLabel);
+        const gNode = getOrAddChild(dNode, genderName, 'gender', genderName);
+        const sNode = getOrAddChild(gNode, silhouetteName, 'silhouette', silhouetteName);
+        const pNode = getOrAddChild(sNode, productName, 'product', productName);
+
+        const leaf = {
+          invoiceNo: order.orderNumber,
+          date: order.createdAt,
+          size: sizeName,
+          color: colorName,
+          qty,
+          retailPrice,
+          totalPriceWost,
+          discountAmount,
+          excludingSalesTax,
+          salesTaxPercent: taxPercent,
+          salesTaxAmount,
+          furtherTaxAmount,
+          totalTax,
+          includingSalesTax,
+          salesPerson,
+        };
+
+        pNode.leaves.push(leaf);
+
+        // Update counts
+        for (const n of [root, bNode, dNode, gNode, sNode, pNode]) {
+          n.qty += qty;
+          n.totalPriceWost += totalPriceWost;
+          n.discountAmount += discountAmount;
+          n.excludingSalesTax += excludingSalesTax;
+          n.salesTaxAmount += salesTaxAmount;
+          n.furtherTaxAmount += furtherTaxAmount;
+          n.totalTax += totalTax;
+          n.includingSalesTax += includingSalesTax;
+        }
+      }
+    }
+
+    const flatRows: any[] = [];
+    const flatten = (node: any, depth: number) => {
+      if (node.type !== 'root') {
+        flatRows.push({
+          type: node.type,
+          depth,
+          label: node.label,
+          qty: node.qty,
+          totalPriceWost: node.totalPriceWost,
+          discountAmount: node.discountAmount,
+          excludingSalesTax: node.excludingSalesTax,
+          salesTaxAmount: node.salesTaxAmount,
+          furtherTaxAmount: node.furtherTaxAmount,
+          totalTax: node.totalTax,
+          includingSalesTax: node.includingSalesTax,
+        });
+      }
+
+      if (node.children.size > 0) {
+        const sortedKeys = Array.from(node.children.keys()).sort();
+        for (const k of sortedKeys) {
+          flatten(node.children.get(k), depth + 1);
+        }
+      }
+
+      if (node.leaves.length > 0) {
+        node.leaves.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        for (const leaf of node.leaves) {
+          flatRows.push({
+            type: 'variant',
+            depth: depth + 1,
+            label: `${leaf.invoiceNo} ${new Date(leaf.date).toLocaleDateString()}`,
+            invoiceNo: leaf.invoiceNo,
+            date: leaf.date,
+            size: leaf.size,
+            color: leaf.color,
+            qty: leaf.qty,
+            retailPrice: leaf.retailPrice,
+            totalPriceWost: leaf.totalPriceWost,
+            discountAmount: leaf.discountAmount,
+            excludingSalesTax: leaf.excludingSalesTax,
+            salesTaxPercent: leaf.salesTaxPercent,
+            salesTaxAmount: leaf.salesTaxAmount,
+            furtherTaxAmount: leaf.furtherTaxAmount,
+            totalTax: leaf.totalTax,
+            includingSalesTax: leaf.includingSalesTax,
+            salesPerson: leaf.salesPerson,
+          });
+        }
+      }
+    };
+
+    flatten(root, 0);
+
+    // Active Cashiers listing for filters
+    const activeCashiers = cashierUserIds.length
+      ? await this.prismaMaster.user.findMany({
+          where: { id: { in: cashierUserIds } },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+        })
+      : [];
+
+    return { status: true, data: flatRows, cashiers: activeCashiers };
+  }
+
+  async getGrossSalesReturnReport(options: {
+    locationId: string;
+    startDate?: string;
+    endDate?: string;
+    cashierUserId?: string;
+    search?: string;
+    paymentModeGroup?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    fbrOnly?: boolean;
+  }) {
+    const {
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = options;
+    if (!locationId) {
+      throw new BadRequestException('locationId is required');
+    }
+    const now = new Date();
+    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = endStr ? new Date(endStr) : new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    // 1. Fetch Returns/Refunds from StockLedger
+    const returnLedgerEntries = await this.prisma.stockLedger.findMany({
+      where: {
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        createdAt: { gte: startDate, lte: endDate },
+        locationId,
+      },
+      include: {
+        item: {
+          include: {
+            brand: true,
+            division: true,
+            gender: true,
+            silhouette: true,
+            size: true,
+            color: true,
+          },
+        },
+      },
+    });
+
+    const referenceOrderIds = [...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean))];
+    const referenceOrders = referenceOrderIds.length
+      ? await this.prisma.salesOrder.findMany({
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: true,
+          },
+        })
+      : [];
+
+    const refOrderMap = new Map<string, any>();
+    for (const o of referenceOrders) {
+      refOrderMap.set(o.id, o);
+    }
+
+    // 2. Fetch Approved Claims from PosClaim
+    const claims = await this.prisma.posClaim.findMany({
+      where: {
+        status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
+        createdAt: { gte: startDate, lte: endDate },
+        salesOrder: {
+          locationId,
+          ...(cashierUserId ? { cashierUserId } : {}),
+        },
+      },
+      include: {
+        salesOrder: {
+          include: {
+            items: true,
+          },
+        },
+        items: {
+          include: {
+            item: {
+              include: {
+                brand: true,
+                division: true,
+                gender: true,
+                silhouette: true,
+                size: true,
+                color: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Cashier Names mapping
+    const orderCashierIds = [
+      ...referenceOrders.map((o) => o.cashierUserId),
+      ...claims.map((c) => c.salesOrder.cashierUserId),
+    ].filter(Boolean);
+    const cashierUserIds = [...new Set(orderCashierIds)] as string[];
+    const cashierMap = new Map<string, string>();
+    if (cashierUserIds.length) {
+      const users = await this.prismaMaster.user.findMany({
+        where: { id: { in: cashierUserIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      for (const u of users) {
+        cashierMap.set(u.id, `${u.firstName} ${u.lastName}`.trim());
+      }
+    }
+
+    const root = {
+      type: 'root',
+      label: 'ROOT',
+      qty: 0,
+      totalPriceWost: 0,
+      discountAmount: 0,
+      excludingSalesTax: 0,
+      salesTaxAmount: 0,
+      furtherTaxAmount: 0,
+      totalTax: 0,
+      includingSalesTax: 0,
+      children: new Map<string, any>(),
+      leaves: [] as any[],
+    };
+
+    const getOrAddChild = (parent: any, key: string, type: string, label: string) => {
+      if (!parent.children.has(key)) {
+        parent.children.set(key, {
+          type,
+          label,
+          qty: 0,
+          totalPriceWost: 0,
+          discountAmount: 0,
+          excludingSalesTax: 0,
+          salesTaxAmount: 0,
+          furtherTaxAmount: 0,
+          totalTax: 0,
+          includingSalesTax: 0,
+          children: new Map<string, any>(),
+          leaves: [] as any[],
+        });
+      }
+      return parent.children.get(key);
+    };
+
+    // Helper to process a leaf record
+    const addLeafToTree = (leaf: any, it: any) => {
+      if (fbrOnly && !leaf.fbr) return;
+      if (search && !leaf.invoiceNo.toLowerCase().includes(search.toLowerCase())) return;
+      if (minAmount !== undefined && leaf.includingSalesTax < minAmount) return;
+      if (maxAmount !== undefined && leaf.includingSalesTax > maxAmount) return;
+
+      const brandName = it.brand?.name || 'NO BRAND';
+      const divisionName = it.division?.name || 'NO DIVISION';
+      const genderName = it.gender?.name || 'NO GENDER';
+      const silhouetteName = it.silhouette?.name || 'NO SILHOUETTE';
+      const productName = `${it.sku} ${it.description || ''}`.trim();
+      const sizeName = it.size?.name || '-';
+      const colorName = it.color?.name || '-';
+
+      const divisionLabel = `${divisionName} - Sales Tax: ${leaf.salesTaxPercent.toFixed(2)}%`;
+      const divisionKey = `${divisionName}|${leaf.salesTaxPercent}`;
+
+      const bNode = getOrAddChild(root, brandName, 'brand', brandName);
+      const dNode = getOrAddChild(bNode, divisionKey, 'division', divisionLabel);
+      const gNode = getOrAddChild(dNode, genderName, 'gender', genderName);
+      const sNode = getOrAddChild(gNode, silhouetteName, 'silhouette', silhouetteName);
+      const pNode = getOrAddChild(sNode, productName, 'product', productName);
+
+      pNode.leaves.push(leaf);
+
+      // Aggregates
+      for (const n of [root, bNode, dNode, gNode, sNode, pNode]) {
+        n.qty += leaf.qty;
+        n.totalPriceWost += leaf.totalPriceWost;
+        n.discountAmount += leaf.discountAmount;
+        n.excludingSalesTax += leaf.excludingSalesTax;
+        n.salesTaxAmount += leaf.salesTaxAmount;
+        n.furtherTaxAmount += leaf.furtherTaxAmount;
+        n.totalTax += leaf.totalTax;
+        n.includingSalesTax += leaf.includingSalesTax;
+      }
+    };
+
+    // Process StockLedger Returns
+    for (const entry of returnLedgerEntries) {
+      const order = refOrderMap.get(entry.referenceId);
+      if (!order) continue;
+
+      const originalItem = order.items.find((oi) => oi.itemId === entry.itemId);
+      if (!originalItem) continue;
+
+      const qty = Math.abs(Number(entry.qty));
+      const originalQty = originalItem.quantity || 1;
+      const ratio = qty / originalQty;
+
+      const retailPrice = Number(originalItem.unitPrice);
+      const taxPercent = Number(originalItem.taxPercent);
+      const discountAmount = Number(originalItem.discountAmount) * ratio;
+      const taxAmount = Number(originalItem.taxAmount) * ratio;
+      const lineTotal = Number(originalItem.lineTotal) * ratio;
+
+      const totalPriceWost = (retailPrice * qty) / (1 + taxPercent / 100);
+      const excludingSalesTax = totalPriceWost - discountAmount;
+      const salesTaxAmount = taxAmount;
+      const furtherTaxAmount = 0;
+      const totalTax = taxAmount;
+      const includingSalesTax = lineTotal;
+
+      const salesPerson = order.cashierUserId ? (cashierMap.get(order.cashierUserId) || 'Unknown') : 'Unknown';
+      const docNum = entry.referenceType === 'POS_REFUND'
+        ? order.refundNumber || `Refund for ${order.orderNumber}`
+        : order.returnNumber || `Return for ${order.orderNumber}`;
+
+      const fbr = order.fbrInvoiceNumber ? 1 : 0;
+
+      const leaf = {
+        invoiceNo: docNum,
+        date: entry.createdAt,
+        size: entry.item?.size?.name || '-',
+        color: entry.item?.color?.name || '-',
+        qty,
+        retailPrice,
+        totalPriceWost,
+        discountAmount,
+        excludingSalesTax,
+        salesTaxPercent: taxPercent,
+        salesTaxAmount,
+        furtherTaxAmount,
+        totalTax,
+        includingSalesTax,
+        salesPerson,
+        fbr,
+      };
+
+      addLeafToTree(leaf, entry.item);
+    }
+
+    // Process Approved Claims
+    for (const claim of claims) {
+      const order = claim.salesOrder;
+      const fbr = order.fbrInvoiceNumber ? 1 : 0;
+
+      for (const claimItem of claim.items) {
+        if (claimItem.approvedQty <= 0) continue;
+
+        const originalItem = order.items.find((oi) => oi.id === claimItem.salesOrderItemId || oi.itemId === claimItem.itemId);
+        const taxPercent = originalItem ? Number(originalItem.taxPercent) : 18;
+
+        const qty = claimItem.approvedQty;
+        const retailPrice = originalItem ? Number(originalItem.unitPrice) : Number(claimItem.unitPaidPrice);
+
+        const discountAmount = originalItem
+          ? Number(originalItem.discountAmount) * (qty / (originalItem.quantity || 1))
+          : (retailPrice * qty - Number(claimItem.approvedAmount)) / (1 + taxPercent / 100);
+
+        const totalPriceWost = (retailPrice * qty) / (1 + taxPercent / 100);
+        const excludingSalesTax = totalPriceWost - discountAmount;
+        const salesTaxAmount = excludingSalesTax * (taxPercent / 100);
+        const furtherTaxAmount = 0;
+        const totalTax = salesTaxAmount;
+        const includingSalesTax = excludingSalesTax + totalTax;
+
+        const salesPerson = order.cashierUserId ? (cashierMap.get(order.cashierUserId) || 'Unknown') : 'Unknown';
+
+        const leaf = {
+          invoiceNo: claim.claimNumber,
+          date: claim.createdAt,
+          size: claimItem.item?.size?.name || '-',
+          color: claimItem.item?.color?.name || '-',
+          qty,
+          retailPrice,
+          totalPriceWost,
+          discountAmount,
+          excludingSalesTax,
+          salesTaxPercent: taxPercent,
+          salesTaxAmount,
+          furtherTaxAmount,
+          totalTax,
+          includingSalesTax,
+          salesPerson,
+          fbr,
+        };
+
+        addLeafToTree(leaf, claimItem.item);
+      }
+    }
+
+    // Flatten Tree
+    const flatRows: any[] = [];
+    const flatten = (node: any, depth: number) => {
+      if (node.type !== 'root') {
+        flatRows.push({
+          type: node.type,
+          depth,
+          label: node.label,
+          qty: node.qty,
+          totalPriceWost: node.totalPriceWost,
+          discountAmount: node.discountAmount,
+          excludingSalesTax: node.excludingSalesTax,
+          salesTaxAmount: node.salesTaxAmount,
+          furtherTaxAmount: node.furtherTaxAmount,
+          totalTax: node.totalTax,
+          includingSalesTax: node.includingSalesTax,
+        });
+      }
+
+      if (node.children.size > 0) {
+        const sortedKeys = Array.from(node.children.keys()).sort();
+        for (const k of sortedKeys) {
+          flatten(node.children.get(k), depth + 1);
+        }
+      }
+
+      if (node.leaves.length > 0) {
+        node.leaves.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        for (const leaf of node.leaves) {
+          flatRows.push({
+            type: 'variant',
+            depth: depth + 1,
+            label: `${leaf.invoiceNo} ${new Date(leaf.date).toLocaleDateString()}`,
+            invoiceNo: leaf.invoiceNo,
+            date: leaf.date,
+            size: leaf.size,
+            color: leaf.color,
+            qty: leaf.qty,
+            retailPrice: leaf.retailPrice,
+            totalPriceWost: leaf.totalPriceWost,
+            discountAmount: leaf.discountAmount,
+            excludingSalesTax: leaf.excludingSalesTax,
+            salesTaxPercent: leaf.salesTaxPercent,
+            salesTaxAmount: leaf.salesTaxAmount,
+            furtherTaxAmount: leaf.furtherTaxAmount,
+            totalTax: leaf.totalTax,
+            includingSalesTax: leaf.includingSalesTax,
+            salesPerson: leaf.salesPerson,
+          });
+        }
+      }
+    };
+
+    flatten(root, 0);
+
+    const activeCashiers = cashierUserIds.length
+      ? await this.prismaMaster.user.findMany({
+          where: { id: { in: cashierUserIds } },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+        })
+      : [];
+
+    return { status: true, data: flatRows, cashiers: activeCashiers };
+  }
 }
+

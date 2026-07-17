@@ -14,6 +14,7 @@ import {
 import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
 import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
+import { GrossSalesExportService } from './gross-sales-export.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -35,6 +36,7 @@ export class PosSalesController {
         private readonly netSalesSummaryExportService: NetSalesSummaryExportService,
         private readonly salesRegisterExportService: SalesRegisterExportService,
         private readonly salesListExportService: SalesListExportService,
+        private readonly grossSalesExportService: GrossSalesExportService,
     ) { }
 
     // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -747,6 +749,147 @@ export class PosSalesController {
     async downloadSalesListExport(@Param('jobId') jobId: string, @Res() res: any) {
         try {
             await this.salesListExportService.streamExportFile(jobId, res);
+        } catch (err: any) {
+            const status = err?.status ?? 404;
+            res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+        }
+    }
+
+    // ─── Gross Sales Summary & Return Reports ─────────────────────────
+    @Get('reports/gross-sales-summary')
+    @ApiOperation({ summary: 'Get Gross Sales Summary Report' })
+    async getGrossSalesSummary(
+        @Query('locationId') locationId: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('cashierUserId') cashierUserId?: string,
+        @Query('search') search?: string,
+        @Query('paymentModeGroup') paymentModeGroup?: string,
+        @Query('minAmount') minAmount?: string,
+        @Query('maxAmount') maxAmount?: string,
+        @Query('fbrOnly') fbrOnly?: string,
+    ) {
+        return this.posSalesService.getGrossSalesSummaryReport({
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            search,
+            paymentModeGroup,
+            minAmount: minAmount ? Number(minAmount) : undefined,
+            maxAmount: maxAmount ? Number(maxAmount) : undefined,
+            fbrOnly: fbrOnly === 'true' || fbrOnly === '1' ? true : undefined,
+        });
+    }
+
+    @Post('reports/gross-sales-summary/export/queue')
+    @ApiOperation({ summary: 'Queue Gross Sales Summary Export' })
+    async queueGrossSalesSummaryExport(
+        @Req() req: any,
+        @Body() body: {
+            locationId: string;
+            startDate?: string;
+            endDate?: string;
+            cashierUserId?: string;
+            format: 'xlsx' | 'pdf';
+            search?: string;
+            paymentModeGroup?: string;
+            minAmount?: number;
+            maxAmount?: number;
+            fbrOnly?: boolean;
+        },
+    ) {
+        const userId = req.user?.userId || req.user?.id;
+        const result = await this.grossSalesExportService.queueExport({
+            userId,
+            locationId: body.locationId,
+            startDate: body.startDate,
+            endDate: body.endDate,
+            cashierUserId: body.cashierUserId,
+            format: body.format,
+            search: body.search,
+            paymentModeGroup: body.paymentModeGroup,
+            minAmount: body.minAmount,
+            maxAmount: body.maxAmount,
+            fbrOnly: body.fbrOnly,
+            reportType: 'summary',
+        });
+        return { status: true, data: result };
+    }
+
+    @Get('reports/gross-sales-return')
+    @ApiOperation({ summary: 'Get Gross Sales Return Report' })
+    async getGrossSalesReturn(
+        @Query('locationId') locationId: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('cashierUserId') cashierUserId?: string,
+        @Query('search') search?: string,
+        @Query('paymentModeGroup') paymentModeGroup?: string,
+        @Query('minAmount') minAmount?: string,
+        @Query('maxAmount') maxAmount?: string,
+        @Query('fbrOnly') fbrOnly?: string,
+    ) {
+        return this.posSalesService.getGrossSalesReturnReport({
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            search,
+            paymentModeGroup,
+            minAmount: minAmount ? Number(minAmount) : undefined,
+            maxAmount: maxAmount ? Number(maxAmount) : undefined,
+            fbrOnly: fbrOnly === 'true' || fbrOnly === '1' ? true : undefined,
+        });
+    }
+
+    @Post('reports/gross-sales-return/export/queue')
+    @ApiOperation({ summary: 'Queue Gross Sales Return Export' })
+    async queueGrossSalesReturnExport(
+        @Req() req: any,
+        @Body() body: {
+            locationId: string;
+            startDate?: string;
+            endDate?: string;
+            cashierUserId?: string;
+            format: 'xlsx' | 'pdf';
+            search?: string;
+            paymentModeGroup?: string;
+            minAmount?: number;
+            maxAmount?: number;
+            fbrOnly?: boolean;
+        },
+    ) {
+        const userId = req.user?.userId || req.user?.id;
+        const result = await this.grossSalesExportService.queueExport({
+            userId,
+            locationId: body.locationId,
+            startDate: body.startDate,
+            endDate: body.endDate,
+            cashierUserId: body.cashierUserId,
+            format: body.format,
+            search: body.search,
+            paymentModeGroup: body.paymentModeGroup,
+            minAmount: body.minAmount,
+            maxAmount: body.maxAmount,
+            fbrOnly: body.fbrOnly,
+            reportType: 'return',
+        });
+        return { status: true, data: result };
+    }
+
+    @Get('reports/gross-sales-export/:jobId/status')
+    @ApiOperation({ summary: 'Get Gross Sales Export Status' })
+    async getGrossSalesExportStatus(@Param('jobId') jobId: string) {
+        const result = await this.grossSalesExportService.getJobStatus(jobId);
+        return { status: true, data: result };
+    }
+
+    @Get('reports/gross-sales-export/:jobId/download')
+    @ApiOperation({ summary: 'Download Gross Sales Export' })
+    async downloadGrossSalesExport(@Param('jobId') jobId: string, @Res() res: any) {
+        try {
+            await this.grossSalesExportService.streamExportFile(jobId, res);
         } catch (err: any) {
             const status = err?.status ?? 404;
             res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });

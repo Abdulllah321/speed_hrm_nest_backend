@@ -25,6 +25,8 @@ import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesRegisterExportProcessor } from './sales-register-export.processor';
 import { SalesListExportService } from './sales-list-export.service';
 import { SalesListExportProcessor } from './sales-list-export.processor';
+import { GrossSalesExportService } from './gross-sales-export.service';
+import { GrossSalesExportProcessor } from './gross-sales-export.processor';
 
 @Module({
     imports: [
@@ -40,7 +42,8 @@ import { SalesListExportProcessor } from './sales-list-export.processor';
             { name: 'net-sales-summary-export' },
             { name: 'pos-sales-activity-export' },
             { name: 'sales-register-export' },
-            { name: 'sales-list-export' }
+            { name: 'sales-list-export' },
+            { name: 'gross-sales-export' }
         ),
     ],
     controllers: [
@@ -64,6 +67,8 @@ import { SalesListExportProcessor } from './sales-list-export.processor';
         SalesRegisterExportProcessor,
         SalesListExportService,
         SalesListExportProcessor,
+        GrossSalesExportService,
+        GrossSalesExportProcessor,
     ],
     exports: [
         PosSalesService, 
@@ -71,6 +76,7 @@ import { SalesListExportProcessor } from './sales-list-export.processor';
         PosSalesActivityExportService,
         SalesRegisterExportService,
         SalesListExportService,
+        GrossSalesExportService,
     ],
 })
 export class PosSalesModule { }
