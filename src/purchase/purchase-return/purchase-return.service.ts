@@ -24,7 +24,8 @@ export class PurchaseReturnService {
       await this.validateSourceDocument(createDto);
 
       // Generate return number
-      const returnNumber = `PR-${Date.now()}`;
+      const { nextReturnNumber } = await this.getNextReturnNumber();
+      const returnNumber = nextReturnNumber;
 
       // Calculate totals
       const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
@@ -811,5 +812,32 @@ export class PurchaseReturnService {
         console.error(`Error updating inventory for item ${entry.itemId}:`, error);
       }
     }
+  }
+
+  async getNextReturnNumber(): Promise<{ nextReturnNumber: string }> {
+    const currentYear = new Date().getFullYear();
+    const prefix = 'PR';
+    
+    const lastReturn = await this.prisma.purchaseReturn.findFirst({
+      where: {
+        returnNumber: {
+          startsWith: `${prefix}-${currentYear}`,
+        },
+      },
+      orderBy: {
+        returnNumber: 'desc',
+      },
+    });
+
+    let nextNumber = 1;
+    if (lastReturn) {
+      const lastNumber = parseInt(lastReturn.returnNumber.split('-').pop() || '0');
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    const nextReturnNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    return { nextReturnNumber };
   }
 }

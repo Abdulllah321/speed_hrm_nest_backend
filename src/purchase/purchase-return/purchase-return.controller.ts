@@ -48,6 +48,13 @@ export class PurchaseReturnController {
     return this.purchaseReturnService.getEligibleInvoices();
   }
 
+  @Get('next-return-number')
+  @ApiOperation({ summary: 'Get next available return number' })
+  @ApiResponse({ status: 200, description: 'Next return number' })
+  getNextReturnNumber() {
+    return this.purchaseReturnService.getNextReturnNumber();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get purchase return by ID' })
   @ApiResponse({ status: 200, description: 'Purchase return details' })
