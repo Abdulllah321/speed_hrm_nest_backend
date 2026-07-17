@@ -5868,4 +5868,324 @@ export class PosSalesService implements OnModuleInit {
 
     return { status: true, data: rows };
   }
+
+  async getSalesListReport(options: {
+    locationId: string;
+    startDate?: string;
+    endDate?: string;
+    cashierUserId?: string;
+    search?: string;
+  }) {
+    const {
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      search,
+    } = options;
+    if (!locationId) {
+      throw new BadRequestException('locationId is required');
+    }
+    const now = new Date();
+    const startDate = startStr
+      ? new Date(startStr)
+      : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = endStr ? new Date(endStr) : new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    const orders = await this.prisma.salesOrder.findMany({
+      where: {
+        locationId,
+        status: {
+          in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
+        },
+        createdAt: { gte: startDate, lte: endDate },
+        ...(cashierUserId ? { cashierUserId } : {}),
+        ...(search
+          ? { orderNumber: { contains: search, mode: 'insensitive' } }
+          : {}),
+      },
+      include: {
+        alliance: true,
+        voucherRedemptions: {
+          include: {
+            voucher: true,
+          },
+        },
+        items: {
+          include: {
+            item: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const returnLedgerEntries = await this.prisma.stockLedger.findMany({
+      where: {
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        createdAt: { gte: startDate, lte: endDate },
+        locationId,
+      },
+      include: {
+        item: true,
+      },
+    });
+
+    const referenceOrderIds = [
+      ...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean)),
+    ];
+    const referenceOrders = referenceOrderIds.length
+      ? await this.prisma.salesOrder.findMany({
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: { include: { item: true } },
+            alliance: true,
+            voucherRedemptions: { include: { voucher: true } },
+          },
+        })
+      : [];
+
+    const referenceOrderMap = new Map<string, any>();
+    for (const o of referenceOrders) {
+      referenceOrderMap.set(o.id, o);
+    }
+
+    // Fetch all issued vouchers in the period for these orders/returns
+    const allOrderIds = [
+      ...orders.map((o) => o.id),
+      ...referenceOrderIds,
+    ];
+    const issuedVouchers = allOrderIds.length
+      ? await this.prisma.voucher.findMany({
+          where: {
+            sourceOrderId: { in: allOrderIds },
+            isDeleted: false,
+          },
+        })
+      : [];
+
+    const issuedVoucherMap = new Map<string, any[]>();
+    for (const v of issuedVouchers) {
+      if (!v.sourceOrderId) continue;
+      const list = issuedVoucherMap.get(v.sourceOrderId) || [];
+      list.push(v);
+      issuedVoucherMap.set(v.sourceOrderId, list);
+    }
+
+    const rows: any[] = [];
+
+    // Helper to parse tender documents (Auth, Bin, last 4 digits)
+    const parseTenderDocs = (notes: string | null, alliance: any): string => {
+      if (!notes) return '';
+      
+      const cardMatch = notes.match(/Card:\s*\*\*\*\*(\d{4})/i);
+      const cardLast4 = cardMatch ? cardMatch[1] : '';
+      
+      const slipMatch = notes.match(/Slip:\s*(\w+)/i);
+      const authId = slipMatch ? slipMatch[1] : '';
+      
+      const binMatch = notes.match(/BIN:\s*(\d+)/i);
+      const binNumber = binMatch ? binMatch[1] : '';
+
+      if (authId && cardLast4) {
+        if (binNumber) {
+          const formattedBin = binNumber.length >= 6 
+            ? (binNumber.slice(0, 4) + '-' + binNumber.slice(4)) 
+            : binNumber;
+          return `${authId},${formattedBin}**-****-${cardLast4}`;
+        }
+        return `${authId},****-****-${cardLast4}`;
+      }
+      return cardLast4 || authId || '';
+    };
+
+    // 1. Process Sales Orders
+    for (const order of orders) {
+      const notesStr = order.notes || '';
+      
+      // Parse FBR Fee
+      const fbr = order.fbrInvoiceNumber ? 1 : 0;
+      const netSale = Number(order.grandTotal) - fbr;
+
+      // Balance outstanding for Credit Sale
+      let balance = 0;
+      const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+      if (balanceMatch) {
+        balance = Number(balanceMatch[1]);
+      } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+        balance = Number(order.grandTotal);
+      }
+
+      // Tenders Breakdown
+      let cash = Number(order.cashAmount || 0);
+      let card = Number(order.cardAmount || 0);
+      let onCredit = balance;
+      let rewardVoucher = 0; // default 0
+      
+      let giftVoucher = 0;
+      let creditVoucher = 0;
+      let exchangeVoucher = 0;
+      let claimVoucher = 0;
+      let corporateVoucher = 0;
+
+      for (const red of order.voucherRedemptions) {
+        const type = red.voucher?.voucherType;
+        const amt = Number(red.amountUsed);
+
+        if (type === 'GIFT' || type === 'OUTLET_GIFT') {
+          giftVoucher += amt;
+        } else if (type === 'CREDIT' || type === 'REFUND') {
+          creditVoucher += amt;
+        } else if (type === 'CLAIM') {
+          claimVoucher += amt;
+        } else if (type === 'CORPORATE') {
+          corporateVoucher += amt;
+        } else if (type === 'EXCHANGE') {
+          exchangeVoucher += amt;
+        }
+      }
+
+      // Issued Vouchers in this sale order
+      let issuedGift = 0;
+      let issuedCredit = 0;
+
+      const orderIssued = issuedVoucherMap.get(order.id) || [];
+      for (const iv of orderIssued) {
+        const type = iv.voucherType;
+        const faceVal = Number(iv.faceValue || 0);
+
+        if (type === 'GIFT' || type === 'CORPORATE' || type === 'OUTLET_GIFT') {
+          issuedGift += faceVal;
+        } else if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
+          issuedCredit += faceVal;
+        }
+      }
+
+      const tenderDocs = parseTenderDocs(notesStr, order.alliance);
+
+      rows.push({
+        id: order.id,
+        invoiceNo: order.orderNumber,
+        date: order.createdAt,
+        netTotal: Number(order.grandTotal),
+        balance,
+        tenderCash: cash,
+        tenderCard: card,
+        tenderRewardVoucher: rewardVoucher,
+        tenderOnCredit: onCredit,
+        tenderGiftVoucher: giftVoucher,
+        tenderCreditVoucher: creditVoucher,
+        tenderExchangeVoucher: exchangeVoucher,
+        tenderClaimVoucher: claimVoucher,
+        tenderCorporateVoucher: corporateVoucher,
+        issuedGiftVoucher: issuedGift,
+        issuedCreditVoucher: issuedCredit,
+        returnAmount: 0,
+        fbr,
+        netSale,
+        tenderDocuments: tenderDocs,
+      });
+    }
+
+    // 2. Process Returns from Stock Ledger
+    const groupedReturns = new Map<string, any[]>();
+    for (const entry of returnLedgerEntries) {
+      if (!entry.referenceId) continue;
+      const list = groupedReturns.get(entry.referenceId) || [];
+      list.push(entry);
+      groupedReturns.set(entry.referenceId, list);
+    }
+
+    for (const [refId, entries] of groupedReturns.entries()) {
+      const order = referenceOrderMap.get(refId);
+      if (!order) continue;
+
+      let grossSale = 0;
+      let grossSaleWost = 0;
+      let disc = 0;
+      let sTax = 0;
+
+      for (const entry of entries) {
+        const qty = Math.abs(Number(entry.qty));
+        const orderItem = order.items.find(
+          (oi: any) => oi.itemId === entry.itemId,
+        );
+        if (!orderItem) continue;
+
+        const price = Number(orderItem.unitPrice || 0);
+        const taxRate = Number(orderItem.taxPercent || 0);
+        const itemQty = Number(orderItem.quantity || 1);
+
+        grossSale += qty * price;
+        grossSaleWost += qty * (price / (1 + taxRate / 100));
+        disc += (qty / itemQty) * Number(orderItem.discountAmount || 0);
+        sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
+      }
+
+      const netSale = grossSaleWost - disc + sTax;
+
+      let cash = 0;
+      let exchangeVoucher = 0;
+
+      const isRefund = entries[0].referenceType === 'POS_REFUND';
+      if (isRefund) {
+        cash = -netSale;
+      } else {
+        exchangeVoucher = -netSale;
+      }
+
+      const docNum = isRefund
+        ? order.refundNumber || `Refund for ${order.orderNumber}`
+        : order.returnNumber || `Return for ${order.orderNumber}`;
+
+      // Issued vouchers on return/refund
+      let issuedGift = 0;
+      let issuedCredit = 0;
+
+      const returnIssued = issuedVoucherMap.get(refId) || [];
+      for (const iv of returnIssued) {
+        const type = iv.voucherType;
+        const faceVal = Number(iv.faceValue || 0);
+
+        if (type === 'GIFT' || type === 'CORPORATE' || type === 'OUTLET_GIFT') {
+          issuedGift += faceVal;
+        } else if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
+          issuedCredit += faceVal;
+        }
+      }
+
+      rows.push({
+        id: `${refId}-return`,
+        invoiceNo: docNum,
+        date: entries[0].createdAt,
+        netTotal: -netSale,
+        balance: 0,
+        tenderCash: cash,
+        tenderCard: 0,
+        tenderRewardVoucher: 0,
+        tenderOnCredit: 0,
+        tenderGiftVoucher: 0,
+        tenderCreditVoucher: 0,
+        tenderExchangeVoucher: exchangeVoucher,
+        tenderClaimVoucher: 0,
+        tenderCorporateVoucher: 0,
+        issuedGiftVoucher: issuedGift,
+        issuedCreditVoucher: issuedCredit,
+        returnAmount: -netSale,
+        fbr: 0,
+        netSale: -netSale,
+        tenderDocuments: '',
+      });
+    }
+
+    rows.sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    return { status: true, data: rows };
+  }
 }
