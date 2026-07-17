@@ -27,6 +27,8 @@ import { SalesListExportService } from './sales-list-export.service';
 import { SalesListExportProcessor } from './sales-list-export.processor';
 import { GrossSalesExportService } from './gross-sales-export.service';
 import { GrossSalesExportProcessor } from './gross-sales-export.processor';
+import { AllianceRegisterExportService } from './alliance-register-export.service';
+import { AllianceRegisterExportProcessor } from './alliance-register-export.processor';
 
 @Module({
     imports: [
@@ -43,7 +45,8 @@ import { GrossSalesExportProcessor } from './gross-sales-export.processor';
             { name: 'pos-sales-activity-export' },
             { name: 'sales-register-export' },
             { name: 'sales-list-export' },
-            { name: 'gross-sales-export' }
+            { name: 'gross-sales-export' },
+            { name: 'alliance-register-export' }
         ),
     ],
     controllers: [
@@ -69,6 +72,8 @@ import { GrossSalesExportProcessor } from './gross-sales-export.processor';
         SalesListExportProcessor,
         GrossSalesExportService,
         GrossSalesExportProcessor,
+        AllianceRegisterExportService,
+        AllianceRegisterExportProcessor,
     ],
     exports: [
         PosSalesService, 
@@ -77,6 +82,7 @@ import { GrossSalesExportProcessor } from './gross-sales-export.processor';
         SalesRegisterExportService,
         SalesListExportService,
         GrossSalesExportService,
+        AllianceRegisterExportService,
     ],
 })
 export class PosSalesModule { }
