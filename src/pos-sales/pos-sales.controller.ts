@@ -15,6 +15,7 @@ import { NetSalesSummaryExportService } from './net-sales-summary-export.service
 import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
 import { GrossSalesExportService } from './gross-sales-export.service';
+import { AllianceRegisterExportService } from './alliance-register-export.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -37,6 +38,7 @@ export class PosSalesController {
         private readonly salesRegisterExportService: SalesRegisterExportService,
         private readonly salesListExportService: SalesListExportService,
         private readonly grossSalesExportService: GrossSalesExportService,
+        private readonly allianceRegisterExportService: AllianceRegisterExportService,
     ) { }
 
     // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -669,6 +671,70 @@ export class PosSalesController {
     async downloadSalesRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
         try {
             await this.salesRegisterExportService.streamExportFile(jobId, res);
+        } catch (err: any) {
+            const status = err?.status ?? 404;
+            res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+        }
+    }
+
+    // ─── Alliance Register Report Endpoints ──────────────────────────
+
+    @Get('reports/alliance-register')
+    @ApiOperation({ summary: 'Get Alliance Register Report (alliance sales only)' })
+    async getAllianceRegister(
+        @Query('locationId') locationId: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('cashierUserId') cashierUserId?: string,
+        @Query('search') search?: string,
+    ) {
+        return this.posSalesService.getAllianceRegisterReport({
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            search,
+        });
+    }
+
+    @Post('reports/alliance-register/export/queue')
+    @ApiOperation({ summary: 'Queue Alliance Register Export' })
+    async queueAllianceRegisterExport(
+        @Req() req: any,
+        @Body() body: {
+            locationId: string;
+            startDate?: string;
+            endDate?: string;
+            cashierUserId?: string;
+            format: 'xlsx' | 'pdf';
+            search?: string;
+        },
+    ) {
+        const userId = req.user?.userId || req.user?.id;
+        const result = await this.allianceRegisterExportService.queueExport({
+            userId,
+            locationId: body.locationId,
+            startDate: body.startDate,
+            endDate: body.endDate,
+            cashierUserId: body.cashierUserId,
+            format: body.format,
+            search: body.search,
+        });
+        return { status: true, data: result };
+    }
+
+    @Get('reports/alliance-register/export/:jobId/status')
+    @ApiOperation({ summary: 'Get Alliance Register Export Status' })
+    async getAllianceRegisterExportStatus(@Param('jobId') jobId: string) {
+        const result = await this.allianceRegisterExportService.getJobStatus(jobId);
+        return { status: true, data: result };
+    }
+
+    @Get('reports/alliance-register/export/:jobId/download')
+    @ApiOperation({ summary: 'Download Alliance Register Export' })
+    async downloadAllianceRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
+        try {
+            await this.allianceRegisterExportService.streamExportFile(jobId, res);
         } catch (err: any) {
             const status = err?.status ?? 404;
             res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });

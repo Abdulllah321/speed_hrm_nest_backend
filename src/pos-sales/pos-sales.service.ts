@@ -5869,8 +5869,102 @@ export class PosSalesService implements OnModuleInit {
     return { status: true, data: rows };
   }
 
+  async getAllianceRegisterReport(options: {
+    locationId: string;
+    startDate?: string;
+    endDate?: string;
+    cashierUserId?: string;
+    search?: string;
+  }) {
+    const { locationId, startDate: startStr, endDate: endStr, cashierUserId, search } = options;
+    if (!locationId) {
+      throw new BadRequestException('locationId is required');
+    }
+
+    const now       = new Date();
+    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate   = endStr ? new Date(endStr) : new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    const orders = await this.prisma.salesOrder.findMany({
+      where: {
+        locationId,
+        status: { in: ['completed', 'partially_returned'] },
+        createdAt: { gte: startDate, lte: endDate },
+        // Only alliance-related sales: pure alliance OR manual-with-alliance
+        OR: [
+          { allianceId: { not: null } },
+          { manualDiscountNote: { contains: '[Manual Alliance]', mode: 'insensitive' } },
+        ],
+        ...(cashierUserId ? { cashierUserId } : {}),
+        ...(search ? { orderNumber: { contains: search, mode: 'insensitive' } } : {}),
+      },
+      include: {
+        alliance: true,
+        items: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const rows = orders.map((order) => {
+      // Retail Price = sum of (unitPrice × qty) — full retail with tax
+      let retailPrice = 0;
+      for (const item of order.items) {
+        retailPrice += Number(item.unitPrice || 0) * Number(item.quantity || 1);
+      }
+
+      // Parse BIN / Auth ID / Card last 4 from notes field
+      const notesStr = order.notes || '';
+      const binMatch    = notesStr.match(/BIN:\s*([\d\-]+)/i);
+      const slipMatch   = notesStr.match(/Slip:\s*(\d{6})/i);
+      const cardMatch   = notesStr.match(/Card:\s*\*{4}(\d{4})/i);
+      const binNumber   = binMatch  ? binMatch[1]  : '';
+      const authId      = slipMatch ? slipMatch[1] : '';
+      const cardLast4   = cardMatch ? cardMatch[1] : '';
+
+      // Build alliance option label
+      let allianceOption = '';
+      if (order.alliance) {
+        const pct = Number(order.alliance.discountPercent);
+        const cap = order.alliance.maxDiscount
+          ? ` cap ${Number(order.alliance.maxDiscount).toLocaleString()}`
+          : '';
+        const bin = binNumber ? ` | BIN: ${binNumber}` : '';
+        allianceOption = `${order.alliance.partnerName} ${pct}%${cap}${bin}`;
+      } else if (order.manualDiscountNote) {
+        allianceOption = (order.manualDiscountNote as string)
+          .replace(/\[Manual Alliance\]/gi, '')
+          .trim();
+      }
+
+      const createdAt = new Date(order.createdAt);
+
+      return {
+        id:            order.id,
+        invoiceNo:     order.orderNumber,
+        date:          createdAt.toLocaleDateString('en-PK', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        time:          createdAt.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        retailPrice,
+        retailWost:    Number(order.subtotal || 0),
+        discount:      Number(order.discountAmount || 0),
+        sTax:          Number(order.taxAmount || 0),
+        netSale:       Number(order.grandTotal || 0),
+        cash:          Number(order.cashAmount || 0),
+        card:          Number(order.cardAmount || 0),
+        prefixCardNo:  binNumber,
+        authId,
+        cardNo:        cardLast4,
+        allianceOption,
+        createdAt:     order.createdAt,
+      };
+    });
+
+    return { status: true, data: rows };
+  }
+
   async getSalesListReport(options: {
     locationId: string;
+
     startDate?: string;
     endDate?: string;
     cashierUserId?: string;
