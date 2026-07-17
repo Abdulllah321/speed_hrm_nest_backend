@@ -88,6 +88,14 @@ export class StockRequisitionController {
     return { status: true, data };
   }
 
+  @Get('next-requisition-number')
+  @Permissions('erp.inventory.transfer.create')
+  @ApiOperation({ summary: 'Get next sequential stock requisition number' })
+  async getNextRequisitionNumber() {
+    const data = await this.requisitionService.getNextRequisitionNumber();
+    return { status: true, data };
+  }
+
   @Get(':id')
   @Permissions('erp.inventory.stock-transfer.read')
   @ApiOperation({ summary: 'Get stock requisition by ID' })

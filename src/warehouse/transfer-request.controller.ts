@@ -96,6 +96,14 @@ export class TransferRequestController {
         return { status: true, data };
     }
 
+    @Get('next-transfer-number')
+    @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
+    @ApiOperation({ summary: 'Get next sequential stock transfer number' })
+    async getNextTransferNumber() {
+        const data = await this.transferRequestService.getNextTransferNumber();
+        return { status: true, data };
+    }
+
     @Patch(':id/status')
     @Permissions(
         'pos.inventory.transfer.create',
