@@ -69,7 +69,8 @@ export class StockRequisitionService {
       throw new BadRequestException('SRN must contain at least one item');
     }
 
-    const requisitionNo = `SRN-${Date.now()}`;
+    const { nextRequisitionNumber } = await this.getNextRequisitionNumber();
+    const requisitionNo = nextRequisitionNumber;
     const status = data.status || 'PENDING';
     const isDraft = status === 'DRAFT';
 
@@ -531,7 +532,8 @@ export class StockRequisitionService {
       }
 
       // 3. Create the TransferRequest (STN)
-      const requestNo = `TR-${Date.now()}`;
+      const { nextTransferNumber } = await this.transferRequestService.getNextTransferNumber(tx);
+      const requestNo = nextTransferNumber;
       const transfer = await tx.transferRequest.create({
         data: {
           requestNo,
@@ -863,6 +865,33 @@ export class StockRequisitionService {
     });
 
     return candidates;
+  }
+
+  async getNextRequisitionNumber(): Promise<{ nextRequisitionNumber: string }> {
+    const currentYear = new Date().getFullYear();
+    const prefix = 'SRN';
+    
+    const lastRequisition = await this.prisma.stockRequisition.findFirst({
+      where: {
+        requisitionNo: {
+          startsWith: `${prefix}-${currentYear}`,
+        },
+      },
+      orderBy: {
+        requisitionNo: 'desc',
+      },
+    });
+
+    let nextNumber = 1;
+    if (lastRequisition) {
+      const lastNumber = parseInt(lastRequisition.requisitionNo.split('-').pop() || '0');
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    const nextRequisitionNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    return { nextRequisitionNumber };
   }
 }
 
