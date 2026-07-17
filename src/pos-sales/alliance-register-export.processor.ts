@@ -38,6 +38,19 @@ const COLUMNS = [
   { header: 'Auth ID',           key: 'authId',          width: 10, align: 'center' },
   { header: 'Card No.',          key: 'cardNo',          width: 10, align: 'center' },
   { header: 'Alliance Option',   key: 'allianceOption',  width: 40 },
+  { header: 'Remarks',           key: 'remarks',         width: 35 },
+  { header: 'Gift Voucher No.',  key: 'giftVoucherCode', width: 18 },
+  { header: 'Amount',            key: 'giftVoucherAmt',  width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Voucher No.', key: 'creditCode',      width: 18 },
+  { header: 'Amount',            key: 'creditAmt',       width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Claim Voucher No.',  key: 'claimCode',       width: 18 },
+  { header: 'Amount',            key: 'claimAmt',        width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Corporate Voucher No.', key: 'corporateCode', width: 18 },
+  { header: 'Amount',            key: 'corporateAmt',    width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Exchange Voucher No.', key: 'exchangeCode',   width: 18 },
+  { header: 'Amount',            key: 'exchangeAmt',     width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Voucher Issued', key: 'creditVoucherIssued', width: 22 },
+  { header: 'Amount',            key: 'creditVoucherIssuedAmt', width: 14, align: 'right', numFmt: '#,##0.00' },
 ];
 
 // ─── Helper to parse alliance metadata from the notes field ──────────────────
@@ -129,6 +142,11 @@ export class AllianceRegisterExportProcessor {
           include: {
             alliance: true,
             items: true,
+            voucherRedemptions: {
+              include: {
+                voucher: true,
+              },
+            },
           },
           orderBy: { createdAt: 'asc' },
           skip,
@@ -138,6 +156,26 @@ export class AllianceRegisterExportProcessor {
         records.push(...chunk);
         skip += CHUNK;
         if (chunk.length < CHUNK) hasMore = false;
+      }
+
+      const orderIds = records.map((o) => o.id);
+      const issuedVouchers = orderIds.length > 0
+        ? await prisma.voucher.findMany({
+            where: {
+              sourceOrderId: { in: orderIds },
+              voucherType: 'CREDIT',
+              isDeleted: false,
+            },
+          })
+        : [];
+
+      const issuedVouchersMap = new Map<string, any[]>();
+      for (const v of issuedVouchers) {
+        if (v.sourceOrderId) {
+          const list = issuedVouchersMap.get(v.sourceOrderId) || [];
+          list.push(v);
+          issuedVouchersMap.set(v.sourceOrderId, list);
+        }
       }
 
       await job.progress(50);
@@ -167,6 +205,58 @@ export class AllianceRegisterExportProcessor {
           allianceOption = order.manualDiscountNote.replace(/\[Manual Alliance\]/gi, '').trim();
         }
 
+        // Vouchers Used / Redeemed mapping
+        let giftVoucherAmt = 0;
+        let giftVoucherCode = '';
+        let creditAmt = 0;
+        let creditCode = '';
+        let claimAmt = 0;
+        let claimCode = '';
+        let corporateAmt = 0;
+        let corporateCode = '';
+        let exchangeAmt = 0;
+        let exchangeCode = '';
+
+        const giftCodes: string[] = [];
+        const creditCodes: string[] = [];
+        const claimCodes: string[] = [];
+        const corpCodes: string[] = [];
+        const exchCodes: string[] = [];
+
+        for (const red of order.voucherRedemptions || []) {
+          const type = red.voucher?.voucherType;
+          const code = red.voucher?.code || '';
+          const amt = Number(red.amountUsed);
+
+          if (type === 'GIFT' || type === 'OUTLET_GIFT') {
+            giftVoucherAmt += amt;
+            giftCodes.push(code);
+          } else if (type === 'CREDIT') {
+            creditAmt += amt;
+            creditCodes.push(code);
+          } else if (type === 'CLAIM') {
+            claimAmt += amt;
+            claimCodes.push(code);
+          } else if (type === 'CORPORATE') {
+            corporateAmt += amt;
+            corpCodes.push(code);
+          } else if (type === 'EXCHANGE') {
+            exchangeAmt += amt;
+            exchCodes.push(code);
+          }
+        }
+
+        giftVoucherCode = giftCodes.join(', ');
+        creditCode = creditCodes.join(', ');
+        claimCode = claimCodes.join(', ');
+        corporateCode = corpCodes.join(', ');
+        exchangeCode = exchCodes.join(', ');
+
+        // Credit Voucher Issued mapping
+        const orderIssued = issuedVouchersMap.get(order.id) || [];
+        const creditVoucherIssued = orderIssued.map(v => v.code).join(', ');
+        const creditVoucherIssuedAmt = orderIssued.reduce((sum, v) => sum + Number(v.faceValue || 0), 0);
+
         const createdAt = new Date(order.createdAt);
 
         rows.push({
@@ -184,6 +274,19 @@ export class AllianceRegisterExportProcessor {
           authId,
           cardNo:        cardLast4,
           allianceOption,
+          remarks:       order.manualDiscountNote || order.notes || '',
+          giftVoucherCode,
+          giftVoucherAmt,
+          creditCode,
+          creditAmt,
+          claimCode,
+          claimAmt,
+          corporateCode,
+          corporateAmt,
+          exchangeCode,
+          exchangeAmt,
+          creditVoucherIssued,
+          creditVoucherIssuedAmt,
           // raw date for sorting
           _createdAt:    createdAt,
         });
@@ -202,9 +305,18 @@ export class AllianceRegisterExportProcessor {
           acc.netSale     += r.netSale;
           acc.cash        += r.cash;
           acc.card        += r.card;
+          acc.giftVoucherAmt += r.giftVoucherAmt;
+          acc.creditAmt      += r.creditAmt;
+          acc.claimAmt       += r.claimAmt;
+          acc.corporateAmt   += r.corporateAmt;
+          acc.exchangeAmt    += r.exchangeAmt;
+          acc.creditVoucherIssuedAmt += r.creditVoucherIssuedAmt;
           return acc;
         },
-        { retailPrice: 0, retailWost: 0, discount: 0, sTax: 0, netSale: 0, cash: 0, card: 0 },
+        {
+          retailPrice: 0, retailWost: 0, discount: 0, sTax: 0, netSale: 0, cash: 0, card: 0,
+          giftVoucherAmt: 0, creditAmt: 0, claimAmt: 0, corporateAmt: 0, exchangeAmt: 0, creditVoucherIssuedAmt: 0
+        },
       );
 
       await job.progress(75);
@@ -294,6 +406,19 @@ export class AllianceRegisterExportProcessor {
             authId:       r.authId,
             cardNo:       r.cardNo,
             allianceOption: r.allianceOption,
+            remarks:      r.remarks,
+            giftVoucherCode: r.giftVoucherCode,
+            giftVoucherAmt: r.giftVoucherAmt,
+            creditCode:   r.creditCode,
+            creditAmt:    r.creditAmt,
+            claimCode:    r.claimCode,
+            claimAmt:     r.claimAmt,
+            corporateCode: r.corporateCode,
+            corporateAmt: r.corporateAmt,
+            exchangeCode: r.exchangeCode,
+            exchangeAmt:  r.exchangeAmt,
+            creditVoucherIssued: r.creditVoucherIssued,
+            creditVoucherIssuedAmt: r.creditVoucherIssuedAmt,
           };
 
           const row = ws.addRow(rowData);
@@ -328,6 +453,19 @@ export class AllianceRegisterExportProcessor {
           authId:        '',
           cardNo:        '',
           allianceOption: `${rows.length} transaction(s)`,
+          remarks:       '',
+          giftVoucherCode: '',
+          giftVoucherAmt: grandTotals.giftVoucherAmt,
+          creditCode:   '',
+          creditAmt:    grandTotals.creditAmt,
+          claimCode:    '',
+          claimAmt:     grandTotals.claimAmt,
+          corporateCode: '',
+          corporateAmt: grandTotals.corporateAmt,
+          exchangeCode: '',
+          exchangeAmt:  grandTotals.exchangeAmt,
+          creditVoucherIssued: '',
+          creditVoucherIssuedAmt: grandTotals.creditVoucherIssuedAmt,
         });
 
         for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
@@ -422,6 +560,19 @@ export class AllianceRegisterExportProcessor {
           <td class="center mono">${r.authId || '-'}</td>
           <td class="center mono">${r.cardNo ? '****' + r.cardNo : '-'}</td>
           <td class="alliance">${r.allianceOption || '-'}</td>
+          <td class="remarks">${r.remarks || '-'}</td>
+          <td class="mono">${r.giftVoucherCode || '-'}</td>
+          <td class="num">${formatVal(r.giftVoucherAmt)}</td>
+          <td class="mono">${r.creditCode || '-'}</td>
+          <td class="num">${formatVal(r.creditAmt)}</td>
+          <td class="mono">${r.claimCode || '-'}</td>
+          <td class="num">${formatVal(r.claimAmt)}</td>
+          <td class="mono">${r.corporateCode || '-'}</td>
+          <td class="num">${formatVal(r.corporateAmt)}</td>
+          <td class="mono">${r.exchangeCode || '-'}</td>
+          <td class="num">${formatVal(r.exchangeAmt)}</td>
+          <td class="mono">${r.creditVoucherIssued || '-'}</td>
+          <td class="num">${formatVal(r.creditVoucherIssuedAmt)}</td>
         </tr>
       `;
     }
@@ -436,34 +587,34 @@ export class AllianceRegisterExportProcessor {
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: #0f172a;
-            font-size: 6.5px;
+            font-size: 5px;
             margin: 0;
             padding: 0;
             background: #ffffff;
           }
           .header-block {
             border-bottom: 2px solid #1e3a5f;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
           }
           .company-name {
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: #0f172a;
           }
           .report-title {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
             color: #1e3a5f;
             margin-top: 2px;
           }
           .meta-info {
-            font-size: 7.5px;
+            font-size: 6.5px;
             color: #475569;
             margin-top: 3px;
           }
@@ -471,58 +622,72 @@ export class AllianceRegisterExportProcessor {
             display: inline-block;
             background: #1e3a5f;
             color: #fff;
-            font-size: 6px;
+            font-size: 5px;
             font-weight: 700;
-            padding: 1px 5px;
-            border-radius: 3px;
-            letter-spacing: 0.4px;
+            padding: 1px 4px;
+            border-radius: 2px;
+            letter-spacing: 0.3px;
           }
           table {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
           }
-          colgroup col:nth-child(1)  { width: 13%; }
-          colgroup col:nth-child(2)  { width: 6%;  }
-          colgroup col:nth-child(3)  { width: 5%;  }
-          colgroup col:nth-child(4)  { width: 6%;  }
-          colgroup col:nth-child(5)  { width: 6%;  }
-          colgroup col:nth-child(6)  { width: 5%;  }
-          colgroup col:nth-child(7)  { width: 5%;  }
-          colgroup col:nth-child(8)  { width: 6%;  }
-          colgroup col:nth-child(9)  { width: 5%;  }
-          colgroup col:nth-child(10) { width: 5%;  }
-          colgroup col:nth-child(11) { width: 8%;  }
-          colgroup col:nth-child(12) { width: 5%;  }
-          colgroup col:nth-child(13) { width: 5%;  }
-          colgroup col:nth-child(14) { width: 20%; }
+          /* Define specific widths for 27 columns to fit landscape A4 nicely */
+          colgroup col:nth-child(1)  { width: 5.0%; } /* Invoice */
+          colgroup col:nth-child(2)  { width: 3.5%; } /* Date */
+          colgroup col:nth-child(3)  { width: 2.5%; } /* Time */
+          colgroup col:nth-child(4)  { width: 3.5%; } /* Retail Price */
+          colgroup col:nth-child(5)  { width: 3.8%; } /* Retail WOST */
+          colgroup col:nth-child(6)  { width: 3.2%; } /* Discount */
+          colgroup col:nth-child(7)  { width: 3.2%; } /* Tax */
+          colgroup col:nth-child(8)  { width: 3.5%; } /* Net Sale */
+          colgroup col:nth-child(9)  { width: 3.2%; } /* Cash */
+          colgroup col:nth-child(10) { width: 3.2%; } /* Card */
+          colgroup col:nth-child(11) { width: 4.5%; } /* Prefix Card No */
+          colgroup col:nth-child(12) { width: 3.0%; } /* Auth ID */
+          colgroup col:nth-child(13) { width: 3.0%; } /* Card No */
+          colgroup col:nth-child(14) { width: 7.0%; } /* Alliance Option */
+          colgroup col:nth-child(15) { width: 5.0%; } /* Remarks */
+          colgroup col:nth-child(16) { width: 4.0%; } /* Gift No */
+          colgroup col:nth-child(17) { width: 3.0%; } /* Gift Amt */
+          colgroup col:nth-child(18) { width: 4.0%; } /* Credit No */
+          colgroup col:nth-child(19) { width: 3.0%; } /* Credit Amt */
+          colgroup col:nth-child(20) { width: 4.0%; } /* Claim No */
+          colgroup col:nth-child(21) { width: 3.0%; } /* Claim Amt */
+          colgroup col:nth-child(22) { width: 4.0%; } /* Corp No */
+          colgroup col:nth-child(23) { width: 3.0%; } /* Corp Amt */
+          colgroup col:nth-child(24) { width: 4.0%; } /* Exch No */
+          colgroup col:nth-child(25) { width: 3.0%; } /* Exch Amt */
+          colgroup col:nth-child(26) { width: 4.5%; } /* Issued No */
+          colgroup col:nth-child(27) { width: 3.5%; } /* Issued Amt */
+
           thead { display: table-header-group; }
           th {
             background-color: #1e3a5f;
             color: #ffffff;
             font-weight: 700;
             text-transform: uppercase;
-            font-size: 5px;
-            padding: 4px 2px;
-            border: 1px solid #2d5a8e;
+            font-size: 4px;
+            padding: 3px 1px;
+            border: 0.5px solid #2d5a8e;
             text-align: center;
           }
           td {
-            padding: 3px 2px;
-            border: 1px solid #e2e8f0;
+            padding: 2px 1px;
+            border: 0.5px solid #e2e8f0;
             vertical-align: middle;
             word-wrap: break-word;
-            font-size: 6px;
+            font-size: 4px;
           }
           td.num   { text-align: right; }
           td.center { text-align: center; }
-          td.mono  { font-family: monospace; font-size: 5.5px; letter-spacing: 0.5px; }
+          td.mono  { font-family: monospace; font-size: 3.5px; }
           td.disc  { color: #b91c1c; }
           td.bold  { font-weight: 700; }
-          td.alliance {
-            font-size: 5.5px;
+          td.alliance, td.remarks {
+            font-size: 3.8px;
             color: #1e3a5f;
-            font-weight: 500;
           }
           tr { page-break-inside: auto; }
           tr.header-row { page-break-inside: avoid; }
@@ -531,9 +696,9 @@ export class AllianceRegisterExportProcessor {
             background-color: #cbdcf5 !important;
             color: #0f172a;
             font-weight: bold;
-            font-size: 7px;
-            border-top: 2px solid #1e3a5f;
-            border-bottom: 2px double #1e3a5f;
+            font-size: 4.5px;
+            border-top: 1.5px solid #1e3a5f;
+            border-bottom: 1.5px double #1e3a5f;
           }
         </style>
       </head>
@@ -556,6 +721,8 @@ export class AllianceRegisterExportProcessor {
           <colgroup>
             <col/><col/><col/><col/><col/><col/><col/>
             <col/><col/><col/><col/><col/><col/><col/>
+            <col/><col/><col/><col/><col/><col/><col/>
+            <col/><col/><col/><col/><col/><col/>
           </colgroup>
           <thead>
             <tr class="header-row">
@@ -573,6 +740,19 @@ export class AllianceRegisterExportProcessor {
               <th>Auth ID</th>
               <th>Card No.</th>
               <th>Alliance Option</th>
+              <th>Remarks</th>
+              <th>Gift Voucher No.</th>
+              <th>Amt</th>
+              <th>Credit Voucher No.</th>
+              <th>Amt</th>
+              <th>Claim Voucher No.</th>
+              <th>Amt</th>
+              <th>Corp Voucher No.</th>
+              <th>Amt</th>
+              <th>Exch Voucher No.</th>
+              <th>Amt</th>
+              <th>Credit Issued</th>
+              <th>Amt</th>
             </tr>
           </thead>
           <tbody>
@@ -590,6 +770,19 @@ export class AllianceRegisterExportProcessor {
               <td>-</td>
               <td>-</td>
               <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td class="num">${formatVal(grandTotals.giftVoucherAmt)}</td>
+              <td>-</td>
+              <td class="num">${formatVal(grandTotals.creditAmt)}</td>
+              <td>-</td>
+              <td class="num">${formatVal(grandTotals.claimAmt)}</td>
+              <td>-</td>
+              <td class="num">${formatVal(grandTotals.corporateAmt)}</td>
+              <td>-</td>
+              <td class="num">${formatVal(grandTotals.exchangeAmt)}</td>
+              <td>-</td>
+              <td class="num">${formatVal(grandTotals.creditVoucherIssuedAmt)}</td>
             </tr>
           </tbody>
         </table>

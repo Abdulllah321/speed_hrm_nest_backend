@@ -5902,9 +5902,34 @@ export class PosSalesService implements OnModuleInit {
       include: {
         alliance: true,
         items: true,
+        voucherRedemptions: {
+          include: {
+            voucher: true,
+          },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    const orderIds = orders.map((o) => o.id);
+    const issuedVouchers = orderIds.length > 0
+      ? await this.prisma.voucher.findMany({
+          where: {
+            sourceOrderId: { in: orderIds },
+            voucherType: 'CREDIT',
+            isDeleted: false,
+          },
+        })
+      : [];
+
+    const issuedVouchersMap = new Map<string, any[]>();
+    for (const v of issuedVouchers) {
+      if (v.sourceOrderId) {
+        const list = issuedVouchersMap.get(v.sourceOrderId) || [];
+        list.push(v);
+        issuedVouchersMap.set(v.sourceOrderId, list);
+      }
+    }
 
     const rows = orders.map((order) => {
       // Retail Price = sum of (unitPrice × qty) — full retail with tax
@@ -5937,6 +5962,58 @@ export class PosSalesService implements OnModuleInit {
           .trim();
       }
 
+      // Vouchers Used / Redeemed mapping
+      let giftVoucherAmt = 0;
+      let giftVoucherCode = '';
+      let creditAmt = 0;
+      let creditCode = '';
+      let claimAmt = 0;
+      let claimCode = '';
+      let corporateAmt = 0;
+      let corporateCode = '';
+      let exchangeAmt = 0;
+      let exchangeCode = '';
+
+      const giftCodes: string[] = [];
+      const creditCodes: string[] = [];
+      const claimCodes: string[] = [];
+      const corpCodes: string[] = [];
+      const exchCodes: string[] = [];
+
+      for (const red of order.voucherRedemptions) {
+        const type = red.voucher?.voucherType;
+        const code = red.voucher?.code || '';
+        const amt = Number(red.amountUsed);
+
+        if (type === 'GIFT' || type === 'OUTLET_GIFT') {
+          giftVoucherAmt += amt;
+          giftCodes.push(code);
+        } else if (type === 'CREDIT') {
+          creditAmt += amt;
+          creditCodes.push(code);
+        } else if (type === 'CLAIM') {
+          claimAmt += amt;
+          claimCodes.push(code);
+        } else if (type === 'CORPORATE') {
+          corporateAmt += amt;
+          corpCodes.push(code);
+        } else if (type === 'EXCHANGE') {
+          exchangeAmt += amt;
+          exchCodes.push(code);
+        }
+      }
+
+      giftVoucherCode = giftCodes.join(', ');
+      creditCode = creditCodes.join(', ');
+      claimCode = claimCodes.join(', ');
+      corporateCode = corpCodes.join(', ');
+      exchangeCode = exchCodes.join(', ');
+
+      // Credit Voucher Issued mapping
+      const orderIssued = issuedVouchersMap.get(order.id) || [];
+      const creditVoucherIssued = orderIssued.map(v => v.code).join(', ');
+      const creditVoucherIssuedAmt = orderIssued.reduce((sum, v) => sum + Number(v.faceValue || 0), 0);
+
       const createdAt = new Date(order.createdAt);
 
       return {
@@ -5955,6 +6032,19 @@ export class PosSalesService implements OnModuleInit {
         authId,
         cardNo:        cardLast4,
         allianceOption,
+        remarks:       order.manualDiscountNote || order.notes || '',
+        giftVoucherCode,
+        giftVoucherAmt,
+        creditCode,
+        creditAmt,
+        claimCode,
+        claimAmt,
+        corporateCode,
+        corporateAmt,
+        exchangeCode,
+        exchangeAmt,
+        creditVoucherIssued,
+        creditVoucherIssuedAmt,
         createdAt:     order.createdAt,
       };
     });
