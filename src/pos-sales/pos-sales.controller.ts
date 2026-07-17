@@ -683,6 +683,10 @@ export class PosSalesController {
         @Query('endDate') endDate?: string,
         @Query('cashierUserId') cashierUserId?: string,
         @Query('search') search?: string,
+        @Query('paymentModeGroup') paymentModeGroup?: string,
+        @Query('minAmount') minAmount?: number,
+        @Query('maxAmount') maxAmount?: number,
+        @Query('fbrOnly') fbrOnly?: string,
     ) {
         return this.posSalesService.getSalesListReport({
             locationId,
@@ -690,6 +694,10 @@ export class PosSalesController {
             endDate,
             cashierUserId,
             search,
+            paymentModeGroup,
+            minAmount: minAmount ? Number(minAmount) : undefined,
+            maxAmount: maxAmount ? Number(maxAmount) : undefined,
+            fbrOnly: fbrOnly === 'true' || fbrOnly === '1' ? true : undefined,
         });
     }
 
@@ -704,6 +712,10 @@ export class PosSalesController {
             cashierUserId?: string;
             format: 'xlsx' | 'pdf';
             search?: string;
+            paymentModeGroup?: string;
+            minAmount?: number;
+            maxAmount?: number;
+            fbrOnly?: boolean;
         },
     ) {
         const userId = req.user?.userId || req.user?.id;
@@ -715,6 +727,10 @@ export class PosSalesController {
             cashierUserId: body.cashierUserId,
             format: body.format,
             search: body.search,
+            paymentModeGroup: body.paymentModeGroup,
+            minAmount: body.minAmount,
+            maxAmount: body.maxAmount,
+            fbrOnly: body.fbrOnly,
         });
         return { status: true, data: result };
     }

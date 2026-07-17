@@ -5875,6 +5875,10 @@ export class PosSalesService implements OnModuleInit {
     endDate?: string;
     cashierUserId?: string;
     search?: string;
+    paymentModeGroup?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    fbrOnly?: boolean;
   }) {
     const {
       locationId,
@@ -5882,6 +5886,10 @@ export class PosSalesService implements OnModuleInit {
       endDate: endStr,
       cashierUserId,
       search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
     } = options;
     if (!locationId) {
       throw new BadRequestException('locationId is required');
@@ -6182,10 +6190,41 @@ export class PosSalesService implements OnModuleInit {
       });
     }
 
-    rows.sort(
+    let filteredRows = rows;
+
+    if (paymentModeGroup) {
+      filteredRows = filteredRows.filter((r) => {
+        if (paymentModeGroup === 'cash') return r.tenderCash !== 0;
+        if (paymentModeGroup === 'card') return r.tenderCard !== 0;
+        if (paymentModeGroup === 'credit') return r.tenderOnCredit !== 0 || r.balance !== 0;
+        if (paymentModeGroup === 'voucher') {
+          return (
+            r.tenderGiftVoucher !== 0 ||
+            r.tenderCreditVoucher !== 0 ||
+            r.tenderExchangeVoucher !== 0 ||
+            r.tenderClaimVoucher !== 0 ||
+            r.tenderCorporateVoucher !== 0
+          );
+        }
+        if (paymentModeGroup === 'return') return r.returnAmount !== 0;
+        return true;
+      });
+    }
+
+    if (minAmount !== undefined && minAmount !== null) {
+      filteredRows = filteredRows.filter((r) => Math.abs(r.netTotal) >= Number(minAmount));
+    }
+    if (maxAmount !== undefined && maxAmount !== null) {
+      filteredRows = filteredRows.filter((r) => Math.abs(r.netTotal) <= Number(maxAmount));
+    }
+    if (fbrOnly) {
+      filteredRows = filteredRows.filter((r) => r.fbr === 1);
+    }
+
+    filteredRows.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
-    return { status: true, data: rows };
+    return { status: true, data: filteredRows };
   }
 }

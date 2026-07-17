@@ -15,6 +15,10 @@ export interface QueueSalesListExportOptions {
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
   search?: string;
+  paymentModeGroup?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  fbrOnly?: boolean;
 }
 
 @Injectable()
@@ -57,6 +61,10 @@ export class SalesListExportService {
         cashierUserId: opts.cashierUserId,
         format: opts.format,
         search: opts.search,
+        paymentModeGroup: opts.paymentModeGroup,
+        minAmount: opts.minAmount,
+        maxAmount: opts.maxAmount,
+        fbrOnly: opts.fbrOnly,
       },
       {
         jobId,

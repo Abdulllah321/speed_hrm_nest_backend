@@ -21,6 +21,10 @@ interface SalesListExportJobData {
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
   search?: string;
+  paymentModeGroup?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  fbrOnly?: boolean;
 }
 
 const COLUMNS = [
@@ -68,7 +72,22 @@ export class SalesListExportProcessor {
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<SalesListExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, cashierUserId, format, search } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      format,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = job.data;
     this.logger.log(`[SalesListExport ${jobId}] Starting ${format.toUpperCase()} export`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
@@ -382,7 +401,38 @@ export class SalesListExportProcessor {
         });
       }
 
-      rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      let filteredRows = rows;
+
+      if (paymentModeGroup) {
+        filteredRows = filteredRows.filter((r) => {
+          if (paymentModeGroup === 'cash') return r.tenderCash !== 0;
+          if (paymentModeGroup === 'card') return r.tenderCard !== 0;
+          if (paymentModeGroup === 'credit') return r.tenderOnCredit !== 0 || r.balance !== 0;
+          if (paymentModeGroup === 'voucher') {
+            return (
+              r.tenderGiftVoucher !== 0 ||
+              r.tenderCreditVoucher !== 0 ||
+              r.tenderExchangeVoucher !== 0 ||
+              r.tenderClaimVoucher !== 0 ||
+              r.tenderCorporateVoucher !== 0
+            );
+          }
+          if (paymentModeGroup === 'return') return r.returnAmount !== 0;
+          return true;
+        });
+      }
+
+      if (minAmount !== undefined && minAmount !== null) {
+        filteredRows = filteredRows.filter((r) => Math.abs(r.netTotal) >= Number(minAmount));
+      }
+      if (maxAmount !== undefined && maxAmount !== null) {
+        filteredRows = filteredRows.filter((r) => Math.abs(r.netTotal) <= Number(maxAmount));
+      }
+      if (fbrOnly) {
+        filteredRows = filteredRows.filter((r) => r.fbr === 1);
+      }
+
+      filteredRows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       // ── Compute Grand Totals ──
       const grandTotals = {
@@ -404,7 +454,7 @@ export class SalesListExportProcessor {
         netSale: 0,
       };
 
-      for (const r of rows) {
+      for (const r of filteredRows) {
         grandTotals.netTotal += r.netTotal;
         grandTotals.balance += r.balance;
         grandTotals.tenderCash += r.tenderCash;
@@ -428,7 +478,7 @@ export class SalesListExportProcessor {
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(rows, locationName, fromDateStr, toDateStr, grandTotals);
+        const html = this.buildPdfHtml(filteredRows, locationName, fromDateStr, toDateStr, grandTotals);
 
         const launchArgs = [
           '--no-sandbox',
@@ -516,7 +566,7 @@ export class SalesListExportProcessor {
           right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
         };
 
-        for (const r of rows) {
+        for (const r of filteredRows) {
           const rowData = {
             date: new Date(r.date).toLocaleString(),
             invoiceNo: r.invoiceNo,
