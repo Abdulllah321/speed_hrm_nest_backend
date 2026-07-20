@@ -15,6 +15,7 @@ import { VoucherService } from '../pos-config/voucher.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StockMovementService } from '../warehouse/stock-movement.service';
 
 @Injectable()
 export class PosSalesService implements OnModuleInit {
@@ -28,6 +29,7 @@ export class PosSalesService implements OnModuleInit {
     private activityLogs: ActivityLogsService,
     private voucherService: VoucherService,
     private notificationsService: NotificationsService,
+        private stockMovementService: StockMovementService,
   ) {}
 
   // ─── Schedule midnight hold-clear ─────────────────────────────────
@@ -2781,28 +2783,27 @@ export class PosSalesService implements OnModuleInit {
                         });
                     }
 
-                    // Inter-location stock transfer record if returned at a different branch
+                  // Inter-location stock transfer record via StockMovementService if returned at a different branch
                     if (order.locationId && order.locationId !== effectiveLocationId) {
                         const origLoc = await tx.location.findUnique({ where: { id: order.locationId }, select: { name: true } });
                         const retLoc = effectiveLocationId ? await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } }) : null;
                         const origName = origLoc?.name || 'Original Branch';
                         const retName = retLoc?.name || 'Return Outlet';
 
-                        await tx.stockMovement.create({
-                            data: {
-                                movementNo: `MV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                                itemId: returnItem.itemId,
-                                fromLocationId: order.locationId,
-                                toLocationId: effectiveLocationId || undefined,
-                                quantity: returnItem.quantity,
-                                type: 'CROSS_LOCATION_RETURN_TRANSFER',
-                                referenceType: 'POS_RETURN',
-                                referenceId: order.id,
-                                notes: `Automated Stock Transfer against Sales Return #${returnNumber} (Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
-                                createdById: ctx?.userId || undefined,
-                            },
-                        });
+                        await this.stockMovementService.executeMovement({
+                            itemId: returnItem.itemId,
+                            fromLocationId: order.locationId,
+                            toLocationId: effectiveLocationId || undefined,
+                            quantity: returnItem.quantity,
+                            type: 'CROSS_LOCATION_RETURN_TRANSFER',
+                            referenceType: 'POS_RETURN',
+                            referenceId: order.id,
+                            notes: `Automated Stock Transfer against Sales Return #${returnNumber} (Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
+                            userId: ctx?.userId,
+                            transaction: tx,
+                        }, ctx);
                     }
+
 
                     // Update the map with current return
                     alreadyReturnedMap.set(returnItem.itemId, (alreadyReturnedMap.get(returnItem.itemId) || 0) + returnItem.quantity);
