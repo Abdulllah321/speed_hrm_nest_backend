@@ -296,6 +296,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
   
 
+
   async sendPosLocationNotification(args: {
     locationId: string;
     title: string;
@@ -309,6 +310,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }) {
     const category = (args.category || 'pos_location').toLowerCase();
     const priority = args.priority || 'high';
+
+    this.logger.log(
+      `[sendPosLocationNotification] Dispatching notification for locationId: ${args.locationId}, title: "${args.title}"`,
+    );
 
     // 1. Broadcast via WebSocket gateway to the location channel/listeners
     this.gateway.emitToLocation(args.locationId, {
@@ -324,10 +329,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       createdAt: new Date(),
     });
 
-    // 2. Persist notification records for all active users assigned to this location via Employee
+    // 2. Persist notification records strictly for active users assigned to args.locationId via Employee
     try {
       const employeesAtLocation = await this.prisma.employee.findMany({
-        where: { locationId: args.locationId, status: 'active' },
+        where: { locationId: args.locationId },
         select: { userId: true, employeeId: true },
       });
 
@@ -339,7 +344,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         .filter((code): code is string => !!code);
 
       if (userIds.length > 0 || empCodes.length > 0) {
-        const usersAtLocation = await this.prismaMaster.user.findMany({
+        const targetUsers = await this.prismaMaster.user.findMany({
           where: {
             OR: [
               ...(userIds.length > 0 ? [{ id: { in: userIds } }] : []),
@@ -350,9 +355,13 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           select: { id: true },
         });
 
-        if (usersAtLocation.length > 0) {
+        this.logger.log(
+          `[sendPosLocationNotification] Found ${employeesAtLocation.length} employee(s) mapped to location ${args.locationId}. Persisting notification for ${targetUsers.length} user(s).`,
+        );
+
+        if (targetUsers.length > 0) {
           await this.createForUsers(
-            usersAtLocation.map((u) => ({
+            targetUsers.map((u) => ({
               userId: u.id,
               title: args.title,
               message: args.message,
@@ -365,6 +374,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
             })),
           );
         }
+      } else {
+        this.logger.log(
+          `[sendPosLocationNotification] No employees mapped to locationId: ${args.locationId}.`,
+        );
       }
     } catch (err: any) {
       this.logger.error(
