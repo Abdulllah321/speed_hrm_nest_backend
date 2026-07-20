@@ -97,6 +97,9 @@ export class StockMovementService {
         } else if (dto.type === 'RETURN_TRANSFER') {
           // Return Transfer: Outlet → Warehouse
           await this.executeOutletToWarehouseTransfer(dto, tx, movement.id);
+        } else if (dto.type === 'POS_RETURN') {
+          // Normal POS Return (at same outlet)
+          await this.executePosReturn(dto, tx, movement.id);
         } else if (
           dto.type === 'CROSS_LOCATION_RETURN_TRANSFER' ||
           dto.type === 'CROSS_LOCATION_EXCHANGE_TRANSFER' ||
@@ -461,6 +464,50 @@ export class StockMovementService {
 
   
 
+  private async executePosReturn(dto: CreateStockMovementDto, tx: any, movementId: string) {
+    const targetLocationId = dto.toLocationId || dto.fromLocationId;
+    if (!targetLocationId) {
+      throw new BadRequestException('Location ID is required for POS Return movement');
+    }
+
+    const itemRate = await this.getCurrentItemRate(tx, dto.itemId);
+    const defaultWarehouse = await tx.warehouse.findFirst({ where: { status: 'active' } });
+    const warehouseId = dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
+
+    // 1. Ledger INBOUND for outlet
+    await this.stockLedgerService.createEntry({
+      itemId: dto.itemId,
+      warehouseId,
+      locationId: targetLocationId,
+      qty: dto.quantity,
+      movementType: MovementType.INBOUND,
+      referenceType: dto.referenceType || 'POS_RETURN',
+      referenceId: dto.referenceId || movementId,
+      rate: itemRate,
+    }, tx);
+
+    // 2. InventoryItem increment at outlet
+    const existing = await tx.inventoryItem.findFirst({
+      where: { itemId: dto.itemId, locationId: targetLocationId, status: 'AVAILABLE' },
+    });
+    if (existing) {
+      await tx.inventoryItem.update({
+        where: { id: existing.id },
+        data: { quantity: { increment: dto.quantity } },
+      });
+    } else {
+      await tx.inventoryItem.create({
+        data: {
+          itemId: dto.itemId,
+          locationId: targetLocationId,
+          warehouseId,
+          quantity: dto.quantity,
+          status: 'AVAILABLE',
+        },
+      });
+    }
+  }
+
   private async executeInterOutletTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
     if (!dto.fromLocationId || !dto.toLocationId) {
       throw new BadRequestException('fromLocationId and toLocationId are required for inter-outlet transfers');
@@ -493,6 +540,38 @@ export class StockMovementService {
       referenceId: dto.referenceId || movementId,
       rate: itemRate,
     }, tx);
+
+    // 3. InventoryItem decrement at source outlet
+    const sourceStock = await tx.inventoryItem.findFirst({
+      where: { itemId: dto.itemId, locationId: dto.fromLocationId, status: 'AVAILABLE' },
+    });
+    if (sourceStock) {
+      await tx.inventoryItem.update({
+        where: { id: sourceStock.id },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+    }
+
+    // 4. InventoryItem increment at destination outlet
+    const destStock = await tx.inventoryItem.findFirst({
+      where: { itemId: dto.itemId, locationId: dto.toLocationId, status: 'AVAILABLE' },
+    });
+    if (destStock) {
+      await tx.inventoryItem.update({
+        where: { id: destStock.id },
+        data: { quantity: { increment: dto.quantity } },
+      });
+    } else {
+      await tx.inventoryItem.create({
+        data: {
+          itemId: dto.itemId,
+          locationId: dto.toLocationId,
+          warehouseId,
+          quantity: dto.quantity,
+          status: 'AVAILABLE',
+        },
+      });
+    }
 
     console.log(`✅ [Stock Movement] Auto-accepted Inter-Outlet Transfer (${dto.type}) completed: ${dto.fromLocationId} → ${dto.toLocationId}`);
   }
