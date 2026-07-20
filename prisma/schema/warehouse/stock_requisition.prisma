@@ -9,7 +9,7 @@ model StockRequisition {
   notes           String?
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
-  documentType    String                 @default("New Arrival") @map("document_type") // "New Arrival" | "Regular"
+  documentType    String                 @default("New Arrival") @map("document_type") // "New Arrival" | "Replenish" | "Store Request"
   remarks         String?
   financialYear   String?                @map("financial_year")
   brandId         String?                @map("brand_id")
