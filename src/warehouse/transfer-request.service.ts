@@ -351,15 +351,16 @@ export class TransferRequestService {
     }
 
     async getOutboundRequests(locationId: string, status?: string) {
-        // Get outlet-to-outlet requests where this location is the source
+        // Get requests where this location is the source
         const whereClause: any = {
             fromLocationId: locationId,
-            transferType: 'OUTLET_TO_OUTLET',
         };
 
         if (status === 'history') {
-            whereClause.status = { in: ['SOURCE_APPROVED', 'COMPLETED', 'REJECTED'] };
+            whereClause.transferType = { in: ['OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE'] };
+            whereClause.status = { in: ['SOURCE_APPROVED', 'APPROVED', 'COMPLETED', 'REJECTED'] };
         } else {
+            whereClause.transferType = 'OUTLET_TO_OUTLET';
             whereClause.status = 'PENDING';
             whereClause.requiresSourceApproval = true;
             whereClause.sourceApprovedById = null;
@@ -378,7 +379,8 @@ export class TransferRequestService {
                         }
                     }
                 },
-                toLocation: { select: { name: true, code: true } }
+                toLocation: { select: { name: true, code: true } },
+                toWarehouse: { select: { name: true, code: true } }
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -387,15 +389,16 @@ export class TransferRequestService {
     }
 
     async getInboundRequests(locationId: string, status?: string) {
-        // Get outlet-to-outlet requests where this location is the destination
+        // Get requests where this location is the destination
         const whereClause: any = {
             toLocationId: locationId,
-            transferType: 'OUTLET_TO_OUTLET',
         };
 
         if (status === 'history') {
-            whereClause.status = { in: ['COMPLETED', 'REJECTED'] };
+            whereClause.transferType = { in: ['OUTLET_TO_OUTLET', 'WAREHOUSE_TO_OUTLET'] };
+            whereClause.status = { in: ['COMPLETED', 'REJECTED', 'APPROVED'] };
         } else {
+            whereClause.transferType = 'OUTLET_TO_OUTLET';
             whereClause.status = { in: ['PENDING', 'SOURCE_APPROVED'] };
         }
 
@@ -412,7 +415,8 @@ export class TransferRequestService {
                         }
                     }
                 },
-                fromLocation: { select: { name: true, code: true } }
+                fromLocation: { select: { name: true, code: true } },
+                fromWarehouse: { select: { name: true, code: true } }
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -421,14 +425,89 @@ export class TransferRequestService {
     }
 
     /**
+     * Helper to compute and attach per-outlet location serial numbers (1-indexed starting at 1 for each location)
+     */
+    private async attachLocationSerialNumbers(locationId: string, requests: any[], type: 'INBOUND' | 'OUTBOUND' | 'RECEIPT') {
+        if (!locationId || requests.length === 0) return requests;
+
+        let whereClause: any = {};
+        if (type === 'INBOUND') {
+            whereClause = {
+                toLocationId: locationId,
+            };
+        } else if (type === 'OUTBOUND') {
+            whereClause = {
+                fromLocationId: locationId,
+            };
+        } else if (type === 'RECEIPT') {
+            whereClause = {
+                toLocationId: locationId,
+                status: 'COMPLETED',
+            };
+        }
+
+        const allLocationRequests = await this.prisma.transferRequest.findMany({
+            where: whereClause,
+            select: { id: true },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        const serialMap = new Map<string, number>();
+        allLocationRequests.forEach((req, idx) => {
+            serialMap.set(req.id, idx + 1);
+        });
+
+        const prefix = type === 'INBOUND' ? 'IN' : type === 'OUTBOUND' ? 'OUT' : 'REC';
+
+        requests.forEach((req) => {
+            const seqNum = serialMap.get(req.id) || 1;
+            const formattedNo = `${prefix}-${seqNum.toString().padStart(4, '0')}`;
+            req.locationSerialNo = seqNum;
+            req.formattedSerialNo = formattedNo;
+            if (type === 'INBOUND') req.inboundNo = formattedNo;
+            if (type === 'OUTBOUND') req.outboundNo = formattedNo;
+            if (type === 'RECEIPT') req.receiptNo = formattedNo;
+        });
+
+        return requests;
+    }
+
+    /**
      * Helper to manually enrichment location data and claim data
      */
     private async enrichRequest(req: any) {
+        // Clean requestNo format to ensure standard STN-YYYY-XXXX
+        if (req.requestNo && req.requestNo.includes('STN-')) {
+            const parts = req.requestNo.split('-');
+            if (parts.length > 3) {
+                req.requestNo = `STN-${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
+            }
+        }
+
         if (req.toLocationId) {
             const masterLoc = await this.prisma.location.findUnique({
                 where: { id: req.toLocationId }
             });
             if (masterLoc) req.toLocation = masterLoc;
+
+            const countInbound = await this.prisma.transferRequest.count({
+                where: {
+                    toLocationId: req.toLocationId,
+                    createdAt: { lte: req.createdAt },
+                },
+            });
+            req.inboundNo = `IN-${countInbound.toString().padStart(4, '0')}`;
+
+            if (req.status === 'COMPLETED') {
+                const countReceipt = await this.prisma.transferRequest.count({
+                    where: {
+                        toLocationId: req.toLocationId,
+                        status: 'COMPLETED',
+                        createdAt: { lte: req.createdAt },
+                    },
+                });
+                req.receiptNo = `REC-${countReceipt.toString().padStart(4, '0')}`;
+            }
         }
 
         if (req.fromLocationId) {
@@ -436,6 +515,14 @@ export class TransferRequestService {
                 where: { id: req.fromLocationId }
             });
             if (sourceLoc) req.fromLocation = sourceLoc;
+
+            const countOutbound = await this.prisma.transferRequest.count({
+                where: {
+                    fromLocationId: req.fromLocationId,
+                    createdAt: { lte: req.createdAt },
+                },
+            });
+            req.outboundNo = `OUT-${countOutbound.toString().padStart(4, '0')}`;
         }
 
         // Fetch claim data if this is a claim transfer
@@ -1222,7 +1309,7 @@ export class TransferRequestService {
         const prismaClient = tx || this.prisma;
         const currentYear = new Date().getFullYear();
         const prefix = 'STN';
-        
+
         const lastRequest = await prismaClient.transferRequest.findFirst({
             where: {
                 requestNo: {
@@ -1230,7 +1317,7 @@ export class TransferRequestService {
                 },
             },
             orderBy: {
-                requestNo: 'desc',
+                createdAt: 'desc',
             },
         });
 
