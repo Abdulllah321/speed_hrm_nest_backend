@@ -2753,37 +2753,7 @@ export class PosSalesService implements OnModuleInit {
                         priceAdjusted,
                     });
 
-                    await this.stockLedgerService.createEntry({
-                        itemId: returnItem.itemId,
-                        warehouseId: warehouse.id,
-                        locationId: effectiveLocationId,
-                        qty: returnItem.quantity,
-                        movementType: MovementType.INBOUND,
-                        referenceType: 'POS_RETURN',
-                        referenceId: order.id,
-                    }, tx);
-
-                    const existing = await tx.inventoryItem.findFirst({
-                        where: { itemId: returnItem.itemId, locationId: effectiveLocationId, status: 'AVAILABLE' },
-                    });
-                    if (existing) {
-                        await tx.inventoryItem.update({
-                            where: { id: existing.id },
-                            data: { quantity: { increment: returnItem.quantity } },
-                        });
-                    } else {
-                        await tx.inventoryItem.create({
-                            data: {
-                                itemId: returnItem.itemId,
-                                locationId: effectiveLocationId,
-                                warehouseId: warehouse.id,
-                                quantity: returnItem.quantity,
-                                status: 'AVAILABLE',
-                            },
-                        });
-                    }
-
-                  // Inter-location stock transfer record via StockMovementService if returned at a different branch
+                    // Process stock movement, stock ledger, and inventory update via StockMovementService for all returns
                     if (order.locationId && order.locationId !== effectiveLocationId) {
                         const origLoc = await tx.location.findUnique({ where: { id: order.locationId }, select: { name: true } });
                         const retLoc = effectiveLocationId ? await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } }) : null;
@@ -2799,6 +2769,18 @@ export class PosSalesService implements OnModuleInit {
                             referenceType: 'POS_RETURN',
                             referenceId: order.id,
                             notes: `Automated Stock Transfer against Sales Return #${returnNumber} (Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
+                            userId: ctx?.userId,
+                            transaction: tx,
+                        }, ctx);
+                    } else {
+                        await this.stockMovementService.executeMovement({
+                            itemId: returnItem.itemId,
+                            toLocationId: effectiveLocationId || undefined,
+                            quantity: returnItem.quantity,
+                            type: 'POS_RETURN',
+                            referenceType: 'POS_RETURN',
+                            referenceId: order.id,
+                            notes: `POS Return against Order #${order.orderNumber} (Return #${returnNumber})`,
                             userId: ctx?.userId,
                             transaction: tx,
                         }, ctx);
