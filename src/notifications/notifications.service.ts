@@ -294,6 +294,86 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     return { status: true };
   }
 
+  
+
+  async sendPosLocationNotification(args: {
+    locationId: string;
+    title: string;
+    message: string;
+    category?: string;
+    priority?: NotificationPriority;
+    actionType?: string;
+    actionPayload?: any;
+    entityType?: string;
+    entityId?: string;
+  }) {
+    const category = (args.category || 'pos_location').toLowerCase();
+    const priority = args.priority || 'high';
+
+    // 1. Broadcast via WebSocket gateway to the location channel/listeners
+    this.gateway.emitToLocation(args.locationId, {
+      title: args.title,
+      message: args.message,
+      category,
+      priority,
+      entityType: args.entityType,
+      entityId: args.entityId,
+      actionType: args.actionType,
+      actionPayload: args.actionPayload,
+      locationId: args.locationId,
+      createdAt: new Date(),
+    });
+
+    // 2. Persist notification records for all active users assigned to this location via Employee
+    try {
+      const employeesAtLocation = await this.prisma.employee.findMany({
+        where: { locationId: args.locationId, status: 'active' },
+        select: { userId: true, employeeId: true },
+      });
+
+      const userIds = employeesAtLocation
+        .map((e) => e.userId)
+        .filter((id): id is string => !!id);
+      const empCodes = employeesAtLocation
+        .map((e) => e.employeeId)
+        .filter((code): code is string => !!code);
+
+      if (userIds.length > 0 || empCodes.length > 0) {
+        const usersAtLocation = await this.prismaMaster.user.findMany({
+          where: {
+            OR: [
+              ...(userIds.length > 0 ? [{ id: { in: userIds } }] : []),
+              ...(empCodes.length > 0 ? [{ employeeId: { in: empCodes } }] : []),
+            ],
+            status: 'active',
+          },
+          select: { id: true },
+        });
+
+        if (usersAtLocation.length > 0) {
+          await this.createForUsers(
+            usersAtLocation.map((u) => ({
+              userId: u.id,
+              title: args.title,
+              message: args.message,
+              category,
+              priority,
+              actionType: args.actionType,
+              actionPayload: args.actionPayload,
+              entityType: args.entityType,
+              entityId: args.entityId,
+            })),
+          );
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to store location notification for location ${args.locationId}: ${err.message}`,
+      );
+    }
+  }
+
+
   getHealthSnapshot() {
     return {
       workerEnabled: !!this.deliveryTimer,

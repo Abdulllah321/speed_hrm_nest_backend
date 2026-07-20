@@ -270,6 +270,16 @@ export class PosSalesController {
     }
 
 
+
+    // ─── Search orders globally for return lookup ─────────────────────
+    // IMPORTANT: Must be BEFORE @Get('orders/:id') — otherwise 'search-for-return' is matched as :id
+    @Get('orders/search-for-return')
+    @Permissions('pos.sales.history.view')
+    @ApiOperation({ summary: 'Search orders globally for returns lookup (unrestricted by location/posId)' })
+    async searchOrderForReturn(@Query('search') search: string) {
+        return this.posSalesService.searchOrderForReturn(search);
+    }
+
     // ─── Get return details for printing return slip ──────────────────
     // IMPORTANT: This must come BEFORE @Get('orders/:id') to avoid route conflict
     @Get('orders/:id/return-details')
@@ -330,13 +340,14 @@ export class PosSalesController {
             reason?: string;
         },
         @Req() req: any,
-    ) {
+    ) {        const exchangeLocationId = req.user?.locationId;
+
         const ctx = {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
         };
-        return this.posSalesService.exchangeItems(id, body.returnedItems, body.newItems, body.reason, ctx);
+        return this.posSalesService.exchangeItems(id, body.returnedItems, body.newItems, body.reason, exchangeLocationId, ctx);
     }
 
     // ─── Refund only (no stock movement) ─────────────────────────────
