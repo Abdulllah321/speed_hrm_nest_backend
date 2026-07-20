@@ -2783,18 +2783,23 @@ export class PosSalesService implements OnModuleInit {
 
                     // Inter-location stock transfer record if returned at a different branch
                     if (order.locationId && order.locationId !== effectiveLocationId) {
+                        const origLoc = await tx.location.findUnique({ where: { id: order.locationId }, select: { name: true } });
+                        const retLoc = effectiveLocationId ? await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } }) : null;
+                        const origName = origLoc?.name || 'Original Branch';
+                        const retName = retLoc?.name || 'Return Outlet';
+
                         await tx.stockMovement.create({
                             data: {
                                 movementNo: `MV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                                 itemId: returnItem.itemId,
                                 fromLocationId: order.locationId,
-                                toLocationId: effectiveLocationId,
+                                toLocationId: effectiveLocationId || undefined,
                                 quantity: returnItem.quantity,
                                 type: 'CROSS_LOCATION_RETURN_TRANSFER',
                                 referenceType: 'POS_RETURN',
                                 referenceId: order.id,
-                                notes: `Automated stock transfer for cross-location return of Order ${order.orderNumber}`,
-                                createdById: ctx?.userId || null,
+                                notes: `Automated Stock Transfer against Sales Return #${returnNumber} (Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
+                                createdById: ctx?.userId || undefined,
                             },
                         });
                     }
@@ -2810,12 +2815,19 @@ export class PosSalesService implements OnModuleInit {
                 });
 
                 const newStatus = allItemsReturned ? 'returned' : 'partially_returned';
+                const isCrossLocation = !!(order.locationId && order.locationId !== effectiveLocationId);
+                let locationNarration = '';
+                if (isCrossLocation && effectiveLocationId) {
+                    const retLoc = await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } });
+                    locationNarration = ` [Cross-Location Return: Physical stock received at ${retLoc?.name || 'Return Branch'}; Stock transfer created against Order ${order.orderNumber} / SR ${returnNumber}]`;
+                }
+
                 const updatedOrder = await tx.salesOrder.update({
                     where: { id },
                     data: {
                         status: newStatus,
                         returnNumber,
-                        notes: reason ? `Return (${newStatus}): ${reason}` : order.notes,
+                        notes: `${reason ? `Return (${newStatus}): ${reason}` : order.notes || ''}${locationNarration}`.trim(),
                     },
                 });
 
@@ -2909,9 +2921,11 @@ export class PosSalesService implements OnModuleInit {
                 };
             });
 
-            if (result.status && result.isCrossLocation && result.originalLocationId) {
-                runInBackground(
-                    'Notify Original Location of Cross-Location Return',
+            if (result.status) {
+                this.logger.log(`[returnItems] Return processed successfully for Order #${result.orderNumber}. isCrossLocation: ${result.isCrossLocation}`);
+                
+                // 1. Notify original location if cross-location
+                if (result.isCrossLocation && result.originalLocationId) {
                     this.notificationsService.sendPosLocationNotification({
                         locationId: result.originalLocationId,
                         title: 'Cross-Location Return Received',
@@ -2922,8 +2936,23 @@ export class PosSalesService implements OnModuleInit {
                         entityId: id,
                         actionType: 'view_order',
                         actionPayload: { orderId: id, orderNumber: result.orderNumber, returnLocationId: result.returnLocationId },
-                    })
-                );
+                    }).catch(err => this.logger.error(`[returnItems] Failed to send original location notification: ${err.message}`));
+                }
+
+                // 2. Notify processing location
+                if (result.returnLocationId) {
+                    this.notificationsService.sendPosLocationNotification({
+                        locationId: result.returnLocationId,
+                        title: 'POS Sale Return Processed',
+                        message: `Return processed for Invoice #${result.orderNumber}. Refund Amount: Rs.${result.refundAmount}.`,
+                        category: 'pos_return',
+                        priority: 'high',
+                        entityType: 'SalesOrder',
+                        entityId: id,
+                        actionType: 'view_order',
+                        actionPayload: { orderId: id, orderNumber: result.orderNumber },
+                    }).catch(err => this.logger.error(`[returnItems] Failed to send return location notification: ${err.message}`));
+                }
             }
 
             runInBackground(
