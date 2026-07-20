@@ -168,7 +168,11 @@ export class PurchaseInvoiceService {
           landedCost: true,
           items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                brand: true,
+              },
+            },
           },
         },
         },
