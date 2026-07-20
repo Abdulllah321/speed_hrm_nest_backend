@@ -6,6 +6,12 @@ export class NotificationsGateway {
   @WebSocketServer() server: Server;
 
   emitToUser(userId: string, payload: any) {
-    this.server.emit('notification', { userId, ...payload });
+    this.server?.emit('notification', { userId, ...payload });
+  }
+
+  emitToLocation(locationId: string, payload: any) {
+    this.server?.emit('pos_location_notification', { locationId, ...payload });
+    this.server?.emit('notification', { locationId, ...payload });
   }
 }
+
