@@ -29,11 +29,13 @@ import { GrossSalesExportService } from './gross-sales-export.service';
 import { GrossSalesExportProcessor } from './gross-sales-export.processor';
 import { AllianceRegisterExportService } from './alliance-register-export.service';
 import { AllianceRegisterExportProcessor } from './alliance-register-export.processor';
+import { WarehouseModule } from '../warehouse/warehouse.module';
 
 @Module({
     imports: [
         DatabaseModule,
         StockLedgerModule,
+        WarehouseModule,
         CustomerModule,
         PosConfigModule,
         NotificationsModule,
