@@ -15,7 +15,7 @@ export interface AvailableStockSummaryExportJobData {
   userId: string;
   tenantId: string;
   tenantDbUrl: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -67,11 +67,17 @@ export class AvailableStockSummaryExportProcessor {
     try {
       await job.progress(10);
 
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      let locationName = 'All Locations';
+      if (locIds.length > 0) {
+        const locations = await prisma.location.findMany({
+          where: { id: { in: locIds } },
+          select: { name: true },
+        });
+        if (locations.length > 0) {
+          locationName = locations.map(l => l.name).join(', ');
+        }
+      }
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);

@@ -10,7 +10,7 @@ import { MovementType } from '@prisma/client';
 
 export interface QueueAvailableStockSummaryExportOptions {
   userId: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -146,8 +146,9 @@ export class AvailableStockSummaryExportService {
   }
 
   // Get report data in memory for inline UI rendering
+  // Get report data in memory for inline UI rendering
   async getAvailableStockSummaryReportData(opts: {
-    locationId: string;
+    locationId?: string;
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
@@ -159,9 +160,6 @@ export class AvailableStockSummaryExportService {
     showArticle?: boolean;
     showVariant?: boolean;
   }) {
-    if (!opts.locationId) {
-      throw new BadRequestException('locationId is required');
-    }
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
@@ -173,7 +171,7 @@ export class AvailableStockSummaryExportService {
   async generateAvailableStockSummaryReportDataInternal(
     prisma: PrismaService,
     opts: {
-      locationId: string;
+      locationId?: string;
       startDate?: string;
       endDate?: string;
       summaryOnly?: boolean;
@@ -199,6 +197,9 @@ export class AvailableStockSummaryExportService {
       showArticle,
       showVariant,
     } = opts;
+
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
 
     const sBrand = showBrand !== false;
     const sDivision = showDivision !== false;
@@ -227,12 +228,17 @@ export class AvailableStockSummaryExportService {
 
     // Fetch inventory item ids
     const inventoryItems = await prisma.inventoryItem.findMany({
-      where: { locationId, status: 'AVAILABLE' },
+      where: {
+        ...(locationWhere ? { locationId: locationWhere } : {}),
+        status: 'AVAILABLE',
+      },
       select: { itemId: true },
     });
 
     const ledgerItems = await prisma.stockLedger.findMany({
-      where: { locationId },
+      where: {
+        ...(locationWhere ? { locationId: locationWhere } : {}),
+      },
       select: { itemId: true },
       distinct: ['itemId'],
     });
@@ -269,7 +275,7 @@ export class AvailableStockSummaryExportService {
     const bfGroup = await prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        locationId,
+        ...(locationWhere ? { locationId: locationWhere } : {}),
         itemId: { in: matchedItemIds },
         createdAt: { lt: startDate },
       },
@@ -285,7 +291,7 @@ export class AvailableStockSummaryExportService {
     const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        locationId,
+        ...(locationWhere ? { locationId: locationWhere } : {}),
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         OR: [
@@ -305,7 +311,7 @@ export class AvailableStockSummaryExportService {
     // Query normal ledger entries within range
     const ledgerEntries = await prisma.stockLedger.findMany({
       where: {
-        locationId,
+        ...(locationWhere ? { locationId: locationWhere } : {}),
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         NOT: [
@@ -327,7 +333,7 @@ export class AvailableStockSummaryExportService {
       where: {
         itemId: { in: matchedItemIds },
         transferRequest: {
-          toLocationId: locationId,
+          ...(locationWhere ? { toLocationId: locationWhere } : {}),
           status: { in: ['PENDING', 'SOURCE_APPROVED'] },
           transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET'] },
         },
