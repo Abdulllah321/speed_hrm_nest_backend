@@ -1,8 +1,10 @@
-import 'dotenv/config';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as readline from 'readline';
-import * as crypto from 'crypto';
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+import fs from 'fs';
+import readline from 'readline';
+import crypto from 'crypto';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
@@ -60,16 +62,16 @@ function chunkArray<T>(array: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
-async function processBarcodeDeletion(
+async function deleteItemsByBarcodes(
   prisma: PrismaClient,
   barcodes: string[],
-  batchSize: number,
-  isDryRun: boolean
+  batchSize: number = 500,
+  isDryRun: boolean = false
 ) {
   const totalBarcodes = barcodes.length;
-  console.log(`\n📋 Starting barcode processing for ${totalBarcodes.toLocaleString()} unique barcodes...`);
+  console.log(`\n📋 Processing ${totalBarcodes.toLocaleString()} unique barcodes...`);
   if (isDryRun) {
-    console.log('🔍 [DRY RUN MODE] No records will be deleted.');
+    console.log('🔍 [DRY RUN MODE] Counting matching items without deleting.');
   }
 
   const batches = chunkArray(barcodes, batchSize);
@@ -84,7 +86,6 @@ async function processBarcodeDeletion(
     const progressPct = (((i + 1) / batches.length) * 100).toFixed(1);
 
     if (isDryRun) {
-      // In dry run, count matching items
       const count = await prisma.item.count({
         where: {
           barCode: { in: batch },
@@ -92,11 +93,10 @@ async function processBarcodeDeletion(
       });
       totalItemsMatched += count;
       process.stdout.write(
-        `\r⏳ [DRY RUN] Batch ${batchNum}/${batches.length} (${progressPct}%): Found ${totalItemsMatched.toLocaleString()} items so far...`
+        `\r⏳ [DRY RUN] Batch ${batchNum}/${batches.length} (${progressPct}%): Found ${totalItemsMatched.toLocaleString()} items...`
       );
     } else {
       try {
-        // Attempt bulk deletion for current batch
         const result = await prisma.item.deleteMany({
           where: {
             barCode: { in: batch },
@@ -104,18 +104,17 @@ async function processBarcodeDeletion(
         });
         totalItemsDeleted += result.count;
         process.stdout.write(
-          `\r⏳ Batch ${batchNum}/${batches.length} (${progressPct}%): Deleted ${totalItemsDeleted.toLocaleString()} items so far...`
+          `\r⏳ Batch ${batchNum}/${batches.length} (${progressPct}%): Deleted ${totalItemsDeleted.toLocaleString()} items...`
         );
       } catch (err: any) {
-        // If bulk delete fails (e.g. FK constraint P2003), fallback to item-by-item delete to delete unreferenced ones
-        console.warn(`\n⚠️ Batch ${batchNum} bulk delete encountered error (${err.code || err.message}). Falling back to individual deletion for batch...`);
+        console.warn(`\n⚠️ Batch ${batchNum} bulk delete failed (${err.message}). Falling back to individual deletes...`);
         for (const barcode of batch) {
           try {
             const delResult = await prisma.item.deleteMany({
               where: { barCode: barcode },
             });
             totalItemsDeleted += delResult.count;
-          } catch (itemErr: any) {
+          } catch (itemErr) {
             totalFKFailures++;
           }
         }
@@ -125,15 +124,15 @@ async function processBarcodeDeletion(
 
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`\n\n==================================================`);
-  console.log(`✨ Processing Completed in ${durationSec}s`);
+  console.log(`✨ Done in ${durationSec}s`);
   console.log(`==================================================`);
-  console.log(`📊 Barcodes in input list: ${totalBarcodes.toLocaleString()}`);
+  console.log(`📊 Unique Barcodes in input: ${totalBarcodes.toLocaleString()}`);
   if (isDryRun) {
-    console.log(`🔍 Total items matching barcodes found in DB: ${totalItemsMatched.toLocaleString()}`);
+    console.log(`🔍 Total items in DB matching barcodes: ${totalItemsMatched.toLocaleString()}`);
   } else {
     console.log(`✅ Total items deleted from DB: ${totalItemsDeleted.toLocaleString()}`);
     if (totalFKFailures > 0) {
-      console.log(`⚠️ Total items skipped due to Foreign Key constraints: ${totalFKFailures.toLocaleString()}`);
+      console.log(`⚠️ Items skipped due to foreign key constraints: ${totalFKFailures.toLocaleString()}`);
     }
   }
   console.log(`==================================================\n`);
@@ -142,13 +141,11 @@ async function processBarcodeDeletion(
 async function main() {
   const args = process.argv.slice(2);
   const isDryRun = args.includes('--dry-run');
-  const isSingleDb = args.includes('--single-db');
 
   const fileArgIdx = args.indexOf('--file');
   let filePath = fileArgIdx !== -1 ? args[fileArgIdx + 1] : null;
 
   if (!filePath) {
-    // Default search paths
     const candidates = [
       path.resolve(__dirname, '../../delete-barcodes.txt'),
       path.resolve(process.cwd(), '../delete-barcodes.txt'),
@@ -164,43 +161,31 @@ async function main() {
   }
 
   if (!filePath || !fs.existsSync(filePath)) {
-    console.error(`❌ Could not locate barcode file. Provide path via --file <path>`);
-    console.error(`Usage: bun scripts/delete-items-by-barcodes.ts [--dry-run] [--file <path>] [--tenant <dbName>] [--single-db] [--batch-size <number>]`);
+    console.error(`❌ Barcode file not found. Place 'delete-barcodes.txt' in root or pass via --file <path>`);
     process.exit(1);
   }
 
   const batchArgIdx = args.indexOf('--batch-size');
   const batchSize = batchArgIdx !== -1 ? parseInt(args[batchArgIdx + 1], 10) : 500;
 
-  const tenantArgIdx = args.indexOf('--tenant');
-  const specificTenant = tenantArgIdx !== -1 ? args[tenantArgIdx + 1] : null;
-
-  console.log(`📁 Loading barcodes from: ${filePath}`);
+  console.log(`📁 Barcode file: ${filePath}`);
   const barcodes = await loadBarcodesFromFile(filePath);
-  console.log(`✔ Read ${barcodes.length.toLocaleString()} unique barcodes from file.`);
-
-  if (barcodes.length === 0) {
-    console.log('⚠️ No barcodes found to process.');
-    return;
-  }
+  console.log(`✔ Found ${barcodes.length.toLocaleString()} unique barcodes to process.`);
 
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
-  const singleDbUrl = process.env.DATABASE_URL;
+  const directDbUrl = process.env.DATABASE_URL;
 
-  if (isSingleDb || !managementUrl || !masterKey) {
-    if (!singleDbUrl) {
-      console.error('❌ DATABASE_URL or (DATABASE_URL_MANAGEMENT + MASTER_ENCRYPTION_KEY) is required in .env');
-      process.exit(1);
-    }
-    console.log(`🔗 Connecting directly to database via DATABASE_URL...`);
-    const pool = new Pool({ connectionString: singleDbUrl });
+  // Single DB direct execution via DATABASE_URL if explicitly requested or if management url not set
+  if (directDbUrl && (!managementUrl || args.includes('--single-db'))) {
+    console.log(`🔗 Connecting using DATABASE_URL...`);
+    const pool = new Pool({ connectionString: directDbUrl });
     const adapter = new PrismaPg(pool);
     const prisma = new PrismaClient({ adapter });
 
     try {
       await prisma.$connect();
-      await processBarcodeDeletion(prisma, barcodes, batchSize, isDryRun);
+      await deleteItemsByBarcodes(prisma, barcodes, batchSize, isDryRun);
     } finally {
       await prisma.$disconnect();
       await pool.end();
@@ -208,12 +193,21 @@ async function main() {
     return;
   }
 
-  // Multi-tenant mode
+  if (!managementUrl || !masterKey) {
+    console.error('❌ Neither DATABASE_URL nor DATABASE_URL_MANAGEMENT + MASTER_ENCRYPTION_KEY found in .env');
+    process.exit(1);
+  }
+
+  // Tenant / Company Database iteration using Management Client
+  console.log(`🏢 Connecting via Management DB to process active company tenant databases...`);
   const pool = new Pool({ connectionString: managementUrl });
   const adapter = new PrismaPg(pool);
   const management = new ManagementClient({ adapter } as any);
 
   try {
+    const tenantArgIdx = args.indexOf('--tenant');
+    const specificTenant = tenantArgIdx !== -1 ? args[tenantArgIdx + 1] : null;
+
     const companies = await management.company.findMany({
       where: {
         status: 'active',
@@ -222,43 +216,39 @@ async function main() {
     });
 
     if (companies.length === 0) {
-      console.log('ℹ️ No active companies found matching criteria.');
+      console.log('ℹ️ No active companies found.');
       return;
     }
 
-    console.log(`🏢 Found ${companies.length} active company database(s) to process.`);
-
     for (const company of companies) {
-      console.log(`\n👉 Target Company: ${company.name} (${company.code}) [DB: ${company.dbName}]`);
-      try {
-        let connectionString = company.dbUrl;
-        if (company.dbPassword) {
-          try {
-            const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
-            connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
-          } catch {
-            console.warn(`  ⚠️ Decryption failed for dbPassword, falling back to stored dbUrl`);
-          }
-        }
-
-        if (!connectionString) {
-          console.error(`  ❌ No connection details available for ${company.name}`);
-          continue;
-        }
-
-        const tenantPool = new Pool({ connectionString });
-        const tenantAdapter = new PrismaPg(tenantPool);
-        const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
-
+      console.log(`\n👉 Company: ${company.name} (${company.code}) [DB: ${company.dbName}]`);
+      let connectionString = company.dbUrl;
+      if (company.dbPassword) {
         try {
-          await tenantPrisma.$connect();
-          await processBarcodeDeletion(tenantPrisma, barcodes, batchSize, isDryRun);
-        } finally {
-          await tenantPrisma.$disconnect();
-          await tenantPool.end();
+          const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+          connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+        } catch {
+          console.warn(`  ⚠️ Decryption failed, using stored dbUrl`);
         }
+      }
+
+      if (!connectionString) {
+        console.error(`  ❌ Missing connection string for ${company.name}`);
+        continue;
+      }
+
+      const tenantPool = new Pool({ connectionString });
+      const tenantAdapter = new PrismaPg(tenantPool);
+      const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
+
+      try {
+        await tenantPrisma.$connect();
+        await deleteItemsByBarcodes(tenantPrisma, barcodes, batchSize, isDryRun);
       } catch (err: any) {
-        console.error(`  ❌ Error processing company ${company.name}: ${err.message}`);
+        console.error(`  ❌ Failed for company ${company.name}: ${err.message}`);
+      } finally {
+        await tenantPrisma.$disconnect();
+        await tenantPool.end();
       }
     }
   } finally {
@@ -268,6 +258,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('❌ Script execution error:', err);
+  console.error('❌ Script failed:', err);
   process.exit(1);
 });
