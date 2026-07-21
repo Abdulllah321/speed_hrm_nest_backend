@@ -90,7 +90,17 @@ export class SalesOrderService {
         warehouse: true,
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                brand: true,
+                category: true,
+                subCategory: true,
+                size: true,
+                color: true,
+                gender: true,
+                division: true,
+              },
+            },
           },
         },
         deliveryChallans: true,
@@ -109,32 +119,27 @@ export class SalesOrderService {
 
   async create(createSalesOrderDto: CreateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      // Generate order number with proper fiscal year (July - June)
-      const now = new Date();
-      const month = now.getMonth(); // 0-based, June is 5, July is 6
-      const year = now.getFullYear();
-      const startYear = month >= 6 ? year % 100 : (year - 1) % 100;
-      const endYear = month >= 6 ? (year + 1) % 100 : year % 100;
-      const fy = `${String(startYear).padStart(2, '0')}-${String(endYear).padStart(2, '0')}`;
-
+      // Generate order number (PI format: SO-YYYY-0001)
+      const currentYear = new Date().getFullYear();
+      const prefix = 'SO';
       const lastOrder = await this.prisma.eRPSalesOrder.findFirst({
         where: {
-          orderNo: {
-            startsWith: `SI-${fy}-`,
-          },
+          OR: [
+            { orderNo: { startsWith: 'SO' } },
+            { orderNo: { startsWith: 'SI' } },
+          ],
         },
-        orderBy: { orderNo: 'desc' },
+        orderBy: { createdAt: 'desc' },
       });
       
       let nextNumber = 1;
       if (lastOrder?.orderNo) {
-        const parts = lastOrder.orderNo.split('-');
-        const lastSeq = parseInt(parts[parts.length - 1]);
+        const lastSeq = parseInt(lastOrder.orderNo.split('-').pop() || '0', 10);
         if (!isNaN(lastSeq)) {
           nextNumber = lastSeq + 1;
         }
       }
-      const orderNo = `SI-${fy}-${String(nextNumber).padStart(3, '0')}`;
+      const orderNo = `${prefix}-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
 
       // Calculate totals
       let subtotal = 0;
