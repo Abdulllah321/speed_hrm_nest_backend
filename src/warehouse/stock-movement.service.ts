@@ -471,7 +471,7 @@ export class StockMovementService {
     }
 
     const itemRate = await this.getCurrentItemRate(tx, dto.itemId);
-    const defaultWarehouse = await tx.warehouse.findFirst({ where: { status: 'active' } });
+    const defaultWarehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
     const warehouseId = dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
 
     // 1. Ledger INBOUND for outlet
@@ -514,7 +514,7 @@ export class StockMovementService {
     }
 
     const itemRate = await this.getCurrentItemRate(tx, dto.itemId);
-    const defaultWarehouse = await tx.warehouse.findFirst({ where: { status: 'active' } });
+    const defaultWarehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
     const warehouseId = dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
 
     // 1. Ledger OUTBOUND for source outlet
