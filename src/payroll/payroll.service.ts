@@ -140,8 +140,11 @@ export class PayrollService {
       this.prisma.advanceSalary.findMany({
         where: {
           employeeId: { in: ids },
-          approvalStatus: 'approved',
-          status: 'active',
+          OR: [
+            { approvalStatus: 'approved' },
+            { status: 'approved' },
+            { status: 'active' },
+          ],
         },
       }),
       this.prisma.leaveEncashment.findMany({
@@ -605,6 +608,7 @@ export class PayrollService {
           attendanceDeduction: 0,
           loanDeduction: 0,
           loanDisbursement: 0,
+          advanceSalaryDisbursement: 0,
           advanceSalaryDeduction: 0,
           eobiDeduction: 0,
           providentFundDeduction: 0,
@@ -737,7 +741,7 @@ export class PayrollService {
         await this.calculateEOBI_PF(employee, month, year, salaryBreakup);
 
       // H. Calculate Loans & Advances
-      const { loanDeduction, loanDisbursement, advanceSalaryDeduction } =
+      const { loanDeduction, loanDisbursement, advanceSalaryDisbursement, advanceSalaryDeduction } =
         await this.calculateLoansAndAdvances(
           employee,
           normalizedMonth,
@@ -759,7 +763,10 @@ export class PayrollService {
         .add(totalAdHocDeductions);
 
       // Net Salary
-      const netSalary = grossSalary.minus(totalDeductionsSum).add(loanDisbursement);
+      const netSalary = grossSalary
+        .minus(totalDeductionsSum)
+        .add(loanDisbursement)
+        .add(advanceSalaryDisbursement);
 
       // Push to array (plain objects for frontend)
       previewData.push({
@@ -797,6 +804,7 @@ export class PayrollService {
         attendanceDeduction: attendanceDeduction.toNumber(),
         loanDeduction: loanDeduction.toNumber(),
         loanDisbursement: loanDisbursement.toNumber(),
+        advanceSalaryDisbursement: advanceSalaryDisbursement.toNumber(),
         advanceSalaryDeduction: advanceSalaryDeduction.toNumber(),
         eobiDeduction: eobiDeduction.toNumber(),
         providentFundDeduction: providentFundDeduction.toNumber(),
@@ -886,6 +894,7 @@ export class PayrollService {
           attendanceDeduction: new Decimal(d.attendanceDeduction),
           loanDeduction: new Decimal(d.loanDeduction),
           loanDisbursement: new Decimal(d.loanDisbursement || 0),
+          advanceSalaryDisbursement: new Decimal(d.advanceSalaryDisbursement || 0),
           advanceSalaryDeduction: new Decimal(d.advanceSalaryDeduction),
           eobiDeduction: new Decimal(d.eobiDeduction),
           providentFundDeduction: new Decimal(d.providentFundDeduction),
@@ -1981,6 +1990,7 @@ export class PayrollService {
   ) {
     let loanDeduction = new Decimal(0);
     let loanDisbursement = new Decimal(0);
+    let advanceSalaryDisbursement = new Decimal(0);
     let advanceSalaryDeduction = new Decimal(0);
 
     const normalizedMonthForComparison = String(Number(month)).padStart(
@@ -2061,6 +2071,20 @@ export class PayrollService {
       const deductionMonthYearStr = `${normalizedYearForComparison}-${normalizedMonthForComparison}`;
 
       for (const advance of emp.advanceSalaries) {
+        // 1. Calculate Disbursement (Addition) in neededOn month
+        if (advance.neededOn) {
+          const neededDate = new Date(advance.neededOn);
+          const neededM = String(neededDate.getMonth() + 1).padStart(2, '0');
+          const neededY = String(neededDate.getFullYear());
+          if (
+            neededM === normalizedMonthForComparison &&
+            neededY === normalizedYearForComparison
+          ) {
+            advanceSalaryDisbursement = advanceSalaryDisbursement.add(new Decimal(advance.amount));
+          }
+        }
+
+        // 2. Calculate Deduction in deduction month/year
         const matchesMonth =
           advance.deductionMonth === normalizedMonthForComparison ||
           String(Number(advance.deductionMonth)).padStart(2, '0') ===
@@ -2078,7 +2102,7 @@ export class PayrollService {
       }
     }
 
-    return { loanDeduction, loanDisbursement, advanceSalaryDeduction };
+    return { loanDeduction, loanDisbursement, advanceSalaryDisbursement, advanceSalaryDeduction };
   }
 
   private calculateEffectiveSalary(
