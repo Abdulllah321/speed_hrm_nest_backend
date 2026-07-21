@@ -41,12 +41,24 @@ export class DeliveryChallanService {
           throw new BadRequestException('Sales order must be warehouse verified to create delivery challan');
         }
 
-        // Generate challan number
+        // Generate challan number (PI format: DC-YYYY-0001)
+        const currentYear = new Date().getFullYear();
+        const prefix = 'DC';
         const lastChallan = await tx.deliveryChallan.findFirst({
+          where: {
+            challanNo: { startsWith: prefix },
+          },
           orderBy: { createdAt: 'desc' },
         });
-        const lastNumber = lastChallan ? parseInt(lastChallan.challanNo.split('-')[1]) : 0;
-        const challanNo = `DC-${String(lastNumber + 1).padStart(3, '0')}`;
+
+        let nextChallanSeq = 1;
+        if (lastChallan?.challanNo) {
+          const lastSeq = parseInt(lastChallan.challanNo.split('-').pop() || '0', 10);
+          if (!isNaN(lastSeq)) {
+            nextChallanSeq = lastSeq + 1;
+          }
+        }
+        const challanNo = `${prefix}-${currentYear}-${String(nextChallanSeq).padStart(4, '0')}`;
 
         // Calculate totals
         const totalQty = items.reduce((sum: number, item: any) => sum + item.deliveredQty, 0);
@@ -188,7 +200,14 @@ export class DeliveryChallanService {
         salesOrder: true,
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                brand: true,
+                category: true,
+                subCategory: true,
+                size: true,
+              },
+            },
           },
         },
         invoices: {
@@ -420,13 +439,27 @@ export class DeliveryChallanService {
       }
 
       const result = await this.prisma.$transaction(async (tx) => {
-        // Generate invoice number
+        // Generate invoice number (PI format: INV-YYYY-0001)
+        const currentYear = new Date().getFullYear();
+        const prefix = 'INV';
         const lastInvoice = await tx.eRPSalesInvoice.findFirst({
-          orderBy: { invoiceNo: 'desc' },
+          where: {
+            OR: [
+              { invoiceNo: { startsWith: 'INV' } },
+              { invoiceNo: { startsWith: 'SI' } },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
         });
-        
-        const lastNumber = lastInvoice?.invoiceNo ? parseInt(lastInvoice.invoiceNo.split('-')[1]) : 0;
-        const invoiceNo = `INV-${String(lastNumber + 1).padStart(3, '0')}`;
+
+        let nextInvSeq = 1;
+        if (lastInvoice?.invoiceNo) {
+          const lastSeq = parseInt(lastInvoice.invoiceNo.split('-').pop() || '0', 10);
+          if (!isNaN(lastSeq)) {
+            nextInvSeq = lastSeq + 1;
+          }
+        }
+        const invoiceNo = `${prefix}-${currentYear}-${String(nextInvSeq).padStart(4, '0')}`;
 
         const invoice = await tx.eRPSalesInvoice.create({
           data: {
