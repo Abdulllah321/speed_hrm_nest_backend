@@ -213,9 +213,28 @@ export class PurchaseReturnService {
 
       // Add optional fields only if they exist in updateDto
       if (updateDto.returnType) updateData.returnType = updateDto.returnType;
+      if (updateDto.warehouseId) updateData.warehouseId = updateDto.warehouseId;
       if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
       if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
       if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;
+
+      if (updateDto.items && updateDto.items.length > 0) {
+        updateData.items = {
+          deleteMany: {},
+          create: updateDto.items.map(item => ({
+            sourceItemType: item.sourceItemType,
+            grnItemId: item.grnItemId,
+            landedCostItemId: item.landedCostItemId,
+            purchaseInvoiceItemId: item.purchaseInvoiceItemId,
+            itemId: item.itemId,
+            description: item.description,
+            returnQty: item.returnQty,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+            reason: item.reason,
+          })),
+        };
+      }
 
       const updated = await this.prisma.purchaseReturn.update({
         where: { id },
