@@ -11,6 +11,7 @@ import { MovementType } from '@prisma/client';
 export interface QueueAvailableStockSummaryExportOptions {
   userId: string;
   locationId?: string;
+  warehouseId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -59,6 +60,7 @@ export class AvailableStockSummaryExportService {
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
+        warehouseId: opts.warehouseId,
         startDate: opts.startDate,
         endDate: opts.endDate,
         format: opts.format,
@@ -149,6 +151,7 @@ export class AvailableStockSummaryExportService {
   // Get report data in memory for inline UI rendering
   async getAvailableStockSummaryReportData(opts: {
     locationId?: string;
+    warehouseId?: string;
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
@@ -172,6 +175,7 @@ export class AvailableStockSummaryExportService {
     prisma: PrismaService,
     opts: {
       locationId?: string;
+      warehouseId?: string;
       startDate?: string;
       endDate?: string;
       summaryOnly?: boolean;
@@ -186,6 +190,7 @@ export class AvailableStockSummaryExportService {
   ) {
     const {
       locationId,
+      warehouseId,
       startDate: startStr,
       endDate: endStr,
       summaryOnly,
@@ -200,6 +205,17 @@ export class AvailableStockSummaryExportService {
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
+    const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
+
+    const locOrWhFilters: any[] = [];
+    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
+    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+
+    const locationOrWarehouseWhere = locOrWhFilters.length > 1
+      ? { OR: locOrWhFilters }
+      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
 
     const sBrand = showBrand !== false;
     const sDivision = showDivision !== false;
@@ -229,7 +245,7 @@ export class AvailableStockSummaryExportService {
     // Fetch inventory item ids
     const inventoryItems = await prisma.inventoryItem.findMany({
       where: {
-        ...(locationWhere ? { locationId: locationWhere } : {}),
+        ...locationOrWarehouseWhere,
         status: 'AVAILABLE',
       },
       select: { itemId: true },
@@ -237,7 +253,7 @@ export class AvailableStockSummaryExportService {
 
     const ledgerItems = await prisma.stockLedger.findMany({
       where: {
-        ...(locationWhere ? { locationId: locationWhere } : {}),
+        ...locationOrWarehouseWhere,
       },
       select: { itemId: true },
       distinct: ['itemId'],
@@ -275,7 +291,7 @@ export class AvailableStockSummaryExportService {
     const bfGroup = await prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        ...(locationWhere ? { locationId: locationWhere } : {}),
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { lt: startDate },
       },
@@ -291,7 +307,7 @@ export class AvailableStockSummaryExportService {
     const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        ...(locationWhere ? { locationId: locationWhere } : {}),
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         OR: [
@@ -311,7 +327,7 @@ export class AvailableStockSummaryExportService {
     // Query normal ledger entries within range
     const ledgerEntries = await prisma.stockLedger.findMany({
       where: {
-        ...(locationWhere ? { locationId: locationWhere } : {}),
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         NOT: [
@@ -328,14 +344,22 @@ export class AvailableStockSummaryExportService {
       },
     });
 
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+    const toLocOrWhWhere = toLocOrWhFilters.length > 1
+      ? { OR: toLocOrWhFilters }
+      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
     // Query transit items
     const transitItems = await prisma.transferRequestItem.findMany({
       where: {
         itemId: { in: matchedItemIds },
         transferRequest: {
-          ...(locationWhere ? { toLocationId: locationWhere } : {}),
+          ...toLocOrWhWhere,
           status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET'] },
+          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
         },
       },
       select: {

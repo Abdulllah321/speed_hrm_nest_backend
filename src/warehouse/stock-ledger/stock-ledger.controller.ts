@@ -361,6 +361,7 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async getAvailableStockSummaryReport(
     @Query('locationId') locationId?: string,
+    @Query('warehouseId') warehouseId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
@@ -374,6 +375,7 @@ export class StockLedgerController {
   ) {
     const data = await this.availableStockSummaryExportService.getAvailableStockSummaryReportData({
       locationId,
+      warehouseId,
       startDate,
       endDate,
       summaryOnly: summaryOnly === 'true',
@@ -394,6 +396,7 @@ export class StockLedgerController {
     @Req() req: any,
     @Body() body: {
       locationId?: string;
+      warehouseId?: string;
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
@@ -411,6 +414,7 @@ export class StockLedgerController {
     const result = await this.availableStockSummaryExportService.queueExport({
       userId,
       locationId: body.locationId,
+      warehouseId: body.warehouseId,
       startDate: body.startDate,
       endDate: body.endDate,
       format: body.format,
