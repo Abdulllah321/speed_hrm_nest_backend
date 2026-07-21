@@ -1318,7 +1318,7 @@ export class PosSalesService implements OnModuleInit {
         const cleanSearch = orderNumber.trim();
         const rawOrders = await this.prisma.salesOrder.findMany({
             where: {
-                orderNumber: { contains: cleanSearch, mode: 'insensitive' },
+                orderNumber: { equals: cleanSearch, mode: 'insensitive' },
                 status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
             },
             take: 10,
@@ -1627,6 +1627,20 @@ export class PosSalesService implements OnModuleInit {
       orderBy: { submittedAt: 'desc' },
     });
 
+    // ── Fetch active issued vouchers for ALL orders ──
+    const issuedVouchersList = await this.prisma.voucher.findMany({
+      where: {
+        sourceOrderId: { in: orderIds },
+        isDeleted: false,
+      },
+      select: {
+        sourceOrderId: true,
+      },
+    });
+    const issuedVouchersSet = new Set(
+      issuedVouchersList.map((v) => v.sourceOrderId).filter(Boolean),
+    );
+
     console.log('🔍 [POS Sales] Fetching claims for orders:', {
       totalOrders: orderIds.length,
       orderIds: orderIds.slice(0, 3), // First 3 for brevity
@@ -1775,6 +1789,7 @@ export class PosSalesService implements OnModuleInit {
         claims: orderClaims,
         hasReturn: returnFlags.hasReturn,
         hasRefund: returnFlags.hasRefund,
+        hasIssuedVoucher: issuedVouchersSet.has(order.id),
       };
     });
 
@@ -4723,8 +4738,49 @@ export class PosSalesService implements OnModuleInit {
           include: { voucherRedemptions: { include: { voucher: true } } },
         });
         if (!order) throw new Error('Order not found');
-        if (order.status === 'voided')
-          throw new Error('Cannot update tender on a voided order');
+        if (
+          order.status === 'voided' ||
+          order.status === 'exchanged' ||
+          order.status === 'refunded' ||
+          order.status === 'returned' ||
+          order.status === 'partially_returned'
+        ) {
+          throw new Error(
+            'Cannot update tender on a voided, returned, refunded, or exchanged order',
+          );
+        }
+
+        // ── Check if any claim exists for this order ──
+        const existingClaims = await tx.posClaim.findMany({
+          where: { salesOrderId: id },
+        });
+        if (existingClaims.length > 0) {
+          throw new Error(
+            'Cannot update tender because a claim has been created for this order',
+          );
+        }
+
+        // ── Check if any stock ledger returns/refunds exist ──
+        const returnEntries = await tx.stockLedger.findMany({
+          where: {
+            referenceId: id,
+            referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+          },
+        });
+        if (returnEntries.length > 0) {
+          throw new Error(
+            'Cannot update tender because a return or refund has been created for this order',
+          );
+        }
+
+        // ── Check if any voucher was used on this order ──
+        const voucherAmountUsed = Number(order.voucherAmount ?? 0);
+        const voucherRedemptionsCount = (order.voucherRedemptions || []).length;
+        if (voucherAmountUsed > 0 || voucherRedemptionsCount > 0) {
+          throw new Error(
+            'Cannot update tender because a voucher was used for payment on this order',
+          );
+        }
 
         // ── Check if any voucher was issued from this order ──
         const issuedVouchers = await tx.voucher.findMany({
@@ -4902,6 +4958,11 @@ export class PosSalesService implements OnModuleInit {
 
         const totalPaidRounded = Math.round(totalPaid * 100) / 100;
         const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+
+        if (totalPaidRounded > grandTotalRounded + 0.01) {
+          throw new Error('Total tender amount cannot exceed the order bill total');
+        }
+
         const changeAmount = Math.max(0, totalPaidRounded - grandTotalRounded);
 
         let paymentStatus: string;
