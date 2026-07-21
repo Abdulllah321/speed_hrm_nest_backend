@@ -6011,9 +6011,23 @@ export class PosSalesService implements OnModuleInit {
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
+    const locFilter =
+      locationId && locationId !== 'all'
+        ? locationId.includes(',')
+          ? {
+              locationId: {
+                in: locationId
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              },
+            }
+          : { locationId }
+        : {};
+
     const orders = await this.prisma.salesOrder.findMany({
       where: {
-        ...(locationId && locationId !== 'all' ? { locationId } : {}),
+        ...locFilter,
         status: { in: ['completed', 'partially_returned'] },
         createdAt: { gte: startDate, lte: endDate },
         // Only alliance-related sales: pure alliance OR manual-with-alliance

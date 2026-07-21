@@ -108,13 +108,27 @@ export class AllianceRegisterExportProcessor {
       await job.progress(10);
 
       // ── Location info ─────────────────────────────────────────
-      const location = locationId && locationId !== 'all'
-        ? await prisma.location.findUnique({
-            where: { id: locationId },
+      let locationName = 'All Outlets';
+      let locFilter: any = {};
+
+      if (locationId && locationId !== 'all') {
+        const locIds = locationId.split(',').map((s) => s.trim()).filter(Boolean);
+        if (locIds.length === 1) {
+          const location = await prisma.location.findUnique({
+            where: { id: locIds[0] },
             select: { name: true },
-          })
-        : null;
-      const locationName = location?.name || 'All Outlets';
+          });
+          locationName = location?.name || 'Store';
+          locFilter = { locationId: locIds[0] };
+        } else if (locIds.length > 1) {
+          const locs = await prisma.location.findMany({
+            where: { id: { in: locIds } },
+            select: { name: true },
+          });
+          locationName = locs.map((l) => l.name).join(', ') || `${locIds.length} Outlets`;
+          locFilter = { locationId: { in: locIds } };
+        }
+      }
 
       const now       = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -130,7 +144,7 @@ export class AllianceRegisterExportProcessor {
       while (hasMore) {
         const chunk = await prisma.salesOrder.findMany({
           where: {
-            ...(locationId && locationId !== 'all' ? { locationId } : {}),
+            ...locFilter,
             status: { in: ['completed', 'partially_returned'] },
             createdAt: { gte: startDate, lte: endDate },
             // Alliance filter: pure alliance OR manual-with-alliance
