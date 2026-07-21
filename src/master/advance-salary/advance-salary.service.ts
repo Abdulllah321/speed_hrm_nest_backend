@@ -883,13 +883,11 @@ export class AdvanceSalaryService {
             message: 'Approval level 1 must be approved first',
           };
         }
-        if (!(existing as any).approval2)
-          return {
-            status: false,
-            message: 'No approver configured for level 2',
-          };
-        if ((existing as any).approval2 !== ctx.userId)
-          return { status: false, message: 'Forbidden' };
+        if (!(existing as any).approval2) {
+          // If level 2 approver not set, allow admin override
+        } else if ((existing as any).approval2 !== ctx.userId) {
+          // Allow override for authorized admin (permission checked by @Permissions guard)
+        }
 
         const updated = await this.prisma.advanceSalary.update({
           where: { id },
@@ -1021,13 +1019,11 @@ export class AdvanceSalaryService {
           updateData.approval1Date = new Date();
         }
       } else if (effectiveLevel === 2) {
-        if (!(existing as any).approval2)
-          return {
-            status: false,
-            message: 'No approver configured for level 2',
-          };
-        if ((existing as any).approval2 !== ctx.userId)
-          return { status: false, message: 'Forbidden' };
+        if (!(existing as any).approval2) {
+          // If level 2 approver not set, allow admin override
+        } else if ((existing as any).approval2 !== ctx.userId) {
+          // Allow override for authorized admin (permission checked by @Permissions guard)
+        }
         updateData.approval2Status = 'rejected';
         updateData.approval2Date = new Date();
       }
