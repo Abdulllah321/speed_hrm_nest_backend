@@ -16,6 +16,7 @@ export interface AvailableStockSummaryExportJobData {
   tenantId: string;
   tenantDbUrl: string;
   locationId?: string;
+  warehouseId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -53,7 +54,7 @@ export class AvailableStockSummaryExportProcessor {
   @Process({ concurrency: 1 })
   async handleExport(job: Job<AvailableStockSummaryExportJobData>): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, format,
+      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format,
       summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
     } = job.data;
     this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
@@ -68,16 +69,28 @@ export class AvailableStockSummaryExportProcessor {
       await job.progress(10);
 
       const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-      let locationName = 'All Locations';
+      const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      const nameParts: string[] = [];
+      if (whIds.length > 0) {
+        const warehouses = await prisma.warehouse.findMany({
+          where: { id: { in: whIds } },
+          select: { name: true },
+        });
+        if (warehouses.length > 0) {
+          nameParts.push(`Warehouses: ${warehouses.map(w => w.name).join(', ')}`);
+        }
+      }
       if (locIds.length > 0) {
         const locations = await prisma.location.findMany({
           where: { id: { in: locIds } },
           select: { name: true },
         });
         if (locations.length > 0) {
-          locationName = locations.map(l => l.name).join(', ');
+          nameParts.push(`Outlets: ${locations.map(l => l.name).join(', ')}`);
         }
       }
+      const locationName = nameParts.length > 0 ? nameParts.join(' | ') : 'All Warehouses & Locations';
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -90,6 +103,7 @@ export class AvailableStockSummaryExportProcessor {
         prisma,
         {
           locationId,
+          warehouseId,
           startDate: startStr,
           endDate: endStr,
           summaryOnly,
