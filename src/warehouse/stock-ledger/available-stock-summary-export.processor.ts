@@ -36,6 +36,7 @@ const COLUMNS = [
   { header: 'Color', key: 'color', width: 14, align: 'center' as const },
   { header: 'Quantity', key: 'quantity', width: 14, align: 'right' as const },
   { header: 'In Transit', key: 'transit', width: 12, align: 'right' as const },
+  { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' as const },
   { header: 'Total', key: 'total', width: 14, align: 'right' as const },
   { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' as const },
   { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' as const },
@@ -261,12 +262,13 @@ export class AvailableStockSummaryExportProcessor {
             color: colorVal,
             quantity: node.totals.quantity,
             transit: node.totals.transit,
+            reserved: node.totals.reserved,
             total: node.totals.total,
             unitPrice: unitPriceVal,
             value: node.totals.value,
           });
 
-          for (let colNum = 1; colNum <= 8; colNum++) {
+          for (let colNum = 1; colNum <= 9; colNum++) {
             const cell = row.getCell(colNum);
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
             cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
@@ -275,9 +277,9 @@ export class AvailableStockSummaryExportProcessor {
               ? centerAlign 
               : (colNum === 1 ? leftAlign : rightAlign);
 
-            if ((colNum === 7 || colNum === 8) && typeof cell.value === 'number') {
+            if ((colNum === 8 || colNum === 9) && typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
-            } else if (colNum >= 4 && colNum <= 6 && typeof cell.value === 'number') {
+            } else if (colNum >= 4 && colNum <= 7 && typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
             }
           }
@@ -302,6 +304,7 @@ export class AvailableStockSummaryExportProcessor {
           color: '',
           quantity: grandTotals.quantity,
           transit: grandTotals.transit,
+          reserved: grandTotals.reserved,
           total: grandTotals.total,
           unitPrice: '',
           value: grandTotals.value,
@@ -399,6 +402,7 @@ export class AvailableStockSummaryExportProcessor {
             <td class="center">ALL COLORS</td>
             <td class="num">${formatVal(val.quantity)}</td>
             <td class="num">${formatVal(val.transit)}</td>
+            <td class="num">${formatVal(val.reserved)}</td>
             <td class="num highlight-tot">${formatVal(val.total)}</td>
             <td class="num">${formatVal(val.unitPrice)}</td>
             <td class="num highlight-val">${formatVal(val.value)}</td>
@@ -412,6 +416,7 @@ export class AvailableStockSummaryExportProcessor {
             <td class="center">${node.color}</td>
             <td class="num">${formatVal(val.quantity)}</td>
             <td class="num">${formatVal(val.transit)}</td>
+            <td class="num">${formatVal(val.reserved)}</td>
             <td class="num highlight-tot">${formatVal(val.total)}</td>
             <td class="num">-</td>
             <td class="num highlight-val">${formatVal(val.value)}</td>
@@ -423,6 +428,7 @@ export class AvailableStockSummaryExportProcessor {
             <td colspan="3" style="${style.indentStyles}">${style.prefix}${node.value.toUpperCase()}</td>
             <td class="num">${formatVal(val.quantity)}</td>
             <td class="num">${formatVal(val.transit)}</td>
+            <td class="num">${formatVal(val.reserved)}</td>
             <td class="num highlight-tot">${formatVal(val.total)}</td>
             <td class="num">-</td>
             <td class="num highlight-val">${formatVal(val.value)}</td>
@@ -446,7 +452,12 @@ export class AvailableStockSummaryExportProcessor {
       <html>
       <head>
         <meta charset="utf-8">
+        <title>Available Stock Summary</title>
         <style>
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
+          }
           body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             font-size: 8px;
@@ -518,18 +529,16 @@ export class AvailableStockSummaryExportProcessor {
           }
           .brand-row {
             background-color: #0f172a;
-            color: #ffffff;
+            color: #93c5fd;
             font-weight: 800;
-            font-size: 8.5px;
           }
           .brand-row td {
             border-color: #1e293b;
           }
           .division-row {
             background-color: #1e293b;
-            color: #ffffff;
+            color: #cbd5e1;
             font-weight: 700;
-            font-size: 8px;
           }
           .division-row td {
             border-color: #334155;
@@ -601,14 +610,15 @@ export class AvailableStockSummaryExportProcessor {
 
         <table>
           <colgroup>
-            <col style="width: 32%;" />
+            <col style="width: 28%;" />
+            <col style="width: 8%;" />
+            <col style="width: 9%;" />
+            <col style="width: 10%;" />
+            <col style="width: 9%;" />
+            <col style="width: 9%;" />
+            <col style="width: 9%;" />
             <col style="width: 8%;" />
             <col style="width: 10%;" />
-            <col style="width: 11%;" />
-            <col style="width: 9%;" />
-            <col style="width: 10%;" />
-            <col style="width: 9%;" />
-            <col style="width: 11%;" />
           </colgroup>
           <thead>
             <tr class="header-row">
@@ -617,6 +627,7 @@ export class AvailableStockSummaryExportProcessor {
               <th class="center">Color</th>
               <th class="num">Quantity</th>
               <th class="num">In Transit</th>
+              <th class="num">Stock Reserved</th>
               <th class="num">Total</th>
               <th class="num">Selling Price</th>
               <th class="num">Value (Rs.)</th>
@@ -628,6 +639,7 @@ export class AvailableStockSummaryExportProcessor {
               <td colspan="3">GRAND TOTALS</td>
               <td class="num">${formatVal(grandTotals.quantity)}</td>
               <td class="num">${formatVal(grandTotals.transit)}</td>
+              <td class="num">${formatVal(grandTotals.reserved)}</td>
               <td class="num">${formatVal(grandTotals.total)}</td>
               <td class="num">-</td>
               <td class="num">${formatVal(grandTotals.value)}</td>
