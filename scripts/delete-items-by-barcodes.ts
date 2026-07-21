@@ -62,6 +62,47 @@ function chunkArray<T>(array: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
+/**
+ * Clean up dependent records referencing Item before deleting Item rows
+ */
+async function deleteCascadeItemDependencies(prisma: any, itemIds: string[]) {
+  if (itemIds.length === 0) return;
+
+  const childModels = [
+    'purchaseReturnItem',
+    'purchaseInvoiceItem',
+    'deliveryChallanItem',
+    'eRPSalesInvoiceItem',
+    'eRPSalesOrderItem',
+    'salesOrderItem',
+    'posClaimItem',
+    'landedCostItem',
+    'goodsReceiptNoteItem',
+    'purchaseOrderItem',
+    'purchaseRequisitionItem',
+    'vendorQuotationItem',
+    'transferRequestItem',
+    'stockAdjustmentItem',
+    'stockRequisitionItem',
+    'stockLedger',
+    'discountCampaignItem',
+    'inventoryItem',
+    'stockReserve',
+  ];
+
+  for (const modelName of childModels) {
+    if (prisma[modelName] && typeof prisma[modelName].deleteMany === 'function') {
+      try {
+        await prisma[modelName].deleteMany({
+          where: { itemId: { in: itemIds } },
+        });
+      } catch (err: any) {
+        // Silently continue if table/column does not exist in schema variant
+      }
+    }
+  }
+}
+
 async function deleteItemsByBarcodes(
   prisma: PrismaClient,
   barcodes: string[],
@@ -77,7 +118,6 @@ async function deleteItemsByBarcodes(
   const batches = chunkArray(barcodes, batchSize);
   let totalItemsMatched = 0;
   let totalItemsDeleted = 0;
-  let totalFKFailures = 0;
   const startTime = Date.now();
 
   for (let i = 0; i < batches.length; i++) {
@@ -85,55 +125,49 @@ async function deleteItemsByBarcodes(
     const batchNum = i + 1;
     const progressPct = (((i + 1) / batches.length) * 100).toFixed(1);
 
+    // 1. Find matching item IDs for current batch of barcodes
+    const matchingItems = await prisma.item.findMany({
+      where: {
+        barCode: { in: batch },
+      },
+      select: { id: true },
+    });
+
+    const itemIds = matchingItems.map((item) => item.id);
+    totalItemsMatched += itemIds.length;
+
     if (isDryRun) {
-      const count = await prisma.item.count({
-        where: {
-          barCode: { in: batch },
-        },
-      });
-      totalItemsMatched += count;
       process.stdout.write(
-        `\r⏳ [DRY RUN] Batch ${batchNum}/${batches.length} (${progressPct}%): Found ${totalItemsMatched.toLocaleString()} items...`
+        `\r⏳ [DRY RUN] Batch ${batchNum}/${batches.length} (${progressPct}%): Found ${totalItemsMatched.toLocaleString()} items in DB so far...`
       );
     } else {
-      try {
-        const result = await prisma.item.deleteMany({
+      if (itemIds.length > 0) {
+        // 2. Cascade delete dependent child records first
+        await deleteCascadeItemDependencies(prisma, itemIds);
+
+        // 3. Delete Item records
+        const delResult = await prisma.item.deleteMany({
           where: {
-            barCode: { in: batch },
+            id: { in: itemIds },
           },
         });
-        totalItemsDeleted += result.count;
-        process.stdout.write(
-          `\r⏳ Batch ${batchNum}/${batches.length} (${progressPct}%): Deleted ${totalItemsDeleted.toLocaleString()} items...`
-        );
-      } catch (err: any) {
-        console.warn(`\n⚠️ Batch ${batchNum} bulk delete failed (${err.message}). Falling back to individual deletes...`);
-        for (const barcode of batch) {
-          try {
-            const delResult = await prisma.item.deleteMany({
-              where: { barCode: barcode },
-            });
-            totalItemsDeleted += delResult.count;
-          } catch (itemErr) {
-            totalFKFailures++;
-          }
-        }
+        totalItemsDeleted += delResult.count;
       }
+
+      process.stdout.write(
+        `\r⏳ Batch ${batchNum}/${batches.length} (${progressPct}%): Deleted ${totalItemsDeleted.toLocaleString()} items...`
+      );
     }
   }
 
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`\n\n==================================================`);
-  console.log(`✨ Done in ${durationSec}s`);
+  console.log(`✨ Processing Completed in ${durationSec}s`);
   console.log(`==================================================`);
-  console.log(`📊 Unique Barcodes in input: ${totalBarcodes.toLocaleString()}`);
-  if (isDryRun) {
-    console.log(`🔍 Total items in DB matching barcodes: ${totalItemsMatched.toLocaleString()}`);
-  } else {
+  console.log(`📊 Unique Barcodes in file: ${totalBarcodes.toLocaleString()}`);
+  console.log(`🔍 Total items found in DB: ${totalItemsMatched.toLocaleString()}`);
+  if (!isDryRun) {
     console.log(`✅ Total items deleted from DB: ${totalItemsDeleted.toLocaleString()}`);
-    if (totalFKFailures > 0) {
-      console.log(`⚠️ Items skipped due to foreign key constraints: ${totalFKFailures.toLocaleString()}`);
-    }
   }
   console.log(`==================================================\n`);
 }
