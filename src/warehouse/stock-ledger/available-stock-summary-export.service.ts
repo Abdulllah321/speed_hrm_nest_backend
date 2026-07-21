@@ -374,6 +374,25 @@ export class AvailableStockSummaryExportService {
       transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
     }
 
+    // Query reserved stock for matched items (from StockReserve table)
+    const reserveGroup = await prisma.stockReserve.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: matchedItemIds },
+        ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gte: new Date() } }
+        ]
+      },
+      _sum: { quantity: true },
+    });
+
+    const reserveMap = new Map<string, number>();
+    for (const row of reserveGroup) {
+      reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+    }
+
     const itemMetricsMap = new Map<string, {
       fromWarehouse: number;
       fromOutlet: number;
@@ -436,6 +455,7 @@ export class AvailableStockSummaryExportService {
     const addTotals = (target: any, source: any) => {
       target.quantity += source.quantity;
       target.transit += source.transit;
+      target.reserved += source.reserved;
       target.total += source.total;
       target.value += source.value;
     };
@@ -443,6 +463,7 @@ export class AvailableStockSummaryExportService {
     for (const item of items) {
       const bf = bfMap.get(item.id) || 0;
       const transit = transitMap.get(item.id) || 0;
+      const reserved = reserveMap.get(item.id) || 0;
       const m = itemMetricsMap.get(item.id) || {
         fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
         exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
@@ -458,6 +479,7 @@ export class AvailableStockSummaryExportService {
       const variantMetrics = {
         quantity: availableStock,
         transit,
+        reserved,
         total: balance,
         unitPrice,
         value,
@@ -528,6 +550,7 @@ export class AvailableStockSummaryExportService {
     return {
       quantity: 0,
       transit: 0,
+      reserved: 0,
       total: 0,
       unitPrice: 0,
       value: 0,
