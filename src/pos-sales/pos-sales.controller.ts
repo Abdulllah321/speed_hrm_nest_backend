@@ -824,7 +824,7 @@ export class PosSalesController {
     summary: 'Get Alliance Register Report (alliance sales only)',
   })
   async getAllianceRegister(
-    @Query('locationId') locationId: string,
+    @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('cashierUserId') cashierUserId?: string,
@@ -845,7 +845,7 @@ export class PosSalesController {
     @Req() req: any,
     @Body()
     body: {
-      locationId: string;
+      locationId?: string;
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;

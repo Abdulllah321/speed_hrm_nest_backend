@@ -5990,7 +5990,7 @@ export class PosSalesService implements OnModuleInit {
   }
 
   async getAllianceRegisterReport(options: {
-    locationId: string;
+    locationId?: string;
     startDate?: string;
     endDate?: string;
     cashierUserId?: string;
@@ -6003,9 +6003,6 @@ export class PosSalesService implements OnModuleInit {
       cashierUserId,
       search,
     } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
 
     const now = new Date();
     const startDate = startStr
@@ -6016,7 +6013,7 @@ export class PosSalesService implements OnModuleInit {
 
     const orders = await this.prisma.salesOrder.findMany({
       where: {
-        locationId,
+        ...(locationId && locationId !== 'all' ? { locationId } : {}),
         status: { in: ['completed', 'partially_returned'] },
         createdAt: { gte: startDate, lte: endDate },
         // Only alliance-related sales: pure alliance OR manual-with-alliance

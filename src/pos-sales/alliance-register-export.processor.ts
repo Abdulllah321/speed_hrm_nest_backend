@@ -15,7 +15,7 @@ export interface AllianceRegisterExportJobData {
   userId: string;
   tenantId: string;
   tenantDbUrl: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
@@ -108,11 +108,13 @@ export class AllianceRegisterExportProcessor {
       await job.progress(10);
 
       // ── Location info ─────────────────────────────────────────
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+      const location = locationId && locationId !== 'all'
+        ? await prisma.location.findUnique({
+            where: { id: locationId },
+            select: { name: true },
+          })
+        : null;
+      const locationName = location?.name || 'All Outlets';
 
       const now       = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -128,7 +130,7 @@ export class AllianceRegisterExportProcessor {
       while (hasMore) {
         const chunk = await prisma.salesOrder.findMany({
           where: {
-            locationId,
+            ...(locationId && locationId !== 'all' ? { locationId } : {}),
             status: { in: ['completed', 'partially_returned'] },
             createdAt: { gte: startDate, lte: endDate },
             // Alliance filter: pure alliance OR manual-with-alliance
