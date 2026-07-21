@@ -57,7 +57,17 @@ export class SalesInvoiceService {
         deliveryChallan: true,
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                brand: true,
+                category: true,
+                subCategory: true,
+                size: true,
+                color: true,
+                gender: true,
+                division: true,
+              },
+            },
           },
         },
       },
