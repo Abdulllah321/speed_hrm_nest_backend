@@ -360,7 +360,7 @@ export class StockLedgerController {
   @Get('available-stock-summary')
   @UseGuards(JwtAuthGuard)
   async getAvailableStockSummaryReport(
-    @Query('locationId') locationId: string,
+    @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
@@ -393,7 +393,7 @@ export class StockLedgerController {
   async queueAvailableStockSummaryExport(
     @Req() req: any,
     @Body() body: {
-      locationId: string;
+      locationId?: string;
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
