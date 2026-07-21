@@ -2891,10 +2891,13 @@ export class PosSalesService implements OnModuleInit {
                     }
                 }
 
-                let returnLocationName = '';
+                let returnLocationShortCode = '';
                 if (effectiveLocationId && effectiveLocationId !== order.locationId) {
-                    const retLoc = await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } });
-                    if (retLoc) returnLocationName = retLoc.name;
+                    const retLoc = await tx.location.findUnique({
+                        where: { id: effectiveLocationId },
+                        select: { shortCode: true, code: true, name: true },
+                    });
+                    if (retLoc) returnLocationShortCode = retLoc.shortCode || retLoc.code || retLoc.name;
                 }
 
                 return { 
@@ -2911,7 +2914,7 @@ export class PosSalesService implements OnModuleInit {
                     isCrossLocation: !!(order.locationId && order.locationId !== effectiveLocationId),
                     originalLocationId: order.locationId,
                     returnLocationId: effectiveLocationId,
-                    returnLocationName,
+                    returnLocationShortCode,
                     orderNumber: order.orderNumber,
                     message: exchangeVoucher 
                         ? `Return processed (${newStatus}), inventory restored, and exchange voucher ${exchangeVoucher.code} issued for Rs.${Math.round(totalRefundAmount * 100) / 100}`
@@ -2922,12 +2925,12 @@ export class PosSalesService implements OnModuleInit {
             if (result.status) {
                 this.logger.log(`[returnItems] Return processed successfully for Order #${result.orderNumber}. isCrossLocation: ${result.isCrossLocation}`);
                 
-                // 1. Notify original location if cross-location
+                // Send notification ONLY if cross-location return
                 if (result.isCrossLocation && result.originalLocationId) {
                     this.notificationsService.sendPosLocationNotification({
                         locationId: result.originalLocationId,
                         title: 'Cross-Location Return Received',
-                        message: `Invoice #${result.orderNumber} (originally sold at your branch) had a return processed at ${result.returnLocationName || 'another store branch'}.`,
+                        message: `Invoice #${result.orderNumber} (originally sold at your branch) had a return processed at ${result.returnLocationShortCode || 'another branch'}.`,
                         category: 'pos_return',
                         priority: 'high',
                         entityType: 'SalesOrder',
@@ -2935,21 +2938,6 @@ export class PosSalesService implements OnModuleInit {
                         actionType: 'view_order',
                         actionPayload: { orderId: id, orderNumber: result.orderNumber, returnLocationId: result.returnLocationId },
                     }).catch(err => this.logger.error(`[returnItems] Failed to send original location notification: ${err.message}`));
-                }
-
-                // 2. Notify processing location
-                if (result.returnLocationId) {
-                    this.notificationsService.sendPosLocationNotification({
-                        locationId: result.returnLocationId,
-                        title: 'POS Sale Return Processed',
-                        message: `Return processed for Invoice #${result.orderNumber}. Refund Amount: Rs.${result.refundAmount}.`,
-                        category: 'pos_return',
-                        priority: 'high',
-                        entityType: 'SalesOrder',
-                        entityId: id,
-                        actionType: 'view_order',
-                        actionPayload: { orderId: id, orderNumber: result.orderNumber },
-                    }).catch(err => this.logger.error(`[returnItems] Failed to send return location notification: ${err.message}`));
                 }
             }
 
