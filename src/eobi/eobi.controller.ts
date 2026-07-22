@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Param,
   Body,
   Query,
   UseGuards,
@@ -82,5 +84,18 @@ export class EOBIController {
       year,
       status,
     });
+  }
+
+  @Patch('withdrawals/:id/approve')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.eobi.update')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve EOBI withdrawal' })
+  @ApiResponse({ status: 200, description: 'EOBI withdrawal approved' })
+  async approveEOBIWithdrawal(
+    @Param('id') id: string,
+    @Body('approvedById') approvedById?: string,
+  ) {
+    return this.eobiService.approveEOBIWithdrawal(id, approvedById);
   }
 }

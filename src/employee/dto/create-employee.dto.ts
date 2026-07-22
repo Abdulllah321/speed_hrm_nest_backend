@@ -345,6 +345,11 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional()
   @IsOptional()
   socialSecurityRegistrations?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  socialSecurityInstitutionId?: string | null;
 }
 
 export class UpdateEmployeeDto {
@@ -631,4 +636,9 @@ export class UpdateEmployeeDto {
   @ApiPropertyOptional()
   @IsOptional()
   socialSecurityRegistrations?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  socialSecurityInstitutionId?: string | null;
 }
