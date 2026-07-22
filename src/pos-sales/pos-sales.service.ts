@@ -5760,9 +5760,8 @@ export class PosSalesService implements OnModuleInit {
       cashierUserId,
       search,
     } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -5772,7 +5771,7 @@ export class PosSalesService implements OnModuleInit {
 
     const orders = await this.prisma.salesOrder.findMany({
       where: {
-        locationId,
+        ...(locationWhere && { locationId: locationWhere }),
         status: {
           in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
         },
@@ -6288,9 +6287,8 @@ export class PosSalesService implements OnModuleInit {
       maxAmount,
       fbrOnly,
     } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -6300,7 +6298,7 @@ export class PosSalesService implements OnModuleInit {
 
     const orders = await this.prisma.salesOrder.findMany({
       where: {
-        locationId,
+        ...(locationWhere && { locationId: locationWhere }),
         status: {
           in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
         },
@@ -6709,9 +6707,8 @@ export class PosSalesService implements OnModuleInit {
       showVariant,
       showInvoices,
     } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -6743,7 +6740,7 @@ export class PosSalesService implements OnModuleInit {
 
     const orders = await this.prisma.salesOrder.findMany({
       where: {
-        locationId,
+        ...(locationWhere && { locationId: locationWhere }),
         status: {
           in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
         },
@@ -7113,9 +7110,8 @@ export class PosSalesService implements OnModuleInit {
       showVariant,
       showInvoices,
     } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -7150,7 +7146,7 @@ export class PosSalesService implements OnModuleInit {
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
         createdAt: { gte: startDate, lte: endDate },
-        locationId,
+        ...(locationWhere && { locationId: locationWhere }),
       },
       include: {
         item: {
@@ -7193,7 +7189,7 @@ export class PosSalesService implements OnModuleInit {
         status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
         createdAt: { gte: startDate, lte: endDate },
         salesOrder: {
-          locationId,
+          ...(locationWhere && { locationId: locationWhere }),
           ...(cashierUserId ? { cashierUserId } : {}),
         },
       },
