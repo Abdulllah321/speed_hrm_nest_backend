@@ -481,7 +481,8 @@ export class StockLedgerService {
   }
 
   async getStockActivityReport(options: {
-    locationId: string;
+    locationId?: string;
+    warehouseId?: string;
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
@@ -493,10 +494,21 @@ export class StockLedgerService {
     showArticle?: boolean;
     showVariant?: boolean;
   }) {
-    const { locationId, startDate: startStr, endDate: endStr } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
+    const { locationId, warehouseId, startDate: startStr, endDate: endStr } = options;
+
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
+    const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
+
+    const locOrWhFilters: any[] = [];
+    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
+    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+
+    const locationOrWarehouseWhere = locOrWhFilters.length > 1
+      ? { OR: locOrWhFilters }
+      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
 
     const showBrand = options.showBrand !== false;
     const showDivision = options.showDivision !== false;
@@ -524,12 +536,15 @@ export class StockLedgerService {
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     const inventoryItems = await this.prisma.inventoryItem.findMany({
-      where: { locationId, status: 'AVAILABLE' },
+      where: {
+        ...locationOrWarehouseWhere,
+        status: 'AVAILABLE',
+      },
       select: { itemId: true },
     });
     
     const ledgerItems = await this.prisma.stockLedger.findMany({
-      where: { locationId },
+      where: locationOrWarehouseWhere,
       select: { itemId: true },
       distinct: ['itemId'],
     });
@@ -570,7 +585,7 @@ export class StockLedgerService {
     const bfGroup = await this.prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        locationId,
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { lt: startDate },
       },
@@ -588,7 +603,7 @@ export class StockLedgerService {
     const inRangeOpeningGroup = await this.prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        locationId,
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         OR: [
@@ -607,7 +622,7 @@ export class StockLedgerService {
 
     const ledgerEntries = await this.prisma.stockLedger.findMany({
       where: {
-        locationId,
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         NOT: [
@@ -624,13 +639,21 @@ export class StockLedgerService {
       },
     });
 
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+    const toLocOrWhWhere = toLocOrWhFilters.length > 1
+      ? { OR: toLocOrWhFilters }
+      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
     const transitItems = await this.prisma.transferRequestItem.findMany({
       where: {
         itemId: { in: matchedItemIds },
         transferRequest: {
-          toLocationId: locationId,
+          ...toLocOrWhWhere,
           status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET'] },
+          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
         },
       },
       select: {
@@ -862,15 +885,24 @@ export class StockLedgerService {
     const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
-    const locationFilter = {
-      ...(locationId && { locationId }),
-      ...(warehouseId && { warehouseId }),
-    };
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
+    const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
+
+    const locOrWhFilters: any[] = [];
+    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
+    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+
+    const locationOrWarehouseWhere = locOrWhFilters.length > 1
+      ? { OR: locOrWhFilters }
+      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
 
     // 1. Resolve matching Item IDs from inventory levels & ledger
     const inventoryItems = await prisma.inventoryItem.findMany({
       where: {
-        ...locationFilter,
+        ...locationOrWarehouseWhere,
         status: 'AVAILABLE',
         ...(itemId && { itemId }),
       },
@@ -879,7 +911,7 @@ export class StockLedgerService {
 
     const ledgerItems = await prisma.stockLedger.findMany({
       where: {
-        ...locationFilter,
+        ...locationOrWarehouseWhere,
         ...(itemId && { itemId }),
       },
       select: { itemId: true },
@@ -932,7 +964,7 @@ export class StockLedgerService {
     const bfGroup = await prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        ...locationFilter,
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { lt: startDate },
       },
@@ -948,7 +980,7 @@ export class StockLedgerService {
     const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
       by: ['itemId'],
       where: {
-        ...locationFilter,
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         OR: [
@@ -968,7 +1000,7 @@ export class StockLedgerService {
     // 4. Fetch Ledger Entries within date range (excluding opening entries)
     const ledgerEntries = await prisma.stockLedger.findMany({
       where: {
-        ...locationFilter,
+        ...locationOrWarehouseWhere,
         itemId: { in: matchedItemIds },
         createdAt: { gte: startDate, lte: endDate },
         NOT: [
@@ -980,14 +1012,21 @@ export class StockLedgerService {
       orderBy: { createdAt: 'asc' },
     });
 
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+    const toLocOrWhWhere = toLocOrWhFilters.length > 1
+      ? { OR: toLocOrWhFilters }
+      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
     // 5. Fetch In-Transit Requests
     const transitRequests = await prisma.transferRequestItem.findMany({
       where: {
         itemId: { in: matchedItemIds },
         transferRequest: {
           status: { in: ['PENDING', 'PENDING_CHECKER', 'PENDING_AUTHORIZER', 'PENDING_APPROVER', 'APPROVED', 'SOURCE_APPROVED'] },
-          ...(locationId ? { toLocationId: locationId } : {}),
-          ...(warehouseId ? { toWarehouseId: warehouseId } : {}),
+          ...toLocOrWhWhere,
         },
       },
       include: {

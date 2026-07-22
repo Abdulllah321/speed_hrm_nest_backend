@@ -16,7 +16,8 @@ export interface StockActivityExportJobData {
   userId: string;
   tenantId: string;
   tenantDbUrl: string;
-  locationId: string;
+  locationId?: string;
+  warehouseId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -91,7 +92,7 @@ export class StockActivityExportProcessor {
   @Process({ concurrency: 1 })
   async handleExport(job: Job<StockActivityExportJobData>): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, format, summaryOnly,
+      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format, summaryOnly,
       showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
     } = job.data;
     this.logger.log(`[StockActivityExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
@@ -105,11 +106,31 @@ export class StockActivityExportProcessor {
     try {
       await job.progress(5);
 
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
+      const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
+
+      const locOrWhFilters: any[] = [];
+      if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
+      if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+
+      const locationOrWarehouseWhere = locOrWhFilters.length > 1
+        ? { OR: locOrWhFilters }
+        : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
+
+      let locationName = '';
+      if (locIds.length > 0) {
+        const locs = await prisma.location.findMany({ where: { id: { in: locIds } }, select: { name: true } });
+        locationName += locs.map(l => l.name).join(', ');
+      }
+      if (whIds.length > 0) {
+        if (locationName) locationName += ' & ';
+        const whs = await prisma.warehouse.findMany({ where: { id: { in: whIds } }, select: { name: true } });
+        locationName += whs.map(w => w.name).join(', ');
+      }
+      if (!locationName) locationName = 'All Locations & Warehouses';
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -119,12 +140,15 @@ export class StockActivityExportProcessor {
 
       // Fetch inventory item ids
       const inventoryItems = await prisma.inventoryItem.findMany({
-        where: { locationId, status: 'AVAILABLE' },
+        where: {
+          ...locationOrWarehouseWhere,
+          status: 'AVAILABLE',
+        },
         select: { itemId: true },
       });
 
       const ledgerItems = await prisma.stockLedger.findMany({
-        where: { locationId },
+        where: locationOrWarehouseWhere,
         select: { itemId: true },
         distinct: ['itemId'],
       });
@@ -171,7 +195,7 @@ export class StockActivityExportProcessor {
       const bfGroup = await prisma.stockLedger.groupBy({
         by: ['itemId'],
         where: {
-          locationId,
+          ...locationOrWarehouseWhere,
           itemId: { in: matchedItemIds },
           createdAt: { lt: startDate },
         },
@@ -187,7 +211,7 @@ export class StockActivityExportProcessor {
       const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
         by: ['itemId'],
         where: {
-          locationId,
+          ...locationOrWarehouseWhere,
           itemId: { in: matchedItemIds },
           createdAt: { gte: startDate, lte: endDate },
           OR: [
@@ -206,7 +230,7 @@ export class StockActivityExportProcessor {
 
       const ledgerEntries = await prisma.stockLedger.findMany({
         where: {
-          locationId,
+          ...locationOrWarehouseWhere,
           itemId: { in: matchedItemIds },
           createdAt: { gte: startDate, lte: endDate },
           NOT: [
@@ -223,13 +247,21 @@ export class StockActivityExportProcessor {
         },
       });
 
+      const toLocOrWhFilters: any[] = [];
+      if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+      if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+      const toLocOrWhWhere = toLocOrWhFilters.length > 1
+        ? { OR: toLocOrWhFilters }
+        : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
       const transitItems = await prisma.transferRequestItem.findMany({
         where: {
           itemId: { in: matchedItemIds },
           transferRequest: {
-            toLocationId: locationId,
+            ...toLocOrWhWhere,
             status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET'] },
+            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
           },
         },
         select: {

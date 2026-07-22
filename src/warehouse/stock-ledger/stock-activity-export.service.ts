@@ -9,7 +9,8 @@ import { UploadService } from '../../upload/upload.service';
 
 export interface QueueStockActivityExportOptions {
   userId: string;
-  locationId: string;
+  locationId?: string;
+  warehouseId?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -58,6 +59,7 @@ export class StockActivityExportService {
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
+        warehouseId: opts.warehouseId,
         startDate: opts.startDate,
         endDate: opts.endDate,
         format: opts.format,

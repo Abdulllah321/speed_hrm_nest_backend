@@ -93,7 +93,8 @@ export class StockLedgerController {
   @Get('activity-report')
   @UseGuards(JwtAuthGuard)
   async getActivityReport(
-    @Query('locationId') locationId: string,
+    @Query('locationId') locationId?: string,
+    @Query('warehouseId') warehouseId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
@@ -107,6 +108,7 @@ export class StockLedgerController {
   ) {
     const data = await this.stockLedgerService.getStockActivityReport({
       locationId,
+      warehouseId,
       startDate,
       endDate,
       summaryOnly: summaryOnly === 'true',
@@ -126,7 +128,8 @@ export class StockLedgerController {
   async queueActivityReportExport(
     @Req() req: any,
     @Body() body: {
-      locationId: string;
+      locationId?: string;
+      warehouseId?: string;
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
@@ -140,10 +143,11 @@ export class StockLedgerController {
       showVariant?: boolean;
     },
   ) {
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.user?.userId;
     const result = await this.stockActivityExportService.queueExport({
       userId,
       locationId: body.locationId,
+      warehouseId: body.warehouseId,
       startDate: body.startDate,
       endDate: body.endDate,
       format: body.format,
