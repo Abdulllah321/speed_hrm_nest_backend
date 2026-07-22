@@ -86,14 +86,20 @@ export class StockTransactionDetailExportProcessor {
       await job.progress(10);
 
       // Fetch location or warehouse name for the header
-      let targetName = 'All Locations';
-      if (locationId) {
-        const loc = await prisma.location.findUnique({ where: { id: locationId }, select: { name: true } });
-        targetName = loc?.name || 'Store';
-      } else if (warehouseId) {
-        const wh = await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { name: true } });
-        targetName = wh?.name || 'Warehouse';
+      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      let targetName = '';
+      if (locIds.length > 0) {
+        const locs = await prisma.location.findMany({ where: { id: { in: locIds } }, select: { name: true } });
+        targetName += locs.map(l => l.name).join(', ');
       }
+      if (whIds.length > 0) {
+        if (targetName) targetName += ' & ';
+        const whs = await prisma.warehouse.findMany({ where: { id: { in: whIds } }, select: { name: true } });
+        targetName += whs.map(w => w.name).join(', ');
+      }
+      if (!targetName) targetName = 'All Locations & Warehouses';
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
