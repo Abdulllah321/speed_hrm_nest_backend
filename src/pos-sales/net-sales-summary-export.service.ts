@@ -9,7 +9,7 @@ import { UploadService } from '../upload/upload.service';
 
 export interface QueueNetSalesSummaryExportOptions {
   userId: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;

@@ -619,7 +619,7 @@ export class PosSalesController {
   @Get('reports/net-sales-summary')
   @ApiOperation({ summary: 'Get Net Sales Summary Report' })
   async getNetSalesSummary(
-    @Query('locationId') locationId: string,
+    @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('cashierUserId') cashierUserId?: string,
@@ -671,7 +671,7 @@ export class PosSalesController {
     @Req() req: any,
     @Body()
     body: {
-      locationId: string;
+      locationId?: string;
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;

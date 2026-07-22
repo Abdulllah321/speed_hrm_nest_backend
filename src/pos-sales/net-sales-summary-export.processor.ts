@@ -104,11 +104,18 @@ export class NetSalesSummaryExportProcessor {
     try {
       await job.progress(5);
 
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
+      let locationName = '';
+      if (locIds.length > 0) {
+        const locs = await prisma.location.findMany({
+          where: { id: { in: locIds } },
+          select: { name: true },
+        });
+        locationName = locs.map(l => l.name).join(', ');
+      }
+      if (!locationName) locationName = 'All Stores';
 
       const now = new Date();
 
@@ -147,7 +154,7 @@ export class NetSalesSummaryExportProcessor {
       const orderItems = await prisma.salesOrderItem.findMany({
         where: {
           salesOrder: {
-            locationId,
+            ...(locationWhere && { locationId: locationWhere }),
             status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
             createdAt: { gte: startDate, lte: endDate },
             ...(cashierUserId ? { cashierUserId } : {}),
@@ -178,7 +185,7 @@ export class NetSalesSummaryExportProcessor {
             status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
             reviewedAt: { gte: startDate, lte: endDate },
             salesOrder: {
-              locationId,
+              ...(locationWhere && { locationId: locationWhere }),
               ...(cashierUserId ? { cashierUserId } : {}),
             },
           },
@@ -219,7 +226,7 @@ export class NetSalesSummaryExportProcessor {
         where: {
           referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
           createdAt: { gte: startDate, lte: endDate },
-          locationId,
+          ...(locationWhere && { locationId: locationWhere }),
         },
         include: {
           item: {
