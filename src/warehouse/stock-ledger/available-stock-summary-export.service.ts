@@ -472,7 +472,7 @@ export class AvailableStockSummaryExportService {
       const totalTrfIn = m.fromWarehouse + m.fromOutlet;
       const totalTrfOut = m.toWarehouse + m.toOutlet;
       const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
-      const balance = availableStock + transit;
+      const balance = availableStock + transit + reserved;
       const unitPrice = item.unitPrice || 0;
       const value = balance * unitPrice;
 
