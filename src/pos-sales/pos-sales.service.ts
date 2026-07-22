@@ -5006,9 +5006,15 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── List available cashiers for a location ─────────────────────
   async listCashiers(locationId: string) {
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
     // 1. Find all active employees at this location
     const employees = await this.prisma.employee.findMany({
-      where: { locationId, status: 'active' },
+      where: {
+        ...(locationWhere && { locationId: locationWhere }),
+        status: 'active',
+      },
       select: {
         id: true,
         employeeName: true,
@@ -5070,7 +5076,7 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── Net Sales Summary Report ──────────────────────────────────
   async getNetSalesSummaryReport(options: {
-    locationId: string;
+    locationId?: string;
     startDate?: string;
     endDate?: string;
     cashierUserId?: string;
@@ -5095,9 +5101,6 @@ export class PosSalesService implements OnModuleInit {
       endDate: endStr,
       cashierUserId,
     } = options;
-    if (!locationId) {
-      throw new BadRequestException('locationId is required');
-    }
 
     const sSalesperson = options.showSalesperson === true;
     const sYear = options.showYear === true;
@@ -5114,8 +5117,8 @@ export class PosSalesService implements OnModuleInit {
     const sArticle = options.showArticle !== false;
     const sVariant =
       options.showVariant !== undefined
-        ? options.showVariant
-        : !options.summaryOnly;
+         ? options.showVariant
+         : !options.summaryOnly;
 
     const levels: string[] = [];
     if (sSalesperson) levels.push('salesperson');
@@ -5170,11 +5173,14 @@ export class PosSalesService implements OnModuleInit {
     const startDate = parseLocalDate(startStr, false);
     const endDate = parseLocalDate(endStr, true);
 
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
     // Fetch sales order items
     const orderItems = await this.prisma.salesOrderItem.findMany({
       where: {
         salesOrder: {
-          locationId,
+          ...(locationWhere && { locationId: locationWhere }),
           status: {
             in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
           },
@@ -5207,7 +5213,7 @@ export class PosSalesService implements OnModuleInit {
           status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
           reviewedAt: { gte: startDate, lte: endDate },
           salesOrder: {
-            locationId,
+            ...(locationWhere && { locationId: locationWhere }),
             ...(cashierUserId ? { cashierUserId } : {}),
           },
         },
@@ -5250,7 +5256,7 @@ export class PosSalesService implements OnModuleInit {
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
         createdAt: { gte: startDate, lte: endDate },
-        locationId,
+        ...(locationWhere && { locationId: locationWhere }),
       },
       include: {
         item: {
