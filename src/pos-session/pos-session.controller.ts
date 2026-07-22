@@ -92,9 +92,17 @@ export class PosSessionController {
     async getDaywiseReconciliation(
         @Req() req: any,
         @Query('date') date: string,
+        @Query('locationId') queryLocationId?: string,
     ) {
-        const { locationId } = this.extractTerminalContext(req);
-        return this.sessionService.getDaywiseReconciliation(locationId, date);
+        let locationId = queryLocationId;
+        if (locationId === undefined || locationId === null) {
+            try {
+                locationId = this.extractTerminalContext(req).locationId;
+            } catch {
+                locationId = req.user?.locationId || '';
+            }
+        }
+        return this.sessionService.getDaywiseReconciliation(locationId || '', date);
     }
 
     @Get('reconciliation/daywise/excel')
@@ -102,10 +110,18 @@ export class PosSessionController {
     async getDaywiseReconciliationExcel(
         @Req() req: any,
         @Query('date') date: string,
+        @Query('locationId') queryLocationId: string,
         @Res() res: any,
     ) {
-        const { locationId } = this.extractTerminalContext(req);
-        return this.sessionService.exportDaywiseReconciliationExcel(locationId, date, res);
+        let locationId = queryLocationId;
+        if (locationId === undefined || locationId === null) {
+            try {
+                locationId = this.extractTerminalContext(req).locationId;
+            } catch {
+                locationId = req.user?.locationId || '';
+            }
+        }
+        return this.sessionService.exportDaywiseReconciliationExcel(locationId || '', date, res);
     }
 
     @Post('reconciliation/daywise/export/queue')
@@ -113,10 +129,18 @@ export class PosSessionController {
     async queueReconciliationExport(
         @Req() req: any,
         @Query('date') date: string,
+        @Query('locationId') queryLocationId?: string,
     ) {
-        const { locationId } = this.extractTerminalContext(req);
+        let locationId = queryLocationId;
+        if (locationId === undefined || locationId === null) {
+            try {
+                locationId = this.extractTerminalContext(req).locationId;
+            } catch {
+                locationId = req.user?.locationId || '';
+            }
+        }
         const userId = req.user?.userId;
-        const result = await this.sessionService.queueDaywiseReconciliationExcel(userId, locationId, date);
+        const result = await this.sessionService.queueDaywiseReconciliationExcel(userId, locationId || '', date);
         return {
             status: true,
             message: "Reconciliation export queued. You'll receive a notification when it is ready.",

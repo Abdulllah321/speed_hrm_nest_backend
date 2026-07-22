@@ -1186,361 +1186,167 @@ export class PosSessionService {
   }}}
 
   async getDaywiseReconciliation(locationId: string, date: string) {
-    const location = await this.prisma.location.findUnique({
-      where: { id: locationId },
-      select: { name: true, code: true },
-    });
-    if (!location) {
-      throw new NotFoundException('Location not found.');
-    }
+    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
 
-    const startOfDay = new Date(date + 'T00:00:00');
-    startOfDay.setHours(0, 0, 0, 0);
+    const computeSingleReconciliation = async (targetLocWhere: any, displayName: string, targetLocId?: string) => {
+      const startOfDay = new Date(date + 'T00:00:00');
+      startOfDay.setHours(0, 0, 0, 0);
 
-    const endOfDay = new Date(date + 'T00:00:00');
-    endOfDay.setHours(23, 59, 59, 999);
+      const endOfDay = new Date(date + 'T00:00:00');
+      endOfDay.setHours(23, 59, 59, 999);
 
-    const timeFilter = {
-      gte: startOfDay,
-      lte: endOfDay,
-    };
+      const timeFilter = {
+        gte: startOfDay,
+        lte: endOfDay,
+      };
 
-    const orders = await this.prisma.salesOrder.findMany({
-      where: {
-        locationId: locationId,
-        createdAt: timeFilter,
-      },
-      include: {
-        merchant: true,
-        voucherRedemptions: {
-          include: {
-            voucher: {
-              include: {
-                claims: true,
+      const orders = await this.prisma.salesOrder.findMany({
+        where: {
+          ...(targetLocWhere && { locationId: targetLocWhere }),
+          createdAt: timeFilter,
+        },
+        include: {
+          merchant: true,
+          voucherRedemptions: {
+            include: {
+              voucher: {
+                include: {
+                  claims: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    const issuedVouchers = await this.prisma.voucher.findMany({
-      where: {
-        createdAt: timeFilter,
-        issuedByLocationId: locationId,
-      },
-      include: {
-        claims: true,
-        merchant: true,
-      },
-    });
+      const issuedVouchers = await this.prisma.voucher.findMany({
+        where: {
+          createdAt: timeFilter,
+          ...(targetLocWhere && { issuedByLocationId: targetLocWhere }),
+        },
+        include: {
+          claims: true,
+          merchant: true,
+        },
+      });
 
-    let grossSales = 0;
-    let totalTaxes = 0;
-    let totalDiscounts = 0;
+      let grossSales = 0;
+      let totalTaxes = 0;
+      let totalDiscounts = 0;
 
-    let totalCashReceived = 0;
-    let totalCardReceived = 0;
-    let cashSalesCount = 0;
-    let cardSalesCount = 0;
-    let voucherSalesCount = 0;
-    let totalVouchersReceivedAmt = 0;
+      let totalCashReceived = 0;
+      let totalCardReceived = 0;
+      let cashSalesCount = 0;
+      let cardSalesCount = 0;
+      let voucherSalesCount = 0;
+      let totalVouchersReceivedAmt = 0;
 
-    const cardGroup: Record<
-      string,
-      { bank: string; amount: number; rate: number; commission: number }
-    > = {};
-    const cardVoucherGroup: Record<
-      string,
-      { bank: string; amount: number; rate: number; commission: number }
-    > = {};
+      const cardGroup: Record<
+        string,
+        { bank: string; amount: number; rate: number; commission: number }
+      > = {};
+      const cardVoucherGroup: Record<
+        string,
+        { bank: string; amount: number; rate: number; commission: number }
+      > = {};
 
-    const redeemedVouchersList: Array<{
-      type: string;
-      amount: number;
-      from: string;
-    }> = [];
+      const redeemedVouchersList: Array<{
+        type: string;
+        amount: number;
+        from: string;
+      }> = [];
 
-    let totalCreditAmount = 0;
+      let totalCreditAmount = 0;
 
-    for (const order of orders) {
-      const subtotal = Number(order.subtotal ?? 0);
-      const discountAmount = Number(order.discountAmount ?? 0);
-      const globalDiscountAmount = Number(order.globalDiscountAmount ?? 0);
-      const taxAmount = Number(order.taxAmount ?? 0);
-      const grandTotal = Number(order.grandTotal ?? 0);
+      for (const order of orders) {
+        const subtotal = Number(order.subtotal ?? 0);
+        const discountAmount = Number(order.discountAmount ?? 0);
+        const globalDiscountAmount = Number(order.globalDiscountAmount ?? 0);
+        const taxAmount = Number(order.taxAmount ?? 0);
+        const grandTotal = Number(order.grandTotal ?? 0);
 
-      grossSales += subtotal;
-      totalTaxes += taxAmount;
-      totalDiscounts += discountAmount + globalDiscountAmount;
+        grossSales += subtotal;
+        totalTaxes += taxAmount;
+        totalDiscounts += discountAmount + globalDiscountAmount;
 
-      const voucherRedemptionsSum =
-        order.voucherRedemptions?.reduce(
-          (sum, r) => sum + Number(r.amountUsed),
-          0,
-        ) ?? 0;
+        const voucherRedemptionsSum =
+          order.voucherRedemptions?.reduce(
+            (sum, r) => sum + Number(r.amountUsed),
+            0,
+          ) ?? 0;
 
-      const rawCash = Number(order.cashAmount ?? 0);
-      const rawCard = Number(order.cardAmount ?? 0);
-      const change = Number(order.changeAmount ?? 0);
-
-      // Determine if voucher redemption is double-counted within card/cash amounts
-      const excess = Math.max(
-        0,
-        rawCash + rawCard + voucherRedemptionsSum - (grandTotal + change),
-      );
-
-      let cash = rawCash;
-      let card = rawCard;
-      if (excess > 0) {
-        if (card > 0) {
-          card = Math.max(0, card - excess);
-        } else {
-          cash = Math.max(0, cash - excess);
-        }
-      }
-
-      // Fallback for non-split orders with empty cash/card amounts in DB
-      if (order.tenderType !== 'split' && order.paymentMethod) {
-        if (order.paymentMethod === 'cash') {
-          if (cash === 0) cash = Math.max(0, grandTotal - voucherRedemptionsSum);
-        } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
-          if (card === 0) card = Math.max(0, grandTotal - voucherRedemptionsSum);
-        }
-      }
-
-      const voucher = voucherRedemptionsSum;
-
-
-      if (cash > 0) {
-        cashSalesCount++;
-        totalCashReceived += cash;
-      }
-      if (card > 0) {
-        cardSalesCount++;
-        totalCardReceived += card;
-
-        const bankName = order.merchant?.bankName || 'Unknown Bank';
-        const rateDecimal = Number(order.merchant?.commissionRate ?? 0);
-        const ratePct = rateDecimal * 100;
-
-        const orderIssuedVouchers = issuedVouchers.filter(
-          (v) =>
-            v.sourceOrderId === order.id &&
-            (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE'),
-        );
-        const vouchersValue = orderIssuedVouchers.reduce(
-          (sum, v) => {
-            const fVal = Number(v.faceValue);
-            const discAmt = Number(v.discount ?? 0);
-            return sum + (fVal - discAmt);
-          },
-          0,
-        );
-
-        const voucherCardAmt = Math.min(card, vouchersValue);
-        const regularCardAmt = card - voucherCardAmt;
-
-        if (regularCardAmt > 0) {
-          if (!cardGroup[bankName]) {
-            cardGroup[bankName] = {
-              bank: bankName,
-              amount: 0,
-              rate: ratePct,
-              commission: 0,
-            };
-          }
-          cardGroup[bankName].amount += regularCardAmt;
-          cardGroup[bankName].commission += regularCardAmt * rateDecimal;
-        }
-
-        if (voucherCardAmt > 0) {
-          if (!cardVoucherGroup[bankName]) {
-            cardVoucherGroup[bankName] = {
-              bank: bankName,
-              amount: 0,
-              rate: ratePct,
-              commission: 0,
-            };
-          }
-          cardVoucherGroup[bankName].amount += voucherCardAmt;
-          cardVoucherGroup[bankName].commission += voucherCardAmt * rateDecimal;
-        }
-      }
-      if (voucher > 0) {
-        voucherSalesCount++;
-      }
-
-      if (order.voucherRedemptions && order.voucherRedemptions.length > 0) {
-        for (const redemption of order.voucherRedemptions) {
-          const amountUsed = Number(redemption.amountUsed);
-          const v = redemption.voucher;
-          let amountToUse = amountUsed;
-
-          let type = 'Vouchers';
-          if (v.voucherType === 'CORPORATE') {
-            type = 'Gift Vouchers Corporate';
-          } else if (v.voucherType === 'GIFT') {
-            type = 'Gift Vouchers';
-          } else if (v.voucherType === 'CREDIT') {
-            type = 'Credit Vouchers';
-            amountToUse = Number(v.faceValue);
-          } else if (v.voucherType === 'EXCHANGE') {
-            if (v.claims && v.claims.length > 0) {
-              type = 'Claim Vouchers';
-            } else {
-              type = 'Exchange Vouchers';
-            }
-            amountToUse = Number(v.faceValue);
-          } else if (v.voucherType === 'OUTLET_GIFT') {
-            type = 'Outlet Gift Vouchers';
-          }
-
-          totalVouchersReceivedAmt += amountToUse;
-
-          redeemedVouchersList.push({
-            type,
-            amount: amountToUse,
-            from: v.code,
-          });
-        }
-      }
-
-      if (
-        order.paymentMethod === 'credit_account' ||
-        order.tenderType === 'credit_account' ||
-        order.paymentMethod === 'split' ||
-        order.tenderType === 'split'
-      ) {
+        const rawCash = Number(order.cashAmount ?? 0);
+        const rawCard = Number(order.cardAmount ?? 0);
         const change = Number(order.changeAmount ?? 0);
-        const netCash = Math.max(0, cash - change);
 
-        const creditAmt = Math.max(
+        const excess = Math.max(
           0,
-          Number((grandTotal - netCash - card - voucher).toFixed(2)),
+          rawCash + rawCard + voucherRedemptionsSum - (grandTotal + change),
         );
-        if (creditAmt > 0) {
-          totalCreditAmount += creditAmt;
-        }
-      }
-    }
 
-    const exchangeAndClaims: Array<{
-      type: string;
-      amount: number;
-      from: string;
-    }> = [];
-    const creditVouchers: Array<{
-      type: string;
-      amount: number;
-      from: string;
-      to: string;
-    }> = [];
-    const giftVouchers: Array<{
-      type: string;
-      amount: number;
-      from: string;
-      to: string;
-    }> = [];
-    const refundVouchers: Array<{
-      type: string;
-      amount: number;
-      from: string;
-    }> = [];
-
-    let cashGiftVouchersAmt = 0;
-    let cardGiftVouchersAmt = 0;
-    let totalGiftVoucherDiscount = 0;
-    let unusedBalanceVouchersTotal = 0;
-
-    for (const v of issuedVouchers) {
-      const faceValue = Number(v.faceValue);
-
-      if (v.description && v.description.includes('unused balance from')) {
-        unusedBalanceVouchersTotal += faceValue;
-      }
-
-      if (v.voucherType === 'EXCHANGE') {
-        const type =
-          v.claims && v.claims.length > 0
-            ? 'Claim Vouchers'
-            : 'Exchange Vouchers';
-        exchangeAndClaims.push({
-          type,
-          amount: faceValue,
-          from: v.code,
-        });
-      } else if (v.voucherType === 'CREDIT') {
-        let fromCode = '-';
-        if (v.description && v.description.includes('unused balance from')) {
-          const parts = v.description.split('from ');
-          if (parts.length > 1) fromCode = parts[1].trim();
-        }
-        creditVouchers.push({
-          type: 'Credit Vouchers',
-          amount: faceValue,
-          from: fromCode,
-          to: v.code,
-        });
-      } else if (v.voucherType === 'REFUND') {
-        refundVouchers.push({
-          type: 'Refund Vouchers',
-          amount: faceValue,
-          from: v.code,
-        });
-      } else if (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE') {
-        const type =
-          v.voucherType === 'CORPORATE'
-            ? 'Gift Vouchers Corporate'
-            : 'Gift Vouchers';
-
-        const discountAmount = Number(v.discount ?? 0);
-        const netAmount = faceValue - discountAmount;
-        totalGiftVoucherDiscount += discountAmount;
-
-        let isCard = false;
-        let isCash = false;
-        let fromDetail = '-';
-
-        if (v.paymentMode === 'CARD') {
-          isCard = true;
-          const bank = v.merchant?.bankName || 'Card';
-          const last4 = v.cardLast4 ? ` - ****${v.cardLast4}` : '';
-          fromDetail = `${bank}${last4}`;
-        } else if (v.paymentMode === 'CASH') {
-          isCash = true;
-          fromDetail = 'Cash';
-        }
-
-        if (!isCard && !isCash && v.sourceOrderId) {
-          const purchaseOrder = orders.find((o) => o.id === v.sourceOrderId);
-          if (purchaseOrder) {
-            const cashPay = Number(purchaseOrder.cashAmount ?? 0);
-            const cardPay = Number(purchaseOrder.cardAmount ?? 0);
-            if (cardPay > 0) {
-              isCard = true;
-              const bank = purchaseOrder.merchant?.bankName || 'Card';
-              fromDetail = bank;
-            } else if (cashPay > 0) {
-              isCash = true;
-              fromDetail = 'Cash';
-            }
+        let cash = rawCash;
+        let card = rawCard;
+        if (excess > 0) {
+          if (card > 0) {
+            card = Math.max(0, card - excess);
+          } else {
+            cash = Math.max(0, cash - excess);
           }
         }
 
-        if (isCard) {
-          cardGiftVouchersAmt += netAmount;
+        if (order.tenderType !== 'split' && order.paymentMethod) {
+          if (order.paymentMethod === 'cash') {
+            if (cash === 0) cash = Math.max(0, grandTotal - voucherRedemptionsSum);
+          } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+            if (card === 0) card = Math.max(0, grandTotal - voucherRedemptionsSum);
+          }
+        }
 
-          const isLinkedToOrder =
-            v.sourceOrderId && orders.some((o) => o.id === v.sourceOrderId);
-          if (!isLinkedToOrder) {
-            totalCardReceived += netAmount;
-            cardSalesCount++;
+        const voucher = voucherRedemptionsSum;
 
-            const bankName = v.merchant?.bankName || 'Unknown Bank';
-            const rateDecimal = Number(v.merchant?.commissionRate ?? 0);
-            const ratePct = rateDecimal * 100;
+        if (cash > 0) {
+          cashSalesCount++;
+          totalCashReceived += cash;
+        }
+        if (card > 0) {
+          cardSalesCount++;
+          totalCardReceived += card;
 
+          const bankName = order.merchant?.bankName || 'Unknown Bank';
+          const rateDecimal = Number(order.merchant?.commissionRate ?? 0);
+          const ratePct = rateDecimal * 100;
+
+          const orderIssuedVouchers = issuedVouchers.filter(
+            (v) =>
+              v.sourceOrderId === order.id &&
+              (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE'),
+          );
+          const vouchersValue = orderIssuedVouchers.reduce(
+            (sum, v) => {
+              const fVal = Number(v.faceValue);
+              const discAmt = Number(v.discount ?? 0);
+              return sum + (fVal - discAmt);
+            },
+            0,
+          );
+
+          const voucherCardAmt = Math.min(card, vouchersValue);
+          const regularCardAmt = card - voucherCardAmt;
+
+          if (regularCardAmt > 0) {
+            if (!cardGroup[bankName]) {
+              cardGroup[bankName] = {
+                bank: bankName,
+                amount: 0,
+                rate: ratePct,
+                commission: 0,
+              };
+            }
+            cardGroup[bankName].amount += regularCardAmt;
+            cardGroup[bankName].commission += regularCardAmt * rateDecimal;
+          }
+
+          if (voucherCardAmt > 0) {
             if (!cardVoucherGroup[bankName]) {
               cardVoucherGroup[bankName] = {
                 bank: bankName,
@@ -1549,159 +1355,387 @@ export class PosSessionService {
                 commission: 0,
               };
             }
-            cardVoucherGroup[bankName].amount += netAmount;
-            cardVoucherGroup[bankName].commission += netAmount * rateDecimal;
+            cardVoucherGroup[bankName].amount += voucherCardAmt;
+            cardVoucherGroup[bankName].commission += voucherCardAmt * rateDecimal;
           }
-        } else if (isCash) {
-          cashGiftVouchersAmt += netAmount;
+        }
+        if (voucher > 0) {
+          voucherSalesCount++;
+        }
 
-          const isLinkedToOrder =
-            v.sourceOrderId && orders.some((o) => o.id === v.sourceOrderId);
-          if (!isLinkedToOrder) {
-            totalCashReceived += netAmount;
-            cashSalesCount++;
+        if (order.voucherRedemptions && order.voucherRedemptions.length > 0) {
+          for (const redemption of order.voucherRedemptions) {
+            const amountUsed = Number(redemption.amountUsed);
+            const v = redemption.voucher;
+            let amountToUse = amountUsed;
+
+            let type = 'Vouchers';
+            if (v.voucherType === 'CORPORATE') {
+              type = 'Gift Vouchers Corporate';
+            } else if (v.voucherType === 'GIFT') {
+              type = 'Gift Vouchers';
+            } else if (v.voucherType === 'CREDIT') {
+              type = 'Credit Vouchers';
+              amountToUse = Number(v.faceValue);
+            } else if (v.voucherType === 'EXCHANGE') {
+              if (v.claims && v.claims.length > 0) {
+                type = 'Claim Vouchers';
+              } else {
+                type = 'Exchange Vouchers';
+              }
+              amountToUse = Number(v.faceValue);
+            } else if (v.voucherType === 'OUTLET_GIFT') {
+              type = 'Outlet Gift Vouchers';
+            }
+
+            totalVouchersReceivedAmt += amountToUse;
+
+            redeemedVouchersList.push({
+              type,
+              amount: amountToUse,
+              from: v.code,
+            });
           }
         }
 
-        giftVouchers.push({
-          type,
-          amount: faceValue,
-          from: fromDetail,
-          to: v.code,
-        });
+        if (
+          order.paymentMethod === 'credit_account' ||
+          order.tenderType === 'credit_account' ||
+          order.paymentMethod === 'split' ||
+          order.tenderType === 'split'
+        ) {
+          const change = Number(order.changeAmount ?? 0);
+          const netCash = Math.max(0, cash - change);
+
+          const creditAmt = Math.max(
+            0,
+            Number((grandTotal - netCash - card - voucher).toFixed(2)),
+          );
+          if (creditAmt > 0) {
+            totalCreditAmount += creditAmt;
+          }
+        }
       }
-    }
 
-    let fbrCashCount = 0;
-    let fbrCardCount = 0;
-    for (const order of orders) {
-      if (order.cardAmount && Number(order.cardAmount) > 0) {
-        fbrCardCount++;
-      } else {
-        fbrCashCount++;
+      const exchangeAndClaims: Array<{
+        type: string;
+        amount: number;
+        from: string;
+      }> = [];
+      const creditVouchers: Array<{
+        type: string;
+        amount: number;
+        from: string;
+        to: string;
+      }> = [];
+      const giftVouchers: Array<{
+        type: string;
+        amount: number;
+        from: string;
+        to: string;
+      }> = [];
+      const refundVouchers: Array<{
+        type: string;
+        amount: number;
+        from: string;
+      }> = [];
+
+      let cashGiftVouchersAmt = 0;
+      let cardGiftVouchersAmt = 0;
+      let totalGiftVoucherDiscount = 0;
+      let unusedBalanceVouchersTotal = 0;
+
+      for (const v of issuedVouchers) {
+        const faceValue = Number(v.faceValue);
+
+        if (v.description && v.description.includes('unused balance from')) {
+          unusedBalanceVouchersTotal += faceValue;
+        }
+
+        if (v.voucherType === 'EXCHANGE') {
+          const type =
+            v.claims && v.claims.length > 0
+              ? 'Claim Vouchers'
+              : 'Exchange Vouchers';
+          exchangeAndClaims.push({
+            type,
+            amount: faceValue,
+            from: v.code,
+          });
+        } else if (v.voucherType === 'CREDIT') {
+          let fromCode = '-';
+          if (v.description && v.description.includes('unused balance from')) {
+            const parts = v.description.split('from ');
+            if (parts.length > 1) fromCode = parts[1].trim();
+          }
+          creditVouchers.push({
+            type: 'Credit Vouchers',
+            amount: faceValue,
+            from: fromCode,
+            to: v.code,
+          });
+        } else if (v.voucherType === 'REFUND') {
+          refundVouchers.push({
+            type: 'Refund Vouchers',
+            amount: faceValue,
+            from: v.code,
+          });
+        } else if (v.voucherType === 'GIFT' || v.voucherType === 'CORPORATE') {
+          const type =
+            v.voucherType === 'CORPORATE'
+              ? 'Gift Vouchers Corporate'
+              : 'Gift Vouchers';
+
+          const discountAmount = Number(v.discount ?? 0);
+          const netAmount = faceValue - discountAmount;
+          totalGiftVoucherDiscount += discountAmount;
+
+          let isCard = false;
+          let isCash = false;
+          let fromDetail = '-';
+
+          if (v.paymentMode === 'CARD') {
+            isCard = true;
+            const bank = v.merchant?.bankName || 'Card';
+            const last4 = v.cardLast4 ? ` - ****${v.cardLast4}` : '';
+            fromDetail = `${bank}${last4}`;
+          } else if (v.paymentMode === 'CASH') {
+            isCash = true;
+            fromDetail = 'Cash';
+          }
+
+          if (!isCard && !isCash && v.sourceOrderId) {
+            const purchaseOrder = orders.find((o) => o.id === v.sourceOrderId);
+            if (purchaseOrder) {
+              const cashPay = Number(purchaseOrder.cashAmount ?? 0);
+              const cardPay = Number(purchaseOrder.cardAmount ?? 0);
+              if (cardPay > 0) {
+                isCard = true;
+                const bank = purchaseOrder.merchant?.bankName || 'Card';
+                fromDetail = bank;
+              } else if (cashPay > 0) {
+                isCash = true;
+                fromDetail = 'Cash';
+              }
+            }
+          }
+
+          if (isCard) {
+            cardGiftVouchersAmt += netAmount;
+
+            const isLinkedToOrder =
+              v.sourceOrderId && orders.some((o) => o.id === v.sourceOrderId);
+            if (!isLinkedToOrder) {
+              totalCardReceived += netAmount;
+              cardSalesCount++;
+
+              const bankName = v.merchant?.bankName || 'Unknown Bank';
+              const rateDecimal = Number(v.merchant?.commissionRate ?? 0);
+              const ratePct = rateDecimal * 100;
+
+              if (!cardVoucherGroup[bankName]) {
+                cardVoucherGroup[bankName] = {
+                  bank: bankName,
+                  amount: 0,
+                  rate: ratePct,
+                  commission: 0,
+                };
+              }
+              cardVoucherGroup[bankName].amount += netAmount;
+              cardVoucherGroup[bankName].commission += netAmount * rateDecimal;
+            }
+          } else if (isCash) {
+            cashGiftVouchersAmt += netAmount;
+
+            const isLinkedToOrder =
+              v.sourceOrderId && orders.some((o) => o.id === v.sourceOrderId);
+            if (!isLinkedToOrder) {
+              totalCashReceived += netAmount;
+              cashSalesCount++;
+            }
+          }
+
+          giftVouchers.push({
+            type,
+            amount: faceValue,
+            from: fromDetail,
+            to: v.code,
+          });
+        }
       }
-    }
 
-    const fbrCharges = [
-      { type: 'Cash', amount: fbrCashCount },
-      { type: 'Card', amount: fbrCardCount },
-    ];
+      let fbrCashCount = 0;
+      let fbrCardCount = 0;
+      for (const order of orders) {
+        if (order.cardAmount && Number(order.cardAmount) > 0) {
+          fbrCardCount++;
+        } else {
+          fbrCashCount++;
+        }
+      }
 
-    const cashSaleAmt = Math.max(0, totalCashReceived - cashGiftVouchersAmt);
-    const cardSaleAmt = Math.max(0, totalCardReceived - cardGiftVouchersAmt);
+      const fbrCharges = [
+        { type: 'Cash', amount: fbrCashCount },
+        { type: 'Card', amount: fbrCardCount },
+      ];
 
-    const receivedVouchers = [
-      { type: 'Cash', amount: cashSaleAmt, from: '-' },
-      ...(cashGiftVouchersAmt > 0
-        ? [
-            {
-              type: 'Cash - Gift Vouchers Issued',
-              amount: cashGiftVouchersAmt,
-              from: '-',
-            },
-          ]
-        : []),
-      ...redeemedVouchersList,
-    ];
+      const cashSaleAmt = Math.max(0, totalCashReceived - cashGiftVouchersAmt);
+      const cardSaleAmt = Math.max(0, totalCardReceived - cardGiftVouchersAmt);
 
-    const cardPayments = Object.values(cardGroup);
-    const cardGiftVouchers = Object.values(cardVoucherGroup);
+      const receivedVouchers = [
+        { type: 'Cash', amount: cashSaleAmt, from: '-' },
+        ...(cashGiftVouchersAmt > 0
+          ? [
+              {
+                type: 'Cash - Gift Vouchers Issued',
+                amount: cashGiftVouchersAmt,
+                from: '-',
+              },
+            ]
+          : []),
+        ...redeemedVouchersList,
+      ];
 
-    const receivables = [
-      { description: 'On Credit', amount: totalCreditAmount },
-    ];
+      const cardPayments = Object.values(cardGroup);
+      const cardGiftVouchers = Object.values(cardVoucherGroup);
 
-    const totalCards = totalCardReceived;
-    const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
-    const totalReceivable = totalCreditAmount;
-    const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
+      const receivables = [
+        { description: 'On Credit', amount: totalCreditAmount },
+      ];
 
-    const creditCardGiftVouchersTotal = cardGiftVouchers.reduce(
-      (sum, v) => sum + v.amount,
-      0,
-    );
-    const cashGiftVouchersTotal = cashGiftVouchersAmt;
+      const totalCards = totalCardReceived;
+      const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
+      const totalReceivable = totalCreditAmount;
+      const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
-    const computedSale =
-      totalCards -
-      creditCardGiftVouchersTotal +
-      (totalReceived - cashGiftVouchersTotal) +
-      totalReceivable -
-      fbrTotal -
-      unusedBalanceVouchersTotal;
+      const creditCardGiftVouchersTotal = cardGiftVouchers.reduce(
+        (sum, v) => sum + v.amount,
+        0,
+      );
+      const cashGiftVouchersTotal = cashGiftVouchersAmt;
 
-    const returnAmount =
-      exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
-      refundVouchers.reduce((sum, v) => sum + v.amount, 0);
+      const computedSale =
+        totalCards -
+        creditCardGiftVouchersTotal +
+        (totalReceived - cashGiftVouchersTotal) +
+        totalReceivable -
+        fbrTotal -
+        unusedBalanceVouchersTotal;
 
-    const refundVouchersTotal = refundVouchers.reduce(
-      (sum, v) => sum + v.amount,
-      0,
-    );
+      const returnAmount =
+        exchangeAndClaims.reduce((sum, v) => sum + v.amount, 0) +
+        refundVouchers.reduce((sum, v) => sum + v.amount, 0);
 
-    const financials = {
-      sale: computedSale,
-      salesReturn: returnAmount,
-      netSales: computedSale - returnAmount,
+      const refundVouchersTotal = refundVouchers.reduce(
+        (sum, v) => sum + v.amount,
+        0,
+      );
+
+      const financials = {
+        sale: computedSale,
+        salesReturn: returnAmount,
+        netSales: computedSale - returnAmount,
+      };
+
+      const formatDate = (dateStr: string) => {
+        const d = new Date(dateStr);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      return {
+        companyName: 'Speed (Private) Limited',
+        locationId: targetLocId || locationId,
+        locationName: displayName,
+        reportTitle: 'Sales Reconciliation',
+        dateRange: formatDate(date + 'T00:00:00'),
+        documentNumber: `REC-${date.replace(/-/g, '')}`,
+        selectedDate: date,
+        session: null,
+        metrics: {
+          grossSales: financials.sale,
+          netSales: financials.netSales,
+          totalTaxes,
+          totalDiscounts,
+          orderCount: orders.length,
+          averageOrderValue:
+            orders.length > 0 ? financials.netSales / orders.length : 0,
+        },
+        paymentBreakdown: {
+          cash: { count: cashSalesCount, amount: totalCashReceived },
+          card: { count: cardSalesCount, amount: totalCardReceived },
+          voucher: { count: voucherSalesCount, amount: totalVouchersReceivedAmt },
+        },
+        cardPayments,
+        cardGiftVouchers,
+        receivedVouchers,
+        receivables,
+        issuedVouchers: {
+          exchangeAndClaims,
+          creditVouchers,
+          giftVouchers,
+          refundVouchers,
+          totalGiftVoucherDiscount,
+          unusedBalanceVouchersTotal,
+        },
+        fbrCharges,
+        financials,
+        cashBreakdown: {
+          sale: cashSaleAmt,
+          giftVouchers: cashGiftVouchersAmt,
+          refundVouchers: refundVouchersTotal,
+          total: totalCashReceived - refundVouchersTotal,
+        },
+        cardBreakdown: {
+          sale: cardSaleAmt,
+          giftVouchers: cardGiftVouchersAmt,
+          total: totalCardReceived,
+        },
+      };
     };
 
-    const formatDate = (dateStr: string) => {
-      const d = new Date(dateStr);
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
+    if (locIds.length === 1) {
+      const location = await this.prisma.location.findUnique({
+        where: { id: locIds[0] },
+        select: { id: true, name: true, code: true },
+      });
+      const singleReport = await computeSingleReconciliation(
+        locIds[0],
+        location?.name ?? 'Location',
+        locIds[0],
+      );
+      return {
+        ...singleReport,
+        locations: [singleReport],
+        merged: singleReport,
+      };
+    }
 
-    const dateRange = formatDate(date + 'T00:00:00');
+    const targetLocations = await this.prisma.location.findMany({
+      where: locIds.length > 0 ? { id: { in: locIds } } : { status: 'active' },
+      select: { id: true, name: true, code: true },
+    });
+
+    const locationWhere = locIds.length > 1 ? { in: locIds } : undefined;
+
+    const mergedReport = await computeSingleReconciliation(
+      locationWhere,
+      locIds.length > 1 ? 'Merged Outlets' : 'All Outlets (Merged)',
+      locationId,
+    );
+
+    const perLocationReports = await Promise.all(
+      targetLocations.map((loc) =>
+        computeSingleReconciliation(loc.id, loc.name, loc.id),
+      ),
+    );
 
     return {
-      companyName: 'Speed (Private) Limited',
-      locationName: location.name ?? 'Unknown Location',
-      reportTitle: 'Sales Reconciliation',
-      dateRange: dateRange,
-      documentNumber: `REC-${date.replace(/-/g, '')}`,
-      selectedDate: date,
-      session: null,
-      metrics: {
-        grossSales: financials.sale,
-        netSales: financials.netSales,
-        totalTaxes,
-        totalDiscounts,
-        orderCount: orders.length,
-        averageOrderValue:
-          orders.length > 0 ? financials.netSales / orders.length : 0,
-      },
-      paymentBreakdown: {
-        cash: { count: cashSalesCount, amount: totalCashReceived },
-        card: { count: cardSalesCount, amount: totalCardReceived },
-        voucher: { count: voucherSalesCount, amount: totalVouchersReceivedAmt },
-      },
-      cardPayments,
-      cardGiftVouchers,
-      receivedVouchers,
-      receivables,
-      issuedVouchers: {
-        exchangeAndClaims,
-        creditVouchers,
-        giftVouchers,
-        refundVouchers,
-        totalGiftVoucherDiscount,
-        unusedBalanceVouchersTotal,
-      },
-      fbrCharges,
-      financials,
-      cashBreakdown: {
-        sale: cashSaleAmt,
-        giftVouchers: cashGiftVouchersAmt,
-        refundVouchers: refundVouchersTotal,
-        total: totalCashReceived - refundVouchersTotal,
-      },
-      cardBreakdown: {
-        sale: cardSaleAmt,
-        giftVouchers: cardGiftVouchersAmt,
-        total: totalCardReceived,
-      },
+      ...mergedReport,
+      locations: perLocationReports,
+      merged: mergedReport,
     };
   }
 
