@@ -100,6 +100,7 @@ export class PayrollService {
       leaveApplications,
       increments,
       ssRegistrations,
+      ssInstitutions,
       workingHoursPolicies,
       leavesPolicies,
       allowanceHeads,
@@ -207,6 +208,9 @@ export class PayrollService {
         },
         orderBy: { registrationDate: 'desc' },
       }),
+      this.prisma.socialSecurityInstitution.findMany({
+        where: { isDeleted: false },
+      }),
       this.prisma.workingHoursPolicy.findMany({
         where: { status: 'active' },
       }),
@@ -242,6 +246,7 @@ export class PayrollService {
     ]);
 
     // Create maps for Master data types
+    const ssInstitutionMap = new Map(ssInstitutions.map((i) => [i.id, i]));
     const workingHoursPolicyMap = new Map(
       workingHoursPolicies.map((p) => [p.id, p]),
     );
@@ -254,6 +259,9 @@ export class PayrollService {
     // 3. Map relations to employees to create enriched employee objects
     const enrichedEmployees = employees.map((emp) => ({
       ...emp,
+      socialSecurityInstitution: emp.socialSecurityInstitutionId
+        ? ssInstitutionMap.get(emp.socialSecurityInstitutionId)
+        : null,
       workingHoursPolicy: workingHoursPolicyMap.get(emp.workingHoursPolicyId),
       leavesPolicy: leavesPolicyMap.get(emp.leavesPolicyId),
       socialSecurityRegistrations: ssRegistrations.filter(
@@ -506,14 +514,17 @@ export class PayrollService {
       }
 
       if (socialSecurityRate && socialSecurityRate.gt(0)) {
-        // SSI base calculation: Use only salary components marked as deductible
-        // Filter components where isDeductible = true
-        const ssiBase = salaryBreakup
+        // SSI base calculation: Use salary components marked as deductible or fallback to calculatedBasicSalary
+        let ssiBase = salaryBreakup
           .filter((comp) => comp.isDeductible === true)
           .reduce(
             (sum, comp) => sum.add(new Decimal(comp.amount)),
             new Decimal(0),
           );
+
+        if (ssiBase.lte(0)) {
+          ssiBase = calculatedBasicSalary;
+        }
 
         socialSecurityContributionAmount = ssiBase
           .mul(socialSecurityRate)
@@ -947,6 +958,9 @@ export class PayrollService {
 
       // Add EOBI contributions for employees with EOBI enabled
       await this.addEOBIContributionsForPayroll(payroll.id, month, year, details);
+
+      // Add Social Security contributions for employees with Social Security
+      await this.addSocialSecurityContributionsForPayroll(payroll.id, month, year, details);
 
       // Log Component
       runInBackground(
@@ -3346,6 +3360,178 @@ export class PayrollService {
         error,
       );
       // Don't throw error - just log it so payroll confirmation can continue
+    }
+  }
+
+  // Add Social Security contributions when payroll is confirmed
+  private async addSocialSecurityContributionsForPayroll(
+    payrollId: string,
+    month: string,
+    year: string,
+    details: any[],
+  ) {
+    try {
+      this.logger.log(
+        `Adding Social Security contributions for payroll ${payrollId} (${month}/${year})`,
+      );
+
+      for (const d of details) {
+        let amount = Number(d.socialSecurityContributionAmount || 0);
+
+        if (amount <= 0) {
+          const empCheck = await this.prisma.employee.findUnique({
+            where: { id: d.employeeId },
+            include: { socialSecurityInstitution: true },
+          });
+          if (
+            empCheck &&
+            empCheck.socialSecurityInstitution &&
+            empCheck.socialSecurityInstitution.contributionRate
+          ) {
+            const rate = Number(empCheck.socialSecurityInstitution.contributionRate);
+            const baseSalary = Number(d.basicSalary || empCheck.employeeSalary || 0);
+            amount = (baseSalary * rate) / 100;
+          }
+        }
+
+        if (amount <= 0) continue;
+
+        // Find active employee registration
+        let reg =
+          await this.prisma.socialSecurityEmployeeRegistration.findFirst({
+            where: { employeeId: d.employeeId, isDeleted: false },
+            include: { institution: true, employerRegistration: true },
+          });
+
+        if (!reg) {
+          // Check employee record
+          const emp = await this.prisma.employee.findUnique({
+            where: { id: d.employeeId },
+          });
+          if (!emp || !emp.socialSecurityInstitutionId) continue;
+
+          let employerReg =
+            await this.prisma.socialSecurityEmployerRegistration.findFirst({
+              where: {
+                institutionId: emp.socialSecurityInstitutionId,
+                status: 'active',
+                isDeleted: false,
+              },
+            });
+          if (!employerReg) {
+            employerReg =
+              await this.prisma.socialSecurityEmployerRegistration.create({
+                data: {
+                  companyId: 'default-company',
+                  institutionId: emp.socialSecurityInstitutionId,
+                  registrationNumber: `AUTO-${emp.socialSecurityInstitutionId}-${Date.now()}`,
+                  employerName: 'Auto Employer',
+                  employerType: 'company',
+                  businessAddress: 'N/A',
+                  registrationDate: new Date(),
+                  status: 'active',
+                  totalEmployees: 0,
+                  monthlyContribution: 0,
+                },
+              });
+          }
+
+          reg = await this.prisma.socialSecurityEmployeeRegistration.create({
+            data: {
+              companyId: employerReg.companyId,
+              institutionId: emp.socialSecurityInstitutionId,
+              employerRegistrationId: employerReg.id,
+              employeeId: emp.id,
+              registrationNumber: `SS-${emp.employeeId || emp.id}`,
+              registrationDate: new Date(),
+              status: 'active',
+              contributionRate: 0,
+              baseSalary: Number(d.basicSalary || 0),
+              monthlyContribution: amount,
+              isEmployerContribution: true,
+            },
+            include: { institution: true, employerRegistration: true },
+          });
+        }
+
+        if (reg) {
+          // Upsert monthly contribution
+          let monthNum = parseInt(month, 10);
+          if (isNaN(monthNum)) {
+            const monthNames = [
+              'january', 'february', 'march', 'april', 'may', 'june',
+              'july', 'august', 'september', 'october', 'november', 'december'
+            ];
+            const idx = monthNames.indexOf(month.toString().toLowerCase());
+            monthNum = idx !== -1 ? idx + 1 : 1;
+          }
+          const monthStr = monthNum.toString().padStart(2, '0');
+          const yearStr = year.toString();
+          const date = new Date(
+            parseInt(yearStr, 10),
+            monthNum - 1,
+            28,
+          );
+
+          const existingContrib =
+            await this.prisma.socialSecurityContribution.findFirst({
+              where: {
+                employeeRegistrationId: reg.id,
+                month: monthStr,
+                year: yearStr,
+                isDeleted: false,
+              },
+            });
+
+          if (existingContrib) {
+            await this.prisma.socialSecurityContribution.update({
+              where: { id: existingContrib.id },
+              data: {
+                baseSalary: new Decimal(d.basicSalary || 0),
+                contributionAmount: new Decimal(amount),
+                employerContribution: new Decimal(amount),
+                employeeContribution: new Decimal(0),
+                paymentStatus: 'pending',
+                date,
+              },
+            });
+          } else {
+            await this.prisma.socialSecurityContribution.create({
+              data: {
+                companyId: reg.companyId || 'default-company',
+                institutionId: reg.institutionId,
+                employerRegistrationId: reg.employerRegistrationId,
+                employeeRegistrationId: reg.id,
+                employeeId: d.employeeId,
+                month: monthStr,
+                year: yearStr,
+                date,
+                baseSalary: new Decimal(d.basicSalary || 0),
+                contributionRate: reg.contributionRate || new Decimal(0),
+                contributionAmount: new Decimal(amount),
+                employerContribution: new Decimal(amount),
+                employeeContribution: new Decimal(0),
+                paymentStatus: 'pending',
+                status: 'active',
+              },
+            });
+          }
+
+          // Update registration's monthlyContribution & baseSalary
+          await this.prisma.socialSecurityEmployeeRegistration.update({
+            where: { id: reg.id },
+            data: {
+              monthlyContribution: new Decimal(amount),
+              baseSalary: new Decimal(d.basicSalary || 0),
+            },
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `Error adding Social Security contributions for payroll ${payrollId}:`,
+        err,
+      );
     }
   }
 }

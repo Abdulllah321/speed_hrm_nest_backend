@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Param,
   Body,
   Query,
   UseGuards,
@@ -89,4 +91,18 @@ export class PFController {
       status,
     });
   }
+
+  @Patch('withdrawals/:id/approve')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.provident-fund.update')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve PF withdrawal' })
+  @ApiResponse({ status: 200, description: 'PF withdrawal approved' })
+  async approvePFWithdrawal(
+    @Param('id') id: string,
+    @Body('approvedById') approvedById?: string,
+  ) {
+    return this.pfService.approvePFWithdrawal(id, approvedById);
+  }
 }
+
