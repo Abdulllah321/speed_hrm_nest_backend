@@ -408,6 +408,7 @@ export class StockLedgerController {
       showSilhouette?: boolean;
       showArticle?: boolean;
       showVariant?: boolean;
+      includeCosting?: boolean;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
@@ -426,6 +427,7 @@ export class StockLedgerController {
       showSilhouette: body.showSilhouette,
       showArticle: body.showArticle,
       showVariant: body.showVariant,
+      includeCosting: body.includeCosting,
     });
     return { status: true, data: result };
   }

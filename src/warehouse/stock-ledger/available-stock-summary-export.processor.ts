@@ -28,6 +28,7 @@ export interface AvailableStockSummaryExportJobData {
   showSilhouette?: boolean;
   showArticle?: boolean;
   showVariant?: boolean;
+  includeCosting?: boolean;
 }
 
 const COLUMNS = [
@@ -56,7 +57,8 @@ export class AvailableStockSummaryExportProcessor {
   async handleExport(job: Job<AvailableStockSummaryExportJobData>): Promise<void> {
     const {
       jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format,
-      summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
+      summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
+      includeCosting
     } = job.data;
     this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
 
@@ -123,7 +125,7 @@ export class AvailableStockSummaryExportProcessor {
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(root, locationName, fromDateStr, toDateStr, grandTotals, !!summaryOnly);
+        const html = this.buildPdfHtml(root, locationName, fromDateStr, toDateStr, grandTotals, !!summaryOnly, !!includeCosting);
 
         const launchArgs = process.platform === 'linux'
           ? [
@@ -182,16 +184,24 @@ export class AvailableStockSummaryExportProcessor {
           useSharedStrings: false,
         });
 
+        const colsToUse = [...COLUMNS];
+        if (includeCosting) {
+          colsToUse.push(
+            { header: 'Cost Price', key: 'unitCost', width: 14, align: 'right' as const },
+            { header: 'Total Costing', key: 'costingValue', width: 18, align: 'right' as const }
+          );
+        }
+
         const ws = workbook.addWorksheet('Available Stock Summary', {
           pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
           views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
         });
 
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
+        ws.columns = colsToUse.map(c => ({ key: c.key, width: c.width }));
 
         // 1. Column headers
         const headerRow = ws.getRow(1);
-        COLUMNS.forEach((col, idx) => {
+        colsToUse.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
@@ -242,21 +252,24 @@ export class AvailableStockSummaryExportProcessor {
           let colorVal = '';
           let sizeVal = '';
           let unitPriceVal: any = '';
+          let unitCostVal: any = '';
+          let costingValueVal: any = node.totals.costingValue;
           
           if (node.level === 'article') {
             label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
             unitPriceVal = node.totals.unitPrice;
+            unitCostVal = node.totals.unitCost;
           } else if (node.level === 'variant') {
             label = ' '.repeat(style.indent) + 'Variant Item';
             colorVal = node.color;
             sizeVal = node.size;
-            // Selling price column on size detail is empty in the design pattern
             unitPriceVal = '';
+            unitCostVal = '';
           } else {
             label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
           }
 
-          const row = ws.addRow({
+          const rowData: any = {
             sku: label,
             size: sizeVal,
             color: colorVal,
@@ -266,9 +279,16 @@ export class AvailableStockSummaryExportProcessor {
             total: node.totals.total,
             unitPrice: unitPriceVal,
             value: node.totals.value,
-          });
+          };
+          if (includeCosting) {
+            rowData.unitCost = unitCostVal;
+            rowData.costingValue = costingValueVal;
+          }
 
-          for (let colNum = 1; colNum <= 9; colNum++) {
+          const row = ws.addRow(rowData);
+
+          const numCols = colsToUse.length;
+          for (let colNum = 1; colNum <= numCols; colNum++) {
             const cell = row.getCell(colNum);
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
             cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
@@ -277,7 +297,7 @@ export class AvailableStockSummaryExportProcessor {
               ? centerAlign 
               : (colNum === 1 ? leftAlign : rightAlign);
 
-            if ((colNum === 8 || colNum === 9) && typeof cell.value === 'number') {
+            if ((colNum === 8 || colNum === 9 || colNum === 10 || colNum === 11) && typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
             } else if (colNum >= 4 && colNum <= 7 && typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
@@ -298,7 +318,7 @@ export class AvailableStockSummaryExportProcessor {
         }
 
         // Grand totals row
-        const totalRow = ws.addRow({
+        const grandTotalsData: any = {
           sku: 'GRAND TOTAL',
           size: '',
           color: '',
@@ -308,7 +328,13 @@ export class AvailableStockSummaryExportProcessor {
           total: grandTotals.total,
           unitPrice: '',
           value: grandTotals.value,
-        });
+        };
+        if (includeCosting) {
+          grandTotalsData.unitCost = '';
+          grandTotalsData.costingValue = grandTotals.costingValue;
+        }
+
+        const totalRow = ws.addRow(grandTotalsData);
 
         totalRow.eachCell((cell, colNum) => {
           cell.font = { bold: true, size: 10, color: { argb: 'FF000000' } };
@@ -372,6 +398,7 @@ export class AvailableStockSummaryExportProcessor {
     toDateStr: string,
     grandTotals: any,
     summaryOnly: boolean,
+    includeCosting: boolean,
   ): string {
     let rowsHtml = '';
     const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString();
@@ -395,6 +422,10 @@ export class AvailableStockSummaryExportProcessor {
       const val = node.totals;
       
       if (node.level === 'article') {
+        const costCells = includeCosting 
+          ? `<td class="num">${formatVal(val.unitCost)}</td>
+             <td class="num highlight-val">${formatVal(val.costingValue)}</td>`
+          : '';
         rowsHtml += `
           <tr class="${style.className}">
             <td style="${style.indentStyles}">SKU: ${node.sku} (${node.articleName})</td>
@@ -406,9 +437,14 @@ export class AvailableStockSummaryExportProcessor {
             <td class="num highlight-tot">${formatVal(val.total)}</td>
             <td class="num">${formatVal(val.unitPrice)}</td>
             <td class="num highlight-val">${formatVal(val.value)}</td>
+            ${costCells}
           </tr>
         `;
       } else if (node.level === 'variant') {
+        const costCells = includeCosting 
+          ? `<td class="num">-</td>
+             <td class="num highlight-val">${formatVal(val.costingValue)}</td>`
+          : '';
         rowsHtml += `
           <tr class="${style.className}">
             <td style="${style.indentStyles} color: #64748b; font-style: italic;">&mdash; Variant Item</td>
@@ -420,9 +456,14 @@ export class AvailableStockSummaryExportProcessor {
             <td class="num highlight-tot">${formatVal(val.total)}</td>
             <td class="num">-</td>
             <td class="num highlight-val">${formatVal(val.value)}</td>
+            ${costCells}
           </tr>
         `;
       } else {
+        const costCells = includeCosting 
+          ? `<td class="num">-</td>
+             <td class="num highlight-val">${formatVal(val.costingValue)}</td>`
+          : '';
         rowsHtml += `
           <tr class="${style.className}">
             <td colspan="3" style="${style.indentStyles}">${style.prefix}${node.value.toUpperCase()}</td>
@@ -432,6 +473,7 @@ export class AvailableStockSummaryExportProcessor {
             <td class="num highlight-tot">${formatVal(val.total)}</td>
             <td class="num">-</td>
             <td class="num highlight-val">${formatVal(val.value)}</td>
+            ${costCells}
           </tr>
         `;
       }
@@ -610,15 +652,16 @@ export class AvailableStockSummaryExportProcessor {
 
         <table>
           <colgroup>
-            <col style="width: 28%;" />
-            <col style="width: 8%;" />
-            <col style="width: 9%;" />
-            <col style="width: 10%;" />
-            <col style="width: 9%;" />
-            <col style="width: 9%;" />
-            <col style="width: 9%;" />
-            <col style="width: 8%;" />
-            <col style="width: 10%;" />
+            <col style="width: ${includeCosting ? '22%' : '28%'};" />
+            <col style="width: ${includeCosting ? '5%' : '8%'};" />
+            <col style="width: ${includeCosting ? '7%' : '9%'};" />
+            <col style="width: ${includeCosting ? '8%' : '10%'};" />
+            <col style="width: ${includeCosting ? '7%' : '9%'};" />
+            <col style="width: ${includeCosting ? '8%' : '9%'};" />
+            <col style="width: ${includeCosting ? '8%' : '9%'};" />
+            <col style="width: ${includeCosting ? '8%' : '8%'};" />
+            <col style="width: ${includeCosting ? '10%' : '10%'};" />
+            ${includeCosting ? '<col style="width: 8%;" /><col style="width: 11%;" />' : ''}
           </colgroup>
           <thead>
             <tr class="header-row">
@@ -631,6 +674,7 @@ export class AvailableStockSummaryExportProcessor {
               <th class="num">Total</th>
               <th class="num">Selling Price</th>
               <th class="num">Value (Rs.)</th>
+              ${includeCosting ? '<th class="num">Cost Price</th><th class="num">Total Costing</th>' : ''}
             </tr>
           </thead>
           <tbody>
@@ -643,6 +687,7 @@ export class AvailableStockSummaryExportProcessor {
               <td class="num">${formatVal(grandTotals.total)}</td>
               <td class="num">-</td>
               <td class="num">${formatVal(grandTotals.value)}</td>
+              ${includeCosting ? `<td class="num">-</td><td class="num">${formatVal(grandTotals.costingValue)}</td>` : ''}
             </tr>
           </tbody>
         </table>

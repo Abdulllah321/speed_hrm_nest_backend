@@ -23,6 +23,7 @@ export interface QueueAvailableStockSummaryExportOptions {
   showSilhouette?: boolean;
   showArticle?: boolean;
   showVariant?: boolean;
+  includeCosting?: boolean;
 }
 
 @Injectable()
@@ -72,6 +73,7 @@ export class AvailableStockSummaryExportService {
         showSilhouette: opts.showSilhouette,
         showArticle: opts.showArticle,
         showVariant: opts.showVariant,
+        includeCosting: !!opts.includeCosting,
       },
       {
         jobId,
