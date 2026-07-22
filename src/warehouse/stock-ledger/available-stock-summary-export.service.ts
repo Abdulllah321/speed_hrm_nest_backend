@@ -458,6 +458,7 @@ export class AvailableStockSummaryExportService {
       target.reserved += source.reserved;
       target.total += source.total;
       target.value += source.value;
+      target.costingValue += source.costingValue;
     };
 
     for (const item of items) {
@@ -475,6 +476,8 @@ export class AvailableStockSummaryExportService {
       const balance = availableStock + transit + reserved;
       const unitPrice = item.unitPrice || 0;
       const value = balance * unitPrice;
+      const unitCost = item.unitCost || 0;
+      const costingValue = balance * unitCost;
 
       const variantMetrics = {
         quantity: availableStock,
@@ -483,6 +486,8 @@ export class AvailableStockSummaryExportService {
         total: balance,
         unitPrice,
         value,
+        unitCost,
+        costingValue,
       };
 
       let currentLevelNodes = root;
@@ -526,9 +531,10 @@ export class AvailableStockSummaryExportService {
         // Add to the level node's totals
         addTotals(existingNode.totals, variantMetrics);
 
-        // At article level, explicitly save the item unit price (Selling Price)
+        // At article level, explicitly save the item unit price (Selling Price) and cost price
         if (levelName === 'article' || levelName === 'variant') {
           existingNode.totals.unitPrice = unitPrice;
+          existingNode.totals.unitCost = unitCost;
         }
 
         if (i < levels.length - 1) {
@@ -554,6 +560,8 @@ export class AvailableStockSummaryExportService {
       total: 0,
       unitPrice: 0,
       value: 0,
+      unitCost: 0,
+      costingValue: 0,
     };
   }
 }
