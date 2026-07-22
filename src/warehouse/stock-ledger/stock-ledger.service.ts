@@ -544,7 +544,12 @@ export class StockLedgerService {
     }
 
     const items = await this.prisma.item.findMany({
-      where: { id: { in: uniqueItemIds } },
+      where: {
+        OR: [
+          { id: { in: uniqueItemIds } },
+          { itemId: { in: uniqueItemIds } },
+        ],
+      },
       include: {
         color: true,
         size: true,
@@ -890,16 +895,22 @@ export class StockLedgerService {
       return { root: [], grandTotals: { openingBalance: 0, closingBalance: 0, inTransitQty: 0 } };
     }
 
-    // 2. Fetch detailed Item records
     const items = await prisma.item.findMany({
       where: {
-        id: { in: uniqueItemIds },
-        ...(search && {
-          OR: [
-            { sku: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
-          ],
-        }),
+        AND: [
+          {
+            OR: [
+              { id: { in: uniqueItemIds } },
+              { itemId: { in: uniqueItemIds } },
+            ],
+          },
+          search ? {
+            OR: [
+              { sku: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+            ],
+          } : {},
+        ],
       },
       include: {
         color: true,
