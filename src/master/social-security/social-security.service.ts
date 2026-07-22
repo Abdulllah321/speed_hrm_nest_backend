@@ -13,6 +13,7 @@ import {
 } from './dto/social-security.dto';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { Decimal } from '@prisma/client/runtime/client';
 import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
 @Injectable()
@@ -238,8 +239,8 @@ export class SocialSecurityService {
   }
 
   // ========== Employer Registration CRUD ==========
-  async listEmployerRegistrations(companyId: string, institutionId?: string) {
-    const where: any = { companyId };
+  async listEmployerRegistrations(companyId?: string, institutionId?: string) {
+    const where: any = { isDeleted: false };
     if (institutionId) where.institutionId = institutionId;
     const items =
       await this.prisma.socialSecurityEmployerRegistration.findMany({
@@ -504,7 +505,7 @@ export class SocialSecurityService {
     institutionId?: string,
     employerRegistrationId?: string,
   ) {
-    const where: any = { companyId };
+    const where: any = { isDeleted: false };
     if (employeeId) where.employeeId = employeeId;
     if (institutionId) where.institutionId = institutionId;
     if (employerRegistrationId)
@@ -866,7 +867,7 @@ export class SocialSecurityService {
     month?: string,
     year?: string,
   ) {
-    const where: any = { companyId };
+    const where: any = { isDeleted: false };
     if (employeeId) where.employeeId = employeeId;
     if (institutionId) where.institutionId = institutionId;
     if (month) where.month = month;

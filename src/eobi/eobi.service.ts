@@ -84,6 +84,15 @@ export class EOBIService {
             orderBy: [{ year: 'desc' }, { month: 'desc' }],
           });
 
+          // Get approved withdrawals for this employee
+          const approvedWithdrawals = await this.prisma.eOBIWithdrawal.findMany({
+            where: {
+              employeeId: employee.id,
+              approvalStatus: 'approved',
+            },
+            select: { withdrawalAmount: true },
+          });
+
           // Calculate total EOBI (employee contribution + employer contribution)
           const totalEmployeeContribution = contributions.reduce(
             (sum, contrib) =>
@@ -100,6 +109,13 @@ export class EOBIService {
           const totalEOBIBalance = totalEmployeeContribution.add(
             totalEmployerContribution,
           );
+
+          const totalWithdrawn = approvedWithdrawals.reduce(
+            (sum, w) => sum.add(new Decimal(w.withdrawalAmount || 0)),
+            new Decimal(0),
+          );
+
+          const availableBalance = totalEOBIBalance.sub(totalWithdrawn);
 
           // Get latest contribution month/year
           const latestContribution = contributions[0];
@@ -123,6 +139,8 @@ export class EOBIService {
             employeeContribution: totalEmployeeContribution.toNumber(),
             employerContribution: totalEmployerContribution.toNumber(),
             totalEOBIBalance: totalEOBIBalance.toNumber(),
+            totalWithdrawn: totalWithdrawn.toNumber(),
+            availableBalance: availableBalance.toNumber(),
             lastContributionMonth: latestContribution
               ? `${latestContribution.month}/${latestContribution.year}`
               : 'N/A',
@@ -196,6 +214,35 @@ export class EOBIService {
       const monthYear = `${monthName} ${data.year}`;
 
       // Create withdrawal
+      // Validate available balance first
+      const contributions = await this.prisma.eOBIContribution.findMany({
+        where: { employeeId: data.employeeId },
+        select: { employeeContribution: true, employerContribution: true },
+      });
+      const totalBalance = contributions.reduce(
+        (sum, c) =>
+          sum
+            .add(new Decimal(c.employeeContribution || 0))
+            .add(new Decimal(c.employerContribution || 0)),
+        new Decimal(0),
+      );
+      const approvedWithdrawals = await this.prisma.eOBIWithdrawal.findMany({
+        where: { employeeId: data.employeeId, approvalStatus: 'approved' },
+        select: { withdrawalAmount: true },
+      });
+      const totalWithdrawn = approvedWithdrawals.reduce(
+        (sum, w) => sum.add(new Decimal(w.withdrawalAmount || 0)),
+        new Decimal(0),
+      );
+      const availableBalance = totalBalance.sub(totalWithdrawn);
+
+      if (new Decimal(data.withdrawalAmount).greaterThan(availableBalance)) {
+        return {
+          status: false,
+          message: `Insufficient balance. Available: PKR ${availableBalance.toFixed(0)}, Requested: PKR ${new Decimal(data.withdrawalAmount).toFixed(0)}`,
+        };
+      }
+
       const withdrawal = await this.prisma.eOBIWithdrawal.create({
         data: {
           employeeId: data.employeeId,
@@ -308,9 +355,17 @@ export class EOBIService {
       const formattedWithdrawals = withdrawals.map((w) => ({
         id: w.id,
         employeeId: w.employeeId,
-        employeeDetails: `${w.employee.employeeId} - ${w.employee.employeeName}`,
-        department: w.employee.department?.name || 'N/A',
-        subDepartment: w.employee.subDepartment?.name || 'N/A',
+        employee: {
+          id: w.employee.id,
+          employeeId: w.employee.employeeId,
+          employeeName: w.employee.employeeName,
+          department: w.employee.department
+            ? { id: w.employee.department.id, name: w.employee.department.name }
+            : null,
+          subDepartment: w.employee.subDepartment
+            ? { id: w.employee.subDepartment.id, name: w.employee.subDepartment.name }
+            : null,
+        },
         withdrawalAmount: Number(w.withdrawalAmount),
         withdrawalDate: w.withdrawalDate,
         month: w.month,
@@ -334,6 +389,57 @@ export class EOBIService {
           error instanceof Error
             ? error.message
             : 'Failed to fetch EOBI withdrawals',
+      };
+    }
+  }
+
+  async approveEOBIWithdrawal(id: string, approvedById?: string) {
+    try {
+      const withdrawal = await this.prisma.eOBIWithdrawal.findUnique({
+        where: { id },
+      });
+
+      if (!withdrawal) {
+        return { status: false, message: 'EOBI withdrawal not found' };
+      }
+
+      if (withdrawal.approvalStatus === 'approved') {
+        return { status: false, message: 'EOBI withdrawal is already approved' };
+      }
+
+      const updated = await this.prisma.eOBIWithdrawal.update({
+        where: { id },
+        data: {
+          approvalStatus: 'approved',
+          status: 'processed',
+          approvedById,
+        },
+      });
+
+      runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
+          action: 'UPDATE',
+          module: 'EOBI',
+          entity: 'EOBIWithdrawal',
+          entityId: id,
+          description: 'EOBI withdrawal approved',
+          status: 'success',
+          userId: approvedById,
+        }),
+      );
+
+      return {
+        status: true,
+        message: 'EOBI withdrawal approved successfully',
+        data: updated,
+      };
+    } catch (error) {
+      this.logger.error('Error approving EOBI withdrawal:', error);
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to approve EOBI withdrawal',
       };
     }
   }
