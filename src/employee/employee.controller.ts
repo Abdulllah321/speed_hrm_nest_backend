@@ -91,6 +91,7 @@ export class EmployeeController {
     @Query('subDepartmentId') subDepartmentId?: string,
     @Query('providentFund') providentFund?: string,
     @Query('locationId') locationId?: string,
+    @Query('eobi') eobi?: string,
   ) {
     return this.service.listForDropdown({
       page,
@@ -100,6 +101,7 @@ export class EmployeeController {
       subDepartmentId,
       providentFund,
       locationId,
+      eobi,
     });
   }
 

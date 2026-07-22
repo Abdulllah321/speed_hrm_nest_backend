@@ -114,13 +114,12 @@ export class SocialSecurityController {
     description: 'Filter by institution ID',
   })
   async listEmployerRegistrations(
-    @Query('companyId') companyId: string,
+    @Query('companyId') companyId?: string,
     @Query('institutionId') institutionId?: string,
+    @Req() req?: any,
   ) {
-    if (!companyId) {
-      return { status: false, message: 'Company ID is required' };
-    }
-    return this.service.listEmployerRegistrations(companyId, institutionId);
+    const compId = companyId || req?.user?.companyId || 'default-company';
+    return this.service.listEmployerRegistrations(compId, institutionId);
   }
 
   @Get('social-security-employer-registrations/:id')
@@ -200,16 +199,15 @@ export class SocialSecurityController {
     description: 'Filter by employer registration ID',
   })
   async listEmployeeRegistrations(
-    @Query('companyId') companyId: string,
+    @Query('companyId') companyId?: string,
     @Query('employeeId') employeeId?: string,
     @Query('institutionId') institutionId?: string,
     @Query('employerRegistrationId') employerRegistrationId?: string,
+    @Req() req?: any,
   ) {
-    if (!companyId) {
-      return { status: false, message: 'Company ID is required' };
-    }
+    const compId = companyId || req?.user?.companyId || 'default-company';
     return this.service.listEmployeeRegistrations(
-      companyId,
+      compId,
       employeeId,
       institutionId,
       employerRegistrationId,
@@ -298,17 +296,16 @@ export class SocialSecurityController {
     description: 'Filter by year (YYYY)',
   })
   async listContributions(
-    @Query('companyId') companyId: string,
+    @Query('companyId') companyId?: string,
     @Query('employeeId') employeeId?: string,
     @Query('institutionId') institutionId?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Req() req?: any,
   ) {
-    if (!companyId) {
-      return { status: false, message: 'Company ID is required' };
-    }
+    const compId = companyId || req?.user?.companyId || 'default-company';
     return this.service.listContributions(
-      companyId,
+      compId,
       employeeId,
       institutionId,
       month,
