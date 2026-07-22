@@ -271,7 +271,12 @@ export class AvailableStockSummaryExportService {
     }
 
     const items = await prisma.item.findMany({
-      where: { id: { in: uniqueItemIds } },
+      where: {
+        OR: [
+          { id: { in: uniqueItemIds } },
+          { itemId: { in: uniqueItemIds } },
+        ],
+      },
       include: {
         color: true,
         size: true,
