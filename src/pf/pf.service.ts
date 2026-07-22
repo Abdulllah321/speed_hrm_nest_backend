@@ -92,6 +92,15 @@ export class PFService {
             ],
           });
 
+          // Get approved withdrawals for this employee
+          const approvedWithdrawals = await this.prisma.pFWithdrawal.findMany({
+            where: {
+              employeeId: employee.id,
+              approvalStatus: 'approved',
+            },
+            select: { withdrawalAmount: true },
+          });
+
           // Calculate total PF (employee contribution + employer contribution)
           // Assuming employer matches employee contribution (multiply by 2)
           const totalEmployeeContribution = payrollDetails.reduce(
@@ -104,6 +113,13 @@ export class PFService {
           const totalPFBalance = totalEmployeeContribution.add(
             totalEmployerContribution,
           );
+
+          const totalWithdrawn = approvedWithdrawals.reduce(
+            (sum, w) => sum.add(new Decimal(w.withdrawalAmount || 0)),
+            new Decimal(0),
+          );
+
+          const availableBalance = totalPFBalance.sub(totalWithdrawn);
 
           // Get latest contribution month/year
           const latestDetail = payrollDetails[0];
@@ -127,6 +143,8 @@ export class PFService {
             employeeContribution: totalEmployeeContribution.toNumber(),
             employerContribution: totalEmployerContribution.toNumber(),
             totalPFBalance: totalPFBalance.toNumber(),
+            totalWithdrawn: totalWithdrawn.toNumber(),
+            availableBalance: availableBalance.toNumber(),
             lastContributionMonth: latestDetail
               ? `${latestDetail.payroll.month}/${latestDetail.payroll.year}`
               : 'N/A',
@@ -190,6 +208,38 @@ export class PFService {
 
       // Create monthYear string
       const monthYear = `${year}-${month.padStart(2, '0')}`;
+
+      // Calculate available balance
+      const payrollDetails = await this.prisma.payrollDetail.findMany({
+        where: {
+          employeeId,
+          payroll: { status: 'confirmed' },
+        },
+        select: { providentFundDeduction: true },
+      });
+
+      const totalEmployeeContrib = payrollDetails.reduce(
+        (sum, d) => sum.add(new Decimal(d.providentFundDeduction || 0)),
+        new Decimal(0),
+      );
+      const totalBalance = totalEmployeeContrib.mul(2); // employer matches
+
+      const approvedWithdrawals = await this.prisma.pFWithdrawal.findMany({
+        where: { employeeId, approvalStatus: 'approved' },
+        select: { withdrawalAmount: true },
+      });
+      const totalWithdrawn = approvedWithdrawals.reduce(
+        (sum, w) => sum.add(new Decimal(w.withdrawalAmount || 0)),
+        new Decimal(0),
+      );
+      const availableBalance = totalBalance.sub(totalWithdrawn);
+
+      if (new Decimal(withdrawalAmount).greaterThan(availableBalance)) {
+        return {
+          status: false,
+          message: `Insufficient balance. Available: PKR ${availableBalance.toFixed(0)}, Requested: PKR ${new Decimal(withdrawalAmount).toFixed(0)}`,
+        };
+      }
 
       // Create PF withdrawal
       const withdrawal = await this.prisma.pFWithdrawal.create({
@@ -364,6 +414,57 @@ export class PFService {
           error instanceof Error
             ? error.message
             : 'Failed to fetch PF withdrawals',
+      };
+    }
+  }
+
+  async approvePFWithdrawal(id: string, approvedById?: string) {
+    try {
+      const withdrawal = await this.prisma.pFWithdrawal.findUnique({
+        where: { id },
+      });
+
+      if (!withdrawal) {
+        return { status: false, message: 'PF withdrawal not found' };
+      }
+
+      if (withdrawal.approvalStatus === 'approved') {
+        return { status: false, message: 'PF withdrawal is already approved' };
+      }
+
+      const updated = await this.prisma.pFWithdrawal.update({
+        where: { id },
+        data: {
+          approvalStatus: 'approved',
+          status: 'processed',
+          approvedById,
+        },
+      });
+
+      runInBackground(
+        'Activity Log',
+        this.activityLogs.log({
+          action: 'UPDATE',
+          module: 'PF',
+          entity: 'PFWithdrawal',
+          entityId: id,
+          description: 'PF withdrawal approved',
+          status: 'success',
+          userId: approvedById,
+        }),
+      );
+
+      return {
+        status: true,
+        message: 'PF withdrawal approved successfully',
+        data: updated,
+      };
+    } catch (error) {
+      this.logger.error('Error approving PF withdrawal:', error);
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to approve PF withdrawal',
       };
     }
   }
