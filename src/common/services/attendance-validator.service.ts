@@ -53,6 +53,11 @@ export class AttendanceValidatorService {
             errors.push(err('CheckOut', checkOut, 'Invalid Check Out format. Use HH:MM or YYYY-MM-DD HH:MM:SS.'));
         }
 
+        const status = data.status || data.Status;
+        if (status && !['present', 'absent', 'leave', 'halfday', 'late', 'holiday'].includes(String(status).trim().toLowerCase())) {
+            errors.push(err('Status', status, 'Invalid Status. Use present, absent, leave, or halfday.'));
+        }
+
         return {
             isValid: errors.length === 0,
             errors,

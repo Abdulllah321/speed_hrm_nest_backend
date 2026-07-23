@@ -334,7 +334,7 @@ export class CsvParserService {
                 for (let C = range.s.c; C <= range.e.c; ++C) {
                     const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
                     if (cell && cell.v !== null && cell.v !== undefined) {
-                        rowObj[headers[C]] = cell.v;
+                        rowObj[headers[C]] = (cell.t === 'd' && cell.w) ? cell.w : cell.v;
                         hasData = true;
                     }
                 }
@@ -471,7 +471,7 @@ export class CsvParserService {
                 for (let C = range.s.c; C <= range.e.c; ++C) {
                     const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
                     if (cell && cell.v !== null) {
-                        rowObj[headers[C]] = cell.v;
+                        rowObj[headers[C]] = (cell.t === 'd' && cell.w) ? cell.w : cell.v;
                         hasData = true;
                     }
                 }

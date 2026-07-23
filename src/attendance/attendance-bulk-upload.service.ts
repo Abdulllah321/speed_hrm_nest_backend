@@ -203,6 +203,7 @@ export class AttendanceBulkUploadService {
             { header: 'Date', key: 'date', width: 20 },
             { header: 'Check In', key: 'checkIn', width: 20 },
             { header: 'Check Out', key: 'checkOut', width: 20 },
+            { header: 'Status', key: 'status', width: 15 },
             { header: 'Notes', key: 'notes', width: 40 }
         ];
 
@@ -220,6 +221,7 @@ export class AttendanceBulkUploadService {
             date: '2026-04-22',
             checkIn: '09:00',
             checkOut: '18:00',
+            status: 'present',
             notes: 'Regular day'
         });
 
@@ -229,7 +231,8 @@ export class AttendanceBulkUploadService {
             ['Instructions:'],
             ['- Date format: YYYY-MM-DD (e.g. 2026-04-22)'],
             ['- Check In / Check Out format: HH:MM or HH:MM:SS (24-hour)'],
-            ['- Only Employee ID and Date are strictly required'],
+            ['- Status values: present, absent, leave, halfday (default: present)'],
+            ['- Only Employee ID and Date are strictly required. If Check In and Check Out are left blank and Status is not specified, it will default to absent.'],
         ]);
 
         return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
