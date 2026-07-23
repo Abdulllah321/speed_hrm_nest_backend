@@ -85,6 +85,15 @@ export class PurchaseOrderService {
       include: {
         vendor: true,
         vendorQuotation: true,
+        items: {
+          include: {
+            item: {
+              include: {
+                brand: true
+              }
+            }
+          }
+        }
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -114,7 +123,7 @@ export class PurchaseOrderService {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
-        items: { include: { item: { include: { size: true, color: true } } } },
+        items: { include: { item: { include: { size: true, color: true, brand: true } } } },
         vendor: true,
         vendorQuotation: {
           include: {

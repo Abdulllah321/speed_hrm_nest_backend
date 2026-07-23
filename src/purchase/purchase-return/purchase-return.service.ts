@@ -356,6 +356,19 @@ export class PurchaseReturnService {
   }
 
   private async autoGenerateJournalVoucher(purchaseReturn: any, ctx?: { userId?: string }) {
+    // Check if Journal Voucher already exists for this purchase return
+    const existingJV = await this.prisma.journalVoucher.findFirst({
+      where: {
+        description: {
+          contains: `Purchase Return ${purchaseReturn.returnNumber}`
+        }
+      }
+    });
+    if (existingJV) {
+      console.log(`Journal Voucher already auto-generated for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`);
+      return;
+    }
+
     // 1. Resolve the associated Purchase Order to determine orderType (IMPORT vs LOCAL)
     const po = purchaseReturn.purchaseInvoice?.grn?.purchaseOrder
       || purchaseReturn.purchaseInvoice?.landedCost?.purchaseOrder
@@ -605,6 +618,15 @@ export class PurchaseReturnService {
   }
 
   private async processFinancialAdjustment(purchaseReturn: any) {
+    // Check if Debit Note already exists for this purchase return
+    const debitNoteExists = await this.prisma.debitNote.findFirst({
+      where: { purchaseReturnId: purchaseReturn.id }
+    });
+    if (debitNoteExists) {
+      console.log(`Financial adjustment already processed for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`);
+      return debitNoteExists;
+    }
+
     // Find associated Purchase Invoice
     let purchaseInvoice: any = null;
 
@@ -988,6 +1010,15 @@ export class PurchaseReturnService {
   }
 
   private async processInventoryAdjustment(purchaseReturn: any) {
+    // Check if stock ledger entries have already been created for this purchase return
+    const stockLedgerExists = await this.prisma.stockLedger.findFirst({
+      where: { referenceId: purchaseReturn.id }
+    });
+    if (stockLedgerExists) {
+      console.log(`Inventory adjustment already processed for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`);
+      return;
+    }
+
     // Create stock ledger entries for inventory adjustment
     const stockLedgerEntries: any[] = [];
 
