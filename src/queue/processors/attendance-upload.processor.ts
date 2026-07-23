@@ -100,7 +100,7 @@ export class AttendanceUploadProcessor {
 
                     importBatch.push(record);
 
-                    if (importBatch.length >= 500) {
+                    if (importBatch.length >= 1000) {
                         await this.processBatch(importBatch, progress, uploadId, prisma);
                         importBatch = [];
 
@@ -279,56 +279,86 @@ export class AttendanceUploadProcessor {
     }
 
     private async processBatch(batch: ParsedRecord[], progress: UploadProgress, uploadId: string, prisma: PrismaService): Promise<void> {
+        // 1. Bulk lookup for employees in the batch
+        const employeeIds = batch.map(record => {
+            const data = record.data;
+            return String(data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'] || '').trim();
+        }).filter(Boolean);
+
+        const employees = employeeIds.length > 0
+            ? await prisma.employee.findMany({
+                where: { employeeId: { in: employeeIds } },
+                select: { id: true, employeeId: true }
+              })
+            : [];
+
+        const employeeMap = new Map<string, string>();
+        for (const emp of employees) {
+            employeeMap.set(emp.employeeId, emp.id);
+        }
+
+        // 2. Parse batch data and resolve conditions for existing attendance records
+        const conditions: { employeeId: string; date: Date }[] = [];
+        const parsedRecords: Array<{
+            record: ParsedRecord;
+            employeeId: string;
+            date: Date;
+            dateStr: string;
+            checkIn: Date | null;
+            checkOut: Date | null;
+            notes: string | null;
+            status: string;
+        }> = [];
+
         for (const record of batch) {
             try {
                 const data = record.data;
-                const empIdString = String(data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID']);
+                const empIdString = String(data.employeeId || data.employeeID || data['Employee ID'] || data['EmployeeID'] || '').trim();
+                if (!empIdString) {
+                    throw new Error('Employee ID is missing in record.');
+                }
 
-                const employee = await prisma.employee.findUnique({
-                    where: { employeeId: empIdString },
-                    select: { id: true }
-                });
-
-                if (!employee) {
+                const dbEmpId = employeeMap.get(empIdString);
+                if (!dbEmpId) {
                     throw new Error(`Employee with ID ${empIdString} not found in database.`);
                 }
 
                 const dateInput = data.date || data.Date;
-                const date = new Date(dateInput);
-                const dateStr = date.toISOString().split('T')[0];
+                const { date, dateStr } = this.getCalendarDate(dateInput);
 
                 const checkInStr = data.checkIn || data['Check In'];
                 const checkOutStr = data.checkOut || data['Check Out'];
 
-                const checkIn = checkInStr ? new Date(`${dateStr}T${checkInStr}`) : null;
-                const checkOut = checkOutStr ? new Date(`${dateStr}T${checkOutStr}`) : null;
+                const checkInTime = this.getTimeString(checkInStr);
+                const checkOutTime = this.getTimeString(checkOutStr);
+
+                const checkIn = checkInTime ? new Date(`${dateStr}T${checkInTime}`) : null;
+                const checkOut = checkOutTime ? new Date(`${dateStr}T${checkOutTime}`) : null;
                 const notes = data.notes || data.Notes || null;
 
-                const attendanceData = {
-                    employeeId: employee.id,
+                const statusInput = data.status || data.Status;
+                let status = 'present';
+                if (statusInput) {
+                    const normStatus = String(statusInput).trim().toLowerCase();
+                    if (['present', 'absent', 'leave', 'halfday', 'late', 'holiday'].includes(normStatus)) {
+                        status = normStatus;
+                    }
+                } else if (!checkIn && !checkOut) {
+                    status = 'absent';
+                }
+
+                parsedRecords.push({
+                    record,
+                    employeeId: dbEmpId,
                     date,
+                    dateStr,
                     checkIn,
                     checkOut,
                     notes,
-                    status: 'present'
-                };
-
-                const existing = await prisma.attendance.findFirst({
-                    where: { employeeId: employee.id, date }
+                    status
                 });
 
-                if (existing) {
-                    await prisma.attendance.update({
-                        where: { id: existing.id },
-                        data: attendanceData
-                    });
-                } else {
-                    await prisma.attendance.create({
-                        data: attendanceData
-                    });
-                }
-
-                progress.successRecords++;
+                conditions.push({ employeeId: dbEmpId, date });
             } catch (error) {
                 this.logger.warn(`Failed row ${record.row}: ${error.message}`);
                 progress.failedRecords++;
@@ -345,8 +375,214 @@ export class AttendanceUploadProcessor {
                     reason: error.message,
                     employeeId: record.data.employeeId || record.data['Employee ID']
                 }) + '\n');
+
+                progress.processedRecords++;
             }
-            progress.processedRecords++;
         }
+
+        // 3. Find existing attendance records for the batch of employees & dates
+        const existingAttendances = conditions.length > 0
+            ? await prisma.attendance.findMany({
+                where: { OR: conditions },
+                select: { id: true, employeeId: true, date: true }
+              })
+            : [];
+
+        const existingAttendanceMap = new Map<string, string>(); // "employeeId_epoch" -> id
+        for (const att of existingAttendances) {
+            const epoch = att.date.getTime();
+            existingAttendanceMap.set(`${att.employeeId}_${epoch}`, att.id);
+        }
+
+        // 4. Map into updates and creations (handling batch duplicates using maps)
+        const toCreateMap = new Map<string, { record: ParsedRecord, data: any }>();
+        const toUpdateMap = new Map<string, { record: ParsedRecord, id: string, data: any }>();
+
+        for (const item of parsedRecords) {
+            const key = `${item.employeeId}_${item.date.getTime()}`;
+            const attendanceData = {
+                employeeId: item.employeeId,
+                date: item.date,
+                checkIn: item.checkIn,
+                checkOut: item.checkOut,
+                notes: item.notes,
+                status: item.status
+            };
+
+            const existingId = existingAttendanceMap.get(key);
+            if (existingId) {
+                toUpdateMap.set(key, { record: item.record, id: existingId, data: attendanceData });
+            } else {
+                toCreateMap.set(key, { record: item.record, data: attendanceData });
+            }
+        }
+
+        const toCreate = Array.from(toCreateMap.values());
+        const toUpdate = Array.from(toUpdateMap.values());
+
+        // 5. Bulk Creation via createMany (fallback to individual if fails)
+        if (toCreate.length > 0) {
+            try {
+                await prisma.attendance.createMany({
+                    data: toCreate.map(x => x.data)
+                });
+                progress.successRecords += toCreate.length;
+                progress.processedRecords += toCreate.length;
+            } catch (error) {
+                this.logger.warn(`Bulk create failed, falling back to individual creates: ${error.message}`);
+                for (const item of toCreate) {
+                    try {
+                        await prisma.attendance.create({
+                            data: item.data
+                        });
+                        progress.successRecords++;
+                    } catch (e) {
+                        progress.failedRecords++;
+                        progress.errors.push({
+                            row: item.record.row,
+                            reason: `Create failed: ${e.message}`,
+                            data: item.record.data
+                        });
+
+                        const errorFilePath = path.join(process.cwd(), 'uploads', 'bulk', `errors-${uploadId}.jsonl`);
+                        fs.appendFileSync(errorFilePath, JSON.stringify({
+                            row: item.record.row,
+                            field: 'System',
+                            reason: e.message,
+                            employeeId: item.record.data.employeeId || item.record.data['Employee ID']
+                        }) + '\n');
+                    }
+                    progress.processedRecords++;
+                }
+            }
+        }
+
+        // 6. Batch updates via $transaction chunking (fallback to individual if fails)
+        if (toUpdate.length > 0) {
+            const chunkSize = 200;
+            for (let i = 0; i < toUpdate.length; i += chunkSize) {
+                const chunk = toUpdate.slice(i, i + chunkSize);
+                try {
+                    await prisma.$transaction(
+                        chunk.map(item =>
+                            prisma.attendance.update({
+                                where: { id: item.id },
+                                data: item.data
+                            })
+                        )
+                    );
+                    progress.successRecords += chunk.length;
+                    progress.processedRecords += chunk.length;
+                } catch (error) {
+                    this.logger.warn(`Batch update transaction failed for chunk, falling back to individual updates: ${error.message}`);
+                    for (const item of chunk) {
+                        try {
+                            await prisma.attendance.update({
+                                where: { id: item.id },
+                                data: item.data
+                            });
+                            progress.successRecords++;
+                        } catch (e) {
+                            progress.failedRecords++;
+                            progress.errors.push({
+                                row: item.record.row,
+                                reason: `Update failed: ${e.message}`,
+                                data: item.record.data
+                            });
+
+                            const errorFilePath = path.join(process.cwd(), 'uploads', 'bulk', `errors-${uploadId}.jsonl`);
+                            fs.appendFileSync(errorFilePath, JSON.stringify({
+                                row: item.record.row,
+                                field: 'System',
+                                reason: e.message,
+                                employeeId: item.record.data.employeeId || item.record.data['Employee ID']
+                            }) + '\n');
+                        }
+                        progress.processedRecords++;
+                    }
+                }
+            }
+        }
+    }
+
+    private parseDateString(str: string): Date | null {
+        let d = new Date(str);
+        if (!isNaN(d.getTime())) return d;
+
+        // Try DD-MM-YYYY or DD/MM/YYYY
+        const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+        if (dmyMatch) {
+            const day = parseInt(dmyMatch[1], 10);
+            const month = parseInt(dmyMatch[2], 10) - 1; // 0-indexed
+            const year = parseInt(dmyMatch[3], 10);
+            d = new Date(year, month, day);
+            if (!isNaN(d.getTime())) return d;
+        }
+        return null;
+    }
+
+    private getCalendarDate(val: any): { date: Date; dateStr: string } {
+        let d: Date | null = null;
+        if (val instanceof Date) {
+            d = val;
+        } else if (typeof val === 'number') {
+            d = new Date(Math.round((val - 25569) * 86400 * 1000));
+        } else if (val) {
+            const str = String(val).trim();
+            d = this.parseDateString(str);
+        }
+
+        if (!d || isNaN(d.getTime())) {
+            throw new Error(`Invalid date format: ${val}`);
+        }
+
+        // Add 12 hours before setting UTCHours to 0 to preserve the intended calendar day
+        const utcDate = new Date(d.getTime() + 12 * 60 * 60 * 1000);
+        utcDate.setUTCHours(0, 0, 0, 0);
+
+        const year = utcDate.getUTCFullYear();
+        const month = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(utcDate.getUTCDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+
+        return {
+            date: utcDate,
+            dateStr,
+        };
+    }
+
+    private getTimeString(val: any): string | null {
+        if (!val) return null;
+        if (val instanceof Date) {
+            const hh = String(val.getUTCHours()).padStart(2, '0');
+            const mm = String(val.getUTCMinutes()).padStart(2, '0');
+            const ss = String(val.getUTCSeconds()).padStart(2, '0');
+            return `${hh}:${mm}:${ss}`;
+        }
+        if (typeof val === 'number') {
+            const totalSeconds = Math.round(val * 24 * 3600);
+            const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const ss = String(totalSeconds % 60).padStart(2, '0');
+            return `${hh}:${mm}:${ss}`;
+        }
+        const str = String(val).trim();
+        if (str.includes('T')) {
+            const d = new Date(str);
+            if (!isNaN(d.getTime())) {
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                const ss = String(d.getSeconds()).padStart(2, '0');
+                return `${hh}:${mm}:${ss}`;
+            }
+        }
+        const match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (match) {
+            const hh = match[1].padStart(2, '0');
+            const mm = match[2];
+            const ss = match[3] || '00';
+            return `${hh}:${mm}:${ss}`;
+        }
+        return str;
     }
 }
