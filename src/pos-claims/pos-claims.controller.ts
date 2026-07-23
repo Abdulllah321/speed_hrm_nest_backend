@@ -1,14 +1,18 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PosClaimsService } from './pos-claims.service';
+import { ClaimRegisterExportService } from './claim-register-export.service';
 
 @ApiTags('POS Claims')
 @Controller('api/pos-claims')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PosClaimsController {
-    constructor(private readonly service: PosClaimsService,) { }
+    constructor(
+        private readonly service: PosClaimsService,
+        private readonly claimRegisterExportService: ClaimRegisterExportService,
+    ) { }
 
     @Post()
     @ApiOperation({ summary: 'Submit a new POS return claim' })
@@ -32,6 +36,50 @@ export class PosClaimsController {
             limit: limit ? parseInt(limit) : 50,
             page: page ? parseInt(page) : 1,
         });
+    }
+
+    @Get('reports/claim-register')
+    @ApiOperation({ summary: 'Get claim register report preview data' })
+    async getClaimRegisterReport(
+        @Query('locationId') locationId?: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('search') search?: string,
+    ) {
+        const data = await this.claimRegisterExportService.getReportData({
+            locationId,
+            startDate,
+            endDate,
+            search,
+        });
+        return { status: true, data };
+    }
+
+    @Post('reports/claim-register/export')
+    @ApiOperation({ summary: 'Queue background export job for claim register' })
+    async queueClaimRegisterExport(@Body() body: any, @Req() req: any) {
+        const result = await this.claimRegisterExportService.queueExport({
+            userId: req.user?.id,
+            locationId: body.locationId,
+            startDate: body.startDate,
+            endDate: body.endDate,
+            format: body.format || 'xlsx',
+            search: body.search,
+        });
+        return { status: true, data: result };
+    }
+
+    @Get('reports/claim-register/export-status/:jobId')
+    @ApiOperation({ summary: 'Get export job status and progress' })
+    async getClaimRegisterExportStatus(@Param('jobId') jobId: string) {
+        const result = await this.claimRegisterExportService.getJobStatus(jobId);
+        return { status: true, data: result };
+    }
+
+    @Get('reports/claim-register/export-download/:jobId')
+    @ApiOperation({ summary: 'Download completed claim register export file' })
+    async streamClaimRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+        return this.claimRegisterExportService.streamExportFile(jobId, res);
     }
 
     @Get(':id')
