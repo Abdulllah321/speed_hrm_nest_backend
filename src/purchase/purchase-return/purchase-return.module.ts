@@ -4,9 +4,10 @@ import { PurchaseReturnController } from './purchase-return.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { FinanceAccountConfigModule } from '../../finance/finance-account-config/finance-account-config.module';
 import { AccountingModule } from '../../finance/accounting/accounting.module';
+import { JournalVoucherModule } from '../../finance/journal-voucher/journal-voucher.module';
 
 @Module({
-  imports: [PrismaModule, FinanceAccountConfigModule, AccountingModule],
+  imports: [PrismaModule, FinanceAccountConfigModule, AccountingModule, JournalVoucherModule],
   controllers: [PurchaseReturnController],
   providers: [PurchaseReturnService],
   exports: [PurchaseReturnService],
