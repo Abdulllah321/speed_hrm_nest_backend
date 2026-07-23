@@ -23,7 +23,8 @@ export interface CostOfSalesExportJobData {
 }
 
 const COLUMNS = [
-  { header: 'GPC / Category / Product', key: 'gpc', width: 45 },
+  { header: 'GPC / Category / Product', key: 'gpc', width: 40 },
+  { header: 'SKU', key: 'sku', width: 16 },
   { header: 'Size', key: 'size', width: 12, align: 'center' },
   { header: 'Quantity', key: 'quantity', width: 14, align: 'right', numFmt: '#,##0' },
   { header: 'Cost Price (Rs.)', key: 'costPrice', width: 18, align: 'right', numFmt: '#,##0.00' },
@@ -147,191 +148,177 @@ export class CostOfSalesExportProcessor {
         pattern: 'solid',
         fgColor: { argb: 'FF0F172A' },
       };
-      cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 11 };
+      cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 10 };
       cell.border = borderThin;
       cell.alignment = { vertical: 'middle', horizontal: (COLUMNS[c - 1].align as any) || 'left' };
     }
     headerRow.commit();
 
     for (const outlet of reportData.outlets) {
-      const outletRow = worksheet.addRow([`OUTLET: ${outlet.locationName.toUpperCase()}`]);
-      outletRow.height = 26;
-      const outletCell = outletRow.getCell(1);
-      outletCell.font = { bold: true, color: { argb: 'FF1E3A8A' }, size: 12 };
+      const outletRow = worksheet.addRow({
+        gpc: `OUTLET: ${outlet.locationName.toUpperCase()}`,
+        sku: '-',
+        size: '-',
+        quantity: outlet.totals.quantity,
+        costPrice: outlet.totals.avgUnitCost || 0,
+        totalCost: outlet.totals.totalCost,
+      });
+      outletRow.height = 24;
+      for (let c = 1; c <= COLUMNS.length; c++) {
+        const cell = outletRow.getCell(c);
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+        cell.border = borderThin;
+        const col = COLUMNS[c - 1];
+        if (col.align) cell.alignment = { horizontal: col.align as any };
+        if (col.numFmt) cell.numFmt = col.numFmt;
+      }
       outletRow.commit();
 
-      for (const div of outlet.divisions) {
-        const divRow = worksheet.addRow([`  Division: ${div.divisionName}`]);
-        divRow.height = 22;
-        divRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF0284C7' } };
-        divRow.commit();
+      for (const brand of outlet.brands) {
+        const brandRow = worksheet.addRow({
+          gpc: `BRAND: ${brand.brandName.toUpperCase()}`,
+          sku: '-',
+          size: '-',
+          quantity: brand.totals.quantity,
+          costPrice: brand.totals.avgUnitCost || 0,
+          totalCost: brand.totals.totalCost,
+        });
+        brandRow.height = 22;
+        for (let c = 1; c <= COLUMNS.length; c++) {
+          const cell = brandRow.getCell(c);
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+          cell.border = borderThin;
+          const col = COLUMNS[c - 1];
+          if (col.align) cell.alignment = { horizontal: col.align as any };
+          if (col.numFmt) cell.numFmt = col.numFmt;
+        }
+        brandRow.commit();
 
-        for (const brand of div.brands) {
-          const brandRow = worksheet.addRow([`    Brand: ${brand.brandName}`]);
-          brandRow.height = 20;
-          brandRow.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF475569' } };
-          brandRow.commit();
+        for (const div of brand.divisions) {
+          const divRow = worksheet.addRow({
+            gpc: `DIVISION: ${div.divisionName.toUpperCase()}`,
+            sku: '-',
+            size: '-',
+            quantity: div.totals.quantity,
+            costPrice: div.totals.avgUnitCost || 0,
+            totalCost: div.totals.totalCost,
+          });
+          divRow.height = 22;
+          for (let c = 1; c <= COLUMNS.length; c++) {
+            const cell = divRow.getCell(c);
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            cell.border = borderThin;
+            const col = COLUMNS[c - 1];
+            if (col.align) cell.alignment = { horizontal: col.align as any };
+            if (col.numFmt) cell.numFmt = col.numFmt;
+          }
+          divRow.commit();
 
-          for (const gender of brand.genders) {
-            const genderRow = worksheet.addRow([`      Gender: ${gender.genderName}`]);
+          for (const gender of div.genders) {
+            const genderRow = worksheet.addRow({
+              gpc: `GENDER: ${gender.genderName.toUpperCase()}`,
+              sku: '-',
+              size: '-',
+              quantity: gender.totals.quantity,
+              costPrice: gender.totals.avgUnitCost || 0,
+              totalCost: gender.totals.totalCost,
+            });
             genderRow.height = 20;
-            genderRow.getCell(1).font = { bold: true, size: 10 };
+            for (let c = 1; c <= COLUMNS.length; c++) {
+              const cell = genderRow.getCell(c);
+              cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+              cell.border = borderThin;
+              const col = COLUMNS[c - 1];
+              if (col.align) cell.alignment = { horizontal: col.align as any };
+              if (col.numFmt) cell.numFmt = col.numFmt;
+            }
             genderRow.commit();
 
             for (const cat of gender.categories) {
-              const catRow = worksheet.addRow([`        Category: ${cat.categoryName}`]);
+              const catRow = worksheet.addRow({
+                gpc: `CATEGORY: ${cat.categoryName.toUpperCase()}`,
+                sku: '-',
+                size: '-',
+                quantity: cat.totals.quantity,
+                costPrice: cat.totals.avgUnitCost || 0,
+                totalCost: cat.totals.totalCost,
+              });
               catRow.height = 20;
-              catRow.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF0D9488' } };
+              for (let c = 1; c <= COLUMNS.length; c++) {
+                const cell = catRow.getCell(c);
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF64748B' } };
+                cell.border = borderThin;
+                const col = COLUMNS[c - 1];
+                if (col.align) cell.alignment = { horizontal: col.align as any };
+                if (col.numFmt) cell.numFmt = col.numFmt;
+              }
               catRow.commit();
 
               for (const prod of cat.products) {
+                const prodRow = worksheet.addRow({
+                  gpc: prod.description,
+                  sku: prod.sku,
+                  size: 'All Sizes',
+                  quantity: prod.totals.quantity,
+                  costPrice: prod.totals.avgUnitCost || 0,
+                  totalCost: prod.totals.totalCost,
+                });
+                prodRow.height = 22;
+                for (let c = 1; c <= COLUMNS.length; c++) {
+                  const cell = prodRow.getCell(c);
+                  cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 10 };
+                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                  cell.border = borderThin;
+                  const col = COLUMNS[c - 1];
+                  if (col.align) cell.alignment = { horizontal: col.align as any };
+                  if (col.numFmt) cell.numFmt = col.numFmt;
+                }
+                prodRow.commit();
+
                 for (const item of prod.sizes) {
-                  const row = worksheet.addRow({
-                    gpc: `          ${prod.productLabel}`,
+                  const itemRow = worksheet.addRow({
+                    gpc: '— Variant Size',
+                    sku: prod.sku,
                     size: item.size,
                     quantity: item.quantity,
                     costPrice: item.costPrice,
                     totalCost: item.totalCost,
                   });
-
                   for (let c = 1; c <= COLUMNS.length; c++) {
-                    const cell = row.getCell(c);
+                    const cell = itemRow.getCell(c);
                     cell.border = borderThin;
                     const col = COLUMNS[c - 1];
                     if (col.align) cell.alignment = { horizontal: col.align as any };
                     if (col.numFmt) cell.numFmt = col.numFmt;
                   }
-                  row.commit();
+                  itemRow.commit();
                 }
-
-                // Product Subtotal
-                const prodSubRow = worksheet.addRow({
-                  gpc: `          Total for ${prod.sku}`,
-                  quantity: prod.totals.quantity,
-                  totalCost: prod.totals.totalCost,
-                });
-                prodSubRow.height = 20;
-                for (let c = 1; c <= COLUMNS.length; c++) {
-                  const cell = prodSubRow.getCell(c);
-                  cell.font = { bold: true, size: 9 };
-                  cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' } };
-                  const col = COLUMNS[c - 1];
-                  if (col.align) cell.alignment = { horizontal: col.align as any };
-                  if (col.numFmt) cell.numFmt = col.numFmt;
-                }
-                prodSubRow.commit();
               }
-
-              // Category Subtotal
-              const catSubRow = worksheet.addRow({
-                gpc: `        Category Total: ${cat.categoryName}`,
-                quantity: cat.totals.quantity,
-                totalCost: cat.totals.totalCost,
-              });
-              catSubRow.height = 22;
-              for (let c = 1; c <= COLUMNS.length; c++) {
-                const cell = catSubRow.getCell(c);
-                cell.font = { bold: true, size: 10, color: { argb: 'FF0D9488' } };
-                cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
-                const col = COLUMNS[c - 1];
-                if (col.align) cell.alignment = { horizontal: col.align as any };
-                if (col.numFmt) cell.numFmt = col.numFmt;
-              }
-              catSubRow.commit();
             }
-
-            // Gender Subtotal
-            const genderSubRow = worksheet.addRow({
-              gpc: `      Gender Total: ${gender.genderName}`,
-              quantity: gender.totals.quantity,
-              totalCost: gender.totals.totalCost,
-            });
-            genderSubRow.height = 22;
-            for (let c = 1; c <= COLUMNS.length; c++) {
-              const cell = genderSubRow.getCell(c);
-              cell.font = { bold: true, size: 10 };
-              cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
-              const col = COLUMNS[c - 1];
-              if (col.align) cell.alignment = { horizontal: col.align as any };
-              if (col.numFmt) cell.numFmt = col.numFmt;
-            }
-            genderSubRow.commit();
           }
-
-          // Brand Subtotal
-          const brandSubRow = worksheet.addRow({
-            gpc: `    Brand Total: ${brand.brandName}`,
-            quantity: brand.totals.quantity,
-            totalCost: brand.totals.totalCost,
-          });
-          brandSubRow.height = 22;
-          for (let c = 1; c <= COLUMNS.length; c++) {
-            const cell = brandSubRow.getCell(c);
-            cell.font = { bold: true, size: 10, color: { argb: 'FF475569' } };
-            cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
-            const col = COLUMNS[c - 1];
-            if (col.align) cell.alignment = { horizontal: col.align as any };
-            if (col.numFmt) cell.numFmt = col.numFmt;
-          }
-          brandSubRow.commit();
         }
-
-        // Division Subtotal
-        const divSubRow = worksheet.addRow({
-          gpc: `  Division Total: ${div.divisionName}`,
-          quantity: div.totals.quantity,
-          totalCost: div.totals.totalCost,
-        });
-        divSubRow.height = 24;
-        for (let c = 1; c <= COLUMNS.length; c++) {
-          const cell = divSubRow.getCell(c);
-          cell.font = { bold: true, size: 11, color: { argb: 'FF0284C7' } };
-          cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
-          const col = COLUMNS[c - 1];
-          if (col.align) cell.alignment = { horizontal: col.align as any };
-          if (col.numFmt) cell.numFmt = col.numFmt;
-        }
-        divSubRow.commit();
       }
-
-      // Outlet Subtotal
-      const outletSubRow = worksheet.addRow({
-        gpc: `TOTAL FOR ${outlet.locationName.toUpperCase()}`,
-        quantity: outlet.totals.quantity,
-        totalCost: outlet.totals.totalCost,
-      });
-      outletSubRow.height = 26;
-      for (let c = 1; c <= COLUMNS.length; c++) {
-        const cell = outletSubRow.getCell(c);
-        cell.font = { bold: true, size: 11, color: { argb: 'FF1E3A8A' } };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFE2E8F0' },
-        };
-        cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
-        const col = COLUMNS[c - 1];
-        if (col.align) cell.alignment = { horizontal: col.align as any };
-        if (col.numFmt) cell.numFmt = col.numFmt;
-      }
-      outletSubRow.commit();
     }
 
-    // Grand Total
     const grandRow = worksheet.addRow({
-      gpc: 'GRAND TOTAL (ALL OUTLETS)',
+      gpc: 'GRAND TOTALS (ALL OUTLETS)',
+      sku: '-',
+      size: '-',
       quantity: reportData.grandTotals.quantity,
+      costPrice: reportData.grandTotals.avgUnitCost || 0,
       totalCost: reportData.grandTotals.totalCost,
     });
-    grandRow.height = 28;
+
+    grandRow.height = 26;
     for (let c = 1; c <= COLUMNS.length; c++) {
       const cell = grandRow.getCell(c);
-      cell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF0F172A' },
-      };
+      cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
       cell.border = borderThin;
       const col = COLUMNS[c - 1];
       if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -363,7 +350,7 @@ export class CostOfSalesExportProcessor {
       await page.pdf({
         path: filePath,
         format: 'A4',
-        landscape: false,
+        landscape: true,
         printBackground: true,
         margin: { top: '15mm', right: '10mm', bottom: '15mm', left: '10mm' },
       });
@@ -375,121 +362,87 @@ export class CostOfSalesExportProcessor {
   private buildHtmlReport(reportData: any): string {
     const dateRangeStr = `${reportData.startDate} - ${reportData.endDate}`;
 
-    let outletTablesHtml = '';
+    let rowsHtml = '';
 
     for (const outlet of reportData.outlets) {
-      let rowsHtml = '';
-
-      for (const div of outlet.divisions) {
-        rowsHtml += `<tr class="section-row div-row"><td colspan="5">Division: ${div.divisionName}</td></tr>`;
-
-        for (const brand of div.brands) {
-          rowsHtml += `<tr class="section-row brand-row"><td colspan="5" style="padding-left: 20px;">Brand: ${brand.brandName}</td></tr>`;
-
-          for (const gender of brand.genders) {
-            rowsHtml += `<tr class="section-row gender-row"><td colspan="5" style="padding-left: 35px;">Gender: ${gender.genderName}</td></tr>`;
-
-            for (const cat of gender.categories) {
-              rowsHtml += `<tr class="section-row cat-row"><td colspan="5" style="padding-left: 50px;">Category: ${cat.categoryName}</td></tr>`;
-
-              for (const prod of cat.products) {
-                for (const item of prod.sizes) {
-                  rowsHtml += `
-                    <tr>
-                      <td style="padding-left: 65px;">${prod.productLabel}</td>
-                      <td style="text-align: center;">${item.size}</td>
-                      <td style="text-align: right;">${item.quantity}</td>
-                      <td style="text-align: right;">${item.costPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                      <td style="text-align: right; font-weight: 600;">${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  `;
-                }
-
-                rowsHtml += `
-                  <tr class="subtotal-row prod-sub">
-                    <td style="padding-left: 65px; font-weight: bold;">Total for ${prod.sku}</td>
-                    <td></td>
-                    <td style="text-align: right; font-weight: bold;">${prod.totals.quantity}</td>
-                    <td></td>
-                    <td style="text-align: right; font-weight: bold;">${prod.totals.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                `;
-              }
-
-              rowsHtml += `
-                <tr class="subtotal-row cat-sub">
-                  <td style="padding-left: 50px; font-weight: bold;">Category Total: ${cat.categoryName}</td>
-                  <td></td>
-                  <td style="text-align: right; font-weight: bold;">${cat.totals.quantity}</td>
-                  <td></td>
-                  <td style="text-align: right; font-weight: bold;">${cat.totals.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                </tr>
-              `;
-            }
-
-            rowsHtml += `
-              <tr class="subtotal-row gender-sub">
-                <td style="padding-left: 35px; font-weight: bold;">Gender Total: ${gender.genderName}</td>
-                <td></td>
-                <td style="text-align: right; font-weight: bold;">${gender.totals.quantity}</td>
-                <td></td>
-                <td style="text-align: right; font-weight: bold;">${gender.totals.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-              </tr>
-            `;
-          }
-
-          rowsHtml += `
-            <tr class="subtotal-row brand-sub">
-              <td style="padding-left: 20px; font-weight: bold;">Brand Total: ${brand.brandName}</td>
-              <td></td>
-              <td style="text-align: right; font-weight: bold;">${brand.totals.quantity}</td>
-              <td></td>
-              <td style="text-align: right; font-weight: bold;">${brand.totals.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-            </tr>
-          `;
-        }
-
-        rowsHtml += `
-          <tr class="subtotal-row div-sub">
-            <td style="font-weight: bold;">Division Total: ${div.divisionName}</td>
-            <td></td>
-            <td style="text-align: right; font-weight: bold;">${div.totals.quantity}</td>
-            <td></td>
-            <td style="text-align: right; font-weight: bold;">${div.totals.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        `;
-      }
-
       rowsHtml += `
-        <tr class="outlet-subtotal-row">
-          <td style="font-weight: bold; font-size: 11px;">TOTAL FOR ${outlet.locationName.toUpperCase()}</td>
-          <td></td>
-          <td style="text-align: right; font-weight: bold;">${outlet.totals.quantity}</td>
-          <td></td>
-          <td style="text-align: right; font-weight: bold;">${outlet.totals.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        <tr class="level-outlet">
+          <td colspan="3">OUTLET: ${outlet.locationName.toUpperCase()}</td>
+          <td style="text-align: right;">${outlet.totals.quantity}</td>
+          <td style="text-align: right;">${(outlet.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; color: #4ade80;">PKR ${(outlet.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         </tr>
       `;
 
-      outletTablesHtml += `
-        <div class="outlet-block">
-          <div class="outlet-header">${outlet.locationName}</div>
-          <div class="report-subtitle">Cost of Sales Report <span class="date-badge">${dateRangeStr}</span></div>
-          <table class="report-table">
-            <thead>
-              <tr class="header-row">
-                <th style="width: 48%; text-align: left;">GPC / Category / Product</th>
-                <th style="width: 12%; text-align: center;">Size</th>
-                <th style="width: 12%; text-align: right;">Quantity</th>
-                <th style="width: 14%; text-align: right;">Cost Price (Rs.)</th>
-                <th style="width: 14%; text-align: right;">Total Cost (Rs.)</th>
+      for (const brand of outlet.brands) {
+        rowsHtml += `
+          <tr class="level-brand">
+            <td colspan="3" style="padding-left: 20px;">BRAND: ${brand.brandName.toUpperCase()}</td>
+            <td style="text-align: right;">${brand.totals.quantity}</td>
+            <td style="text-align: right;">${(brand.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            <td style="text-align: right; color: #4ade80;">PKR ${(brand.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        `;
+
+        for (const div of brand.divisions) {
+          rowsHtml += `
+            <tr class="level-division">
+              <td colspan="3" style="padding-left: 30px;">DIVISION: ${div.divisionName.toUpperCase()}</td>
+              <td style="text-align: right;">${div.totals.quantity}</td>
+              <td style="text-align: right;">${(div.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <td style="text-align: right; color: #4ade80;">PKR ${(div.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          `;
+
+          for (const gender of div.genders) {
+            rowsHtml += `
+              <tr class="level-gender">
+                <td colspan="3" style="padding-left: 40px;">GENDER: ${gender.genderName.toUpperCase()}</td>
+                <td style="text-align: right;">${gender.totals.quantity}</td>
+                <td style="text-align: right;">${(gender.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right; color: #4ade80;">PKR ${(gender.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-        </div>
-      `;
+            `;
+
+            for (const cat of gender.categories) {
+              rowsHtml += `
+                <tr class="level-category">
+                  <td colspan="3" style="padding-left: 50px;">CATEGORY: ${cat.categoryName.toUpperCase()}</td>
+                  <td style="text-align: right;">${cat.totals.quantity}</td>
+                  <td style="text-align: right;">${(cat.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td style="text-align: right; color: #4ade80;">PKR ${(cat.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              `;
+
+              for (const prod of cat.products) {
+                rowsHtml += `
+                  <tr class="level-article">
+                    <td style="padding-left: 60px; font-weight: bold;">${prod.description}</td>
+                    <td style="font-weight: bold; font-family: monospace; color: #0284c7;">${prod.sku}</td>
+                    <td style="text-align: center;">All Sizes</td>
+                    <td style="text-align: right; font-weight: bold;">${prod.totals.quantity}</td>
+                    <td style="text-align: right; font-weight: bold;">PKR ${(prod.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${(prod.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                `;
+
+                for (const item of prod.sizes) {
+                  rowsHtml += `
+                    <tr class="level-variant">
+                      <td style="padding-left: 70px; color: #64748b; italic;">— Variant Size</td>
+                      <td style="font-family: monospace; color: #64748b;">${prod.sku}</td>
+                      <td style="text-align: center; font-weight: bold;">${item.size}</td>
+                      <td style="text-align: right;">${item.quantity}</td>
+                      <td style="text-align: right;">PKR ${item.costPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  `;
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     return `
@@ -498,29 +451,52 @@ export class CostOfSalesExportProcessor {
       <head>
         <meta charset="utf-8">
         <style>
-          @page { size: A4 portrait; margin: 12mm; }
+          @page { size: A4 landscape; margin: 10mm; }
           body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; color: #1e293b; margin: 0; padding: 0; background: #fff; }
-          .outlet-block { page-break-after: always; margin-bottom: 20px; }
-          .outlet-block:last-child { page-break-after: auto; }
-          .outlet-header { font-size: 16px; font-weight: bold; text-align: center; color: #0f172a; margin-bottom: 4px; text-transform: uppercase; }
-          .report-subtitle { font-size: 12px; font-weight: bold; text-align: center; color: #0284c7; margin-bottom: 12px; position: relative; }
-          .date-badge { position: absolute; right: 0; top: 0; color: #0284c7; font-weight: bold; }
-          .report-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 4px; }
-          .report-table th, .report-table td { padding: 4px 6px; font-size: 9.5px; border-bottom: 1px solid #cbd5e1; }
-          .header-row { background: #0f172a; color: #fff; border-top: 2px solid #000; }
+          .report-header { text-align: center; margin-bottom: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 8px; }
+          .report-title { font-size: 18px; font-weight: bold; color: #0f172a; text-transform: uppercase; margin: 0; }
+          .report-subtitle { font-size: 12px; font-weight: bold; color: #0284c7; margin-top: 4px; }
+          .report-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          .report-table th, .report-table td { padding: 6px 8px; font-size: 9.5px; border: 1px solid #cbd5e1; }
+          .header-row { background: #0f172a; color: #fff; }
           .header-row th { font-weight: bold; color: #fff; text-align: left; }
-          tr { page-break-inside: auto; }
-          tr.header-row { page-break-inside: avoid; }
-          .section-row td { font-weight: bold; background: #f8fafc; color: #0f172a; }
-          .div-row td { font-size: 11px; color: #0284c7; }
-          .brand-row td { color: #475569; }
-          .cat-row td { color: #0d9488; }
-          .subtotal-row td { background: #f1f5f9; border-top: 1px solid #94a3b8; border-bottom: 2px double #000; }
-          .outlet-subtotal-row td { background: #e2e8f0; font-size: 11px; font-weight: bold; border-top: 1px solid #000; border-bottom: 3px double #000; padding-top: 6px; padding-bottom: 6px; }
+          .level-outlet { background: #0f172a; color: #fff; font-weight: bold; font-size: 11px; }
+          .level-brand { background: #334155; color: #fff; font-weight: bold; }
+          .level-division { background: #1e293b; color: #fff; font-weight: bold; }
+          .level-gender { background: #475569; color: #fff; font-weight: bold; }
+          .level-category { background: #64748b; color: #fff; font-weight: bold; }
+          .level-article { background: #f1f5f9; font-weight: bold; color: #0f172a; }
+          .level-variant { background: #ffffff; }
         </style>
       </head>
       <body>
-        ${outletTablesHtml}
+        <div class="report-header">
+          <h1 class="report-title">Cost of Sales Report</h1>
+          <div class="report-subtitle">Period: ${dateRangeStr}</div>
+        </div>
+        <table class="report-table">
+          <thead>
+            <tr class="header-row">
+              <th style="width: 35%;">GPC / Category / Product</th>
+              <th style="width: 15%;">SKU</th>
+              <th style="width: 10%; text-align: center;">Size</th>
+              <th style="width: 12%; text-align: right;">Quantity</th>
+              <th style="width: 14%; text-align: right;">Cost Price (Rs.)</th>
+              <th style="width: 14%; text-align: right;">Total Cost (Rs.)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+          <tfoot>
+            <tr style="background: #0f172a; color: #fff; font-weight: bold;">
+              <td colspan="3">GRAND TOTALS (ALL OUTLETS)</td>
+              <td style="text-align: right;">${reportData.grandTotals.quantity}</td>
+              <td style="text-align: right;">PKR ${(reportData.grandTotals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <td style="text-align: right; color: #4ade80;">PKR ${(reportData.grandTotals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </tfoot>
+        </table>
       </body>
       </html>
     `;
