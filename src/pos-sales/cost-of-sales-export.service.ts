@@ -19,6 +19,7 @@ export interface QueueCostOfSalesExportOptions {
 export interface CostOfSalesSizeItem {
   id: string;
   size: string;
+  color: string;
   quantity: number;
   costPrice: number;
   totalCost: number;
@@ -173,6 +174,7 @@ export class CostOfSalesExportService {
                 gender: { select: { id: true, name: true } },
                 category: { select: { id: true, name: true } },
                 size: { select: { name: true } },
+                color: { select: { name: true } },
               },
             },
           },
@@ -204,6 +206,7 @@ export class CostOfSalesExportService {
         const sku = soi.item.sku || 'UNKNOWN-SKU';
         const desc = soi.item.description || 'No Description';
         const sizeName = soi.item.size?.name || 'N/A';
+        const colorName = soi.item.color?.name || 'N/A';
 
         // 1. Brand Level (Root hierarchy)
         let brandNode = brandsList.find((b) => b.brandId === brandId);
@@ -266,12 +269,13 @@ export class CostOfSalesExportService {
           catNode.products.push(prodNode);
         }
 
-        // 6. Size Level
-        let sizeItem = prodNode.sizes.find((s) => s.size === sizeName);
+        // 6. Size/Color Variant Level
+        let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName);
         if (!sizeItem) {
           sizeItem = {
             id: soi.id,
             size: sizeName,
+            color: colorName,
             quantity: 0,
             costPrice: unitCost,
             totalCost: 0,
