@@ -17,6 +17,9 @@ import { SalesListExportService } from './sales-list-export.service';
 import { GrossSalesExportService } from './gross-sales-export.service';
 import { AllianceRegisterExportService } from './alliance-register-export.service';
 import { CostOfSalesExportService } from './cost-of-sales-export.service';
+import { GiftVoucherSaleRegisterExportService } from './gift-voucher-sale-register-export.service';
+import { CorporateVoucherExportService } from './corporate-voucher-export.service';
+import { CreditVoucherExportService } from './credit-voucher-export.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -44,6 +47,9 @@ export class PosSalesController {
     private readonly grossSalesExportService: GrossSalesExportService,
     private readonly allianceRegisterExportService: AllianceRegisterExportService,
     private readonly costOfSalesExportService: CostOfSalesExportService,
+    private readonly giftVoucherSaleRegisterExportService: GiftVoucherSaleRegisterExportService,
+    private readonly corporateVoucherExportService: CorporateVoucherExportService,
+    private readonly creditVoucherExportService: CreditVoucherExportService,
   ) {}
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -1255,5 +1261,146 @@ export class PosSalesController {
   @ApiOperation({ summary: 'Download completed Cost of Sales export file' })
   async streamCostOfSalesExportFile(@Param('jobId') jobId: string, @Res() res: any) {
     return this.costOfSalesExportService.streamExportFile(jobId, res);
+  }
+
+  // ─── Gift Voucher Sale Register Report Endpoints ────────────────────────
+
+  @Get('reports/gift-voucher-sale-register')
+  @ApiOperation({ summary: 'Get Gift Voucher Sale Register report preview data' })
+  async getGiftVoucherSaleRegisterReport(
+    @Query('locationId') locationId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.giftVoucherSaleRegisterExportService.getReportData({
+      locationId,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Post('reports/gift-voucher-sale-register/export')
+  @ApiOperation({ summary: 'Queue background export job for Gift Voucher Sale Register' })
+  async queueGiftVoucherSaleRegisterExport(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.giftVoucherSaleRegisterExportService.queueExport({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/gift-voucher-sale-register/export-status/:jobId')
+  @ApiOperation({ summary: 'Get Gift Voucher Sale Register export job status' })
+  async getGiftVoucherSaleRegisterExportStatus(@Param('jobId') jobId: string) {
+    const result = await this.giftVoucherSaleRegisterExportService.getJobStatus(jobId);
+    return { status: true, data: result };
+  }
+
+  @Get('reports/gift-voucher-sale-register/export-download/:jobId')
+  @ApiOperation({ summary: 'Download completed Gift Voucher Sale Register export file' })
+  async streamGiftVoucherSaleRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.giftVoucherSaleRegisterExportService.streamExportFile(jobId, res);
+  }
+
+  // ─── Corporate Voucher Report Endpoints ─────────────────────────────────
+
+  @Get('reports/corporate-voucher')
+  @ApiOperation({ summary: 'Get Corporate Voucher report preview data' })
+  async getCorporateVoucherReport(
+    @Query('locationId') locationId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.corporateVoucherExportService.getReportData({
+      locationId,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Post('reports/corporate-voucher/export')
+  @ApiOperation({ summary: 'Queue background export job for Corporate Voucher' })
+  async queueCorporateVoucherExport(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.corporateVoucherExportService.queueExport({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/corporate-voucher/export-status/:jobId')
+  @ApiOperation({ summary: 'Get Corporate Voucher export job status' })
+  async getCorporateVoucherExportStatus(@Param('jobId') jobId: string) {
+    const result = await this.corporateVoucherExportService.getJobStatus(jobId);
+    return { status: true, data: result };
+  }
+
+  @Get('reports/corporate-voucher/export-download/:jobId')
+  @ApiOperation({ summary: 'Download completed Corporate Voucher export file' })
+  async streamCorporateVoucherExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.corporateVoucherExportService.streamExportFile(jobId, res);
+  }
+
+  // ─── Credit Voucher Report Endpoints ────────────────────────────────────
+
+  @Get('reports/credit-voucher')
+  @ApiOperation({ summary: 'Get Credit Voucher report preview data' })
+  async getCreditVoucherReport(
+    @Query('locationId') locationId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.creditVoucherExportService.getReportData({
+      locationId,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Post('reports/credit-voucher/export')
+  @ApiOperation({ summary: 'Queue background export job for Credit Voucher' })
+  async queueCreditVoucherExport(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.creditVoucherExportService.queueExport({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/credit-voucher/export-status/:jobId')
+  @ApiOperation({ summary: 'Get Credit Voucher export job status' })
+  async getCreditVoucherExportStatus(@Param('jobId') jobId: string) {
+    const result = await this.creditVoucherExportService.getJobStatus(jobId);
+    return { status: true, data: result };
+  }
+
+  @Get('reports/credit-voucher/export-download/:jobId')
+  @ApiOperation({ summary: 'Download completed Credit Voucher export file' })
+  async streamCreditVoucherExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.creditVoucherExportService.streamExportFile(jobId, res);
   }
 }

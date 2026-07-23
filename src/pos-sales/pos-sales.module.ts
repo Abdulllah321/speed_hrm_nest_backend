@@ -31,6 +31,12 @@ import { AllianceRegisterExportService } from './alliance-register-export.servic
 import { AllianceRegisterExportProcessor } from './alliance-register-export.processor';
 import { CostOfSalesExportService } from './cost-of-sales-export.service';
 import { CostOfSalesExportProcessor } from './cost-of-sales-export.processor';
+import { GiftVoucherSaleRegisterExportService } from './gift-voucher-sale-register-export.service';
+import { GiftVoucherSaleRegisterExportProcessor } from './gift-voucher-sale-register-export.processor';
+import { CorporateVoucherExportService } from './corporate-voucher-export.service';
+import { CorporateVoucherExportProcessor } from './corporate-voucher-export.processor';
+import { CreditVoucherExportService } from './credit-voucher-export.service';
+import { CreditVoucherExportProcessor } from './credit-voucher-export.processor';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 
 @Module({
@@ -51,7 +57,10 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
             { name: 'sales-list-export' },
             { name: 'gross-sales-export' },
             { name: 'alliance-register-export' },
-            { name: 'cost-of-sales-export' }
+            { name: 'cost-of-sales-export' },
+            { name: 'gift-voucher-sale-register-export' },
+            { name: 'corporate-voucher-export' },
+            { name: 'credit-voucher-export' }
         ),
     ],
     controllers: [
@@ -81,6 +90,12 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         AllianceRegisterExportProcessor,
         CostOfSalesExportService,
         CostOfSalesExportProcessor,
+        GiftVoucherSaleRegisterExportService,
+        GiftVoucherSaleRegisterExportProcessor,
+        CorporateVoucherExportService,
+        CorporateVoucherExportProcessor,
+        CreditVoucherExportService,
+        CreditVoucherExportProcessor,
     ],
     exports: [
         PosSalesService, 
@@ -91,6 +106,9 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         GrossSalesExportService,
         AllianceRegisterExportService,
         CostOfSalesExportService,
+        GiftVoucherSaleRegisterExportService,
+        CorporateVoucherExportService,
+        CreditVoucherExportService,
     ],
 })
 export class PosSalesModule { }

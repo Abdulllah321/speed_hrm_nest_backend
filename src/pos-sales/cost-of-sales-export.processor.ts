@@ -23,9 +23,10 @@ export interface CostOfSalesExportJobData {
 }
 
 const COLUMNS = [
-  { header: 'GPC / Category / Product', key: 'gpc', width: 40 },
+  { header: 'GPC / Category / Product', key: 'gpc', width: 38 },
   { header: 'SKU', key: 'sku', width: 16 },
-  { header: 'Size', key: 'size', width: 12, align: 'center' },
+  { header: 'Size', key: 'size', width: 10, align: 'center' },
+  { header: 'Color', key: 'color', width: 14, align: 'center' },
   { header: 'Quantity', key: 'quantity', width: 14, align: 'right', numFmt: '#,##0' },
   { header: 'Cost Price (Rs.)', key: 'costPrice', width: 18, align: 'right', numFmt: '#,##0.00' },
   { header: 'Total Cost (Rs.)', key: 'totalCost', width: 20, align: 'right', numFmt: '#,##0.00' },
@@ -159,6 +160,7 @@ export class CostOfSalesExportProcessor {
         gpc: `BRAND: ${brand.brandName.toUpperCase()}`,
         sku: '-',
         size: '-',
+        color: '-',
         quantity: brand.totals.quantity,
         costPrice: brand.totals.avgUnitCost || 0,
         totalCost: brand.totals.totalCost,
@@ -180,6 +182,7 @@ export class CostOfSalesExportProcessor {
           gpc: `DIVISION: ${div.divisionName.toUpperCase()}`,
           sku: '-',
           size: '-',
+          color: '-',
           quantity: div.totals.quantity,
           costPrice: div.totals.avgUnitCost || 0,
           totalCost: div.totals.totalCost,
@@ -201,6 +204,7 @@ export class CostOfSalesExportProcessor {
             gpc: `GENDER: ${gender.genderName.toUpperCase()}`,
             sku: '-',
             size: '-',
+            color: '-',
             quantity: gender.totals.quantity,
             costPrice: gender.totals.avgUnitCost || 0,
             totalCost: gender.totals.totalCost,
@@ -222,6 +226,7 @@ export class CostOfSalesExportProcessor {
               gpc: `CATEGORY: ${cat.categoryName.toUpperCase()}`,
               sku: '-',
               size: '-',
+              color: '-',
               quantity: cat.totals.quantity,
               costPrice: cat.totals.avgUnitCost || 0,
               totalCost: cat.totals.totalCost,
@@ -243,6 +248,7 @@ export class CostOfSalesExportProcessor {
                 gpc: prod.description,
                 sku: prod.sku,
                 size: 'All Sizes',
+                color: 'All Colors',
                 quantity: prod.totals.quantity,
                 costPrice: prod.totals.avgUnitCost || 0,
                 totalCost: prod.totals.totalCost,
@@ -261,9 +267,10 @@ export class CostOfSalesExportProcessor {
 
               for (const item of prod.sizes) {
                 const itemRow = worksheet.addRow({
-                  gpc: '— Variant Size',
+                  gpc: '— Variant Item',
                   sku: prod.sku,
                   size: item.size,
+                  color: item.color || 'N/A',
                   quantity: item.quantity,
                   costPrice: item.costPrice,
                   totalCost: item.totalCost,
@@ -287,6 +294,7 @@ export class CostOfSalesExportProcessor {
       gpc: 'GRAND TOTALS (ALL OUTLETS)',
       sku: '-',
       size: '-',
+      color: '-',
       quantity: reportData.grandTotals.quantity,
       costPrice: reportData.grandTotals.avgUnitCost || 0,
       totalCost: reportData.grandTotals.totalCost,
@@ -345,7 +353,7 @@ export class CostOfSalesExportProcessor {
     for (const brand of reportData.brands) {
       rowsHtml += `
         <tr class="level-brand">
-          <td colspan="3" style="padding-left: 10px;">BRAND: ${brand.brandName.toUpperCase()}</td>
+          <td colspan="4" style="padding-left: 10px;">BRAND: ${brand.brandName.toUpperCase()}</td>
           <td style="text-align: right;">${brand.totals.quantity}</td>
           <td style="text-align: right;">${(brand.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
           <td style="text-align: right; color: #4ade80;">PKR ${(brand.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -355,7 +363,7 @@ export class CostOfSalesExportProcessor {
       for (const div of brand.divisions) {
         rowsHtml += `
           <tr class="level-division">
-            <td colspan="3" style="padding-left: 20px;">DIVISION: ${div.divisionName.toUpperCase()}</td>
+            <td colspan="4" style="padding-left: 20px;">DIVISION: ${div.divisionName.toUpperCase()}</td>
             <td style="text-align: right;">${div.totals.quantity}</td>
             <td style="text-align: right;">${(div.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             <td style="text-align: right; color: #4ade80;">PKR ${(div.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -365,7 +373,7 @@ export class CostOfSalesExportProcessor {
         for (const gender of div.genders) {
           rowsHtml += `
             <tr class="level-gender">
-              <td colspan="3" style="padding-left: 30px;">GENDER: ${gender.genderName.toUpperCase()}</td>
+              <td colspan="4" style="padding-left: 30px;">GENDER: ${gender.genderName.toUpperCase()}</td>
               <td style="text-align: right;">${gender.totals.quantity}</td>
               <td style="text-align: right;">${(gender.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               <td style="text-align: right; color: #4ade80;">PKR ${(gender.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -375,7 +383,7 @@ export class CostOfSalesExportProcessor {
           for (const cat of gender.categories) {
             rowsHtml += `
               <tr class="level-category">
-                <td colspan="3" style="padding-left: 40px;">CATEGORY: ${cat.categoryName.toUpperCase()}</td>
+                <td colspan="4" style="padding-left: 40px;">CATEGORY: ${cat.categoryName.toUpperCase()}</td>
                 <td style="text-align: right;">${cat.totals.quantity}</td>
                 <td style="text-align: right;">${(cat.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                 <td style="text-align: right; color: #4ade80;">PKR ${(cat.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -388,6 +396,7 @@ export class CostOfSalesExportProcessor {
                   <td style="padding-left: 50px; font-weight: bold;">${prod.description}</td>
                   <td style="font-weight: bold; font-family: monospace; color: #0284c7;">${prod.sku}</td>
                   <td style="text-align: center;">All Sizes</td>
+                  <td style="text-align: center;">All Colors</td>
                   <td style="text-align: right; font-weight: bold;">${prod.totals.quantity}</td>
                   <td style="text-align: right; font-weight: bold;">PKR ${(prod.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${(prod.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -397,9 +406,10 @@ export class CostOfSalesExportProcessor {
               for (const item of prod.sizes) {
                 rowsHtml += `
                   <tr class="level-variant">
-                    <td style="padding-left: 60px; color: #64748b; italic;">— Variant Size</td>
+                    <td style="padding-left: 60px; color: #64748b; italic;">— Variant Item</td>
                     <td style="font-family: monospace; color: #64748b;">${prod.sku}</td>
                     <td style="text-align: center; font-weight: bold;">${item.size}</td>
+                    <td style="text-align: center; font-weight: bold;">${item.color || 'N/A'}</td>
                     <td style="text-align: right;">${item.quantity}</td>
                     <td style="text-align: right;">PKR ${item.costPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                     <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -443,12 +453,13 @@ export class CostOfSalesExportProcessor {
         <table class="report-table">
           <thead>
             <tr class="header-row">
-              <th style="width: 35%;">GPC / Category / Product</th>
-              <th style="width: 15%;">SKU</th>
-              <th style="width: 10%; text-align: center;">Size</th>
-              <th style="width: 12%; text-align: right;">Quantity</th>
-              <th style="width: 14%; text-align: right;">Cost Price (Rs.)</th>
-              <th style="width: 14%; text-align: right;">Total Cost (Rs.)</th>
+              <th style="width: 32%;">GPC / Category / Product</th>
+              <th style="width: 14%;">SKU</th>
+              <th style="width: 8%; text-align: center;">Size</th>
+              <th style="width: 10%; text-align: center;">Color</th>
+              <th style="width: 10%; text-align: right;">Quantity</th>
+              <th style="width: 13%; text-align: right;">Cost Price (Rs.)</th>
+              <th style="width: 13%; text-align: right;">Total Cost (Rs.)</th>
             </tr>
           </thead>
           <tbody>
@@ -456,7 +467,7 @@ export class CostOfSalesExportProcessor {
           </tbody>
           <tfoot>
             <tr style="background: #0f172a; color: #fff; font-weight: bold;">
-              <td colspan="3">GRAND TOTALS (ALL OUTLETS)</td>
+              <td colspan="4">GRAND TOTALS (ALL OUTLETS)</td>
               <td style="text-align: right;">${reportData.grandTotals.quantity}</td>
               <td style="text-align: right;">PKR ${(reportData.grandTotals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               <td style="text-align: right; color: #4ade80;">PKR ${(reportData.grandTotals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
