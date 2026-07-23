@@ -274,10 +274,11 @@ model Voucher {
   description String?
 
   // Ownership / binding
-  customerId           String? @map("customer_id") // CREDIT vouchers
-  companyName          String? @map("company_name") // CORPORATE vouchers
+  customerId           String?   @map("customer_id") // CREDIT or GIFT vouchers
+  customer             Customer? @relation(fields: [customerId], references: [id])
+  companyName          String?   @map("company_name") // CORPORATE vouchers
   companyGlCode        String? 
-  requireCustomerMatch Boolean @default(false) @map("require_customer_match")
+  requireCustomerMatch Boolean   @default(false) @map("require_customer_match")
 
   // Issuance context
   issuedByLocationId String? @map("issued_by_location_id")
@@ -360,16 +361,3 @@ model VoucherRedemption {
   @@map("pos_voucher_redemptions")
 }
 
-model OrderSequence {
-  id          String   @id @default(uuid())
-  prefix      String
-  fiscalYear  Int      @map("fiscal_year")
-  locationId  String?  @map("location_id")
-  warehouseId String?  @map("warehouse_id")
-  companyId   String?  @map("company_id")
-  lastSeq     Int      @default(0) @map("last_seq")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@unique([prefix, fiscalYear, locationId, warehouseId, companyId])
-  @@map("order_sequences")
-}

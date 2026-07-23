@@ -16,6 +16,7 @@ model Customer {
   salesInvoices    ERPSalesInvoice[]
   posSalesOrders   SalesOrder[]
   receiptVouchers  ReceiptVoucher[]
+  vouchers         Voucher[]
 
   // Audit
   createdAt DateTime @default(now()) @map("created_at")
