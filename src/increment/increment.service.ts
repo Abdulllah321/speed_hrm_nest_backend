@@ -16,6 +16,61 @@ export class IncrementService {
     private activityLogs: ActivityLogsService,
   ) {}
 
+  private async syncEmployeeSalary(
+    employeeId: string,
+    tx: any,
+    fallbackIncrement?: any,
+  ) {
+    const increments = await tx.increment.findMany({
+      where: { employeeId, status: 'active' },
+      orderBy: [
+        { promotionDate: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+
+    if (increments.length > 0) {
+      const latestIncrement = increments[0];
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          employeeSalary: latestIncrement.salary,
+          ...(latestIncrement.employeeGradeId ? { employeeGradeId: latestIncrement.employeeGradeId } : {}),
+          ...(latestIncrement.designationId ? { designationId: latestIncrement.designationId } : {}),
+        },
+      });
+    } else if (fallbackIncrement) {
+      const salary = Number(fallbackIncrement.salary);
+      const type = fallbackIncrement.incrementType;
+      const method = fallbackIncrement.incrementMethod;
+      const amount = fallbackIncrement.incrementAmount ? Number(fallbackIncrement.incrementAmount) : 0;
+      const percent = fallbackIncrement.incrementPercentage ? Number(fallbackIncrement.incrementPercentage) : 0;
+
+      let previousSalary = salary;
+      if (type === 'Increment') {
+        if (method === 'Amount') {
+          previousSalary = salary - amount;
+        } else {
+          previousSalary = salary / (1 + percent / 100);
+        }
+      } else {
+        // Decrement
+        if (method === 'Amount') {
+          previousSalary = salary + amount;
+        } else {
+          previousSalary = salary / (1 - percent / 100);
+        }
+      }
+
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          employeeSalary: previousSalary,
+        },
+      });
+    }
+  }
+
   private async enrichSingleIncrement(increment: any) {
     if (!increment) return null;
 
@@ -384,6 +439,9 @@ export class IncrementService {
             },
           });
           createdIncrements.push(created);
+
+          // Sync employee salary and grades/designations
+          await this.syncEmployeeSalary(incrementItem.employeeId, tx);
         }
 
         return createdIncrements;
@@ -499,23 +557,28 @@ export class IncrementService {
       if (body.status) updateData.status = body.status;
       updateData.updatedById = ctx.userId;
 
-      const updated = await this.prisma.increment.update({
-        where: { id },
-        data: updateData,
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              departmentId: true,
-              subDepartmentId: true,
+      const enriched = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.increment.update({
+          where: { id },
+          data: updateData,
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                employeeName: true,
+                departmentId: true,
+                subDepartmentId: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      const enriched = await this.enrichSingleIncrement(updated);
+        // Sync employee salary and grades/designations
+        await this.syncEmployeeSalary(updated.employeeId, tx);
+
+        return this.enrichSingleIncrement(updated);
+      });
 
       const response = {
         status: true,
@@ -566,8 +629,13 @@ export class IncrementService {
         return { status: false, message: 'Increment not found' };
       }
 
-      await this.prisma.increment.delete({
-        where: { id },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.increment.delete({
+          where: { id },
+        });
+
+        // Sync employee salary and grades/designations, fallback to calculating previous salary of deleted increment
+        await this.syncEmployeeSalary(existing.employeeId, tx, existing);
       });
 
       
