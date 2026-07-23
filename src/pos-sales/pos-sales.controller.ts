@@ -16,6 +16,7 @@ import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
 import { GrossSalesExportService } from './gross-sales-export.service';
 import { AllianceRegisterExportService } from './alliance-register-export.service';
+import { CostOfSalesExportService } from './cost-of-sales-export.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -42,6 +43,7 @@ export class PosSalesController {
     private readonly salesListExportService: SalesListExportService,
     private readonly grossSalesExportService: GrossSalesExportService,
     private readonly allianceRegisterExportService: AllianceRegisterExportService,
+    private readonly costOfSalesExportService: CostOfSalesExportService,
   ) {}
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -1206,5 +1208,52 @@ export class PosSalesController {
           message: err?.message ?? 'Export file not found',
         });
     }
+  }
+
+  // ─── Cost of Sales Report Endpoints ─────────────────────────────────────
+
+  @Get('reports/cost-of-sales')
+  @ApiOperation({ summary: 'Get Cost of Sales report preview data' })
+  async getCostOfSalesReport(
+    @Query('locationId') locationId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.costOfSalesExportService.getReportData({
+      locationId,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Post('reports/cost-of-sales/export')
+  @ApiOperation({ summary: 'Queue background export job for Cost of Sales' })
+  async queueCostOfSalesExport(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.costOfSalesExportService.queueExport({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/cost-of-sales/export-status/:jobId')
+  @ApiOperation({ summary: 'Get Cost of Sales export job status' })
+  async getCostOfSalesExportStatus(@Param('jobId') jobId: string) {
+    const result = await this.costOfSalesExportService.getJobStatus(jobId);
+    return { status: true, data: result };
+  }
+
+  @Get('reports/cost-of-sales/export-download/:jobId')
+  @ApiOperation({ summary: 'Download completed Cost of Sales export file' })
+  async streamCostOfSalesExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.costOfSalesExportService.streamExportFile(jobId, res);
   }
 }

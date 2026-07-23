@@ -29,6 +29,8 @@ import { GrossSalesExportService } from './gross-sales-export.service';
 import { GrossSalesExportProcessor } from './gross-sales-export.processor';
 import { AllianceRegisterExportService } from './alliance-register-export.service';
 import { AllianceRegisterExportProcessor } from './alliance-register-export.processor';
+import { CostOfSalesExportService } from './cost-of-sales-export.service';
+import { CostOfSalesExportProcessor } from './cost-of-sales-export.processor';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 
 @Module({
@@ -48,7 +50,8 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
             { name: 'sales-register-export' },
             { name: 'sales-list-export' },
             { name: 'gross-sales-export' },
-            { name: 'alliance-register-export' }
+            { name: 'alliance-register-export' },
+            { name: 'cost-of-sales-export' }
         ),
     ],
     controllers: [
@@ -76,6 +79,8 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         GrossSalesExportProcessor,
         AllianceRegisterExportService,
         AllianceRegisterExportProcessor,
+        CostOfSalesExportService,
+        CostOfSalesExportProcessor,
     ],
     exports: [
         PosSalesService, 
@@ -85,8 +90,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         SalesListExportService,
         GrossSalesExportService,
         AllianceRegisterExportService,
+        CostOfSalesExportService,
     ],
 })
 export class PosSalesModule { }
-
-
