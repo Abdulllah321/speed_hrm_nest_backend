@@ -55,6 +55,9 @@ export class VoucherService {
                     { code: { contains: filters.search, mode: 'insensitive' } },
                     { description: { contains: filters.search, mode: 'insensitive' } },
                     { companyName: { contains: filters.search, mode: 'insensitive' } },
+                    { customer: { name: { contains: filters.search, mode: 'insensitive' } } },
+                    { customer: { code: { contains: filters.search, mode: 'insensitive' } } },
+                    { customer: { contactNo: { contains: filters.search, mode: 'insensitive' } } },
                 ];
             }
             if (filters?.locationId) {
@@ -64,6 +67,7 @@ export class VoucherService {
             const vouchers = await this.prisma.voucher.findMany({
                 where,
                 include: {
+                    customer: { select: { id: true, name: true, code: true, contactNo: true, cnicNo: true } },
                     locations: { include: { location: { select: { id: true, name: true, code: true } } } },
                     redemptions: { select: { amountUsed: true, orderId: true } },
                     claims: { select: { id: true, claimNumber: true } },
@@ -245,6 +249,8 @@ export class VoucherService {
         description?: string;
         companyName?: string;
         companyGlCode?: string;
+        customerId?: string;
+        requireCustomerMatch?: boolean;
         expiresAt?: string;
         locationIds?: string[];
         issuedByLocationId?: string;
@@ -281,6 +287,8 @@ export class VoucherService {
                             description: data.description,
                             companyName: data.companyName,
                             companyGlCode: data.companyGlCode,
+                            customerId: data.customerId,
+                            requireCustomerMatch: data.requireCustomerMatch ?? false,
                             issuedByLocationId: data.issuedByLocationId,
                             issuedByUserId: data.issuedByUserId,
                             expiresAt,

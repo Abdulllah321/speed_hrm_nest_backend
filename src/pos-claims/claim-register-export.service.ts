@@ -108,6 +108,8 @@ export class ClaimRegisterExportService {
         gte: startDate,
         lte: endDate,
       },
+      status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
+      voucherId: { not: null },
     };
 
     if (locationId && locationId.trim() !== '' && locationId !== 'all') {
@@ -194,23 +196,6 @@ export class ClaimRegisterExportService {
       const locId = claim.salesOrder?.locationId || 'UNASSIGNED';
       const locName = locationNameMap.get(locId) || 'Unassigned Outlet';
 
-      if (!outletMap.has(locId)) {
-        outletMap.set(locId, {
-          locationId: locId,
-          locationName: locName,
-          claims: [],
-          totals: {
-            quantity: 0,
-            subTotal: 0,
-            discountAmount: 0,
-            taxAmount: 0,
-            netTotal: 0,
-          },
-        });
-      }
-
-      const outletGroup = outletMap.get(locId)!;
-
       const settledRedemption = claim.voucher?.redemptions?.[0];
       const settledInvNumber = settledRedemption?.order?.orderNumber || 'N/A';
       const settledDate = settledRedemption?.order?.createdAt
@@ -235,11 +220,14 @@ export class ClaimRegisterExportService {
       };
 
       for (const cItem of claim.items) {
+        const approvedQty = Number(cItem.approvedQty || 0);
+        if (approvedQty <= 0) continue; // Only approved items
+
         const matchingOrderItem = claim.salesOrder?.items?.find(
           (soi) => soi.id === cItem.salesOrderItemId || soi.itemId === cItem.itemId,
         );
 
-        const qty = cItem.claimedQty || 1;
+        const qty = approvedQty;
         const unitPaidPrice = Number(cItem.unitPaidPrice || matchingOrderItem?.unitPrice || cItem.item?.unitPrice || 0);
 
         const taxPercent = Number(matchingOrderItem?.taxPercent || 0);
@@ -254,7 +242,7 @@ export class ClaimRegisterExportService {
         const itemTax = Number(matchingOrderItem?.taxAmount || 0);
         const taxAmount = qty > 0 && matchingOrderItem?.quantity ? Math.round((itemTax / matchingOrderItem.quantity) * qty * 100) / 100 : Math.round((rawSubTotal - discountAmount) * (taxPercent / 100) * 100) / 100;
 
-        const netTotal = Math.round(qty * unitPaidPrice * 100) / 100;
+        const netTotal = Number(cItem.approvedAmount || Math.round(qty * unitPaidPrice * 100) / 100);
 
         const reportItem: ClaimRegisterReportItem = {
           id: cItem.id,
@@ -286,6 +274,25 @@ export class ClaimRegisterExportService {
         claimTotals.taxAmount += taxAmount;
         claimTotals.netTotal += netTotal;
       }
+
+      if (claimItemsList.length === 0) continue; // Skip claims with no approved items
+
+      if (!outletMap.has(locId)) {
+        outletMap.set(locId, {
+          locationId: locId,
+          locationName: locName,
+          claims: [],
+          totals: {
+            quantity: 0,
+            subTotal: 0,
+            discountAmount: 0,
+            taxAmount: 0,
+            netTotal: 0,
+          },
+        });
+      }
+
+      const outletGroup = outletMap.get(locId)!;
 
       outletGroup.claims.push({
         claimNumber: claim.claimNumber,

@@ -167,7 +167,9 @@ export class ClaimRegisterExportProcessor {
     headerRow.commit();
 
     for (const outlet of reportData.outlets) {
-      const outletRow = worksheet.addRow([`Outlet: ${outlet.locationName}`]);
+      if (!outlet.claims || outlet.claims.length === 0) continue;
+
+      const outletRow = worksheet.addRow([`OUTLET: ${outlet.locationName.toUpperCase()}`]);
       outletRow.height = 24;
       const outletCell = outletRow.getCell(1);
       outletCell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 11 };
@@ -205,34 +207,6 @@ export class ClaimRegisterExportProcessor {
           }
           row.commit();
         }
-
-        const claimSubRow = worksheet.addRow({
-          size: `Claim #: ${claimGroup.claimNumber}`,
-          quantity: claimGroup.totals.quantity,
-          subTotal: claimGroup.totals.subTotal,
-          discountAmount: claimGroup.totals.discountAmount,
-          taxAmount: claimGroup.totals.taxAmount,
-          netTotal: claimGroup.totals.netTotal,
-        });
-
-        claimSubRow.height = 22;
-        for (let c = 1; c <= COLUMNS.length; c++) {
-          const cell = claimSubRow.getCell(c);
-          cell.font = { bold: true, size: 9 };
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFF1F5F9' },
-          };
-          cell.border = {
-            top: { style: 'thin' },
-            bottom: { style: 'double' },
-          };
-          const col = COLUMNS[c - 1];
-          if (col.align) cell.alignment = { horizontal: col.align as any };
-          if (col.numFmt) cell.numFmt = col.numFmt;
-        }
-        claimSubRow.commit();
       }
 
       const outletTotalRow = worksheet.addRow({
@@ -265,7 +239,7 @@ export class ClaimRegisterExportProcessor {
     }
 
     const grandRow = worksheet.addRow({
-      productDescription: 'GRAND TOTAL',
+      productDescription: 'GRAND TOTAL (ALL OUTLETS)',
       quantity: reportData.grandTotals.quantity,
       subTotal: reportData.grandTotals.subTotal,
       discountAmount: reportData.grandTotals.discountAmount,
@@ -328,6 +302,8 @@ export class ClaimRegisterExportProcessor {
     let outletTablesHtml = '';
 
     for (const outlet of reportData.outlets) {
+      if (!outlet.claims || outlet.claims.length === 0) continue;
+
       let rowsHtml = '';
 
       for (const claimGroup of outlet.claims) {
@@ -336,7 +312,7 @@ export class ClaimRegisterExportProcessor {
             <tr>
               <td>${item.baseCmNumber}</td>
               <td>${item.baseCmDate}</td>
-              <td>${item.claimNumber}</td>
+              <td style="font-weight: bold; color: #1e3a8a;">${item.claimNumber}</td>
               <td>${item.claimDate}</td>
               <td>${item.settledInvNumber}</td>
               <td>${item.settledDate}</td>
@@ -344,42 +320,28 @@ export class ClaimRegisterExportProcessor {
               <td>${item.productSku}</td>
               <td style="text-align: center;">${item.size}</td>
               <td style="text-align: center;">${item.hsCode}</td>
-              <td style="text-align: right;">${item.quantity}</td>
+              <td style="text-align: right; font-weight: bold;">${item.quantity}</td>
               <td style="text-align: right;">${item.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               <td style="text-align: right;">${item.taxPercent.toFixed(2)}</td>
               <td style="text-align: right;">${item.unitPriceWot.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               <td style="text-align: right;">${item.subTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-              <td style="text-align: right;">${item.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <td style="text-align: right; color: #e11d48;">${item.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               <td style="text-align: right;">${item.taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-              <td style="text-align: right; font-weight: 600;">${item.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <td style="text-align: right; font-weight: bold; color: #0f172a;">${item.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             </tr>
           `;
         }
-
-        rowsHtml += `
-          <tr class="claim-subtotal-row">
-            <td colspan="8"></td>
-            <td colspan="2" class="claim-badge">Claim #: ${claimGroup.claimNumber}</td>
-            <td style="text-align: right;">${claimGroup.totals.quantity}</td>
-            <td colspan="3"></td>
-            <td style="text-align: right;">${claimGroup.totals.subTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-            <td style="text-align: right;">${claimGroup.totals.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-            <td style="text-align: right;">${claimGroup.totals.taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-            <td style="text-align: right;">${claimGroup.totals.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        `;
       }
 
       rowsHtml += `
         <tr class="outlet-subtotal-row">
-          <td colspan="8" style="text-align: left; font-weight: bold;">Total for ${outlet.locationName}</td>
-          <td colspan="2"></td>
-          <td style="text-align: right;">${outlet.totals.quantity}</td>
+          <td colspan="10" style="text-align: left; font-weight: bold;">Total for ${outlet.locationName}</td>
+          <td style="text-align: right; font-weight: bold;">${outlet.totals.quantity}</td>
           <td colspan="3"></td>
-          <td style="text-align: right;">${outlet.totals.subTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-          <td style="text-align: right;">${outlet.totals.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-          <td style="text-align: right;">${outlet.totals.taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-          <td style="text-align: right;">${outlet.totals.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; font-weight: bold;">${outlet.totals.subTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; font-weight: bold; color: #e11d48;">${outlet.totals.discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; font-weight: bold;">${outlet.totals.taxAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; font-weight: bold; color: #059669;">${outlet.totals.netTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         </tr>
       `;
 
@@ -390,23 +352,23 @@ export class ClaimRegisterExportProcessor {
           <table class="report-table">
             <thead>
               <tr class="header-row">
-                <th style="width: 5.5%;">Base CM Number</th>
-                <th style="width: 5%;">Base CM Date</th>
-                <th style="width: 5.5%;">Claim Number</th>
-                <th style="width: 5%;">Claim Date</th>
-                <th style="width: 6%;">Settled Inv Number</th>
-                <th style="width: 5%;">Settled Date</th>
+                <th style="width: 7%;">Base CM Number</th>
+                <th style="width: 5.5%;">Base CM Date</th>
+                <th style="width: 7%;">Claim Number</th>
+                <th style="width: 5.5%;">Claim Date</th>
+                <th style="width: 7%;">Settled Inv Number</th>
+                <th style="width: 5.5%;">Settled Date</th>
                 <th style="width: 14%; text-align: left;">Product Description</th>
-                <th style="width: 7.5%;">Product</th>
-                <th style="width: 4.5%;">Size</th>
+                <th style="width: 7.5%;">Product SKU</th>
+                <th style="width: 4%;">Size</th>
                 <th style="width: 5.5%;">HS Code</th>
-                <th style="width: 4.5%; text-align: right;">Quantity</th>
+                <th style="width: 4%; text-align: right;">Qty</th>
                 <th style="width: 5.5%; text-align: right;">Unit Price</th>
                 <th style="width: 4%; text-align: right;">Tax %</th>
-                <th style="width: 6%; text-align: right;">Unit Price WOT</th>
+                <th style="width: 5.5%; text-align: right;">Price WOT</th>
                 <th style="width: 5.5%; text-align: right;">Sub Total</th>
-                <th style="width: 5.5%; text-align: right;">Discount Amount</th>
-                <th style="width: 5.5%; text-align: right;">Tax Amount</th>
+                <th style="width: 5%; text-align: right;">Discount</th>
+                <th style="width: 5%; text-align: right;">Tax Amt</th>
                 <th style="width: 6%; text-align: right;">Net Total</th>
               </tr>
             </thead>
@@ -432,14 +394,12 @@ export class ClaimRegisterExportProcessor {
           .report-subtitle { font-size: 12px; font-weight: bold; text-align: center; color: #cc0000; margin-bottom: 12px; position: relative; }
           .date-badge { position: absolute; right: 0; top: 0; color: #cc0000; font-weight: bold; }
           .report-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 4px; }
-          .report-table th, .report-table td { padding: 4px 5px; font-size: 9.5px; border-bottom: 1px solid #cbd5e1; }
-          .header-row { background: #f8fafc; border-top: 2px solid #000; border-bottom: 2px solid #000; }
-          .header-row th { font-weight: bold; color: #0f172a; text-align: left; }
+          .report-table th, .report-table td { padding: 5px 6px; font-size: 9.5px; border-bottom: 1px solid #cbd5e1; white-space: nowrap; }
+          .header-row { background: #0f172a; color: #fff; border-top: 2px solid #000; }
+          .header-row th { font-weight: bold; color: #fff; text-align: left; }
           tr { page-break-inside: auto; }
           tr.header-row { page-break-inside: avoid; }
-          .claim-subtotal-row td { background: #f1f5f9; font-weight: bold; border-top: 1px solid #94a3b8; border-bottom: 3px double #000; }
-          .claim-badge { border: 1.5px solid #000; text-align: center; font-size: 10px; font-weight: bold; background: #fff; }
-          .outlet-subtotal-row td { font-size: 10.5px; font-weight: bold; border-top: 1px solid #000; border-bottom: 3px double #000; padding-top: 6px; padding-bottom: 6px; }
+          .outlet-subtotal-row td { font-size: 10.5px; font-weight: bold; border-top: 1px solid #000; border-bottom: 3px double #000; padding-top: 6px; padding-bottom: 6px; background: #f1f5f9; }
         </style>
       </head>
       <body>
