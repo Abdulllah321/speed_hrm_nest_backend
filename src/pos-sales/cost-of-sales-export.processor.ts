@@ -154,39 +154,39 @@ export class CostOfSalesExportProcessor {
     }
     headerRow.commit();
 
-    for (const outlet of reportData.outlets) {
-      const outletRow = worksheet.addRow({
-        gpc: `OUTLET: ${outlet.locationName.toUpperCase()}`,
+    for (const brand of reportData.brands) {
+      const brandRow = worksheet.addRow({
+        gpc: `BRAND: ${brand.brandName.toUpperCase()}`,
         sku: '-',
         size: '-',
-        quantity: outlet.totals.quantity,
-        costPrice: outlet.totals.avgUnitCost || 0,
-        totalCost: outlet.totals.totalCost,
+        quantity: brand.totals.quantity,
+        costPrice: brand.totals.avgUnitCost || 0,
+        totalCost: brand.totals.totalCost,
       });
-      outletRow.height = 24;
+      brandRow.height = 22;
       for (let c = 1; c <= COLUMNS.length; c++) {
-        const cell = outletRow.getCell(c);
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+        const cell = brandRow.getCell(c);
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
         cell.border = borderThin;
         const col = COLUMNS[c - 1];
         if (col.align) cell.alignment = { horizontal: col.align as any };
         if (col.numFmt) cell.numFmt = col.numFmt;
       }
-      outletRow.commit();
+      brandRow.commit();
 
-      for (const brand of outlet.brands) {
-        const brandRow = worksheet.addRow({
-          gpc: `BRAND: ${brand.brandName.toUpperCase()}`,
+      for (const div of brand.divisions) {
+        const divRow = worksheet.addRow({
+          gpc: `DIVISION: ${div.divisionName.toUpperCase()}`,
           sku: '-',
           size: '-',
-          quantity: brand.totals.quantity,
-          costPrice: brand.totals.avgUnitCost || 0,
-          totalCost: brand.totals.totalCost,
+          quantity: div.totals.quantity,
+          costPrice: div.totals.avgUnitCost || 0,
+          totalCost: div.totals.totalCost,
         });
-        brandRow.height = 22;
+        divRow.height = 22;
         for (let c = 1; c <= COLUMNS.length; c++) {
-          const cell = brandRow.getCell(c);
+          const cell = divRow.getCell(c);
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
           cell.border = borderThin;
@@ -194,110 +194,88 @@ export class CostOfSalesExportProcessor {
           if (col.align) cell.alignment = { horizontal: col.align as any };
           if (col.numFmt) cell.numFmt = col.numFmt;
         }
-        brandRow.commit();
+        divRow.commit();
 
-        for (const div of brand.divisions) {
-          const divRow = worksheet.addRow({
-            gpc: `DIVISION: ${div.divisionName.toUpperCase()}`,
+        for (const gender of div.genders) {
+          const genderRow = worksheet.addRow({
+            gpc: `GENDER: ${gender.genderName.toUpperCase()}`,
             sku: '-',
             size: '-',
-            quantity: div.totals.quantity,
-            costPrice: div.totals.avgUnitCost || 0,
-            totalCost: div.totals.totalCost,
+            quantity: gender.totals.quantity,
+            costPrice: gender.totals.avgUnitCost || 0,
+            totalCost: gender.totals.totalCost,
           });
-          divRow.height = 22;
+          genderRow.height = 20;
           for (let c = 1; c <= COLUMNS.length; c++) {
-            const cell = divRow.getCell(c);
-            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            const cell = genderRow.getCell(c);
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
             cell.border = borderThin;
             const col = COLUMNS[c - 1];
             if (col.align) cell.alignment = { horizontal: col.align as any };
             if (col.numFmt) cell.numFmt = col.numFmt;
           }
-          divRow.commit();
+          genderRow.commit();
 
-          for (const gender of div.genders) {
-            const genderRow = worksheet.addRow({
-              gpc: `GENDER: ${gender.genderName.toUpperCase()}`,
+          for (const cat of gender.categories) {
+            const catRow = worksheet.addRow({
+              gpc: `CATEGORY: ${cat.categoryName.toUpperCase()}`,
               sku: '-',
               size: '-',
-              quantity: gender.totals.quantity,
-              costPrice: gender.totals.avgUnitCost || 0,
-              totalCost: gender.totals.totalCost,
+              quantity: cat.totals.quantity,
+              costPrice: cat.totals.avgUnitCost || 0,
+              totalCost: cat.totals.totalCost,
             });
-            genderRow.height = 20;
+            catRow.height = 20;
             for (let c = 1; c <= COLUMNS.length; c++) {
-              const cell = genderRow.getCell(c);
+              const cell = catRow.getCell(c);
               cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF64748B' } };
               cell.border = borderThin;
               const col = COLUMNS[c - 1];
               if (col.align) cell.alignment = { horizontal: col.align as any };
               if (col.numFmt) cell.numFmt = col.numFmt;
             }
-            genderRow.commit();
+            catRow.commit();
 
-            for (const cat of gender.categories) {
-              const catRow = worksheet.addRow({
-                gpc: `CATEGORY: ${cat.categoryName.toUpperCase()}`,
-                sku: '-',
-                size: '-',
-                quantity: cat.totals.quantity,
-                costPrice: cat.totals.avgUnitCost || 0,
-                totalCost: cat.totals.totalCost,
+            for (const prod of cat.products) {
+              const prodRow = worksheet.addRow({
+                gpc: prod.description,
+                sku: prod.sku,
+                size: 'All Sizes',
+                quantity: prod.totals.quantity,
+                costPrice: prod.totals.avgUnitCost || 0,
+                totalCost: prod.totals.totalCost,
               });
-              catRow.height = 20;
+              prodRow.height = 22;
               for (let c = 1; c <= COLUMNS.length; c++) {
-                const cell = catRow.getCell(c);
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF64748B' } };
+                const cell = prodRow.getCell(c);
+                cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 10 };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
                 cell.border = borderThin;
                 const col = COLUMNS[c - 1];
                 if (col.align) cell.alignment = { horizontal: col.align as any };
                 if (col.numFmt) cell.numFmt = col.numFmt;
               }
-              catRow.commit();
+              prodRow.commit();
 
-              for (const prod of cat.products) {
-                const prodRow = worksheet.addRow({
-                  gpc: prod.description,
+              for (const item of prod.sizes) {
+                const itemRow = worksheet.addRow({
+                  gpc: '— Variant Size',
                   sku: prod.sku,
-                  size: 'All Sizes',
-                  quantity: prod.totals.quantity,
-                  costPrice: prod.totals.avgUnitCost || 0,
-                  totalCost: prod.totals.totalCost,
+                  size: item.size,
+                  quantity: item.quantity,
+                  costPrice: item.costPrice,
+                  totalCost: item.totalCost,
                 });
-                prodRow.height = 22;
                 for (let c = 1; c <= COLUMNS.length; c++) {
-                  const cell = prodRow.getCell(c);
-                  cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 10 };
-                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                  const cell = itemRow.getCell(c);
                   cell.border = borderThin;
                   const col = COLUMNS[c - 1];
                   if (col.align) cell.alignment = { horizontal: col.align as any };
                   if (col.numFmt) cell.numFmt = col.numFmt;
                 }
-                prodRow.commit();
-
-                for (const item of prod.sizes) {
-                  const itemRow = worksheet.addRow({
-                    gpc: '— Variant Size',
-                    sku: prod.sku,
-                    size: item.size,
-                    quantity: item.quantity,
-                    costPrice: item.costPrice,
-                    totalCost: item.totalCost,
-                  });
-                  for (let c = 1; c <= COLUMNS.length; c++) {
-                    const cell = itemRow.getCell(c);
-                    cell.border = borderThin;
-                    const col = COLUMNS[c - 1];
-                    if (col.align) cell.alignment = { horizontal: col.align as any };
-                    if (col.numFmt) cell.numFmt = col.numFmt;
-                  }
-                  itemRow.commit();
-                }
+                itemRow.commit();
               }
             }
           }
@@ -364,80 +342,69 @@ export class CostOfSalesExportProcessor {
 
     let rowsHtml = '';
 
-    for (const outlet of reportData.outlets) {
+    for (const brand of reportData.brands) {
       rowsHtml += `
-        <tr class="level-outlet">
-          <td colspan="3">OUTLET: ${outlet.locationName.toUpperCase()}</td>
-          <td style="text-align: right;">${outlet.totals.quantity}</td>
-          <td style="text-align: right;">${(outlet.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-          <td style="text-align: right; color: #4ade80;">PKR ${(outlet.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        <tr class="level-brand">
+          <td colspan="3" style="padding-left: 10px;">BRAND: ${brand.brandName.toUpperCase()}</td>
+          <td style="text-align: right;">${brand.totals.quantity}</td>
+          <td style="text-align: right;">${(brand.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; color: #4ade80;">PKR ${(brand.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         </tr>
       `;
 
-      for (const brand of outlet.brands) {
+      for (const div of brand.divisions) {
         rowsHtml += `
-          <tr class="level-brand">
-            <td colspan="3" style="padding-left: 20px;">BRAND: ${brand.brandName.toUpperCase()}</td>
-            <td style="text-align: right;">${brand.totals.quantity}</td>
-            <td style="text-align: right;">${(brand.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-            <td style="text-align: right; color: #4ade80;">PKR ${(brand.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <tr class="level-division">
+            <td colspan="3" style="padding-left: 20px;">DIVISION: ${div.divisionName.toUpperCase()}</td>
+            <td style="text-align: right;">${div.totals.quantity}</td>
+            <td style="text-align: right;">${(div.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            <td style="text-align: right; color: #4ade80;">PKR ${(div.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
           </tr>
         `;
 
-        for (const div of brand.divisions) {
+        for (const gender of div.genders) {
           rowsHtml += `
-            <tr class="level-division">
-              <td colspan="3" style="padding-left: 30px;">DIVISION: ${div.divisionName.toUpperCase()}</td>
-              <td style="text-align: right;">${div.totals.quantity}</td>
-              <td style="text-align: right;">${(div.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-              <td style="text-align: right; color: #4ade80;">PKR ${(div.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            <tr class="level-gender">
+              <td colspan="3" style="padding-left: 30px;">GENDER: ${gender.genderName.toUpperCase()}</td>
+              <td style="text-align: right;">${gender.totals.quantity}</td>
+              <td style="text-align: right;">${(gender.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <td style="text-align: right; color: #4ade80;">PKR ${(gender.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             </tr>
           `;
 
-          for (const gender of div.genders) {
+          for (const cat of gender.categories) {
             rowsHtml += `
-              <tr class="level-gender">
-                <td colspan="3" style="padding-left: 40px;">GENDER: ${gender.genderName.toUpperCase()}</td>
-                <td style="text-align: right;">${gender.totals.quantity}</td>
-                <td style="text-align: right;">${(gender.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                <td style="text-align: right; color: #4ade80;">PKR ${(gender.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <tr class="level-category">
+                <td colspan="3" style="padding-left: 40px;">CATEGORY: ${cat.categoryName.toUpperCase()}</td>
+                <td style="text-align: right;">${cat.totals.quantity}</td>
+                <td style="text-align: right;">${(cat.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right; color: #4ade80;">PKR ${(cat.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               </tr>
             `;
 
-            for (const cat of gender.categories) {
+            for (const prod of cat.products) {
               rowsHtml += `
-                <tr class="level-category">
-                  <td colspan="3" style="padding-left: 50px;">CATEGORY: ${cat.categoryName.toUpperCase()}</td>
-                  <td style="text-align: right;">${cat.totals.quantity}</td>
-                  <td style="text-align: right;">${(cat.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td style="text-align: right; color: #4ade80;">PKR ${(cat.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                <tr class="level-article">
+                  <td style="padding-left: 50px; font-weight: bold;">${prod.description}</td>
+                  <td style="font-weight: bold; font-family: monospace; color: #0284c7;">${prod.sku}</td>
+                  <td style="text-align: center;">All Sizes</td>
+                  <td style="text-align: right; font-weight: bold;">${prod.totals.quantity}</td>
+                  <td style="text-align: right; font-weight: bold;">PKR ${(prod.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${(prod.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                 </tr>
               `;
 
-              for (const prod of cat.products) {
+              for (const item of prod.sizes) {
                 rowsHtml += `
-                  <tr class="level-article">
-                    <td style="padding-left: 60px; font-weight: bold;">${prod.description}</td>
-                    <td style="font-weight: bold; font-family: monospace; color: #0284c7;">${prod.sku}</td>
-                    <td style="text-align: center;">All Sizes</td>
-                    <td style="text-align: right; font-weight: bold;">${prod.totals.quantity}</td>
-                    <td style="text-align: right; font-weight: bold;">PKR ${(prod.totals.avgUnitCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${(prod.totals.totalCost || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <tr class="level-variant">
+                    <td style="padding-left: 60px; color: #64748b; italic;">— Variant Size</td>
+                    <td style="font-family: monospace; color: #64748b;">${prod.sku}</td>
+                    <td style="text-align: center; font-weight: bold;">${item.size}</td>
+                    <td style="text-align: right;">${item.quantity}</td>
+                    <td style="text-align: right;">PKR ${item.costPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 `;
-
-                for (const item of prod.sizes) {
-                  rowsHtml += `
-                    <tr class="level-variant">
-                      <td style="padding-left: 70px; color: #64748b; italic;">— Variant Size</td>
-                      <td style="font-family: monospace; color: #64748b;">${prod.sku}</td>
-                      <td style="text-align: center; font-weight: bold;">${item.size}</td>
-                      <td style="text-align: right;">${item.quantity}</td>
-                      <td style="text-align: right;">PKR ${item.costPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                      <td style="text-align: right; font-weight: bold; color: #059669;">PKR ${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  `;
-                }
               }
             }
           }
@@ -460,9 +427,8 @@ export class CostOfSalesExportProcessor {
           .report-table th, .report-table td { padding: 6px 8px; font-size: 9.5px; border: 1px solid #cbd5e1; }
           .header-row { background: #0f172a; color: #fff; }
           .header-row th { font-weight: bold; color: #fff; text-align: left; }
-          .level-outlet { background: #0f172a; color: #fff; font-weight: bold; font-size: 11px; }
-          .level-brand { background: #334155; color: #fff; font-weight: bold; }
-          .level-division { background: #1e293b; color: #fff; font-weight: bold; }
+          .level-brand { background: #1e293b; color: #fff; font-weight: bold; }
+          .level-division { background: #334155; color: #fff; font-weight: bold; }
           .level-gender { background: #475569; color: #fff; font-weight: bold; }
           .level-category { background: #64748b; color: #fff; font-weight: bold; }
           .level-article { background: #f1f5f9; font-weight: bold; color: #0f172a; }

@@ -80,19 +80,8 @@ export interface CostOfSalesBrandNode {
   };
 }
 
-export interface CostOfSalesOutletNode {
-  locationId: string;
-  locationName: string;
-  brands: CostOfSalesBrandNode[];
-  totals: {
-    quantity: number;
-    totalCost: number;
-    avgUnitCost: number;
-  };
-}
-
 export interface CostOfSalesReportResult {
-  outlets: CostOfSalesOutletNode[];
+  brands: CostOfSalesBrandNode[];
   grandTotals: {
     quantity: number;
     totalCost: number;
@@ -165,13 +154,6 @@ export class CostOfSalesExportService {
       };
     }
 
-    const locations = await this.prisma.location.findMany({
-      select: { id: true, name: true },
-    });
-    const locationNameMap = new Map<string, string>(
-      locations.map((l) => [l.id, l.name]),
-    );
-
     const orders = await this.prisma.salesOrder.findMany({
       where,
       select: {
@@ -198,23 +180,9 @@ export class CostOfSalesExportService {
       },
     });
 
-    const outletMap = new Map<string, CostOfSalesOutletNode>();
+    const brandsList: CostOfSalesBrandNode[] = [];
 
     for (const order of orders) {
-      const locId = order.locationId || 'UNASSIGNED';
-      const locName = locationNameMap.get(locId) || 'Unassigned Outlet';
-
-      if (!outletMap.has(locId)) {
-        outletMap.set(locId, {
-          locationId: locId,
-          locationName: locName,
-          brands: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0 },
-        });
-      }
-
-      const outletNode = outletMap.get(locId)!;
-
       for (const soi of order.items) {
         if (!soi.item) continue;
         const qty = soi.quantity || 1;
@@ -237,8 +205,8 @@ export class CostOfSalesExportService {
         const desc = soi.item.description || 'No Description';
         const sizeName = soi.item.size?.name || 'N/A';
 
-        // 1. Brand Level (Brand contains Divisions)
-        let brandNode = outletNode.brands.find((b) => b.brandId === brandId);
+        // 1. Brand Level (Root hierarchy)
+        let brandNode = brandsList.find((b) => b.brandId === brandId);
         if (!brandNode) {
           brandNode = {
             brandId,
@@ -246,7 +214,7 @@ export class CostOfSalesExportService {
             divisions: [],
             totals: { quantity: 0, totalCost: 0, avgUnitCost: 0 },
           };
-          outletNode.brands.push(brandNode);
+          brandsList.push(brandNode);
         }
 
         // 2. Division Level
@@ -328,9 +296,6 @@ export class CostOfSalesExportService {
 
         brandNode.totals.quantity += qty;
         brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
-
-        outletNode.totals.quantity += qty;
-        outletNode.totals.totalCost = Math.round((outletNode.totals.totalCost + totalCost) * 100) / 100;
       }
     }
 
@@ -343,30 +308,26 @@ export class CostOfSalesExportService {
       }
     };
 
-    const outlets = Array.from(outletMap.values());
-    for (const outlet of outlets) {
-      calculateAvgUnitCost(outlet.totals);
-      for (const brand of outlet.brands) {
-        calculateAvgUnitCost(brand.totals);
-        for (const div of brand.divisions) {
-          calculateAvgUnitCost(div.totals);
-          for (const gender of div.genders) {
-            calculateAvgUnitCost(gender.totals);
-            for (const cat of gender.categories) {
-              calculateAvgUnitCost(cat.totals);
-              for (const prod of cat.products) {
-                calculateAvgUnitCost(prod.totals);
-              }
+    for (const brand of brandsList) {
+      calculateAvgUnitCost(brand.totals);
+      for (const div of brand.divisions) {
+        calculateAvgUnitCost(div.totals);
+        for (const gender of div.genders) {
+          calculateAvgUnitCost(gender.totals);
+          for (const cat of gender.categories) {
+            calculateAvgUnitCost(cat.totals);
+            for (const prod of cat.products) {
+              calculateAvgUnitCost(prod.totals);
             }
           }
         }
       }
     }
 
-    const grandTotals = outlets.reduce(
-      (acc, o) => {
-        acc.quantity += o.totals.quantity;
-        acc.totalCost += o.totals.totalCost;
+    const grandTotals = brandsList.reduce(
+      (acc, b) => {
+        acc.quantity += b.totals.quantity;
+        acc.totalCost += b.totals.totalCost;
         return acc;
       },
       { quantity: 0, totalCost: 0, avgUnitCost: 0 },
@@ -374,7 +335,7 @@ export class CostOfSalesExportService {
     calculateAvgUnitCost(grandTotals);
 
     return {
-      outlets,
+      brands: brandsList,
       grandTotals,
       startDate: startDate.toISOString().slice(0, 10),
       endDate: endDate.toISOString().slice(0, 10),
