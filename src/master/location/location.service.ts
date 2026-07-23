@@ -80,6 +80,13 @@ export class LocationService {
       });
       item.city = updatedItem;
     }
+    if (item?.warehouseId) {
+      const warehouse = await this.prisma.warehouse.findFirst({
+        where: { id: item.warehouseId, isDeleted: false },
+        select: { id: true, name: true, code: true, type: true, isActive: true },
+      });
+      item.warehouse = warehouse;
+    }
     if (!item) return { status: false, message: 'Location not found' };
     return { status: true, data: item };
   }

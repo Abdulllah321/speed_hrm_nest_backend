@@ -64,7 +64,7 @@ export class LocationController {
   }
 
   @Get('locations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.location.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get location by id' })
   async get(@Param('id') id: string) {
