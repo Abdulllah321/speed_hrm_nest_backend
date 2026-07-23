@@ -72,6 +72,7 @@ export class GiftVoucherSaleRegisterExportService {
 
     const where: any = {
       isDeleted: false,
+      voucherType: { in: ['GIFT', 'OUTLET_GIFT'] },
       createdAt: {
         gte: startDate,
         lte: endDate,
