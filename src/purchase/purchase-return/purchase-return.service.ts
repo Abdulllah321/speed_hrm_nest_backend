@@ -5,6 +5,7 @@ import { UpdatePurchaseReturnDto } from './dto/update-purchase-return.dto';
 import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
 import { AccountingService } from '../../finance/accounting/accounting.service';
 import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
+import { JournalVoucherService } from '../../finance/journal-voucher/journal-voucher.service';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
@@ -16,6 +17,7 @@ export class PurchaseReturnService {
     private activityLogs: ActivityLogsService,
     private financeConfig: FinanceAccountConfigService,
     private accounting: AccountingService,
+    private readonly journalVoucherService: JournalVoucherService,
   ) {}
 
   async create(createDto: CreatePurchaseReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
@@ -296,6 +298,14 @@ export class PurchaseReturnService {
 
         // Process financial impact if Case 2 (Post-Invoice Return)
         await this.processFinancialAdjustment(purchaseReturn);
+
+        // Auto-generate Journal Voucher for local purchase return
+        try {
+          await this.autoGenerateJournalVoucher(purchaseReturn, ctx);
+        } catch (jvError) {
+          console.error('Failed to auto-generate Journal Voucher for Purchase Return:', jvError);
+          throw jvError;
+        }
       }
 
       const updated = await this.prisma.purchaseReturn.update({
@@ -343,6 +353,255 @@ export class PurchaseReturnService {
       );
       throw error;
     }
+  }
+
+  private async autoGenerateJournalVoucher(purchaseReturn: any, ctx?: { userId?: string }) {
+    // 1. Resolve the associated Purchase Order to determine orderType (IMPORT vs LOCAL)
+    const po = purchaseReturn.purchaseInvoice?.grn?.purchaseOrder
+      || purchaseReturn.purchaseInvoice?.landedCost?.purchaseOrder
+      || purchaseReturn.purchaseInvoice?.landedCost?.grn?.purchaseOrder
+      || purchaseReturn.grn?.purchaseOrder
+      || purchaseReturn.landedCost?.purchaseOrder
+      || purchaseReturn.landedCost?.grn?.purchaseOrder;
+
+    const orderType = po?.orderType || 'LOCAL';
+    if (orderType.toUpperCase() === 'IMPORT') {
+      console.log(`Skipping auto JV generation for Import Purchase Return ${purchaseReturn.returnNumber}`);
+      return;
+    }
+
+    // 2. Resolve general reference numbers
+    const invoiceNumber = purchaseReturn.purchaseInvoice?.invoiceNumber || '';
+    const grnNumber = purchaseReturn.grn?.grnNumber 
+      || purchaseReturn.purchaseInvoice?.grn?.grnNumber 
+      || purchaseReturn.landedCost?.grn?.grnNumber 
+      || '';
+
+    const supplier = purchaseReturn.supplier;
+    if (!supplier) {
+      throw new BadRequestException('Supplier not found for this Purchase Return');
+    }
+
+    // 3. Group return items by brand name
+    interface BrandGroup {
+      brandName: string;
+      quantity: number;
+      subtotal: number;
+      salesTaxAmount: number;
+      advanceTaxAmount: number;
+    }
+
+    const brandGroupsMap = new Map<string, BrandGroup>();
+
+    for (const returnItem of purchaseReturn.items) {
+      const brandName = returnItem.item?.brand?.name || 'Generic';
+      const qty = Number(returnItem.returnQty || 0);
+      const lineTotal = Number(returnItem.lineTotal || 0);
+
+      // Determine sales tax rate from the associated PurchaseInvoiceItem
+      const taxRate = Number(returnItem.purchaseInvoiceItem?.taxRate || 0);
+      const salesTax = (lineTotal * taxRate) / 100;
+
+      // Determine advance tax rate from the associated PurchaseInvoice
+      const advanceTaxRate = Number(purchaseReturn.purchaseInvoice?.advanceTaxRate || 0.50);
+      const advanceTax = ((lineTotal + salesTax) * advanceTaxRate) / 100;
+
+      if (!brandGroupsMap.has(brandName)) {
+        brandGroupsMap.set(brandName, {
+          brandName,
+          quantity: 0,
+          subtotal: 0,
+          salesTaxAmount: 0,
+          advanceTaxAmount: 0,
+        });
+      }
+
+      const group = brandGroupsMap.get(brandName)!;
+      group.quantity += qty;
+      group.subtotal += lineTotal;
+      group.salesTaxAmount += salesTax;
+      group.advanceTaxAmount += advanceTax;
+    }
+
+    const roundToTwo = (num: number): number => {
+      return Math.round((num + Number.EPSILON) * 100) / 100;
+    };
+
+    const details: any[] = [];
+
+    // 4. Resolve Parent Accounts
+    const parentReturnAccount = await this.prisma.chartOfAccount.findFirst({
+      where: { code: '60020004' }
+    });
+    if (!parentReturnAccount) {
+      throw new BadRequestException('Purchases Return Local account (60020004) not found in Chart of Accounts.');
+    }
+
+    const salesTaxParent = await this.prisma.chartOfAccount.findFirst({
+      where: { code: '31070003' }
+    });
+    if (!salesTaxParent) {
+      throw new BadRequestException('Sales Tax account (31070003) not found in Chart of Accounts.');
+    }
+
+    const advanceTaxParent = await this.prisma.chartOfAccount.findFirst({
+      where: { code: '31080002' }
+    });
+    if (!advanceTaxParent) {
+      throw new BadRequestException('Advance Tax account (31080002) not found in Chart of Accounts.');
+    }
+
+    const billsPayableParent = await this.prisma.chartOfAccount.findFirst({
+      where: { code: '12010004' }
+    });
+    if (!billsPayableParent) {
+      throw new BadRequestException('Bills Payable Local account (12010004) not found in Chart of Accounts.');
+    }
+
+    // Resolve tag accounts for vendor codes under the parents
+    const salesTaxTag = await this.prisma.chartOfAccount.findFirst({
+      where: { parentId: salesTaxParent.id, code: supplier.code }
+    });
+    if (!salesTaxTag) {
+      throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Sales Tax account (31070003).`);
+    }
+
+    const advanceTaxTag = await this.prisma.chartOfAccount.findFirst({
+      where: { parentId: advanceTaxParent.id, code: supplier.code }
+    });
+    if (!advanceTaxTag) {
+      throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Advance Tax account (31080002).`);
+    }
+
+    const billsPayableTag = await this.prisma.chartOfAccount.findFirst({
+      where: { parentId: billsPayableParent.id, code: supplier.code }
+    });
+    if (!billsPayableTag) {
+      throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Bills Payable Local account (12010004).`);
+    }
+
+    // 5. Build JV Detail Lines per Brand Group
+    for (const group of brandGroupsMap.values()) {
+      const brandName = group.brandName;
+      const quantity = group.quantity;
+      const subtotal = roundToTwo(group.subtotal);
+      const salesTaxAmount = roundToTwo(group.salesTaxAmount);
+      const advanceTaxAmount = roundToTwo(group.advanceTaxAmount);
+
+      const valueInclSalesTax = roundToTwo(subtotal + salesTaxAmount);
+
+      // Resolve tag account for brand name under Purchases Return Local
+      const brandTag = await this.prisma.chartOfAccount.findFirst({
+        where: { parentId: parentReturnAccount.id, name: { equals: brandName, mode: 'insensitive' } }
+      });
+      if (!brandTag) {
+        throw new BadRequestException(`Tag account for brand "${brandName}" not found under Purchases Return Local account (60020004).`);
+      }
+
+      // Line 1: Purchases Return (60020004) - Credit
+      details.push({
+        accountId: parentReturnAccount.id,
+        tagAccountId: brandTag.id,
+        debit: 0,
+        credit: subtotal,
+        narration: `RET ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+        refBillNo: invoiceNumber,
+        refBillNo2: grnNumber,
+        taxType: 'Taxable',
+      });
+
+      // Line 2: Sales Tax (31070003) - Credit
+      if (salesTaxAmount > 0) {
+        details.push({
+          accountId: salesTaxParent.id,
+          tagAccountId: salesTaxTag.id,
+          debit: 0,
+          credit: salesTaxAmount,
+          narration: `RET Sales Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+          refBillNo: invoiceNumber,
+          refBillNo2: grnNumber,
+          taxType: 'Taxable',
+        });
+      }
+
+      // Line 3: Advance Tax (31080002) - Credit
+      if (advanceTaxAmount > 0) {
+        details.push({
+          accountId: advanceTaxParent.id,
+          tagAccountId: advanceTaxTag.id,
+          debit: 0,
+          credit: advanceTaxAmount,
+          narration: `RET Advance Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+          refBillNo: invoiceNumber,
+          refBillNo2: grnNumber,
+          taxType: 'Taxable',
+        });
+      }
+
+      // Line 4: Bills Payable (12010004) - Debit (Value Incl. Sales Tax)
+      details.push({
+        accountId: billsPayableParent.id,
+        tagAccountId: billsPayableTag.id,
+        debit: valueInclSalesTax,
+        credit: 0,
+        narration: `RET ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+        refBillNo: invoiceNumber,
+        refBillNo2: grnNumber,
+        taxType: 'Taxable',
+      });
+
+      // Line 5: Bills Payable (12010004) - Debit (Advance Tax Amount)
+      if (advanceTaxAmount > 0) {
+        details.push({
+          accountId: billsPayableParent.id,
+          tagAccountId: billsPayableTag.id,
+          debit: advanceTaxAmount,
+          credit: 0,
+          narration: `RET Advance Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+          refBillNo: invoiceNumber,
+          refBillNo2: grnNumber,
+          taxType: 'Taxable',
+        });
+      }
+    }
+
+    if (details.length === 0) {
+      console.log('No JV details to generate. Skipping.');
+      return;
+    }
+
+    // 6. Balance Check & Rounding Adjustment
+    const totalDebit = details.reduce((sum, d) => sum + d.debit, 0);
+    const totalCredit = details.reduce((sum, d) => sum + d.credit, 0);
+    const diff = roundToTwo(totalDebit - totalCredit);
+    if (Math.abs(diff) > 0.001) {
+      if (diff > 0) {
+        // debits > credits, add diff to the credit of the first credit line
+        const creditLine = details.find(d => d.credit > 0);
+        if (creditLine) {
+          creditLine.credit = roundToTwo(creditLine.credit + diff);
+        }
+      } else {
+        // credits > debits, add absolute diff to the debit of the first debit line
+        const debitLine = details.find(d => d.debit > 0);
+        if (debitLine) {
+          debitLine.debit = roundToTwo(debitLine.debit + Math.abs(diff));
+        }
+      }
+    }
+
+    // 7. Create Draft Journal Voucher
+    await this.journalVoucherService.create({
+      jvNo: `TEMP-JV-${Date.now()}`,
+      jvDate: new Date(),
+      description: `Auto-generated JV for Purchase Return ${purchaseReturn.returnNumber}`,
+      status: 'pending',
+      details,
+    }, {
+      userId: ctx?.userId,
+    });
+
+    console.log(`Auto-generated draft Journal Voucher successfully for Purchase Return ${purchaseReturn.returnNumber}`);
   }
 
   private async processFinancialAdjustment(purchaseReturn: any) {
