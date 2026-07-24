@@ -727,43 +727,7 @@ export class PaymentVoucherService {
     }
   }
 
-  async updateStatus(id: string, status: string, remarks?: string) {
-    const existing = await this.findOne(id);
 
-    const validStatuses = ['pending', 'approved', 'rejected'];
-    if (!validStatuses.includes(status)) {
-      throw new BadRequestException('Invalid status. Must be pending, approved, or rejected');
-    }
-
-    if (existing.status !== 'pending') {
-      throw new BadRequestException('Payment Voucher status can only be changed when it is in pending status');
-    }
-
-    return this.prisma.$transaction(async (prisma) => {
-      const updated = await prisma.paymentVoucher.update({
-        where: { id },
-        data: {
-          status,
-          ...(remarks && { description: remarks }),
-        },
-        include: {
-          details: {
-            include: {
-              account: true,
-            },
-          },
-          creditAccount: true,
-          supplier: true,
-        },
-      });
-
-      if (status === 'approved') {
-        await this.postPaymentVoucherToLedger(id, prisma);
-      }
-
-      return updated;
-    });
-  }
 
   async updateCpr(id: string, dto: UpdateVoucherCprDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const voucher = await this.prisma.paymentVoucher.findUnique({
@@ -994,6 +958,46 @@ export class PaymentVoucherService {
     await prismaClient.supplier.update({
       where: { id: supplierId },
       data: { currentBalance: newBalance },
+    });
+  }
+
+  async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
+    const existing = await this.findOne(id);
+
+    const validStatuses = ['draft', 'pending_check', 'pending_approval', 'approved', 'rejected'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException('Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected');
+    }
+
+    const updateData: any = { status };
+    if (remarks) updateData.remarks = remarks;
+
+    if (status === 'pending_approval') {
+      updateData.checkerId = ctx?.userId || null;
+      updateData.checkedAt = new Date();
+    } else if (status === 'approved') {
+      updateData.authorizerId = ctx?.userId || null;
+      updateData.approvedAt = new Date();
+    } else if (status === 'rejected') {
+      updateData.rejectionReason = remarks || null;
+    }
+
+    return this.prisma.$transaction(async (prisma) => {
+      const updated = await prisma.paymentVoucher.update({
+        where: { id },
+        data: updateData,
+        include: {
+          details: { include: { account: true, tagAccount: true } },
+          creditAccount: true,
+          supplier: true,
+        },
+      });
+
+      if (status === 'approved') {
+        await this.postPaymentVoucherToLedger(id, prisma);
+      }
+
+      return updated;
     });
   }
 }

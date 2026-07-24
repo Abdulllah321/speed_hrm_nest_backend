@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ReceiptVoucherService } from './receipt-voucher.service';
 import { CreateReceiptVoucherDto } from './dto/create-receipt-voucher.dto';
@@ -28,8 +29,8 @@ export class ReceiptVoucherController {
   @Post()
   @Permissions('erp.finance.receipt-voucher.create')
   @ApiOperation({ summary: 'Create a new receipt voucher' })
-  create(@Body() dto: CreateReceiptVoucherDto) {
-    return this.receiptVoucherService.create(dto);
+  create(@Body() dto: CreateReceiptVoucherDto, @Req() req: any) {
+    return this.receiptVoucherService.create(dto, { userId: req.user?.id });
   }
 
   @Get()
@@ -74,8 +75,9 @@ export class ReceiptVoucherController {
   updateStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateStatusDto,
+    @Req() req: any,
   ) {
-    return this.receiptVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks);
+    return this.receiptVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
   }
 
   @Delete(':id')

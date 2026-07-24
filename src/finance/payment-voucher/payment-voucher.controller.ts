@@ -165,8 +165,9 @@ export class PaymentVoucherController {
   updateStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateStatusDto,
+    @Req() req: any,
   ) {
-    return this.paymentVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks);
+    return this.paymentVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
   }
 
   @Patch(':id/cpr')
