@@ -20,6 +20,7 @@ import { CostOfSalesExportService } from './cost-of-sales-export.service';
 import { GiftVoucherSaleRegisterExportService } from './gift-voucher-sale-register-export.service';
 import { CorporateVoucherExportService } from './corporate-voucher-export.service';
 import { CreditVoucherExportService } from './credit-voucher-export.service';
+import { VoucherRegisterExportService } from './voucher-register-export.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -50,6 +51,7 @@ export class PosSalesController {
     private readonly giftVoucherSaleRegisterExportService: GiftVoucherSaleRegisterExportService,
     private readonly corporateVoucherExportService: CorporateVoucherExportService,
     private readonly creditVoucherExportService: CreditVoucherExportService,
+    private readonly voucherRegisterExportService: VoucherRegisterExportService,
   ) {}
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -1402,5 +1404,58 @@ export class PosSalesController {
   @ApiOperation({ summary: 'Download completed Credit Voucher export file' })
   async streamCreditVoucherExportFile(@Param('jobId') jobId: string, @Res() res: any) {
     return this.creditVoucherExportService.streamExportFile(jobId, res);
+  }
+
+  // ─── Unified Voucher Register Platform Endpoints ───────────────────────
+
+  @Get('reports/voucher-register')
+  @ApiOperation({ summary: 'Get Unified Voucher Register report preview data' })
+  async getVoucherRegisterReport(
+    @Query('voucherType') voucherType?: string,
+    @Query('status') status?: string,
+    @Query('locationId') locationId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.voucherRegisterExportService.getReportData({
+      voucherType,
+      status,
+      locationId,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Post('reports/voucher-register/export')
+  @ApiOperation({ summary: 'Queue background export job for Unified Voucher Register' })
+  async queueVoucherRegisterExport(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.voucherRegisterExportService.queueExport({
+      userId,
+      voucherType: body.voucherType,
+      status: body.status,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/voucher-register/export-status/:jobId')
+  @ApiOperation({ summary: 'Get Unified Voucher Register export job status' })
+  async getVoucherRegisterExportStatus(@Param('jobId') jobId: string) {
+    const result = await this.voucherRegisterExportService.getJobStatus(jobId);
+    return { status: true, data: result };
+  }
+
+  @Get('reports/voucher-register/export-download/:jobId')
+  @ApiOperation({ summary: 'Download completed Unified Voucher Register export file' })
+  async streamVoucherRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.voucherRegisterExportService.streamExportFile(jobId, res);
   }
 }
