@@ -121,6 +121,26 @@ export class CreateReceiptVoucherDto {
   @IsOptional()
   status?: string;
 
+  @IsString()
+  @IsOptional()
+  makerId?: string;
+
+  @IsString()
+  @IsOptional()
+  checkerId?: string;
+
+  @IsString()
+  @IsOptional()
+  authorizerId?: string;
+
+  @IsString()
+  @IsOptional()
+  rejectionReason?: string;
+
+  @IsString()
+  @IsOptional()
+  remarks?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateReceiptVoucherDetailDto)

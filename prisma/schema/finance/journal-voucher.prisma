@@ -1,13 +1,20 @@
 model JournalVoucher {
-  id          String                 @id @default(uuid())
-  jvNo        String                 @unique
-  folio       String?
-  jvDate      DateTime
-  description String?
-  status      String                 @default("pending")
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  details     JournalVoucherDetail[]
+  id              String                 @id @default(uuid())
+  jvNo            String                 @unique
+  folio           String?
+  jvDate          DateTime
+  description     String?
+  status          String                 @default("pending_check")
+  makerId         String?
+  checkerId       String?
+  authorizerId    String?
+  checkedAt       DateTime?
+  approvedAt      DateTime?
+  rejectionReason String?
+  remarks         String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  details         JournalVoucherDetail[]
 }
 
 model JournalVoucherDetail {

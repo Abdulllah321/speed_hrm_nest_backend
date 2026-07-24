@@ -38,6 +38,8 @@ export class JournalVoucherService {
         const created = await prisma.journalVoucher.create({
           data: {
             ...data,
+            makerId: data.makerId || ctx?.userId || null,
+            status: data.status || 'pending_check',
             jvNo: sequentialJvNo,
             folio: sequentialFolio,
             details: {
@@ -152,8 +154,13 @@ export class JournalVoucherService {
       const { details, ...data } = updateJournalVoucherDto;
       const existing = await this.findOne(id);
 
-      if (existing.status !== 'pending') {
-        throw new BadRequestException('Journal Voucher can only be edited when it is in pending status');
+      if (data.status === 'pending_approval' && !data.checkerId) {
+        (data as any).checkerId = ctx?.userId || null;
+        (data as any).checkedAt = new Date();
+      }
+      if (data.status === 'approved' && !data.authorizerId) {
+        (data as any).authorizerId = ctx?.userId || null;
+        (data as any).approvedAt = new Date();
       }
 
       let updated: any;

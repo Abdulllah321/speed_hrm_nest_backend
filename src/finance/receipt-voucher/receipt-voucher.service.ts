@@ -15,7 +15,7 @@ export class ReceiptVoucherService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(dto: CreateReceiptVoucherDto) {
+  async create(dto: CreateReceiptVoucherDto, ctx?: { userId?: string }) {
     const { details, invoices, ...data } = dto;
 
     const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
@@ -61,7 +61,7 @@ export class ReceiptVoucherService {
       const resolvedDebitAccountId = firstDebitDetail?.accountId ?? data.debitAccountId;
       const resolvedDebitAmount = data.debitAmount || totalDebit || 0;
 
-      const targetStatus = data.status || 'pending';
+      const targetStatus = data.status || 'pending_check';
 
       // Create the receipt voucher
       const rv = await prisma.receiptVoucher.create({
@@ -81,6 +81,7 @@ export class ReceiptVoucherService {
           taxType: data.taxType ?? 'Taxable',
           description: data.description,
           status: targetStatus,
+          makerId: data.makerId || ctx?.userId || null,
           details: { 
             create: details
               .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
@@ -220,25 +221,31 @@ export class ReceiptVoucherService {
     return this.prisma.receiptVoucher.delete({ where: { id } });
   }
 
-  async updateStatus(id: string, status: string, remarks?: string) {
+  async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
     const existing = await this.findOne(id);
 
-    const validStatuses = ['pending', 'approved', 'rejected'];
+    const validStatuses = ['draft', 'pending_check', 'pending_approval', 'approved', 'rejected'];
     if (!validStatuses.includes(status)) {
-      throw new BadRequestException('Invalid status. Must be pending, approved, or rejected');
+      throw new BadRequestException('Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected');
     }
 
-    if (existing.status !== 'pending') {
-      throw new BadRequestException('Receipt Voucher status can only be changed when it is in pending status');
+    const updateData: any = { status };
+    if (remarks) updateData.remarks = remarks;
+
+    if (status === 'pending_approval') {
+      updateData.checkerId = ctx?.userId || null;
+      updateData.checkedAt = new Date();
+    } else if (status === 'approved') {
+      updateData.authorizerId = ctx?.userId || null;
+      updateData.approvedAt = new Date();
+    } else if (status === 'rejected') {
+      updateData.rejectionReason = remarks || null;
     }
 
     return this.prisma.$transaction(async (prisma) => {
       const updated = await prisma.receiptVoucher.update({
         where: { id },
-        data: {
-          status,
-          ...(remarks && { description: remarks }),
-        },
+        data: updateData,
         include: {
           details: {
             include: {
