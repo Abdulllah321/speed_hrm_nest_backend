@@ -68,7 +68,7 @@ export class VoucherService {
                 where,
                 include: {
                     customer: { select: { id: true, name: true, code: true, contactNo: true, cnicNo: true } },
-                    locations: { include: { location: { select: { id: true, name: true, code: true } } } },
+                    locations: { include: { location: { select: { id: true, name: true, code: true, shortCode: true } } } },
                     redemptions: { select: { amountUsed: true, orderId: true } },
                     claims: { select: { id: true, claimNumber: true } },
                 },
