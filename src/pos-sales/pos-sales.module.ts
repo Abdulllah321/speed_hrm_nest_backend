@@ -37,6 +37,8 @@ import { CorporateVoucherExportService } from './corporate-voucher-export.servic
 import { CorporateVoucherExportProcessor } from './corporate-voucher-export.processor';
 import { CreditVoucherExportService } from './credit-voucher-export.service';
 import { CreditVoucherExportProcessor } from './credit-voucher-export.processor';
+import { VoucherRegisterExportService } from './voucher-register-export.service';
+import { VoucherRegisterExportProcessor } from './voucher-register-export.processor';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 
 @Module({
@@ -60,7 +62,8 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
             { name: 'cost-of-sales-export' },
             { name: 'gift-voucher-sale-register-export' },
             { name: 'corporate-voucher-export' },
-            { name: 'credit-voucher-export' }
+            { name: 'credit-voucher-export' },
+            { name: 'voucher-register-export' }
         ),
     ],
     controllers: [
@@ -96,6 +99,8 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         CorporateVoucherExportProcessor,
         CreditVoucherExportService,
         CreditVoucherExportProcessor,
+        VoucherRegisterExportService,
+        VoucherRegisterExportProcessor,
     ],
     exports: [
         PosSalesService, 
@@ -109,6 +114,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         GiftVoucherSaleRegisterExportService,
         CorporateVoucherExportService,
         CreditVoucherExportService,
+        VoucherRegisterExportService,
     ],
 })
 export class PosSalesModule { }
