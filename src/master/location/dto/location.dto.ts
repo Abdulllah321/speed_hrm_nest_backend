@@ -36,6 +36,15 @@ export class CreateLocationDto {
   @IsOptional()
   @IsString()
   cashGLCode?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isStockLocation?: boolean;
+
+  @ApiPropertyOptional({ example: ['brand-uuid-1', 'brand-uuid-2'] })
+  @IsOptional()
+  brandIds?: string[];
 }
 
 export class UpdateLocationDto {
@@ -78,6 +87,15 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsString()
   cashGLCode?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isStockLocation?: boolean;
+
+  @ApiPropertyOptional({ example: ['brand-uuid-1', 'brand-uuid-2'] })
+  @IsOptional()
+  brandIds?: string[];
 }
 
 export class UpdateLocationOtherInfoDto {
