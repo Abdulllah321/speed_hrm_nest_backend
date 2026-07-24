@@ -56,7 +56,7 @@ export class VoucherService {
                     { description: { contains: filters.search, mode: 'insensitive' } },
                     { companyName: { contains: filters.search, mode: 'insensitive' } },
                     { customer: { name: { contains: filters.search, mode: 'insensitive' } } },
-                    { customer: { code: { contains: filters.search, mode: 'insensitive' } } },
+                    { customer: { traderId: { contains: filters.search, mode: 'insensitive' } } },
                     { customer: { contactNo: { contains: filters.search, mode: 'insensitive' } } },
                 ];
             }
@@ -67,7 +67,7 @@ export class VoucherService {
             const vouchers = await this.prisma.voucher.findMany({
                 where,
                 include: {
-                    customer: { select: { id: true, name: true, code: true, contactNo: true, cnicNo: true } },
+                    customer: { select: { id: true, name: true, traderId: true, contactNo: true, cnicNo: true } },
                     locations: { include: { location: { select: { id: true, name: true, code: true, shortCode: true } } } },
                     redemptions: { select: { amountUsed: true, orderId: true } },
                     claims: { select: { id: true, claimNumber: true } },
