@@ -26,6 +26,14 @@ export class CreateSalesOrderDto {
 
   @IsOptional()
   @IsNumber()
+  baseMargin?: number;
+
+  @IsOptional()
+  @IsNumber()
+  cashMargin?: number;
+
+  @IsOptional()
+  @IsNumber()
   taxRate?: number;
 
   @IsOptional()
@@ -46,6 +54,14 @@ export class UpdateSalesOrderDto {
   @IsOptional()
   @IsString()
   warehouseId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  baseMargin?: number;
+
+  @IsOptional()
+  @IsNumber()
+  cashMargin?: number;
 
   @IsOptional()
   @IsNumber()
