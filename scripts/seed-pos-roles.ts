@@ -91,8 +91,8 @@ const EMPLOYEE_BASE_PATTERNS = [
   'hr.advance-salary.read',
   'hr.leave-encashment.create',
   'hr.leave-encashment.read',
-  'hr.holiday.read',
-  'hr.working-hour-policy.read',
+  // 'hr.holiday.read',
+  // 'hr.working-hour-policy.read',
   // 'hr.employee.read',
   // 'hr.employee.user-account',
 ];
