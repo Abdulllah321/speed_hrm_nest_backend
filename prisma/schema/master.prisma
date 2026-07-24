@@ -649,6 +649,7 @@ model Brand {
   divisions         Division[]
   items             Item[]
   stockRequisitions StockRequisition[]
+  locationBrands    LocationBrand[]
 }
 
 model Division {

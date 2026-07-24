@@ -206,7 +206,18 @@ export class AvailableStockSummaryExportService {
     } = opts;
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    let locationWhere: any;
+
+    if (locIds.length > 0) {
+      locationWhere = locIds.length > 1 ? { in: locIds } : locIds[0];
+    } else {
+      const stockLocations = await prisma.location.findMany({
+        where: { isStockLocation: true, isDeleted: false },
+        select: { id: true },
+      });
+      const stockLocIds = stockLocations.map(l => l.id);
+      locationWhere = { in: stockLocIds };
+    }
 
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);

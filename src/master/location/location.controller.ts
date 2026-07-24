@@ -35,8 +35,16 @@ export class LocationController {
 
   @Get('public/locations')
   @ApiOperation({ summary: 'List all active locations (Public)' })
-  async listActivePublic() {
-    return this.service.listActive();
+  async listActivePublic(@Query('stockOnly') stockOnly?: string) {
+    return this.service.listActive(stockOnly === 'true');
+  }
+
+  @Get('locations/active')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List active locations' })
+  async listActive(@Query('stockOnly') stockOnly?: string) {
+    return this.service.listActive(stockOnly === 'true');
   }
 
   @Get('public/nearest')

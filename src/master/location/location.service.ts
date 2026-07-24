@@ -23,17 +23,36 @@ export class LocationService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async listActive() {
-    return this.prisma.location.findMany({
-      where: { status: 'active',
-          isDeleted: false
-    },
+  async listActive(onlyStockLocations?: boolean) {
+    const where: any = {
+      status: 'active',
+      isDeleted: false,
+    };
+    if (onlyStockLocations) {
+      where.isStockLocation = true;
+    }
+    const locations = await this.prisma.location.findMany({
+      where,
       select: {
         id: true,
         name: true,
+        code: true,
+        shortCode: true,
+        isStockLocation: true,
+        locationBrands: {
+          select: {
+            brand: {
+              select: { id: true, name: true },
+            },
+          },
+        },
       },
       orderBy: { name: 'asc' },
     });
+    return locations.map((loc) => ({
+      ...loc,
+      brands: loc.locationBrands?.map((lb) => lb.brand) || [],
+    }));
   }
 
   async list() {
@@ -44,23 +63,29 @@ export class LocationService {
             id: true,
             posId: true,
             name: true,
-            status: true
-          }
-        }
+            status: true,
+          },
+        },
+        locationBrands: {
+          select: {
+            brand: {
+              select: { id: true, name: true },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     if (items?.length > 0) {
       for (const item of items) {
         if (item?.cityId) {
           const updatedItem = await this.prisma.city.findFirst({
-            where: { id: item.cityId,
-                isDeleted: false
-            },
+            where: { id: item.cityId, isDeleted: false },
           });
           item.city = updatedItem;
         }
+        item.brands = item.locationBrands?.map((lb: any) => lb.brand) || [];
       }
     }
     return { status: true, data: items };
@@ -68,15 +93,23 @@ export class LocationService {
 
   async get(id: string) {
     const item: any = await this.prisma.location.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
+      include: {
+        locationBrands: {
+          select: {
+            brand: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+      },
     });
+    if (item) {
+      item.brands = item.locationBrands?.map((lb: any) => lb.brand) || [];
+    }
     if (item?.cityId) {
       const updatedItem = await this.prisma.city.findFirst({
-        where: { id: item.cityId,
-            isDeleted: false
-        },
+        where: { id: item.cityId, isDeleted: false },
       });
       item.city = updatedItem;
     }
@@ -92,7 +125,7 @@ export class LocationService {
   }
 
   async create(
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; isStockLocation?: boolean; brandIds?: string[] },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -107,9 +140,24 @@ export class LocationService {
           createdById: ctx.userId,
           cashGLCode: body.cashGLCode || null,
           shortCode: body.shortCode?.trim() || generateShortCode(body.name),
+          isStockLocation: body.isStockLocation !== undefined ? body.isStockLocation : true,
+          locationBrands: body.brandIds?.length
+            ? {
+                create: body.brandIds.map((brandId) => ({ brandId })),
+              }
+            : undefined,
+        },
+        include: {
+          locationBrands: {
+            select: { brand: { select: { id: true, name: true } } },
+          },
         },
       });
-      const response = { status: true, data: created };
+      const responseData = {
+        ...created,
+        brands: created.locationBrands?.map((lb) => lb.brand) || [],
+      };
+      const response = { status: true, data: responseData };
       runInBackground(
         'Create Location',
         this.activityLogs.log({
@@ -148,39 +196,63 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; isStockLocation?: boolean; brandIds?: string[] },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const existing = await this.prisma.location.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
+      if (!existing) {
+        return { status: false, message: 'Location not found' };
+      }
+
+      if (body.brandIds !== undefined) {
+        await this.prisma.locationBrand.deleteMany({
+          where: { locationId: id },
+        });
+        if (body.brandIds.length > 0) {
+          await this.prisma.locationBrand.createMany({
+            data: body.brandIds.map((brandId) => ({ locationId: id, brandId })),
+          });
+        }
+      }
+
       const updated = await this.prisma.location.update({
         where: { id },
         data: {
-          name: body.name ?? existing?.name,
+          name: body.name ?? existing.name,
           code:
             body.code !== undefined && body.code?.trim()
               ? body.code.trim()
-              : existing?.code,
+              : existing.code,
           address:
-            body.address !== undefined ? body.address : existing?.address,
+            body.address !== undefined ? body.address : existing.address,
           cityId:
             body.cityId !== undefined
               ? body.cityId?.trim() || null
-              : existing?.cityId,
-          companyId: body.companyId ?? existing?.companyId,
-          status: body.status ?? existing?.status ?? 'active',
-          cashGLCode: body.cashGLCode !== undefined ? body.cashGLCode : existing?.cashGLCode,
+              : existing.cityId,
+          companyId: body.companyId ?? existing.companyId,
+          status: body.status ?? existing.status ?? 'active',
+          cashGLCode: body.cashGLCode !== undefined ? body.cashGLCode : existing.cashGLCode,
           shortCode:
             body.shortCode !== undefined
-              ? body.shortCode?.trim() || generateShortCode(body.name ?? existing?.name ?? '')
-              : existing?.shortCode,
+              ? body.shortCode?.trim() || generateShortCode(body.name ?? existing.name ?? '')
+              : existing.shortCode,
+          isStockLocation:
+            body.isStockLocation !== undefined ? body.isStockLocation : existing.isStockLocation,
+        },
+        include: {
+          locationBrands: {
+            select: { brand: { select: { id: true, name: true } } },
+          },
         },
       });
-      const response = { status: true, data: updated };
+      const responseData = {
+        ...updated,
+        brands: updated.locationBrands?.map((lb) => lb.brand) || [],
+      };
+      const response = { status: true, data: responseData };
       runInBackground(
         'Update Location',
         this.activityLogs.log({
@@ -437,6 +509,8 @@ export class LocationService {
       status?: string;
       cashGLCode?: string;
       shortCode?: string;
+      isStockLocation?: boolean;
+      brandIds?: string[];
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -445,10 +519,20 @@ export class LocationService {
     try {
       for (const i of items) {
         const existing = await this.prisma.location.findFirst({
-          where: { id: i.id,
-              isDeleted: false
-        },
+          where: { id: i.id, isDeleted: false },
         });
+
+        if (i.brandIds !== undefined) {
+          await this.prisma.locationBrand.deleteMany({
+            where: { locationId: i.id },
+          });
+          if (i.brandIds.length > 0) {
+            await this.prisma.locationBrand.createMany({
+              data: i.brandIds.map((brandId) => ({ locationId: i.id, brandId })),
+            });
+          }
+        }
+
         await this.prisma.location.update({
           where: { id: i.id },
           data: {
@@ -468,6 +552,8 @@ export class LocationService {
               i.shortCode !== undefined
                 ? i.shortCode?.trim() || generateShortCode(i.name ?? existing?.name ?? '')
                 : existing?.shortCode,
+            isStockLocation:
+              i.isStockLocation !== undefined ? i.isStockLocation : existing?.isStockLocation,
           },
         });
       }

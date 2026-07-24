@@ -65,6 +65,9 @@ model Location {
   /// Whether this outlet is currently marked as online.
   isOnline           Boolean   @default(false) @map("is_online")
 
+  /// Whether this location is a stock location (holds stock).
+  isStockLocation    Boolean   @default(true) @map("is_stock_location")
+
   /// Cash GL Codes
   cashGLCode         String?
   /// Timestamp of the last time this outlet was marked online.
@@ -87,6 +90,23 @@ model Location {
   voucherLocations          VoucherLocation[]
   discountCampaignLocations DiscountCampaignLocation[]
   merchantConfigLocations   MerchantConfigLocation[]
+  locationBrands            LocationBrand[]
 
   @@index([warehouseId])
 }
+
+model LocationBrand {
+  id         String   @id @default(uuid())
+  locationId String   @map("location_id")
+  brandId    String   @map("brand_id")
+  createdAt  DateTime @default(now())
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  brand    Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, brandId])
+  @@index([locationId])
+  @@index([brandId])
+  @@map("location_brands")
+}
+
