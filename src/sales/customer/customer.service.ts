@@ -19,11 +19,18 @@ export class CustomerService {
   // ─── ERP: Create (defaults to ERP type) ──────────────────────────
   async create(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      let traderId = createDto.traderId;
+      if (!traderId) {
+        const count = await this.prisma.customer.count();
+        traderId = String(count + 10001);
+      }
+
       const customer = await this.prisma.customer.create({
         data: {
           ...createDto,
+          traderId,
           customerType: createDto.customerType ?? 'ERP',
-        },
+        } as any,
       });
 
       runInBackground(
@@ -72,9 +79,12 @@ export class CustomerService {
           ...(search && {
             OR: [
               { name: { contains: search, mode: 'insensitive' } },
-              { code: { contains: search, mode: 'insensitive' } },
+              { company: { contains: search, mode: 'insensitive' } },
+              { subCode: { contains: search, mode: 'insensitive' } },
+              { traderId: { contains: search, mode: 'insensitive' } },
+              { brands: { contains: search, mode: 'insensitive' } },
               { contactNo: { contains: search, mode: 'insensitive' } },
-            ],
+            ] as any,
           }),
         },
         orderBy: { createdAt: 'desc' },
@@ -207,9 +217,10 @@ export class CustomerService {
           ...(search && {
             OR: [
               { name: { contains: search, mode: 'insensitive' } },
-              { code: { contains: search, mode: 'insensitive' } },
+              { subCode: { contains: search, mode: 'insensitive' } },
+              { traderId: { contains: search, mode: 'insensitive' } },
               { contactNo: { contains: search, mode: 'insensitive' } },
-            ],
+            ] as any,
           }),
         },
         orderBy: { createdAt: 'desc' },
@@ -234,7 +245,8 @@ export class CustomerService {
       if (search) {
         where.OR = [
           { name: { contains: search, mode: 'insensitive' } },
-          { code: { contains: search, mode: 'insensitive' } },
+          { subCode: { contains: search, mode: 'insensitive' } },
+          { traderId: { contains: search, mode: 'insensitive' } },
           { contactNo: { contains: search, mode: 'insensitive' } },
         ];
       }
@@ -243,7 +255,8 @@ export class CustomerService {
         where,
         select: {
           id: true,
-          code: true,
+          traderId: true,
+          subCode: true,
           name: true,
           contactNo: true,
           email: true,

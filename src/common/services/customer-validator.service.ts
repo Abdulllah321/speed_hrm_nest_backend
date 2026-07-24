@@ -14,10 +14,8 @@ export class CustomerValidatorService {
         const errors: CustomerValidationError[] = [];
         const { row, data } = record;
 
-        if (!data.code || String(data.code).trim() === '') {
-            errors.push({ row, field: 'code', value: data.code, reason: 'Customer Code is required.' });
-        } else if (String(data.code).length > 50) {
-            errors.push({ row, field: 'code', value: data.code, reason: 'Customer Code exceeds 50 characters.' });
+        if (data.traderId && String(data.traderId).length > 50) {
+            errors.push({ row, field: 'traderId', value: data.traderId, reason: 'Trader ID exceeds 50 characters.' });
         }
 
         if (!data.name || String(data.name).trim() === '') {

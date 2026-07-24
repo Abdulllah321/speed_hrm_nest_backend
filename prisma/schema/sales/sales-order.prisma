@@ -11,12 +11,16 @@ model ERPSalesOrder {
   orderDate DateTime            @default(now())
   status    ERPSalesOrderStatus @default(DRAFT)
 
-  // Totals
-  subtotal   Decimal
-  taxRate    Decimal @default(0)
-  taxAmount  Decimal @default(0)
-  discount   Decimal @default(0)
-  grandTotal Decimal
+  // Totals & Margins
+  subtotal         Decimal
+  baseMargin       Decimal @default(0) @map("base_margin")
+  cashMargin       Decimal @default(0) @map("cash_margin")
+  baseMarginAmount Decimal @default(0) @map("base_margin_amount")
+  cashMarginAmount Decimal @default(0) @map("cash_margin_amount")
+  taxRate          Decimal @default(0)
+  taxAmount        Decimal @default(0)
+  discount         Decimal @default(0)
+  grandTotal       Decimal
 
   // Relations
   items            ERPSalesOrderItem[]

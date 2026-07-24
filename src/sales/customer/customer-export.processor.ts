@@ -173,7 +173,8 @@ export class CustomerExportProcessor {
           const hasBalance = Number(customer.balance ?? 0) > 0;
 
           const rowData: Record<string, any> = {
-            code: customer.code,
+            traderId: (customer as any).traderId ?? '',
+            subCode: (customer as any).subCode ?? '',
             name: customer.name,
             customerType: customer.customerType,
             contactNo: customer.contactNo ?? '',

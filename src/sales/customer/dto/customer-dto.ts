@@ -1,17 +1,45 @@
-import { IsNotEmpty, IsOptional, IsString, IsEmail, IsIn, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsEmail, IsIn, ValidateIf, IsNumber } from 'class-validator';
 
 export class CreateCustomerDto {
-  @IsString()
-  @IsNotEmpty()
-  code: string;
-
   @IsString()
   @IsNotEmpty()
   name: string;
 
   @IsString()
   @IsOptional()
+  traderId?: string;
+
+  @IsString()
+  @IsOptional()
+  company?: string;
+
+  @IsString()
+  @IsOptional()
+  subCode?: string;
+
+  @IsString()
+  @IsOptional()
+  brands?: string;
+
+  @IsNumber()
+  @IsOptional()
+  baseMargin?: number;
+
+  @IsNumber()
+  @IsOptional()
+  cashMargin?: number;
+
+  @IsString()
+  @IsOptional()
+  remarks?: string;
+
+  @IsString()
+  @IsOptional()
   address?: string;
+
+  @IsString()
+  @IsOptional()
+  deliveryAddress?: string;
 
   @IsString()
   @IsOptional()
@@ -25,6 +53,14 @@ export class CreateCustomerDto {
   @IsString()
   @IsOptional()
   cnicNo?: string;
+
+  @IsString()
+  @IsOptional()
+  ntn?: string;
+
+  @IsString()
+  @IsOptional()
+  strn?: string;
 
   @IsString()
   @IsOptional()
@@ -35,15 +71,43 @@ export class CreateCustomerDto {
 export class UpdateCustomerDto {
   @IsString()
   @IsOptional()
-  code?: string;
-
-  @IsString()
-  @IsOptional()
   name?: string;
 
   @IsString()
   @IsOptional()
+  traderId?: string;
+
+  @IsString()
+  @IsOptional()
+  company?: string;
+
+  @IsString()
+  @IsOptional()
+  subCode?: string;
+
+  @IsString()
+  @IsOptional()
+  brands?: string;
+
+  @IsNumber()
+  @IsOptional()
+  baseMargin?: number;
+
+  @IsNumber()
+  @IsOptional()
+  cashMargin?: number;
+
+  @IsString()
+  @IsOptional()
+  remarks?: string;
+
+  @IsString()
+  @IsOptional()
   address?: string;
+
+  @IsString()
+  @IsOptional()
+  deliveryAddress?: string;
 
   @IsString()
   @IsOptional()
@@ -60,6 +124,15 @@ export class UpdateCustomerDto {
 
   @IsString()
   @IsOptional()
+  ntn?: string;
+
+  @IsString()
+  @IsOptional()
+  strn?: string;
+
+  @IsString()
+  @IsOptional()
   @IsIn(['ERP', 'POS', 'BOTH'])
   customerType?: 'ERP' | 'POS' | 'BOTH';
 }
+

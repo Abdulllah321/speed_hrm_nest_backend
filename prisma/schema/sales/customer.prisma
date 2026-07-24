@@ -1,14 +1,23 @@
 // Customer Management - Based on your existing customer data
 model Customer {
   id           String       @id @default(cuid())
-  code         String       @unique // 310001, 310003, etc.
-  name         String // ZAHID ASSOCIATES, NIZAM WATCH HOUSE, etc.
-  address      String? // Full address like "OFFICE NO 4, 109-WEST, SARDAR BEGUM PLAZA"
-  contactNo    String? // Contact No from your data
-  email        String?
-  cnicNo       String?  @map("cnic_no")  // CNIC / NIC number
-  balance      Decimal      @default(0) // Current outstanding balance
-  customerType CustomerType @default(ERP) @map("customer_type")
+  name            String // ZAHID ASSOCIATES, NIZAM WATCH HOUSE, etc.
+  address         String? // Full address like "OFFICE NO 4, 109-WEST, SARDAR BEGUM PLAZA"
+  contactNo       String? // Contact No from your data
+  email           String?
+  cnicNo          String?      @map("cnic_no")  // CNIC / NIC number
+  traderId        String?      @unique @map("trader_id") // System-generated Trader ID
+  company         String?
+  subCode         String?      @map("sub_code")
+  brands          String?
+  baseMargin      Decimal      @default(0) @map("base_margin")
+  cashMargin      Decimal      @default(0) @map("cash_margin")
+  remarks         String?
+  deliveryAddress String?      @map("delivery_address")
+  ntn             String?      @map("ntn")
+  strn            String?      @map("strn")
+  balance         Decimal      @default(0) // Current outstanding balance
+  customerType    CustomerType @default(ERP) @map("customer_type")
 
   // Relations
   salesOrders      ERPSalesOrder[]
