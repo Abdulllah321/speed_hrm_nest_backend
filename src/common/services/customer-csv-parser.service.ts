@@ -5,11 +5,21 @@ import * as Papa from 'papaparse';
 export interface CustomerParsedRecord {
     row: number;
     data: {
-        code?: string;
+        traderId?: string;
+        subCode?: string;
         name?: string;
+        company?: string;
+        brands?: string;
+        baseMargin?: number;
+        cashMargin?: number;
+        remarks?: string;
         address?: string;
+        deliveryAddress?: string;
         contactNo?: string;
         email?: string;
+        cnicNo?: string;
+        ntn?: string;
+        strn?: string;
     };
 }
 
@@ -26,8 +36,8 @@ export class CustomerCsvParserService {
 
     private isEmptyRow(row: any): boolean {
         if (!row) return true;
-        const code = this.getValue(row, ['Code', 'code', 'CODE', 'Customer Code']);
-        const name = this.getValue(row, ['Name of Customer', 'Name', 'name', 'NAME', 'Customer Name']);
+        const code = this.getValue(row, ['Code', 'code', 'Sub Code', 'SubCode', 'Trader ID', 'TraderID']);
+        const name = this.getValue(row, ['Company', 'Name of Customer', 'Name', 'name', 'Customer Name']);
         return !this.normalizeValue(code) && !this.normalizeValue(name);
     }
 
@@ -41,13 +51,34 @@ export class CustomerCsvParserService {
         return null;
     }
 
+    private parseNumber(val: any): number {
+        if (val === null || val === undefined) return 0;
+        const num = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+        return isNaN(num) ? 0 : num;
+    }
+
     private mapColumns(row: any): CustomerParsedRecord['data'] {
+        const subCode = this.normalizeValue(this.getValue(row, ['Sub Code', 'SubCode', 'subCode']));
+        const traderId = this.normalizeValue(this.getValue(row, ['Trader ID', 'TraderID', 'traderId']));
+        const company = this.normalizeValue(this.getValue(row, ['Company', 'company']));
+        const name = this.normalizeValue(this.getValue(row, ['Name of Customer', 'Name', 'name', 'Customer Name'])) || company || 'Unnamed Customer';
+
         return {
-            code: this.normalizeValue(this.getValue(row, ['Code', 'code', 'CODE', 'Customer Code', 'CustomerCode'])) ?? undefined,
-            name: this.normalizeValue(this.getValue(row, ['Name of Customer', 'Name', 'name', 'NAME', 'Customer Name', 'CustomerName'])) ?? undefined,
-            address: this.normalizeValue(this.getValue(row, ['Address', 'address', 'ADDRESS'])) ?? undefined,
+            traderId: traderId ?? undefined,
+            subCode: subCode ?? undefined,
+            name,
+            company: company ?? undefined,
+            brands: this.normalizeValue(this.getValue(row, ['Brands', 'brands'])) ?? undefined,
+            baseMargin: this.parseNumber(this.getValue(row, ['Base Margin', 'BaseMargin', 'baseMargin'])),
+            cashMargin: this.parseNumber(this.getValue(row, ['Cash Margin', 'CashMargin', 'cashMargin'])),
+            remarks: this.normalizeValue(this.getValue(row, ['Rematks', 'Remarks', 'remarks'])) ?? undefined,
+            address: this.normalizeValue(this.getValue(row, ['Address', 'address'])) ?? undefined,
+            deliveryAddress: this.normalizeValue(this.getValue(row, ['Delivery Address', 'DeliveryAddress', 'deliveryAddress'])) ?? undefined,
             contactNo: this.normalizeValue(this.getValue(row, ['Contact No.', 'Contact No', 'ContactNo', 'contactNo', 'Phone', 'phone'])) ?? undefined,
-            email: this.normalizeValue(this.getValue(row, ['Email', 'email', 'EMAIL'])) ?? undefined,
+            email: this.normalizeValue(this.getValue(row, ['Email', 'email'])) ?? undefined,
+            cnicNo: this.normalizeValue(this.getValue(row, ['CNIC', 'cnicNo', 'cnic'])) ?? undefined,
+            ntn: this.normalizeValue(this.getValue(row, ['NationalTaxNumber', 'NTN', 'ntn'])) ?? undefined,
+            strn: this.normalizeValue(this.getValue(row, ['GeneralSalesTaxNumber', 'STRN', 'GSTN', 'strn'])) ?? undefined,
         };
     }
 
