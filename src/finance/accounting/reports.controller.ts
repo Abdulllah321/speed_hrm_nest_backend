@@ -75,8 +75,24 @@ export class ReportsController {
   @Get('balance-sheet')
   @ApiOperation({ summary: 'Balance Sheet' })
   @ApiQuery({ name: 'asOf', required: false, type: String, description: 'ISO date snapshot' })
-  async balanceSheet(@Query('asOf') asOf?: string) {
-    return { status: true, data: await this.reports.getBalanceSheet(asOf) };
+  @ApiQuery({ name: 'compareAsOf', required: false, type: String, description: 'Comparative ISO date snapshot' })
+  @ApiQuery({ name: 'includeTagAccounts', required: false, type: Boolean })
+  @ApiQuery({ name: 'showZeroBalances', required: false, type: Boolean })
+  async balanceSheet(
+    @Query('asOf') asOf?: string,
+    @Query('compareAsOf') compareAsOf?: string,
+    @Query('includeTagAccounts') includeTagAccounts?: string,
+    @Query('showZeroBalances') showZeroBalances?: string,
+  ) {
+    return {
+      status: true,
+      data: await this.reports.getBalanceSheet({
+        asOf,
+        compareAsOf,
+        includeTagAccounts: includeTagAccounts === 'true' || includeTagAccounts === undefined,
+        showZeroBalances: showZeroBalances === 'true',
+      }),
+    };
   }
 
   /**
