@@ -6,6 +6,8 @@ import { ReceiptVoucherModule } from '../finance/receipt-voucher/receipt-voucher
 import { BullModule } from '@nestjs/bull';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ReconciliationExportProcessor } from './reconciliation-export.processor';
+import { PosSessionRsrvScheduler } from './pos-session-rsrv.scheduler';
+import { PosSessionRsrvProcessor } from './pos-session-rsrv.processor';
 
 @Module({
   imports: [
@@ -15,9 +17,18 @@ import { ReconciliationExportProcessor } from './reconciliation-export.processor
     BullModule.registerQueue({
       name: 'reconciliation-export',
     }),
+    BullModule.registerQueue({
+      name: 'reconciliation-rsrv',
+    }),
   ],
-  providers: [PosSessionService, ReconciliationExportProcessor],
+  providers: [
+    PosSessionService,
+    ReconciliationExportProcessor,
+    PosSessionRsrvScheduler,
+    PosSessionRsrvProcessor,
+  ],
   controllers: [PosSessionController],
   exports: [PosSessionService],
 })
 export class PosSessionModule { }
+

@@ -319,17 +319,19 @@ export class PosSessionService {
       );
 
       runInBackground(
-        'Generate POS Receipt Voucher',
-        this.generateReconciliationVoucher(
-          currentStatus.session.id,
-          closedSession.posId,
-          ctx,
-        ).catch((err) =>
-          this.logger.error(
-            `Failed to generate RV for session ${currentStatus.session.id}`,
-            err,
-          ),
-        ),
+        'Close Drawer Log',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-session',
+          entity: 'PosSession',
+          entityId: closedSession.id,
+          description: `Closed drawer for terminal ${terminalId}. Variance: ${difference}`,
+          newValues: JSON.stringify({ actualCash, note, variance: difference }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
       );
 
       return {
@@ -354,6 +356,131 @@ export class PosSessionService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Get clean session-wise summary report (strictly bound to openedAt to closedAt of that session)
+   */
+  async getSessionCloseSummary(sessionId: string) {
+    const session = await this.prisma.posSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        pos: {
+          include: {
+            location: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('POS Session not found.');
+    }
+
+    const cashier = session.userId
+      ? await this.prismaMaster.user.findUnique({
+          where: { id: session.userId },
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        })
+      : null;
+
+    const start = session.openedAt;
+    const end = session.closedAt || new Date();
+
+    const orders = await this.prisma.salesOrder.findMany({
+      where: {
+        locationId: session.pos.locationId,
+        createdAt: { gte: start, lte: end },
+      },
+      include: {
+        voucherRedemptions: true,
+      },
+    });
+
+    let grossSales = 0;
+    let totalDiscounts = 0;
+    let totalTaxes = 0;
+    let cashSales = 0;
+    let cardSales = 0;
+    let voucherSales = 0;
+    let creditSales = 0;
+
+    for (const order of orders) {
+      const grandTotal = Number(order.grandTotal ?? 0);
+      const subtotal = Number(order.subtotal ?? 0);
+      const tax = Number(order.taxAmount ?? 0);
+      const disc =
+        Number(order.discountAmount ?? 0) +
+        Number(order.globalDiscountAmount ?? 0);
+
+      grossSales += subtotal;
+      totalTaxes += tax;
+      totalDiscounts += disc;
+
+      const rawCash = Number(order.cashAmount ?? 0);
+      const rawCard = Number(order.cardAmount ?? 0);
+      const vRedemptions =
+        order.voucherRedemptions?.reduce(
+          (s, r) => s + Number(r.amountUsed),
+          0,
+        ) ?? 0;
+
+      cashSales += rawCash;
+      cardSales += rawCard;
+      voucherSales += vRedemptions;
+
+      if (
+        order.paymentMethod === 'credit_account' ||
+        order.tenderType === 'credit_account'
+      ) {
+        const netCash = Math.max(0, rawCash - Number(order.changeAmount ?? 0));
+        const creditAmt = Math.max(
+          0,
+          grandTotal - netCash - rawCard - vRedemptions,
+        );
+        creditSales += creditAmt;
+      }
+    }
+
+    const openingFloat = Number(session.openingFloat ?? 0);
+    const expectedCash = openingFloat + cashSales;
+    const actualCash =
+      session.actualCash !== null ? Number(session.actualCash) : null;
+    const variance = actualCash !== null ? actualCash - expectedCash : 0;
+
+    return {
+      session: {
+        id: session.id,
+        posId: session.posId,
+        status: session.status,
+        openedAt: session.openedAt,
+        closedAt: session.closedAt,
+        openingFloat,
+        openingNote: session.openingNote,
+        closingNote: session.closingNote,
+        expectedCash,
+        actualCash,
+        variance,
+        locationName: session.pos?.location?.name || '',
+        posCode: session.pos?.posId || '',
+      },
+      cashier,
+      metrics: {
+        orderCount: orders.length,
+        grossSales,
+        totalDiscounts,
+        totalTaxes,
+        netSales: grossSales - totalDiscounts + totalTaxes,
+        cashSales,
+        cardSales,
+        voucherSales,
+        creditSales,
+      },
+    };
   }
 
   /**
@@ -397,24 +524,24 @@ export class PosSessionService {
 
     const enriched = await Promise.all(
       pageSessions.map(async (sess) => {
-        const recon = await this.getReconciliationDetails(sess.id, undefined, true);
+        const summary = await this.getSessionCloseSummary(sess.id);
 
         return {
           id: sess.id,
           status: sess.status,
           openedAt: sess.openedAt,
           closedAt: sess.closedAt,
-          openingFloat: recon.session.openingFloat ?? 0,
+          openingFloat: summary.session.openingFloat,
           openingNote: sess.openingNote,
           closingNote: sess.closingNote,
-          expectedCash: recon.session.expectedCash ?? 0,
-          actualCash: recon.session.actualCash,
-          difference: recon.session.difference,
+          expectedCash: summary.session.expectedCash,
+          actualCash: summary.session.actualCash,
+          difference: summary.session.variance,
           metrics: {
-            totalSales: recon.metrics.grossSales ?? 0,
-            cashSales: recon.paymentBreakdown?.cash?.amount ?? 0,
-            cardSales: recon.paymentBreakdown?.card?.amount ?? 0,
-            orderCount: recon.metrics.orderCount ?? 0,
+            totalSales: summary.metrics.netSales,
+            cashSales: summary.metrics.cashSales,
+            cardSales: summary.metrics.cardSales,
+            orderCount: summary.metrics.orderCount,
           },
         };
       }),
@@ -2598,5 +2725,259 @@ export class PosSessionService {
         error,
       );
     }
+  }
+
+  /**
+   * Automated Midnight RSRV generation for a location on a specific date
+   */
+  async generateDaywiseReconciliationVoucherForDate(
+    locationId: string,
+    dateStr: string,
+  ) {
+    const reconData = await this.getDaywiseReconciliation(locationId, dateStr);
+    if (!reconData) return;
+
+    const locationObj = await this.prisma.location.findUnique({
+      where: { id: locationId },
+    });
+    
+    const locCode = locationObj?.code || 'POS';
+    const rvNo = `RS-RV-${locCode}-${dateStr}`;
+
+    const existingRv = await this.prisma.receiptVoucher.findUnique({
+      where: { rvNo },
+    });
+
+    if (existingRv) {
+      this.logger.log(`Receipt Voucher ${rvNo} already exists for location ${locationId} on ${dateStr}. Skipping.`);
+      return;
+    }
+
+    const cashAccount = await this.prisma.chartOfAccount.findFirst({
+      where: { code: '11100001' },
+    });
+    const salesAccount = await this.prisma.chartOfAccount.findFirst({
+      where: { code: '41100001' },
+    });
+
+    const fallbackAccount = (await this.prisma.chartOfAccount.findFirst())?.id || 'MISSING';
+
+    const netSale = reconData.financials?.netSales ?? 0;
+    const cashAmt = reconData.cashBreakdown?.sale ?? 0;
+
+    if (netSale <= 0) {
+      this.logger.log(`No net sales for location ${locationId} on ${dateStr}, skipping RSRV creation.`);
+      return;
+    }
+
+    const details = [
+      {
+        accountId: cashAccount?.id || fallbackAccount,
+        debit: cashAmt,
+        credit: 0,
+        narration: `Cash sales for ${reconData.locationName || locCode} on ${dateStr}`,
+      },
+      {
+        accountId: salesAccount?.id || fallbackAccount,
+        debit: 0,
+        credit: netSale,
+        narration: `Sales revenue for ${reconData.locationName || locCode} on ${dateStr}`,
+      },
+    ];
+
+    await this.receiptVoucherService.create({
+      type: 'cash',
+      rvNo,
+      rvDate: new Date(dateStr),
+      debitAccountId: cashAccount?.id || fallbackAccount,
+      debitAmount: cashAmt,
+      description: `Automated Daily RSRV POS Reconciliation for ${locCode} on ${dateStr}`,
+      status: 'pending',
+      details,
+    });
+
+    this.logger.log(`Successfully generated automated daily RSRV voucher ${rvNo}`);
+  }
+
+  /**
+   * Get Cash Comparison Report supporting Date Range (or Month/Year fallback)
+   */
+  async getCashCompareReport(
+    locationId: string,
+    startDateStr?: string,
+    endDateStr?: string,
+    month?: number,
+    year?: number,
+  ) {
+    let startDate: Date;
+    let endDate: Date;
+
+    if (startDateStr && endDateStr) {
+      startDate = new Date(startDateStr + 'T00:00:00');
+      endDate = new Date(endDateStr + 'T23:59:59.999');
+    } else if (month && year) {
+      startDate = new Date(year, month - 1, 1, 0, 0, 0, 0);
+      endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    } else {
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+
+    const whereCondition: any = {
+      openedAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+
+    if (locationId && locationId !== 'ALL') {
+      whereCondition.pos = { locationId };
+    }
+
+    const sessions = await this.prisma.posSession.findMany({
+      where: whereCondition,
+      include: {
+        pos: {
+          include: {
+            location: true,
+          },
+        },
+      },
+      orderBy: { openedAt: 'asc' },
+    });
+
+    let totalExpectedCash = 0;
+    let totalActualCash = 0;
+    let totalVariance = 0;
+
+    const rows = await Promise.all(
+      sessions.map(async (sess) => {
+        const summary = await this.getSessionCloseSummary(sess.id);
+        const cashierName = summary.cashier
+          ? `${summary.cashier.firstName || ''} ${summary.cashier.lastName || ''}`.trim()
+          : 'Cashier';
+
+        const exp = summary.session.expectedCash;
+        const act = summary.session.actualCash ?? 0;
+        const varAmt = summary.session.variance;
+
+        totalExpectedCash += exp;
+        totalActualCash += act;
+        totalVariance += varAmt;
+
+        return {
+          sessionId: sess.id,
+          date: sess.openedAt.toISOString().split('T')[0],
+          openedAt: sess.openedAt,
+          closedAt: sess.closedAt,
+          locationName: sess.pos?.location?.name || 'Store',
+          posCode: sess.pos?.posId || '',
+          cashierName,
+          openingFloat: summary.session.openingFloat,
+          cashSales: summary.metrics.cashSales,
+          expectedCash: exp,
+          actualCash: act,
+          variance: varAmt,
+          closingNote: sess.closingNote || '',
+          bankDepositAmount: act,
+          status: sess.status,
+        };
+      }),
+    );
+
+    return {
+      locationId: locationId || 'ALL',
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      totalExpectedCash,
+      totalActualCash,
+      totalVariance,
+      sessionsCount: sessions.length,
+      rows,
+    };
+  }
+
+  /**
+   * Export cash comparison report as Excel file stream
+   */
+  async exportCashCompareExcel(
+    locationId: string,
+    startDateStr?: string,
+    endDateStr?: string,
+    month?: number,
+    year?: number,
+    res?: any,
+  ) {
+    const data = await this.getCashCompareReport(
+      locationId,
+      startDateStr,
+      endDateStr,
+      month,
+      year,
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Cash Comparison');
+
+    sheet.columns = [
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Location', key: 'locationName', width: 22 },
+      { header: 'Terminal Code', key: 'posCode', width: 14 },
+      { header: 'Cashier', key: 'cashierName', width: 20 },
+      { header: 'Opening Float', key: 'openingFloat', width: 16 },
+      { header: 'Cash Sales', key: 'cashSales', width: 16 },
+      { header: 'Expected Cash', key: 'expectedCash', width: 16 },
+      { header: 'Actual Cash', key: 'actualCash', width: 16 },
+      { header: 'Variance', key: 'variance', width: 16 },
+      { header: 'Bank Deposit', key: 'bankDepositAmount', width: 16 },
+      { header: 'Remarks / Reason', key: 'closingNote', width: 30 },
+    ];
+
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E293B' },
+    };
+
+    data.rows.forEach((r) => {
+      sheet.addRow({
+        date: r.date,
+        locationName: r.locationName,
+        posCode: r.posCode,
+        cashierName: r.cashierName,
+        openingFloat: r.openingFloat,
+        cashSales: r.cashSales,
+        expectedCash: r.expectedCash,
+        actualCash: r.actualCash,
+        variance: r.variance,
+        bankDepositAmount: r.bankDepositAmount,
+        closingNote: r.closingNote,
+      });
+    });
+
+    sheet.addRow({});
+    const totalRow = sheet.addRow({
+      date: 'TOTAL',
+      expectedCash: data.totalExpectedCash,
+      actualCash: data.totalActualCash,
+      variance: data.totalVariance,
+      bankDepositAmount: data.totalActualCash,
+    });
+    totalRow.font = { bold: true };
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="Cash_Compare_${data.startDate}_to_${data.endDate}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   }
 }
