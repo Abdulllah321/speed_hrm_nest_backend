@@ -329,7 +329,7 @@ export class ReceiptVoucherService {
 
   async getAllCustomers() {
     return this.prisma.customer.findMany({
-      select: { id: true, code: true, name: true },
+      select: { id: true, traderId: true, subCode: true, name: true } as any,
       orderBy: { name: 'asc' },
     });
   }

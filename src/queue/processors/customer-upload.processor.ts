@@ -133,11 +133,11 @@ export class CustomerUploadProcessor {
                 await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
                     totalRecordsCount++;
 
-                    // Duplicate code check within file
-                    if (record.data.code) {
-                        const normalized = String(record.data.code).trim().toLowerCase();
+                    // Duplicate traderId check within file
+                    if (record.data.traderId) {
+                        const normalized = String(record.data.traderId).trim().toLowerCase();
                         if (codeSet.has(normalized)) {
-                            allValidationErrors.push({ row: record.row, field: 'code', value: record.data.code, reason: 'Duplicate Customer Code within file.' });
+                            allValidationErrors.push({ row: record.row, field: 'traderId', value: record.data.traderId, reason: 'Duplicate Trader ID within file.' });
                         } else {
                             codeSet.add(normalized);
                         }
@@ -233,41 +233,48 @@ export class CustomerUploadProcessor {
     }
 
     private async processBatch(batch: CustomerParsedRecord[], progress: CustomerUploadProgress, prisma: PrismaService): Promise<void> {
-        const codes = batch.map(r => String(r.data.code)).filter(Boolean);
-        const existing = await prisma.customer.findMany({
-            where: { code: { in: codes } },
-            select: { code: true },
-        });
-        const existingSet = new Set(existing.map(c => c.code));
+        const traderIds = batch.map(r => r.data.traderId).filter(Boolean) as string[];
+        const existing = traderIds.length > 0 ? await prisma.customer.findMany({
+            where: { traderId: { in: traderIds } } as any,
+            select: { traderId: true } as any,
+        }) : [];
+        const existingSet = new Set(existing.map((c: any) => c.traderId));
 
         const toCreate: any[] = [];
 
         for (const record of batch) {
-            const code = String(record.data.code);
-            if (existingSet.has(code)) {
+            const traderId = record.data.traderId;
+            const customerPayload = {
+                name: record.data.name || record.data.company || '',
+                traderId: traderId || null,
+                company: record.data.company || null,
+                subCode: record.data.subCode || null,
+                brands: record.data.brands || null,
+                baseMargin: record.data.baseMargin || 0,
+                cashMargin: record.data.cashMargin || 0,
+                remarks: record.data.remarks || null,
+                address: record.data.address || null,
+                deliveryAddress: record.data.deliveryAddress || null,
+                contactNo: record.data.contactNo || null,
+                email: record.data.email || null,
+                cnicNo: record.data.cnicNo || null,
+                ntn: record.data.ntn || null,
+                strn: record.data.strn || null,
+            };
+
+            if (traderId && existingSet.has(traderId)) {
                 // Update existing customer
                 try {
                     await prisma.customer.update({
-                        where: { code },
-                        data: {
-                            name: record.data.name || '',
-                            address: record.data.address || null,
-                            contactNo: record.data.contactNo || null,
-                            email: record.data.email || null,
-                        },
+                        where: { traderId } as any,
+                        data: customerPayload,
                     });
                     progress.successRecords++;
                 } catch {
                     progress.failedRecords++;
                 }
             } else {
-                toCreate.push({
-                    code,
-                    name: record.data.name || '',
-                    address: record.data.address || null,
-                    contactNo: record.data.contactNo || null,
-                    email: record.data.email || null,
-                });
+                toCreate.push(customerPayload);
             }
             progress.processedRecords++;
         }
