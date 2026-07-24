@@ -673,84 +673,380 @@ export class ReportsService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // BALANCE SHEET
+  // BALANCE SHEET (Market-Standard Hierarchical & Tag-Aware)
   // ─────────────────────────────────────────────────────────────────────────
-  async getBalanceSheet(asOf?: string) {
-    const accounts = await this.prisma.chartOfAccount.findMany({
-      where: {
-        isGroup: false,
-        isActive: true,
-        type: {
-          in: [AccountType.ASSET, AccountType.LIABILITY, AccountType.EQUITY],
-        },
-      },
+  async getBalanceSheet(opts?: {
+    asOf?: string;
+    compareAsOf?: string;
+    includeTagAccounts?: boolean;
+    showZeroBalances?: boolean;
+  }) {
+    const asOfStr = opts?.asOf;
+    const compareAsOfStr = opts?.compareAsOf;
+    const includeTagAccounts = opts?.includeTagAccounts ?? true;
+    const showZeroBalances = opts?.showZeroBalances ?? false;
+
+    const asOfDate = parseToDate(asOfStr) || new Date();
+    const compareAsOfDate = compareAsOfStr ? parseToDate(compareAsOfStr) : undefined;
+
+    // 1. Fetch all chart of accounts
+    const allAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { isActive: true },
       select: {
         id: true,
         code: true,
         name: true,
         type: true,
         balance: true,
-        parent: { select: { id: true, code: true, name: true } },
+        isGroup: true,
+        parentId: true,
       },
       orderBy: { code: 'asc' },
     });
 
-    // If asOf provided, compute balance up to that date from transactions
-    let amounts: Map<string, { debit: number; credit: number }>;
-    if (asOf) {
-      amounts = await this.resolveAmounts(
-        accounts.map((a) => a.id),
-        undefined,
-        asOf,
-      );
-    } else {
-      amounts = new Map(
-        accounts
-          .map((a) => ({ id: a.id, balance: Number(a.balance) }))
-          .map((a) => [a.id, { debit: 0, credit: 0 }]),
-      );
+    const accountMap = new Map<string, any>(
+      allAccounts.map((a) => [a.id, { ...a, balance: Number(a.balance) }]),
+    );
+
+    // 2. Fetch raw transactions up to asOfDate grouped by (accountId, tagAccountId)
+    const asOfRaw = await this.prisma.accountTransaction.groupBy({
+      by: ['accountId', 'tagAccountId'],
+      where: {
+        transactionDate: { lte: asOfDate },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    // 3. Fetch raw transactions up to compareAsOfDate if comparison requested
+    let compareRaw: any[] = [];
+    if (compareAsOfDate) {
+      compareRaw = await (this.prisma.accountTransaction.groupBy as any)({
+        by: ['accountId', 'tagAccountId'],
+        where: {
+          transactionDate: { lte: compareAsOfDate },
+        },
+        _sum: { debit: true, credit: true },
+      });
+
     }
 
-    const assets: any[] = [];
-    const liabilities: any[] = [];
-    const equity: any[] = [];
-    let totalAssets = 0,
-      totalLiabilities = 0,
-      totalEquity = 0;
+    const effectiveId = (row: { accountId: string; tagAccountId?: string | null }) =>
+      (row as any).tagAccountId || row.accountId;
 
-    for (const a of accounts) {
-      let amount: number;
-      if (asOf) {
-        const { debit, credit } = amounts.get(a.id) ?? { debit: 0, credit: 0 };
-        amount = a.type === AccountType.ASSET ? debit - credit : credit - debit;
-      } else {
-        amount = Number(a.balance);
-      }
+    // Canonical map for asOf totals
+    const amountsMap = new Map<string, { debit: number; credit: number }>();
+    for (const r of asOfRaw) {
+      const eid = effectiveId(r as any);
+      if (!amountsMap.has(eid)) amountsMap.set(eid, { debit: 0, credit: 0 });
+      const entry = amountsMap.get(eid)!;
+      entry.debit += Number(r._sum.debit ?? 0);
+      entry.credit += Number(r._sum.credit ?? 0);
+    }
 
-      if (a.type === AccountType.ASSET) {
-        assets.push({ ...a, amount });
-        totalAssets += amount;
-      }
-      if (a.type === AccountType.LIABILITY) {
-        liabilities.push({ ...a, amount });
-        totalLiabilities += amount;
-      }
-      if (a.type === AccountType.EQUITY) {
-        equity.push({ ...a, amount });
-        totalEquity += amount;
+    // Canonical map for compare totals
+    const compareMap = new Map<string, { debit: number; credit: number }>();
+    for (const r of compareRaw) {
+      const eid = effectiveId(r as any);
+      if (!compareMap.has(eid)) compareMap.set(eid, { debit: 0, credit: 0 });
+      const entry = compareMap.get(eid)!;
+      entry.debit += Number(r._sum.debit ?? 0);
+      entry.credit += Number(r._sum.credit ?? 0);
+    }
+
+    // 4. Calculate Net Income for Current Period up to asOfDate and compareAsOfDate
+    let incomeAsOf = 0, expenseAsOf = 0;
+    let incomeCompare = 0, expenseCompare = 0;
+
+    for (const acc of allAccounts) {
+      const mainId = acc.id;
+      const vAsOf = amountsMap.get(mainId) ?? { debit: 0, credit: 0 };
+      const vComp = compareMap.get(mainId) ?? { debit: 0, credit: 0 };
+
+      if (acc.type === AccountType.INCOME) {
+        incomeAsOf += (vAsOf.credit - vAsOf.debit);
+        incomeCompare += (vComp.credit - vComp.debit);
+      } else if (acc.type === AccountType.EXPENSE) {
+        expenseAsOf += (vAsOf.debit - vAsOf.credit);
+        expenseCompare += (vComp.debit - vComp.credit);
       }
     }
+
+    const netProfitAsOf = incomeAsOf - expenseAsOf;
+    const netProfitCompare = incomeCompare - expenseCompare;
+
+    // 5. Tag breakdown map for display sub-rows under parent COA leaf nodes
+    const tagBreakdownMap = new Map<
+      string, // accountId
+      Map<string, { asOfDebit: number; asOfCredit: number; compareDebit: number; compareCredit: number }>
+    >();
+
+    if (includeTagAccounts) {
+      const upsertTag = (accountId: string, tagId: string) => {
+        if (!tagBreakdownMap.has(accountId)) tagBreakdownMap.set(accountId, new Map());
+        const inner = tagBreakdownMap.get(accountId)!;
+        if (!inner.has(tagId)) inner.set(tagId, { asOfDebit: 0, asOfCredit: 0, compareDebit: 0, compareCredit: 0 });
+        return inner.get(tagId)!;
+      };
+
+      for (const r of asOfRaw) {
+        const tagId = (r as any).tagAccountId as string | null;
+        if (!tagId) continue;
+        const e = upsertTag(r.accountId, tagId);
+        e.asOfDebit += Number(r._sum.debit ?? 0);
+        e.asOfCredit += Number(r._sum.credit ?? 0);
+      }
+
+      for (const r of compareRaw) {
+        const tagId = (r as any).tagAccountId as string | null;
+        if (!tagId) continue;
+        const e = upsertTag(r.accountId, tagId);
+        e.compareDebit += Number(r._sum.debit ?? 0);
+        e.compareCredit += Number(r._sum.credit ?? 0);
+      }
+    }
+
+    // 6. Build Balance Sheet Leaf Nodes (ASSET, LIABILITY, EQUITY)
+    const bsAccounts = allAccounts.filter((a) =>
+      [AccountType.ASSET, AccountType.LIABILITY, AccountType.EQUITY].includes(a.type as any),
+    );
+
+    const calcNet = (type: AccountType, debit: number, credit: number) => {
+      return type === AccountType.ASSET ? debit - credit : credit - debit;
+    };
+
+    const nodeMap = new Map<string, any>();
+
+    for (const acc of bsAccounts) {
+      const vAsOf = amountsMap.get(acc.id) ?? { debit: 0, credit: 0 };
+      const vComp = compareMap.get(acc.id) ?? { debit: 0, credit: 0 };
+
+      // Stored balance fallback if no transactions exist
+      let amtAsOf = calcNet(acc.type as AccountType, vAsOf.debit, vAsOf.credit);
+      let amtComp = calcNet(acc.type as AccountType, vComp.debit, vComp.credit);
+
+      if (!asOfStr && vAsOf.debit === 0 && vAsOf.credit === 0) {
+        amtAsOf = Number(acc.balance);
+      }
+
+      const tags = Array.from(
+        (tagBreakdownMap.get(acc.id) ?? new Map()).entries(),
+        ([tagAccountId, val]) => ({
+          tagAccountId,
+          amount: calcNet(acc.type as AccountType, val.asOfDebit, val.asOfCredit),
+          compareAmount: calcNet(acc.type as AccountType, val.compareDebit, val.compareCredit),
+        }),
+      );
+
+      nodeMap.set(acc.id, {
+        ...acc,
+        amount: amtAsOf,
+        compareAmount: amtComp,
+        _tagBreakdown: tags,
+      });
+    }
+
+    // Ensure all ancestor group nodes exist in nodeMap
+    const ensureAncestors = (nodeId: string) => {
+      const acc = accountMap.get(nodeId);
+      if (!acc) return;
+      if (!nodeMap.has(nodeId)) {
+        nodeMap.set(nodeId, {
+          ...acc,
+          amount: 0,
+          compareAmount: 0,
+          _tagBreakdown: [],
+        });
+      }
+      if (acc.parentId) ensureAncestors(acc.parentId);
+    };
+
+    for (const nodeId of Array.from(nodeMap.keys())) {
+      const node = nodeMap.get(nodeId);
+      if (node?.parentId) ensureAncestors(node.parentId);
+    }
+
+    const childMap = new Map<string, any[]>();
+    for (const node of nodeMap.values()) {
+      if (node.parentId) {
+        if (!childMap.has(node.parentId)) childMap.set(node.parentId, []);
+        childMap.get(node.parentId)!.push(node);
+      }
+    }
+
+    // Rollup amounts recursively
+    const rollUp = (nodeId: string) => {
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
+
+      const children = childMap.get(nodeId) || [];
+      if (children.length > 0) {
+        node.amount = 0;
+        node.compareAmount = 0;
+      }
+
+      for (const child of children) {
+        rollUp(child.id);
+        node.amount += child.amount || 0;
+        node.compareAmount += child.compareAmount || 0;
+      }
+    };
+
+    const roots = Array.from(nodeMap.values()).filter((n) => !n.parentId);
+    for (const root of roots) {
+      rollUp(root.id);
+    }
+
+    // Inject Net Profit / Loss into Equity Section
+    const equityRoot = roots.find((r) => r.type === AccountType.EQUITY);
+    const netIncomeNode = {
+      id: 'VIRTUAL_NET_INCOME',
+      code: '3999',
+      name: 'Current Period Net Income (Profit / Loss)',
+      type: AccountType.EQUITY,
+      isGroup: false,
+      isVirtual: true,
+      amount: netProfitAsOf,
+      compareAmount: netProfitCompare,
+      parentId: equityRoot ? equityRoot.id : null,
+      level: 1,
+    };
+
+    if (equityRoot) {
+      equityRoot.amount += netProfitAsOf;
+      equityRoot.compareAmount += netProfitCompare;
+      if (!childMap.has(equityRoot.id)) childMap.set(equityRoot.id, []);
+      childMap.get(equityRoot.id)!.push(netIncomeNode);
+    }
+    nodeMap.set(netIncomeNode.id, netIncomeNode);
+
+    // 7. Flatten Tree for Display
+    const flattenTree = (type: AccountType) => {
+      const typeRoots = roots.filter((r) => r.type === type);
+      typeRoots.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+      const list: any[] = [];
+
+      const traverse = (nodeId: string, level = 0) => {
+        const node = nodeMap.get(nodeId);
+        if (!node) return;
+
+        const variance = node.amount - (node.compareAmount || 0);
+        const percentageChange =
+          node.compareAmount && node.compareAmount !== 0
+            ? (variance / Math.abs(node.compareAmount)) * 100
+            : 0;
+
+        const rowObj = {
+          id: node.id,
+          code: node.code,
+          name: node.name,
+          type: node.type,
+          isGroup: node.isGroup ?? false,
+          isVirtual: node.isVirtual ?? false,
+          parentId: node.parentId,
+          level,
+          amount: node.amount,
+          compareAmount: node.compareAmount || 0,
+          variance,
+          percentageChange,
+          parent: node.parentId ? accountMap.get(node.parentId) : null,
+        };
+
+        if (showZeroBalances || Math.abs(node.amount) > 0.001 || Math.abs(node.compareAmount || 0) > 0.001) {
+          list.push(rowObj);
+        }
+
+        // Tag Account display sub-rows
+        if (!node.isGroup && includeTagAccounts && node._tagBreakdown?.length > 0) {
+          const tags: Array<{ tagAccountId: string; amount: number; compareAmount: number }> = node._tagBreakdown;
+          tags.sort((a, b) => {
+            const ta = accountMap.get(a.tagAccountId);
+            const tb = accountMap.get(b.tagAccountId);
+            return (ta?.code ?? '').localeCompare(tb?.code ?? '');
+          });
+
+          for (const tag of tags) {
+            const tagAcc = accountMap.get(tag.tagAccountId);
+            const tagVar = tag.amount - tag.compareAmount;
+            const tagPct = tag.compareAmount !== 0 ? (tagVar / Math.abs(tag.compareAmount)) * 100 : 0;
+
+            if (showZeroBalances || Math.abs(tag.amount) > 0.001 || Math.abs(tag.compareAmount) > 0.001) {
+              list.push({
+                id: `${node.id}_${tag.tagAccountId}`,
+                code: tagAcc ? tagAcc.code : tag.tagAccountId,
+                name: tagAcc ? tagAcc.name : `Tag: ${tag.tagAccountId}`,
+                type: node.type,
+                isGroup: false,
+                isTagAccount: true,
+                parentId: node.id,
+                level: level + 1,
+                amount: tag.amount,
+                compareAmount: tag.compareAmount,
+                variance: tagVar,
+                percentageChange: tagPct,
+                parent: { id: node.id, code: node.code, name: node.name },
+              });
+            }
+          }
+        }
+
+        const children = childMap.get(nodeId) || [];
+        children.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+        for (const child of children) {
+          traverse(child.id, level + 1);
+        }
+      };
+
+      for (const root of typeRoots) {
+        traverse(root.id, 0);
+      }
+      return list;
+    };
+
+    const assets = flattenTree(AccountType.ASSET);
+    const liabilities = flattenTree(AccountType.LIABILITY);
+    const equity = flattenTree(AccountType.EQUITY);
+
+    // Summary calculations
+    const assetRoots = roots.filter((r) => r.type === AccountType.ASSET);
+    const liabilityRoots = roots.filter((r) => r.type === AccountType.LIABILITY);
+
+    const totalAssets = assetRoots.reduce((s, r) => s + r.amount, 0);
+    const totalLiabilities = liabilityRoots.reduce((s, r) => s + r.amount, 0);
+    const totalEquity = (equityRoot ? equityRoot.amount : 0);
+
+    const compareTotalAssets = assetRoots.reduce((s, r) => s + r.compareAmount, 0);
+    const compareTotalLiabilities = liabilityRoots.reduce((s, r) => s + r.compareAmount, 0);
+    const compareTotalEquity = (equityRoot ? equityRoot.compareAmount : 0);
+
+    const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
+    const compareTotalLiabilitiesAndEquity = compareTotalLiabilities + compareTotalEquity;
+
+    const workingCapital = totalAssets - totalLiabilities;
+    const compareWorkingCapital = compareTotalAssets - compareTotalLiabilities;
+
+    const balanced = Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01;
 
     return {
       assets,
       totalAssets,
+      compareTotalAssets,
       liabilities,
       totalLiabilities,
+      compareTotalLiabilities,
       equity,
       totalEquity,
-      totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
-      balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01,
-      asOf,
+      compareTotalEquity,
+      totalLiabilitiesAndEquity,
+      compareTotalLiabilitiesAndEquity,
+      currentNetIncome: netProfitAsOf,
+      compareCurrentNetIncome: netProfitCompare,
+      workingCapital,
+      compareWorkingCapital,
+      balanced,
+      asOf: asOfStr,
+      compareAsOf: compareAsOfStr,
+      includeTagAccounts,
+      showZeroBalances,
     };
   }
 
