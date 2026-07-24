@@ -222,14 +222,6 @@ export class PosSalesService implements OnModuleInit {
     itemId?: string,
   ): Promise<string> {
     if (locationId) {
-      const loc = await tx.location.findUnique({
-        where: { id: locationId },
-        select: { warehouseId: true },
-      });
-      if (loc?.warehouseId) {
-        return loc.warehouseId;
-      }
-
       if (itemId) {
         const stock = await tx.inventoryItem.findFirst({
           where: { locationId, itemId, status: 'AVAILABLE' },
@@ -238,6 +230,14 @@ export class PosSalesService implements OnModuleInit {
         if (stock?.warehouseId) {
           return stock.warehouseId;
         }
+      }
+
+      const loc = await tx.location.findUnique({
+        where: { id: locationId },
+        select: { warehouseId: true },
+      });
+      if (loc?.warehouseId) {
+        return loc.warehouseId;
       }
 
       const anyStock = await tx.inventoryItem.findFirst({
@@ -992,10 +992,16 @@ export class PosSalesService implements OnModuleInit {
 
         // ── Update Stock (Deduct) ───────────────────────────────
         for (const item of itemsData) {
+          const itemWarehouseId = await this.resolveWarehouseId(
+            tx,
+            locationId,
+            item.itemId,
+          );
+
           await this.stockLedgerService.createEntry(
             {
               itemId: item.itemId,
-              warehouseId: warehouseId,
+              warehouseId: itemWarehouseId,
               locationId: locationId,
               qty: -item.quantity, // Negative for OUTBOUND
               movementType: MovementType.OUTBOUND,
