@@ -757,17 +757,27 @@ export class ReportsService {
     let incomeAsOf = 0, expenseAsOf = 0;
     let incomeCompare = 0, expenseCompare = 0;
 
-    for (const acc of allAccounts) {
-      const mainId = acc.id;
-      const vAsOf = amountsMap.get(mainId) ?? { debit: 0, credit: 0 };
-      const vComp = compareMap.get(mainId) ?? { debit: 0, credit: 0 };
-
+    for (const r of asOfRaw) {
+      const acc = accountMap.get(r.accountId);
+      if (!acc) continue;
+      const dr = Number(r._sum.debit ?? 0);
+      const cr = Number(r._sum.credit ?? 0);
       if (acc.type === AccountType.INCOME) {
-        incomeAsOf += (vAsOf.credit - vAsOf.debit);
-        incomeCompare += (vComp.credit - vComp.debit);
+        incomeAsOf += (cr - dr);
       } else if (acc.type === AccountType.EXPENSE) {
-        expenseAsOf += (vAsOf.debit - vAsOf.credit);
-        expenseCompare += (vComp.debit - vComp.credit);
+        expenseAsOf += (dr - cr);
+      }
+    }
+
+    for (const r of compareRaw) {
+      const acc = accountMap.get(r.accountId);
+      if (!acc) continue;
+      const dr = Number(r._sum.debit ?? 0);
+      const cr = Number(r._sum.credit ?? 0);
+      if (acc.type === AccountType.INCOME) {
+        incomeCompare += (cr - dr);
+      } else if (acc.type === AccountType.EXPENSE) {
+        expenseCompare += (dr - cr);
       }
     }
 
