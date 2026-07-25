@@ -12,6 +12,7 @@ import {
 import { JournalVoucherService } from './journal-voucher.service';
 import { CreateJournalVoucherDto } from './dto/create-journal-voucher.dto';
 import { UpdateJournalVoucherDto } from './dto/update-journal-voucher.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -57,6 +58,16 @@ export class JournalVoucherController {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
+  }
+
+  @Patch(':id/status')
+  @Permissions('erp.finance.journal-voucher.approve')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: UpdateStatusDto,
+    @Req() req: any,
+  ) {
+    return this.journalVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
   }
 
   @Delete(':id')

@@ -409,4 +409,61 @@ export class JournalVoucherService {
       throw error;
     }
   }
+
+  async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
+    const existing = await this.findOne(id);
+
+    const validStatuses = ['draft', 'pending_check', 'pending_approval', 'approved', 'rejected'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException('Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected');
+    }
+
+    const updateData: any = { status };
+    if (remarks) updateData.remarks = remarks;
+
+    if (status === 'pending_approval') {
+      updateData.checkerId = ctx?.userId || null;
+      updateData.checkedAt = new Date();
+    } else if (status === 'approved') {
+      updateData.authorizerId = ctx?.userId || null;
+      updateData.approvedAt = new Date();
+    } else if (status === 'rejected') {
+      updateData.rejectionReason = remarks || null;
+    }
+
+    return this.prisma.$transaction(async (prisma) => {
+      const updated = await prisma.journalVoucher.update({
+        where: { id },
+        data: updateData,
+        include: {
+          details: { include: { account: true, tagAccount: true } },
+        },
+      });
+
+      if (status === 'approved') {
+        await this.accounting.postLines(
+          updated.details.map(d => ({
+            accountId:       d.accountId,
+            tagAccountId:    d.tagAccountId?.trim() || undefined,
+            debit:           Number(d.debit),
+            credit:          Number(d.credit),
+            narration:       d.narration       || updated.description || undefined,
+            refBillNo:       d.refBillNo       || undefined,
+            refBillNo2:      d.refBillNo2      || undefined,
+            taxType:         d.taxType ?? 'Taxable',
+          })),
+          {
+            sourceType:      'JOURNAL_VOUCHER',
+            sourceId:        updated.id,
+            sourceRef:       updated.jvNo,
+            description:     updated.description ?? undefined,
+            transactionDate: new Date(updated.jvDate),
+          },
+          prisma,
+        );
+      }
+
+      return updated;
+    });
+  }
 }
