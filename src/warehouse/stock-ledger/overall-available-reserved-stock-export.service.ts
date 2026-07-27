@@ -459,6 +459,7 @@ export class OverallAvailableReservedStockExportService {
       where: {
         itemId: { in: matchedItemIds },
         status: 'AVAILABLE',
+        locationId: null,
       },
       _sum: { quantity: true },
     });
@@ -551,37 +552,34 @@ export class OverallAvailableReservedStockExportService {
     };
 
     for (const item of items) {
-      const bf = bfMap.get(item.id) || 0;
       const transit = transitMap.get(item.id) || 0;
       const reserved = reserveMap.get(item.id) || 0;
-      const m = itemMetricsMap.get(item.id) || {
-        fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
-        exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
-      };
 
-      const totalTrfIn = m.fromWarehouse + m.fromOutlet;
-      const totalTrfOut = m.toWarehouse + m.toOutlet;
-      const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+      let sumWh = 0;
+      const warehouseStocks: Record<string, number> = {};
+      for (const wh of warehouses) {
+        const qty = invWhMap.get(`${item.id}_${wh.id}`) || invWhMap.get(`${item.itemId}_${wh.id}`) || 0;
+        warehouseStocks[wh.id] = qty;
+        sumWh += qty;
+      }
+
+      let sumLoc = 0;
+      const locationStocks: Record<string, number> = {};
+      for (const loc of stockLocations) {
+        const qty = invLocMap.get(`${item.id}_${loc.id}`) || invLocMap.get(`${item.itemId}_${loc.id}`) || 0;
+        locationStocks[loc.id] = qty;
+        sumLoc += qty;
+      }
+
+      const availableStock = sumWh + sumLoc;
       const balance = availableStock + transit + reserved;
       const unitPrice = item.unitPrice || 0;
       const value = balance * unitPrice;
       const unitCost = item.unitCost || 0;
       const costingValue = balance * unitCost;
 
-      const warehouseStocks: Record<string, number> = {};
-      for (const wh of warehouses) {
-        const qty = invWhMap.get(`${item.id}_${wh.id}`) || invWhMap.get(`${item.itemId}_${wh.id}`) || 0;
-        warehouseStocks[wh.id] = qty;
-      }
-
-      const locationStocks: Record<string, number> = {};
-      for (const loc of stockLocations) {
-        const qty = invLocMap.get(`${item.id}_${loc.id}`) || invLocMap.get(`${item.itemId}_${loc.id}`) || 0;
-        locationStocks[loc.id] = qty;
-      }
-
       const discountRate = item.discountRate || 0;
-      const taxRate = (item.taxRate1 || 0) + (item.taxRate2 || 0);
+      const taxRate = item.taxRate1 || 0;
 
       const variantMetrics = {
         quantity: availableStock,
