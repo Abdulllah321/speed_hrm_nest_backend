@@ -12,8 +12,7 @@ export interface QueueOverallAvailableReservedStockExportOptions {
   userId: string;
   locationId?: string;
   warehouseId?: string;
-  startDate?: string;
-  endDate?: string;
+  asOfDate?: string;
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
   showBrand?: boolean;
@@ -61,8 +60,7 @@ export class OverallAvailableReservedStockExportService {
         tenantDbUrl,
         locationId: opts.locationId,
         warehouseId: opts.warehouseId,
-        startDate: opts.startDate,
-        endDate: opts.endDate,
+        asOfDate: opts.asOfDate,
         format: opts.format,
         summaryOnly: !!opts.summaryOnly,
         showBrand: opts.showBrand,
@@ -147,8 +145,7 @@ export class OverallAvailableReservedStockExportService {
   async getOverallAvailableReservedStockReportData(opts: {
     locationId?: string;
     warehouseId?: string;
-    startDate?: string;
-    endDate?: string;
+    asOfDate?: string;
     summaryOnly?: boolean;
     showBrand?: boolean;
     showDivision?: boolean;
@@ -171,8 +168,7 @@ export class OverallAvailableReservedStockExportService {
     opts: {
       locationId?: string;
       warehouseId?: string;
-      startDate?: string;
-      endDate?: string;
+      asOfDate?: string;
       summaryOnly?: boolean;
       showBrand?: boolean;
       showDivision?: boolean;
@@ -187,8 +183,7 @@ export class OverallAvailableReservedStockExportService {
     const {
       locationId,
       warehouseId,
-      startDate: startStr,
-      endDate: endStr,
+      asOfDate: asOfStr,
       summaryOnly,
       showBrand,
       showDivision,
@@ -266,14 +261,17 @@ export class OverallAvailableReservedStockExportService {
     }
 
     const now = new Date();
-    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const endDate = endStr ? new Date(endStr) : new Date(now);
+    const targetDate = asOfStr ? new Date(asOfStr) : new Date();
+    targetDate.setHours(23, 59, 59, 999);
 
-    // Fetch inventory item ids
+    const isHistorical = targetDate.getTime() < (now.getTime() - 24 * 60 * 60 * 1000);
+
+    // Fetch inventory item ids up to targetDate
     const inventoryItems = await prisma.inventoryItem.findMany({
       where: {
         ...locationOrWarehouseWhere,
         status: 'AVAILABLE',
+        createdAt: { lte: targetDate },
       },
       select: { itemId: true },
     });
@@ -281,6 +279,7 @@ export class OverallAvailableReservedStockExportService {
     const ledgerItems = await prisma.stockLedger.findMany({
       where: {
         ...locationOrWarehouseWhere,
+        createdAt: { lte: targetDate },
       },
       select: { itemId: true },
       distinct: ['itemId'],
@@ -335,65 +334,6 @@ export class OverallAvailableReservedStockExportService {
 
     const matchedItemIds = items.map(i => i.id);
 
-    // Compute BF (Opening balance before startDate) overall
-    const bfGroup = await prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { lt: startDate },
-      },
-      _sum: { qty: true },
-    });
-
-    const bfMap = new Map<string, number>();
-    for (const row of bfGroup) {
-      bfMap.set(row.itemId, Number(row._sum.qty || 0));
-    }
-
-    // Query and add any OPENING_BALANCE entries within range
-    const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        OR: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' }
-        ]
-      },
-      _sum: { qty: true },
-    });
-
-    for (const row of inRangeOpeningGroup) {
-      const currentBf = bfMap.get(row.itemId) || 0;
-      bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
-    }
-
-    // Query normal ledger entries within range
-    const ledgerEntries = await prisma.stockLedger.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        NOT: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' }
-        ]
-      },
-      select: {
-        itemId: true,
-        qty: true,
-        referenceType: true,
-        movementType: true,
-        warehouseId: true,
-        locationId: true,
-      },
-    });
-
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
     if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
@@ -402,12 +342,13 @@ export class OverallAvailableReservedStockExportService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    // Query transit items
+    // Query transit items as of targetDate
     const transitItems = await prisma.transferRequestItem.findMany({
       where: {
         itemId: { in: matchedItemIds },
         transferRequest: {
           ...toLocOrWhWhere,
+          createdAt: { lte: targetDate },
           status: { in: ['PENDING', 'SOURCE_APPROVED'] },
           transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
         },
@@ -424,15 +365,16 @@ export class OverallAvailableReservedStockExportService {
       transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
     }
 
-    // Query reserved stock for matched items
+    // Query reserved stock for matched items as of targetDate
     const reserveGroup = await prisma.stockReserve.groupBy({
       by: ['itemId'],
       where: {
         itemId: { in: matchedItemIds },
+        createdAt: { lte: targetDate },
         ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
         OR: [
           { expiresAt: null },
-          { expiresAt: { gte: new Date() } }
+          { expiresAt: { gte: targetDate } }
         ]
       },
       _sum: { quantity: true },
@@ -443,92 +385,74 @@ export class OverallAvailableReservedStockExportService {
       reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
     }
 
-    // Breakdown per location / warehouse from InventoryItem table for instantaneous current stock
-    const invLocGroup = await prisma.inventoryItem.groupBy({
-      by: ['itemId', 'locationId'],
-      where: {
-        itemId: { in: matchedItemIds },
-        status: 'AVAILABLE',
-        locationId: { not: null },
-      },
-      _sum: { quantity: true },
-    });
-
-    const invWhGroup = await prisma.inventoryItem.groupBy({
-      by: ['itemId', 'warehouseId'],
-      where: {
-        itemId: { in: matchedItemIds },
-        status: 'AVAILABLE',
-        locationId: null,
-      },
-      _sum: { quantity: true },
-    });
-
+    // Breakdown per location / warehouse
     const invLocMap = new Map<string, number>();
-    for (const row of invLocGroup) {
-      if (row.locationId) {
-        invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.quantity || 0));
-      }
-    }
-
     const invWhMap = new Map<string, number>();
-    for (const row of invWhGroup) {
-      invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.quantity || 0));
-    }
 
-    const itemMetricsMap = new Map<string, {
-      fromWarehouse: number;
-      fromOutlet: number;
-      toWarehouse: number;
-      toOutlet: number;
-      exchg: number;
-      refund: number;
-      claim: number;
-      sales: number;
-      adj: number;
-    }>();
+    if (isHistorical) {
+      // Historical stock as of targetDate calculated from StockLedger
+      const histLocGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId', 'locationId'],
+        where: {
+          itemId: { in: matchedItemIds },
+          locationId: { not: null },
+          createdAt: { lte: targetDate },
+        },
+        _sum: { qty: true },
+      });
 
-    for (const entry of ledgerEntries) {
-      const itemId = entry.itemId;
-      let m = itemMetricsMap.get(itemId);
-      if (!m) {
-        m = {
-          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
-          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
-        };
-        itemMetricsMap.set(itemId, m);
+      for (const row of histLocGroup) {
+        if (row.locationId) {
+          invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.qty || 0));
+        }
       }
 
-      const qty = Number(entry.qty || 0);
-      const ref = entry.referenceType || '';
-      const mov = entry.movementType;
+      const histWhGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId', 'warehouseId'],
+        where: {
+          itemId: { in: matchedItemIds },
+          locationId: null,
+          createdAt: { lte: targetDate },
+        },
+        _sum: { qty: true },
+      });
 
-      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
-        m.adj += qty;
-      } else if (qty > 0) {
-        if (ref === 'TRANSFER_REQUEST') {
-          m.fromWarehouse += qty;
-        } else if (ref === 'OUTLET_TRANSFER_IN') {
-          m.fromOutlet += qty;
-        } else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) {
-          m.exchg += qty;
-        } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
-          m.refund += qty;
-        } else if (ref === 'POS_CLAIM_APPROVED') {
-          m.claim += qty;
-        } else {
-          m.adj += qty;
+      for (const row of histWhGroup) {
+        if (row.warehouseId) {
+          invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.qty || 0));
         }
-      } else if (qty < 0) {
-        const absQty = Math.abs(qty);
-        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) {
-          m.toWarehouse += absQty;
-        } else if (ref === 'OUTLET_TRANSFER_OUT') {
-          m.toOutlet += absQty;
-        } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
-          m.sales += absQty;
-        } else {
-          m.adj += qty;
+      }
+    } else {
+      // Real-time stock from InventoryItem table
+      const invLocGroup = await prisma.inventoryItem.groupBy({
+        by: ['itemId', 'locationId'],
+        where: {
+          itemId: { in: matchedItemIds },
+          status: 'AVAILABLE',
+          locationId: { not: null },
+        },
+        _sum: { quantity: true },
+      });
+
+      for (const row of invLocGroup) {
+        if (row.locationId) {
+          invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.quantity || 0));
+        }
+      }
+
+      const invWhGroup = await prisma.inventoryItem.groupBy({
+        by: ['itemId', 'warehouseId'],
+        where: {
+          itemId: { in: matchedItemIds },
+          status: 'AVAILABLE',
+          locationId: null,
+        },
+        _sum: { quantity: true },
+      });
+
+      for (const row of invWhGroup) {
+        if (row.warehouseId) {
+          invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.quantity || 0));
         }
       }
     }
