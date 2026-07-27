@@ -76,7 +76,6 @@ export class OverallAvailableReservedStockExportProcessor {
             showSilhouette,
             showArticle,
             showVariant,
-            includeCosting,
           }
         );
 
@@ -143,29 +142,23 @@ export class OverallAvailableReservedStockExportProcessor {
         });
 
         const columns: { header: string; key: string; width: number; align?: 'left' | 'center' | 'right' }[] = [
-          { header: 'Brand', key: 'brand', width: 14, align: 'left' },
-          { header: 'Division', key: 'division', width: 14, align: 'left' },
-          { header: 'Department', key: 'department', width: 14, align: 'left' },
-          { header: 'ProductCategory', key: 'category', width: 16, align: 'left' },
-          { header: 'Gender', key: 'gender', width: 12, align: 'left' },
-          { header: 'Silhouette', key: 'silhouette', width: 14, align: 'left' },
-          { header: 'Season', key: 'season', width: 12, align: 'left' },
-          { header: 'SKU', key: 'sku', width: 16, align: 'left' },
-          { header: 'BarCode', key: 'barCode', width: 18, align: 'left' },
-          { header: 'ItemName', key: 'itemName', width: 28, align: 'left' },
+          { header: 'GPC / Category / Product', key: 'sku', width: 35, align: 'left' },
           { header: 'Size', key: 'size', width: 10, align: 'center' },
           { header: 'Color', key: 'color', width: 14, align: 'center' },
-          { header: 'UnitPrice', key: 'unitPrice', width: 14, align: 'right' },
+          { header: 'Quantity', key: 'quantity', width: 14, align: 'right' },
+          { header: 'In Transit', key: 'transit', width: 12, align: 'right' },
+          { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' },
+          { header: 'Total', key: 'total', width: 14, align: 'right' },
+          { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' },
+          { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' },
         ];
 
         if (includeCosting) {
-          columns.push({ header: 'UnitCost', key: 'unitCost', width: 14, align: 'right' });
+          columns.push(
+            { header: 'Cost Price', key: 'unitCost', width: 14, align: 'right' },
+            { header: 'Total Costing', key: 'costingValue', width: 18, align: 'right' }
+          );
         }
-
-        columns.push(
-          { header: 'Discount %', key: 'discountRate', width: 12, align: 'right' },
-          { header: 'Tax %', key: 'taxRate', width: 10, align: 'right' }
-        );
 
         for (const wh of warehouses) {
           columns.push({ header: `WH ${wh.name}`, key: `wh_${wh.id}`, width: 14, align: 'right' });
@@ -174,23 +167,6 @@ export class OverallAvailableReservedStockExportProcessor {
         for (const loc of stockLocations) {
           const locHeader = loc.shortCode || loc.code || loc.name;
           columns.push({ header: locHeader, key: `loc_${loc.id}`, width: 14, align: 'right' });
-        }
-
-        columns.push(
-          { header: 'Available Stock', key: 'availableStock', width: 16, align: 'right' },
-          { header: 'Reserved Stock', key: 'reservedStock', width: 16, align: 'right' },
-          { header: 'Total Stock', key: 'totalStock', width: 16, align: 'right' },
-          { header: 'Available Value', key: 'availableValue', width: 18, align: 'right' },
-          { header: 'Reserved Value', key: 'reservedValue', width: 18, align: 'right' },
-          { header: 'Total Value', key: 'totalValue', width: 20, align: 'right' }
-        );
-
-        if (includeCosting) {
-          columns.push(
-            { header: 'Available Costing', key: 'availableCostingValue', width: 18, align: 'right' },
-            { header: 'Reserved Costing', key: 'reservedCostingValue', width: 18, align: 'right' },
-            { header: 'Total Costing', key: 'totalCostingValue', width: 20, align: 'right' }
-          );
         }
 
         const ws = workbook.addWorksheet('Stock Report', {
@@ -234,49 +210,57 @@ export class OverallAvailableReservedStockExportProcessor {
           fgHex: string;
           fontSize: number;
           bold: boolean;
+          indent: number;
+          prefix: string;
         }> = {
-          brand: { bgHex: '0F172A', fgHex: 'FFFFFF', fontSize: 10, bold: true },
-          division: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 9.5, bold: true },
-          category: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9, bold: true },
-          gender: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true },
-          silhouette: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true },
-          article: { bgHex: 'F1F5F9', fgHex: '0F172A', fontSize: 9, bold: true },
-          variant: { bgHex: 'FFFFFF', fgHex: '334155', fontSize: 9, bold: false },
+          brand: { bgHex: '0F172A', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
+          division: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
+          category: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'CATEGORY: ' },
+          gender: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'GENDER: ' },
+          silhouette: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'SILHOUETTE: ' },
+          article: { bgHex: 'F1F5F9', fgHex: '0F172A', fontSize: 9, bold: true, indent: 10, prefix: 'SKU: ' },
+          variant: { bgHex: 'FFFFFF', fgHex: '334155', fontSize: 9, bold: false, indent: 12, prefix: '' },
         };
 
         const writeNodeToExcel = (node: any) => {
           const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
           const tot = node.totals;
 
+          let label = ' '.repeat(style.indent) + style.prefix;
+          let colorVal = '';
+          let sizeVal = '';
+          let unitPriceVal: any = '';
+          let unitCostVal: any = '';
+
+          if (node.level === 'article') {
+            label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
+            unitPriceVal = tot.unitPrice;
+            unitCostVal = tot.unitCost;
+          } else if (node.level === 'variant') {
+            label = ' '.repeat(style.indent) + 'Variant Item';
+            colorVal = node.color;
+            sizeVal = node.size;
+            unitPriceVal = '';
+            unitCostVal = '';
+          } else {
+            label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
+          }
+
           const rowData: Record<string, any> = {
-            brand: node.level === 'brand' ? `BRAND: ${node.value}` : (node.brand || ''),
-            division: node.level === 'division' ? `DIVISION: ${node.value}` : (node.division || ''),
-            department: node.department || 'N/A',
-            category: node.level === 'category' ? `CATEGORY: ${node.value}` : (node.category || ''),
-            gender: node.level === 'gender' ? `GENDER: ${node.value}` : (node.gender || ''),
-            silhouette: node.level === 'silhouette' ? `SILHOUETTE: ${node.value}` : (node.silhouette || ''),
-            season: node.season || '',
-            sku: node.sku || '',
-            barCode: node.barCode || '',
-            itemName: node.itemName || '',
-            size: node.size || '',
-            color: node.color || '',
-            unitPrice: (node.level === 'article' || node.level === 'variant') ? tot.unitPrice : '',
-            discountRate: (node.level === 'article' || node.level === 'variant') ? tot.discountRate : '',
-            taxRate: (node.level === 'article' || node.level === 'variant') ? tot.taxRate : '',
-            availableStock: tot.availableStock,
-            reservedStock: tot.reservedStock,
-            totalStock: tot.totalStock,
-            availableValue: tot.availableValue,
-            reservedValue: tot.reservedValue,
-            totalValue: tot.totalValue,
+            sku: label,
+            size: sizeVal,
+            color: colorVal,
+            quantity: tot.quantity,
+            transit: tot.transit,
+            reserved: tot.reserved,
+            total: tot.total,
+            unitPrice: unitPriceVal,
+            value: tot.value,
           };
 
           if (includeCosting) {
-            rowData.unitCost = (node.level === 'article' || node.level === 'variant') ? tot.unitCost : '';
-            rowData.availableCostingValue = tot.availableCostingValue;
-            rowData.reservedCostingValue = tot.reservedCostingValue;
-            rowData.totalCostingValue = tot.totalCostingValue;
+            rowData.unitCost = unitCostVal;
+            rowData.costingValue = tot.costingValue;
           }
 
           for (const wh of warehouses) {
@@ -295,7 +279,7 @@ export class OverallAvailableReservedStockExportProcessor {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
             cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
             cell.border = borderThin;
-            cell.alignment = colNum === 11 || colNum === 12 ? centerAlign : (colNum <= 10 ? leftAlign : rightAlign);
+            cell.alignment = colNum === 2 || colNum === 3 ? centerAlign : (colNum === 1 ? leftAlign : rightAlign);
 
             if (typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
@@ -318,34 +302,20 @@ export class OverallAvailableReservedStockExportProcessor {
 
         // Write Grand Total row
         const grandTotalsData: Record<string, any> = {
-          brand: 'GRAND TOTALS',
-          division: '',
-          department: '',
-          category: '',
-          gender: '',
-          silhouette: '',
-          season: '',
-          sku: '',
-          barCode: '',
-          itemName: '',
+          sku: 'GRAND TOTAL',
           size: '',
           color: '',
+          quantity: grandTotals.quantity,
+          transit: grandTotals.transit,
+          reserved: grandTotals.reserved,
+          total: grandTotals.total,
           unitPrice: '',
-          discountRate: '',
-          taxRate: '',
-          availableStock: grandTotals.availableStock,
-          reservedStock: grandTotals.reservedStock,
-          totalStock: grandTotals.totalStock,
-          availableValue: grandTotals.availableValue,
-          reservedValue: grandTotals.reservedValue,
-          totalValue: grandTotals.totalValue,
+          value: grandTotals.value,
         };
 
         if (includeCosting) {
           grandTotalsData.unitCost = '';
-          grandTotalsData.availableCostingValue = grandTotals.availableCostingValue;
-          grandTotalsData.reservedCostingValue = grandTotals.reservedCostingValue;
-          grandTotalsData.totalCostingValue = grandTotals.totalCostingValue;
+          grandTotalsData.costingValue = grandTotals.costingValue;
         }
 
         for (const wh of warehouses) {
@@ -367,7 +337,7 @@ export class OverallAvailableReservedStockExportProcessor {
             right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
           };
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-          cell.alignment = colNum <= 12 ? leftAlign : rightAlign;
+          cell.alignment = colNum <= 3 ? leftAlign : rightAlign;
 
           if (typeof cell.value === 'number') {
             cell.numFmt = '#,##0';
@@ -436,65 +406,65 @@ export class OverallAvailableReservedStockExportProcessor {
         locCells += `<td class="num">${formatVal(tot.locationStocks[loc.id] || 0)}</td>`;
       }
 
-      if (node.level === 'article' || node.level === 'variant') {
+      if (node.level === 'article') {
         const costCells = includeCosting
           ? `<td class="num">${formatVal(tot.unitCost)}</td>
-             <td class="num font-bold">${formatVal(tot.availableCostingValue)}</td>
-             <td class="num font-bold">${formatVal(tot.reservedCostingValue)}</td>
-             <td class="num font-bold">${formatVal(tot.totalCostingValue)}</td>`
+             <td class="num highlight-val">${formatVal(tot.costingValue)}</td>`
           : '';
-
         rowsHtml += `
-          <tr class="${node.level === 'article' ? 'article-row' : 'variant-row'}">
-            <td>${node.brand || 'N/A'}</td>
-            <td>${node.division || 'N/A'}</td>
-            <td>${node.department || 'N/A'}</td>
-            <td>${node.category || 'N/A'}</td>
-            <td>${node.gender || 'N/A'}</td>
-            <td>${node.silhouette || 'N/A'}</td>
-            <td>${node.season || 'N/A'}</td>
-            <td>${node.sku || 'N/A'}</td>
-            <td>${node.barCode || 'N/A'}</td>
-            <td>${node.itemName || 'N/A'}</td>
-            <td class="center">${node.size || 'N/A'}</td>
-            <td class="center">${node.color || 'N/A'}</td>
+          <tr class="article-row">
+            <td>SKU: ${node.sku} (${node.articleName})</td>
+            <td class="center">ALL SIZES</td>
+            <td class="center">ALL COLORS</td>
+            <td class="num">${formatVal(tot.quantity)}</td>
+            <td class="num">${formatVal(tot.transit)}</td>
+            <td class="num">${formatVal(tot.reserved)}</td>
+            <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">${formatVal(tot.unitPrice)}</td>
+            <td class="num highlight-val">${formatVal(tot.value)}</td>
             ${costCells}
-            <td class="num">${tot.discountRate || 0}%</td>
-            <td class="num">${tot.taxRate || 0}%</td>
             ${whCells}
             ${locCells}
-            <td class="num font-bold">${formatVal(tot.availableStock)}</td>
-            <td class="num font-bold">${formatVal(tot.reservedStock)}</td>
-            <td class="num font-bold">${formatVal(tot.totalStock)}</td>
-            <td class="num font-bold">${formatVal(tot.availableValue)}</td>
-            <td class="num font-bold">${formatVal(tot.reservedValue)}</td>
-            <td class="num font-bold">${formatVal(tot.totalValue)}</td>
+          </tr>
+        `;
+      } else if (node.level === 'variant') {
+        const costCells = includeCosting
+          ? `<td class="num">-</td>
+             <td class="num highlight-val">${formatVal(tot.costingValue)}</td>`
+          : '';
+        rowsHtml += `
+          <tr class="variant-row">
+            <td style="padding-left: 20px; color: #64748b; font-style: italic;">&mdash; Variant Detail</td>
+            <td class="center">${node.size}</td>
+            <td class="center">${node.color}</td>
+            <td class="num">${formatVal(tot.quantity)}</td>
+            <td class="num">${formatVal(tot.transit)}</td>
+            <td class="num">${formatVal(tot.reserved)}</td>
+            <td class="num highlight-tot">${formatVal(tot.total)}</td>
+            <td class="num">-</td>
+            <td class="num highlight-val">${formatVal(tot.value)}</td>
+            ${costCells}
+            ${whCells}
+            ${locCells}
           </tr>
         `;
       } else {
         const costCells = includeCosting
           ? `<td class="num">-</td>
-             <td class="num font-bold">${formatVal(tot.availableCostingValue)}</td>
-             <td class="num font-bold">${formatVal(tot.reservedCostingValue)}</td>
-             <td class="num font-bold">${formatVal(tot.totalCostingValue)}</td>`
+             <td class="num highlight-val">${formatVal(tot.costingValue)}</td>`
           : '';
-
         rowsHtml += `
           <tr class="${node.level}-row">
-            <td colspan="12" style="font-weight: 800; text-transform: uppercase;">${node.level.toUpperCase()}: ${node.value}</td>
+            <td colspan="3">${node.level.toUpperCase()}: ${node.value.toUpperCase()}</td>
+            <td class="num">${formatVal(tot.quantity)}</td>
+            <td class="num">${formatVal(tot.transit)}</td>
+            <td class="num">${formatVal(tot.reserved)}</td>
+            <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">-</td>
+            <td class="num highlight-val">${formatVal(tot.value)}</td>
             ${costCells}
-            <td class="num">-</td>
-            <td class="num">-</td>
             ${whCells}
             ${locCells}
-            <td class="num font-bold">${formatVal(tot.availableStock)}</td>
-            <td class="num font-bold">${formatVal(tot.reservedStock)}</td>
-            <td class="num font-bold">${formatVal(tot.totalStock)}</td>
-            <td class="num font-bold">${formatVal(tot.availableValue)}</td>
-            <td class="num font-bold">${formatVal(tot.reservedValue)}</td>
-            <td class="num font-bold">${formatVal(tot.totalValue)}</td>
           </tr>
         `;
       }
@@ -522,9 +492,7 @@ export class OverallAvailableReservedStockExportProcessor {
 
     const grandCostCells = includeCosting
       ? `<td class="num">-</td>
-         <td class="num">${formatVal(grandTotals.availableCostingValue)}</td>
-         <td class="num">${formatVal(grandTotals.reservedCostingValue)}</td>
-         <td class="num">${formatVal(grandTotals.totalCostingValue)}</td>`
+         <td class="num">${formatVal(grandTotals.costingValue)}</td>`
       : '';
 
     return `
@@ -544,15 +512,14 @@ export class OverallAvailableReservedStockExportProcessor {
           th.num, td.num { text-align: right; }
           th.center, td.center { text-align: center; }
           tr { page-break-inside: auto; }
-          .brand-row { background-color: #0f172a; color: #ffffff; }
-          .division-row { background-color: #1e293b; color: #ffffff; }
-          .category-row { background-color: #334155; color: #ffffff; }
-          .gender-row { background-color: #475569; color: #ffffff; }
-          .silhouette-row { background-color: #64748b; color: #ffffff; }
-          .article-row { background-color: #f1f5f9; color: #0f172a; font-weight: 600; }
+          .brand-row { background-color: #0f172a; color: #ffffff; font-weight: 800; }
+          .division-row { background-color: #1e293b; color: #ffffff; font-weight: 700; }
+          .category-row { background-color: #334155; color: #ffffff; font-weight: 700; }
+          .gender-row { background-color: #475569; color: #ffffff; font-weight: 600; }
+          .silhouette-row { background-color: #64748b; color: #ffffff; font-weight: 600; }
+          .article-row { background-color: #f1f5f9; color: #0f172a; font-weight: 700; }
           .variant-row { background-color: #ffffff; color: #334155; }
           .grand-total-row { background-color: #e2e8f0; font-weight: 800; font-size: 8px; }
-          .font-bold { font-weight: 700; }
         </style>
       </head>
       <body>
@@ -562,48 +529,33 @@ export class OverallAvailableReservedStockExportProcessor {
         <table>
           <thead>
             <tr>
-              <th>Brand</th>
-              <th>Division</th>
-              <th>Dept</th>
-              <th>Category</th>
-              <th>Gender</th>
-              <th>Silh</th>
-              <th>Season</th>
-              <th>SKU</th>
-              <th>BarCode</th>
-              <th>ItemName</th>
+              <th>GPC / Category / Product</th>
               <th class="center">Size</th>
               <th class="center">Color</th>
-              <th class="num">UnitPrice</th>
-              ${includeCosting ? '<th class="num">UnitCost</th><th class="num">Avail Cost</th><th class="num">Res Cost</th><th class="num">Tot Cost</th>' : ''}
-              <th class="num">Disc %</th>
-              <th class="num">Tax %</th>
+              <th class="num">Quantity</th>
+              <th class="num">In Transit</th>
+              <th class="num">Stock Reserved</th>
+              <th class="num">Total</th>
+              <th class="num">Selling Price</th>
+              <th class="num">Value (Rs.)</th>
+              ${includeCosting ? '<th class="num">Cost Price</th><th class="num">Total Costing</th>' : ''}
               ${warehouses.map(w => `<th class="num">WH ${w.name}</th>`).join('')}
               ${stockLocations.map(l => `<th class="num">${l.shortCode || l.code || l.name}</th>`).join('')}
-              <th class="num">Avail Qty</th>
-              <th class="num">Res Qty</th>
-              <th class="num">Tot Qty</th>
-              <th class="num">Avail Val</th>
-              <th class="num">Res Val</th>
-              <th class="num">Tot Val</th>
             </tr>
           </thead>
           <tbody>
             ${rowsHtml}
             <tr class="grand-total-row">
-              <td colspan="12">GRAND TOTALS</td>
+              <td colspan="3">GRAND TOTALS</td>
+              <td class="num">${formatVal(grandTotals.quantity)}</td>
+              <td class="num">${formatVal(grandTotals.transit)}</td>
+              <td class="num">${formatVal(grandTotals.reserved)}</td>
+              <td class="num">${formatVal(grandTotals.total)}</td>
               <td class="num">-</td>
+              <td class="num">${formatVal(grandTotals.value)}</td>
               ${grandCostCells}
-              <td class="num">-</td>
-              <td class="num">-</td>
               ${grandWhCells}
               ${grandLocCells}
-              <td class="num">${formatVal(grandTotals.availableStock)}</td>
-              <td class="num">${formatVal(grandTotals.reservedStock)}</td>
-              <td class="num">${formatVal(grandTotals.totalStock)}</td>
-              <td class="num">${formatVal(grandTotals.availableValue)}</td>
-              <td class="num">${formatVal(grandTotals.reservedValue)}</td>
-              <td class="num">${formatVal(grandTotals.totalValue)}</td>
             </tr>
           </tbody>
         </table>
