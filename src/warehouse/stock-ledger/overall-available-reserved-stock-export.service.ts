@@ -202,16 +202,25 @@ export class OverallAvailableReservedStockExportService {
     } = opts;
 
     // Fetch active Warehouses
+    const whIdsFilter = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const warehouses = await prisma.warehouse.findMany({
-      where: { isDeleted: false },
+      where: {
+        isDeleted: false,
+        ...(whIdsFilter.length > 0 ? { id: { in: whIdsFilter } } : {}),
+      },
       select: { id: true, name: true, code: true },
       orderBy: { name: 'asc' },
     });
 
     // Fetch active Stock Locations (isStockLocation: true)
+    const locIdsFilter = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const stockLocations = await prisma.location.findMany({
-      where: { isStockLocation: true, isDeleted: false },
-      select: { id: true, name: true, code: true },
+      where: {
+        isStockLocation: true,
+        isDeleted: false,
+        ...(locIdsFilter.length > 0 ? { id: { in: locIdsFilter } } : {}),
+      },
+      select: { id: true, name: true, code: true, shortCode: true },
       orderBy: { name: 'asc' },
     });
 
@@ -242,7 +251,12 @@ export class OverallAvailableReservedStockExportService {
       _sum: { qty: true },
     });
 
-    const itemIdsFromLedger = [...new Set(ledgerGroup.map(g => g.itemId))];
+    // Query InventoryItem balances grouped by itemId, warehouseId, locationId
+    const inventoryGroup = await prisma.inventoryItem.groupBy({
+      by: ['itemId', 'warehouseId', 'locationId'],
+      where: { status: 'AVAILABLE' },
+      _sum: { quantity: true },
+    });
 
     // Query StockReserve entries grouped by itemId, warehouseId
     const reserveGroup = await prisma.stockReserve.groupBy({
@@ -256,58 +270,71 @@ export class OverallAvailableReservedStockExportService {
       _sum: { quantity: true },
     });
 
-    const itemIdsFromReserve = [...new Set(reserveGroup.map(g => g.itemId))];
+    const itemIdsFromLedger = ledgerGroup.map(g => g.itemId);
+    const itemIdsFromInv = inventoryGroup.map(g => g.itemId);
+    const itemIdsFromReserve = reserveGroup.map(g => g.itemId);
 
-    const uniqueItemIds = [...new Set([...itemIdsFromLedger, ...itemIdsFromReserve])];
+    const uniqueItemIds = [...new Set([...itemIdsFromLedger, ...itemIdsFromInv, ...itemIdsFromReserve])];
 
-    if (uniqueItemIds.length === 0) {
-      return {
-        root: [],
-        grandTotals: this.createEmptyTotals(warehouses.map(w => w.id), stockLocations.map(l => l.id)),
-        warehouses,
-        stockLocations,
-      };
+    let items: any[] = [];
+    if (uniqueItemIds.length > 0) {
+      items = await prisma.item.findMany({
+        where: {
+          OR: [
+            { id: { in: uniqueItemIds } },
+            { itemId: { in: uniqueItemIds } },
+          ],
+        },
+        include: {
+          brand: true,
+          division: true,
+          category: true,
+          gender: true,
+          silhouette: true,
+          season: true,
+          size: true,
+          color: true,
+          itemClass: true,
+          subCategory: true,
+        },
+      });
     }
 
-    const items = await prisma.item.findMany({
-      where: {
-        OR: [
-          { id: { in: uniqueItemIds } },
-          { itemId: { in: uniqueItemIds } },
-        ],
-      },
-      include: {
-        brand: true,
-        division: true,
-        category: true,
-        gender: true,
-        silhouette: true,
-        season: true,
-        size: true,
-        color: true,
-        itemClass: true,
-        subCategory: true,
-      },
-    });
+    // Fallback: If no stock items matched or uniqueItemIds empty, fetch active items
+    if (items.length === 0) {
+      items = await prisma.item.findMany({
+        where: { isActive: true },
+        take: 500,
+        include: {
+          brand: true,
+          division: true,
+          category: true,
+          gender: true,
+          silhouette: true,
+          season: true,
+          size: true,
+          color: true,
+          itemClass: true,
+          subCategory: true,
+        },
+      });
+    }
+
+    const whIdsList = warehouses.map(w => w.id);
+    const locIdsList = stockLocations.map(l => l.id);
 
     if (items.length === 0) {
       return {
         root: [],
-        grandTotals: this.createEmptyTotals(warehouses.map(w => w.id), stockLocations.map(l => l.id)),
+        grandTotals: this.createEmptyTotals(whIdsList, locIdsList),
         warehouses,
         stockLocations,
       };
     }
 
-    // Build Maps for fast lookup
-    // Wh Stock map: itemId -> whId -> qty
-    const whStockMap = new Map<string, number>();
-    // Loc Stock map: itemId -> locId -> qty
+    // Stock Ledger maps
     const locStockMap = new Map<string, number>();
-    // Reserve map per item: itemId -> qty
-    const itemReserveMap = new Map<string, number>();
-    // Reserve map per item & wh: itemId_whId -> qty
-    const itemWhReserveMap = new Map<string, number>();
+    const whStockMap = new Map<string, number>();
 
     for (const row of ledgerGroup) {
       const qty = Number(row._sum.qty || 0);
@@ -320,18 +347,41 @@ export class OverallAvailableReservedStockExportService {
       }
     }
 
-    for (const row of reserveGroup) {
+    // Inventory Item maps
+    const invLocStockMap = new Map<string, number>();
+    const invWhStockMap = new Map<string, number>();
+
+    for (const row of inventoryGroup) {
       const qty = Number(row._sum.quantity || 0);
-      itemReserveMap.set(row.itemId, (itemReserveMap.get(row.itemId) || 0) + qty);
-      if (row.warehouseId) {
+      if (row.locationId) {
+        const key = `${row.itemId}_${row.locationId}`;
+        invLocStockMap.set(key, (invLocStockMap.get(key) || 0) + qty);
+      } else if (row.warehouseId) {
         const key = `${row.itemId}_${row.warehouseId}`;
-        itemWhReserveMap.set(key, (itemWhReserveMap.get(key) || 0) + qty);
+        invWhStockMap.set(key, (invWhStockMap.get(key) || 0) + qty);
       }
     }
 
+    // Stock Reserve map
+    const itemReserveMap = new Map<string, number>();
+    for (const row of reserveGroup) {
+      const qty = Number(row._sum.quantity || 0);
+      itemReserveMap.set(row.itemId, (itemReserveMap.get(row.itemId) || 0) + qty);
+    }
+
     const root: any[] = [];
-    const whIdsList = warehouses.map(w => w.id);
-    const locIdsList = stockLocations.map(l => l.id);
+
+    const getLocStock = (item: any, locId: string) => {
+      const ledgerQty = (locStockMap.get(`${item.id}_${locId}`) || 0) + (locStockMap.get(`${item.itemId}_${locId}`) || 0);
+      if (ledgerQty !== 0) return ledgerQty;
+      return (invLocStockMap.get(`${item.id}_${locId}`) || 0) + (invLocStockMap.get(`${item.itemId}_${locId}`) || 0);
+    };
+
+    const getWhStock = (item: any, whId: string) => {
+      const ledgerQty = (whStockMap.get(`${item.id}_${whId}`) || 0) + (whStockMap.get(`${item.itemId}_${whId}`) || 0);
+      if (ledgerQty !== 0) return ledgerQty;
+      return (invWhStockMap.get(`${item.id}_${whId}`) || 0) + (invWhStockMap.get(`${item.itemId}_${whId}`) || 0);
+    };
 
     const addTotals = (target: any, source: any) => {
       target.availableStock += source.availableStock;
@@ -360,7 +410,7 @@ export class OverallAvailableReservedStockExportService {
       let totalWhStock = 0;
 
       for (const wh of warehouses) {
-        const qty = whStockMap.get(`${item.id}_${wh.id}`) || whStockMap.get(`${item.itemId}_${wh.id}`) || 0;
+        const qty = getWhStock(item, wh.id);
         warehouseStocks[wh.id] = qty;
         totalWhStock += qty;
       }
@@ -369,13 +419,13 @@ export class OverallAvailableReservedStockExportService {
       let totalLocStock = 0;
 
       for (const loc of stockLocations) {
-        const qty = locStockMap.get(`${item.id}_${loc.id}`) || locStockMap.get(`${item.itemId}_${loc.id}`) || 0;
+        const qty = getLocStock(item, loc.id);
         locationStocks[loc.id] = qty;
         totalLocStock += qty;
       }
 
       const availableStock = totalWhStock + totalLocStock;
-      const reservedStock = itemReserveMap.get(item.id) || itemReserveMap.get(item.itemId) || 0;
+      const reservedStock = (itemReserveMap.get(item.id) || 0) + (itemReserveMap.get(item.itemId) || 0);
       const totalStock = availableStock + reservedStock;
 
       const unitPrice = item.unitPrice || 0;
