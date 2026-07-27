@@ -2683,6 +2683,66 @@ export class PosSalesService implements OnModuleInit {
         const lineTotalsSum = order.items.reduce((s, i) => s + Number(i.lineTotal), 0);
         const orderLevelDiscount = lineTotalsSum - Number(order.grandTotal);
 
+        // ── Auto-create STN (TransferRequest) if return is at a different outlet ──
+        let crossLocationStn: any = null;
+        if (order.locationId && order.locationId !== effectiveLocationId) {
+          const currentYear = new Date().getFullYear();
+          const prefix = 'STN';
+          const lastRequest = await tx.transferRequest.findFirst({
+            where: {
+              requestNo: {
+                startsWith: `${prefix}-${currentYear}`,
+              },
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          });
+
+          let nextNumber = 1;
+          if (lastRequest) {
+            const lastNumber = parseInt(lastRequest.requestNo.split('-').pop() || '0', 10);
+            if (!isNaN(lastNumber)) {
+              nextNumber = lastNumber + 1;
+            }
+          }
+          const requestNo = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+
+          const origLoc = await tx.location.findUnique({ where: { id: order.locationId }, select: { warehouseId: true, name: true } });
+          const retLoc = effectiveLocationId ? await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { warehouseId: true, name: true } }) : null;
+          const origName = origLoc?.name || 'Original Branch';
+          const retName = retLoc?.name || 'Return Outlet';
+
+          crossLocationStn = await tx.transferRequest.create({
+            data: {
+              requestNo,
+              fromLocationId: order.locationId,
+              toLocationId: effectiveLocationId,
+              fromWarehouseId: origLoc?.warehouseId || warehouse.id,
+              toWarehouseId: retLoc?.warehouseId || warehouse.id,
+              transferType: 'OUTLET_TO_OUTLET',
+              status: 'COMPLETED',
+              requiresSourceApproval: false,
+              sourceApprovedById: ctx?.userId || null,
+              sourceApprovedAt: new Date(),
+              checkedById: ctx?.userId || null,
+              checkedAt: new Date(),
+              authorizedById: ctx?.userId || null,
+              authorizedAt: new Date(),
+              approvedById: ctx?.userId || null,
+              createdById: ctx?.userId || null,
+              notes: `Automated STN against Sales Return #${returnNumber} (Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
+              items: {
+                create: items.map((ri) => ({
+                  itemId: ri.itemId,
+                  quantity: new Prisma.Decimal(ri.quantity),
+                  fulfilledQty: new Prisma.Decimal(ri.quantity),
+                })),
+              },
+            },
+          });
+        }
+
         // ── Validate and process return items ──
         for (const returnItem of items) {
           const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
@@ -2787,9 +2847,9 @@ export class PosSalesService implements OnModuleInit {
               toLocationId: effectiveLocationId || undefined,
               quantity: returnItem.quantity,
               type: 'CROSS_LOCATION_RETURN_TRANSFER',
-              referenceType: 'POS_RETURN',
-              referenceId: order.id,
-              notes: `Automated Stock Transfer against Sales Return #${returnNumber} (Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
+              referenceType: 'OUTLET_TRANSFER_OUT',
+              referenceId: crossLocationStn?.id || order.id,
+              notes: `Automated Stock Transfer against Sales Return #${returnNumber} (${crossLocationStn ? `STN #${crossLocationStn.requestNo}, ` : ''}Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
               userId: ctx?.userId,
               transaction: tx,
             }, ctx);
