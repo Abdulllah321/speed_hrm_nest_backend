@@ -580,6 +580,9 @@ export class OverallAvailableReservedStockExportService {
         locationStocks[loc.id] = qty;
       }
 
+      const discountRate = item.discountRate || 0;
+      const taxRate = (item.taxRate1 || 0) + (item.taxRate2 || 0);
+
       const variantMetrics = {
         quantity: availableStock,
         transit,
@@ -589,6 +592,8 @@ export class OverallAvailableReservedStockExportService {
         value,
         unitCost,
         costingValue,
+        discountRate,
+        taxRate,
         warehouseStocks,
         locationStocks,
       };
@@ -636,6 +641,8 @@ export class OverallAvailableReservedStockExportService {
         if (levelName === 'article' || levelName === 'variant') {
           existingNode.totals.unitPrice = unitPrice;
           existingNode.totals.unitCost = unitCost;
+          existingNode.totals.discountRate = discountRate;
+          existingNode.totals.taxRate = taxRate;
         }
 
         if (i < levels.length - 1) {
@@ -670,6 +677,8 @@ export class OverallAvailableReservedStockExportService {
       value: 0,
       unitCost: 0,
       costingValue: 0,
+      discountRate: 0,
+      taxRate: 0,
       warehouseStocks,
       locationStocks,
     };
