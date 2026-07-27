@@ -517,6 +517,9 @@ export class StockMovementService {
     const defaultWarehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
     const warehouseId = dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
 
+    const outboundRefType = dto.referenceType || (dto.type === 'CROSS_LOCATION_RETURN_TRANSFER' ? 'OUTLET_TRANSFER_OUT' : 'INTER_OUTLET_TRANSFER');
+    const inboundRefType = (outboundRefType === 'OUTLET_TRANSFER_OUT' || dto.type === 'CROSS_LOCATION_RETURN_TRANSFER') ? 'OUTLET_TRANSFER_IN' : outboundRefType;
+
     // 1. Ledger OUTBOUND for source outlet
     await this.stockLedgerService.createEntry({
       itemId: dto.itemId,
@@ -524,7 +527,7 @@ export class StockMovementService {
       locationId: dto.fromLocationId,
       qty: -dto.quantity,
       movementType: MovementType.OUTBOUND,
-      referenceType: dto.referenceType || 'INTER_OUTLET_TRANSFER',
+      referenceType: outboundRefType,
       referenceId: dto.referenceId || movementId,
       rate: itemRate,
     }, tx);
@@ -536,7 +539,7 @@ export class StockMovementService {
       locationId: dto.toLocationId,
       qty: dto.quantity,
       movementType: MovementType.INBOUND,
-      referenceType: dto.referenceType || 'INTER_OUTLET_TRANSFER',
+      referenceType: inboundRefType,
       referenceId: dto.referenceId || movementId,
       rate: itemRate,
     }, tx);
