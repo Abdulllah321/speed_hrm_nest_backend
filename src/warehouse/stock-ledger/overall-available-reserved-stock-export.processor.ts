@@ -168,11 +168,12 @@ export class OverallAvailableReservedStockExportProcessor {
         );
 
         for (const wh of warehouses) {
-          columns.push({ header: `WH: ${wh.name}`, key: `wh_${wh.id}`, width: 14, align: 'right' });
+          columns.push({ header: `WH ${wh.name}`, key: `wh_${wh.id}`, width: 14, align: 'right' });
         }
 
         for (const loc of stockLocations) {
-          columns.push({ header: `LOC: ${loc.name}`, key: `loc_${loc.id}`, width: 14, align: 'right' });
+          const locHeader = loc.shortCode || loc.code || loc.name;
+          columns.push({ header: locHeader, key: `loc_${loc.id}`, width: 14, align: 'right' });
         }
 
         columns.push(
@@ -577,8 +578,8 @@ export class OverallAvailableReservedStockExportProcessor {
               ${includeCosting ? '<th class="num">UnitCost</th><th class="num">Avail Cost</th><th class="num">Res Cost</th><th class="num">Tot Cost</th>' : ''}
               <th class="num">Disc %</th>
               <th class="num">Tax %</th>
-              ${warehouses.map(w => `<th class="num">WH: ${w.name}</th>`).join('')}
-              ${stockLocations.map(l => `<th class="num">LOC: ${l.name}</th>`).join('')}
+              ${warehouses.map(w => `<th class="num">WH ${w.name}</th>`).join('')}
+              ${stockLocations.map(l => `<th class="num">${l.shortCode || l.code || l.name}</th>`).join('')}
               <th class="num">Avail Qty</th>
               <th class="num">Res Qty</th>
               <th class="num">Tot Qty</th>
