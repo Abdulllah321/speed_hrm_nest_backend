@@ -2065,5 +2065,8 @@ export const PERMISSIONS = [
   // ── Profile Management ──────────────────────────────────────────────────────
   { name: 'profile.update', description: 'Update Own Profile Information' },
 
+  // ── ERP — Reports ───────────────────────────────────────────────────────────
+  { name: 'erp.report.view', description: 'View ERP Reports' },
+
 ];
 
