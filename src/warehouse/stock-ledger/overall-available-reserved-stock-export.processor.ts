@@ -150,6 +150,8 @@ export class OverallAvailableReservedStockExportProcessor {
           { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' },
           { header: 'Total', key: 'total', width: 14, align: 'right' },
           { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' },
+          { header: 'Discount %', key: 'discountRate', width: 12, align: 'right' },
+          { header: 'Tax %', key: 'taxRate', width: 10, align: 'right' },
           { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' },
         ];
 
@@ -232,16 +234,23 @@ export class OverallAvailableReservedStockExportProcessor {
           let unitPriceVal: any = '';
           let unitCostVal: any = '';
 
+          let discountVal: any = '';
+          let taxVal: any = '';
+
           if (node.level === 'article') {
             label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
             unitPriceVal = tot.unitPrice;
             unitCostVal = tot.unitCost;
+            discountVal = tot.discountRate ? tot.discountRate : '';
+            taxVal = tot.taxRate ? tot.taxRate : '';
           } else if (node.level === 'variant') {
             label = ' '.repeat(style.indent) + 'Variant Item';
             colorVal = node.color;
             sizeVal = node.size;
             unitPriceVal = '';
             unitCostVal = '';
+            discountVal = tot.discountRate ? tot.discountRate : '';
+            taxVal = tot.taxRate ? tot.taxRate : '';
           } else {
             label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
           }
@@ -255,6 +264,8 @@ export class OverallAvailableReservedStockExportProcessor {
             reserved: tot.reserved,
             total: tot.total,
             unitPrice: unitPriceVal,
+            discountRate: discountVal,
+            taxRate: taxVal,
             value: tot.value,
           };
 
@@ -310,6 +321,8 @@ export class OverallAvailableReservedStockExportProcessor {
           reserved: grandTotals.reserved,
           total: grandTotals.total,
           unitPrice: '',
+          discountRate: '',
+          taxRate: '',
           value: grandTotals.value,
         };
 
@@ -421,6 +434,8 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.reserved)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">${formatVal(tot.unitPrice)}</td>
+            <td class="num">${tot.discountRate ? tot.discountRate.toFixed(2) : '-'}</td>
+            <td class="num">${tot.taxRate ? tot.taxRate : '-'}</td>
             <td class="num highlight-val">${formatVal(tot.value)}</td>
             ${costCells}
             ${whCells}
@@ -442,6 +457,8 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.reserved)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">-</td>
+            <td class="num">${tot.discountRate ? tot.discountRate.toFixed(2) : '-'}</td>
+            <td class="num">${tot.taxRate ? tot.taxRate : '-'}</td>
             <td class="num highlight-val">${formatVal(tot.value)}</td>
             ${costCells}
             ${whCells}
@@ -460,6 +477,8 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.transit)}</td>
             <td class="num">${formatVal(tot.reserved)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
+            <td class="num">-</td>
+            <td class="num">-</td>
             <td class="num">-</td>
             <td class="num highlight-val">${formatVal(tot.value)}</td>
             ${costCells}
@@ -537,6 +556,8 @@ export class OverallAvailableReservedStockExportProcessor {
               <th class="num">Stock Reserved</th>
               <th class="num">Total</th>
               <th class="num">Selling Price</th>
+              <th class="num">Disc %</th>
+              <th class="num">Tax %</th>
               <th class="num">Value (Rs.)</th>
               ${includeCosting ? '<th class="num">Cost Price</th><th class="num">Total Costing</th>' : ''}
               ${warehouses.map(w => `<th class="num">WH ${w.name}</th>`).join('')}
@@ -551,6 +572,8 @@ export class OverallAvailableReservedStockExportProcessor {
               <td class="num">${formatVal(grandTotals.transit)}</td>
               <td class="num">${formatVal(grandTotals.reserved)}</td>
               <td class="num">${formatVal(grandTotals.total)}</td>
+              <td class="num">-</td>
+              <td class="num">-</td>
               <td class="num">-</td>
               <td class="num">${formatVal(grandTotals.value)}</td>
               ${grandCostCells}
