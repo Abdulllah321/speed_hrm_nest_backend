@@ -460,8 +460,7 @@ export class StockLedgerController {
   async getOverallAvailableReservedStockReport(
     @Query('locationId') locationId?: string,
     @Query('warehouseId') warehouseId?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query('asOfDate') asOfDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
     @Query('showBrand') showBrand?: string,
     @Query('showDivision') showDivision?: string,
@@ -475,8 +474,7 @@ export class StockLedgerController {
     const data = await this.overallAvailableReservedStockExportService.getOverallAvailableReservedStockReportData({
       locationId,
       warehouseId,
-      startDate,
-      endDate,
+      asOfDate,
       summaryOnly: summaryOnly === 'true',
       showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
       showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
@@ -497,8 +495,7 @@ export class StockLedgerController {
     @Body() body: {
       locationId?: string;
       warehouseId?: string;
-      startDate?: string;
-      endDate?: string;
+      asOfDate?: string;
       format: 'xlsx' | 'pdf';
       summaryOnly?: boolean;
       showBrand?: boolean;
@@ -516,8 +513,7 @@ export class StockLedgerController {
       userId,
       locationId: body.locationId,
       warehouseId: body.warehouseId,
-      startDate: body.startDate,
-      endDate: body.endDate,
+      asOfDate: body.asOfDate,
       format: body.format,
       summaryOnly: body.summaryOnly,
       showBrand: body.showBrand,

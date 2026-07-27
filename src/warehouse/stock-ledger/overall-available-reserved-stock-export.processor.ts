@@ -17,8 +17,7 @@ export interface OverallAvailableReservedStockExportJobData {
   tenantDbUrl: string;
   locationId?: string;
   warehouseId?: string;
-  startDate?: string;
-  endDate?: string;
+  asOfDate?: string;
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
   showBrand?: boolean;
@@ -44,7 +43,7 @@ export class OverallAvailableReservedStockExportProcessor {
   @Process({ concurrency: 1 })
   async handleExport(job: Job<OverallAvailableReservedStockExportJobData>): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format,
+      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, asOfDate, format,
       summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
       includeCosting
     } = job.data;
@@ -66,8 +65,7 @@ export class OverallAvailableReservedStockExportProcessor {
           {
             locationId,
             warehouseId,
-            startDate: startStr,
-            endDate: endStr,
+            asOfDate,
             summaryOnly,
             showBrand,
             showDivision,
