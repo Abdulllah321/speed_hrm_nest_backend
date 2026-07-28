@@ -214,7 +214,7 @@ export class PurchaseInvoiceController {
 
   @Get('register-report/export/:jobId/download')
   @ApiOperation({ summary: 'Download completed Purchase Invoice Register export file' })
-  downloadRegisterExport(@Param('jobId') jobId: string, @Res() res: Response) {
+  downloadRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
     return this.piRegisterExportService.streamExportFile(jobId, res);
   }
 }

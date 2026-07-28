@@ -381,7 +381,7 @@ export class PiRegisterExportProcessor {
     await workbook.commit();
   }
 
-  private async generatePdf(filePath: string, reportData: PoRegisterReportResult): Promise<void> {
+  private async generatePdf(filePath: string, reportData: PiRegisterReportResult): Promise<void> {
     const launchArgs =
       process.platform === 'linux'
         ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
