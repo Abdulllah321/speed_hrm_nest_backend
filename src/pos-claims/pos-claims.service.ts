@@ -553,11 +553,11 @@ export class PosClaimsService {
             if (posLocation) {
               console.log('✅ POS location found, proceeding with transfer...');
 
-              // ⚡ CLAIM SPECIFIC: Always send to PLM Warehouse (WH-PLM-002)
+              // ⚡ CLAIM SPECIFIC: Always send to PLM Warehouse (C20001)
               console.log('🎯 Claim Return: Finding PLM Warehouse...');
               let plmWarehouse = await tx.warehouse.findFirst({
                 where: {
-                  code: 'WH-PLM-002',
+                  code: 'C20001',
                   isActive: true,
                 },
                 select: { id: true, name: true, code: true },
@@ -578,7 +578,7 @@ export class PosClaimsService {
               }
 
               if (!plmWarehouse) {
-                console.log('❌ PLM Warehouse (WH-PLM-002) not found!');
+                console.log('❌ PLM Warehouse (C20001) not found!');
                 throw new BadRequestException(
                   'PLM Warehouse not found for claim return. Please contact admin.',
                 );
