@@ -29,32 +29,45 @@ export interface PoRegisterGrnInfo {
 export interface PoRegisterVariantRow {
   color: string;
   size: string;
+  barCode: string;
   quantity: number;
   unitPrice: number;
   lineTotal: number;
 }
 
-export interface PoRegisterProductGroup {
-  articleCode: string;
-  articleName: string;
-  divisionName: string;
-  genderName: string;
-  silhouetteName: string;
+export interface PoRegisterArticleGroup {
+  sku: string;
+  description: string;
   variants: PoRegisterVariantRow[];
   totalQuantity: number;
   totalAmount: number;
 }
 
-export interface PoRegisterSubcategoryGroup {
-  subCategoryName: string;
-  products: PoRegisterProductGroup[];
+export interface PoRegisterSilhouetteGroup {
+  silhouetteName: string;
+  articles: PoRegisterArticleGroup[];
+  totalQuantity: number;
+  totalAmount: number;
+}
+
+export interface PoRegisterGenderGroup {
+  genderName: string;
+  silhouettes: PoRegisterSilhouetteGroup[];
   totalQuantity: number;
   totalAmount: number;
 }
 
 export interface PoRegisterCategoryGroup {
   categoryName: string;
-  subcategories: PoRegisterSubcategoryGroup[];
+  subCategoryName: string;
+  genders: PoRegisterGenderGroup[];
+  totalQuantity: number;
+  totalAmount: number;
+}
+
+export interface PoRegisterDivisionGroup {
+  divisionName: string;
+  categories: PoRegisterCategoryGroup[];
   totalQuantity: number;
   totalAmount: number;
 }
@@ -62,32 +75,25 @@ export interface PoRegisterCategoryGroup {
 export interface PoRegisterDocumentGroup {
   poId: string;
   poNumber: string;
-  docNoDisplay: string;
   orderDate: string;
   supplierName: string;
   supplierLocation: string;
+  brandsDisplay: string;
   orderType?: string;
   goodsType?: string;
   status: string;
   grns: PoRegisterGrnInfo[];
-  categories: PoRegisterCategoryGroup[];
-  totalQuantity: number;
-  totalAmount: number;
-}
-
-export interface PoRegisterBrandGroup {
-  brandId: string;
-  brandName: string;
-  documents: PoRegisterDocumentGroup[];
+  divisions: PoRegisterDivisionGroup[];
   totalQuantity: number;
   totalAmount: number;
 }
 
 export interface PoRegisterReportResult {
-  brands: PoRegisterBrandGroup[];
+  documents: PoRegisterDocumentGroup[];
   grandTotals: {
     quantity: number;
     amount: number;
+    totalDocuments: number;
   };
   startDate: string;
   endDate: string;
@@ -177,8 +183,9 @@ export class PoRegisterExportService {
             some: {
               OR: [
                 { description: { contains: search, mode: 'insensitive' } },
-                { item: { itemId: { contains: search, mode: 'insensitive' } } },
+                { item: { sku: { contains: search, mode: 'insensitive' } } },
                 { item: { description: { contains: search, mode: 'insensitive' } } },
+                { item: { barCode: { contains: search, mode: 'insensitive' } } },
               ],
             },
           },
@@ -218,9 +225,7 @@ export class PoRegisterExportService {
       orderBy: { orderDate: 'desc' },
     });
 
-    const brandMap = new Map<string, PoRegisterBrandGroup>();
-
-    let docIndexCounter = 1;
+    const documents: PoRegisterDocumentGroup[] = [];
 
     for (const po of purchaseOrders) {
       const supplierName = po.vendor?.name || 'Unknown Supplier';
@@ -234,134 +239,158 @@ export class PoRegisterExportService {
         receivedDate: g.receivedDate ? new Date(g.receivedDate).toISOString().slice(0, 10) : '',
       }));
 
+      // Collect distinct brands for this PO document
+      const brandNamesSet = new Set<string>();
+      for (const itemRow of po.items) {
+        if (itemRow.item?.brand?.name) {
+          brandNamesSet.add(itemRow.item.brand.name.toUpperCase());
+        }
+      }
+      const brandsDisplay =
+        brandNamesSet.size > 0 ? Array.from(brandNamesSet).join(' | ') : 'UNASSIGNED BRAND';
+
+      const docGroup: PoRegisterDocumentGroup = {
+        poId: po.id,
+        poNumber: po.poNumber,
+        orderDate: poDateStr,
+        supplierName,
+        supplierLocation,
+        brandsDisplay,
+        orderType: po.orderType || undefined,
+        goodsType: po.goodsType || undefined,
+        status: po.status,
+        grns,
+        divisions: [],
+        totalQuantity: 0,
+        totalAmount: 0,
+      };
+
       for (const itemRow of po.items) {
         const itemObj = itemRow.item;
-        const brandObj = itemObj?.brand;
-        const bId = brandObj?.id || 'unassigned';
-        const bName = (brandObj?.name || 'UNASSIGNED BRAND').toUpperCase();
-
-        if (!brandMap.has(bId)) {
-          brandMap.set(bId, {
-            brandId: bId,
-            brandName: bName,
-            documents: [],
-            totalQuantity: 0,
-            totalAmount: 0,
-          });
-        }
-        const brandGroup = brandMap.get(bId)!;
-
-        let docGroup = brandGroup.documents.find((d) => d.poId === po.id);
-        if (!docGroup) {
-          docGroup = {
-            poId: po.id,
-            poNumber: po.poNumber,
-            docNoDisplay: String(docIndexCounter++),
-            orderDate: poDateStr,
-            supplierName,
-            supplierLocation,
-            orderType: po.orderType || undefined,
-            goodsType: po.goodsType || undefined,
-            status: po.status,
-            grns,
-            categories: [],
-            totalQuantity: 0,
-            totalAmount: 0,
-          };
-          brandGroup.documents.push(docGroup);
-        }
-
+        const divName = (itemObj?.division?.name || 'GENERAL').toUpperCase();
         const catName = (itemObj?.category?.name || 'GENERAL').toUpperCase();
-
-        let catGroup = docGroup.categories.find((c) => c.categoryName === catName);
-        if (!catGroup) {
-          catGroup = {
-            categoryName: catName,
-            subcategories: [],
-            totalQuantity: 0,
-            totalAmount: 0,
-          };
-          docGroup.categories.push(catGroup);
-        }
-
         const subCatName = (itemObj?.subCategory?.name || 'GENERAL').toUpperCase();
+        const genderName = (itemObj?.gender?.name || 'UNASSIGNED').toUpperCase();
+        const silName = (itemObj?.silhouette?.name || 'GENERAL').toUpperCase();
 
-        let subCatGroup = catGroup.subcategories.find((sc) => sc.subCategoryName === subCatName);
-        if (!subCatGroup) {
-          subCatGroup = {
-            subCategoryName: subCatName,
-            products: [],
-            totalQuantity: 0,
-            totalAmount: 0,
-          };
-          catGroup.subcategories.push(subCatGroup);
-        }
-
-        const articleCode = itemObj?.itemId || 'N/A';
-        const articleName = itemObj?.description || itemRow.description || 'N/A';
-        const divisionName = (itemObj?.division?.name || 'N/A').toUpperCase();
-        const genderName = (itemObj?.gender?.name || 'N/A').toUpperCase();
-        const silhouetteName = (itemObj?.silhouette?.name || 'N/A').toUpperCase();
-
-        let prodGroup = subCatGroup.products.find((p) => p.articleCode === articleCode);
-        if (!prodGroup) {
-          prodGroup = {
-            articleCode,
-            articleName: articleName.toUpperCase(),
-            divisionName,
-            genderName,
-            silhouetteName,
-            variants: [],
-            totalQuantity: 0,
-            totalAmount: 0,
-          };
-          subCatGroup.products.push(prodGroup);
-        }
+        const sku = itemObj?.sku || itemObj?.itemId || 'N/A';
+        const description = itemObj?.description || itemRow.description || 'N/A';
+        const barCode = itemObj?.barCode || 'N/A';
+        const colorName = (itemObj?.color?.name || 'N/A').toUpperCase();
+        const sizeName = (itemObj?.size?.name || 'N/A').toUpperCase();
 
         const qty = Number(itemRow.quantity) || 0;
         const unitPrice = Number(itemRow.unitPrice) || 0;
         const lineTotal = Number(itemRow.lineTotal) || qty * unitPrice;
-        const colorName = (itemObj?.color?.name || 'N/A').toUpperCase();
-        const sizeName = (itemObj?.size?.name || 'N/A').toUpperCase();
 
-        prodGroup.variants.push({
+        // Division Level
+        let divGroup = docGroup.divisions.find((d) => d.divisionName === divName);
+        if (!divGroup) {
+          divGroup = {
+            divisionName: divName,
+            categories: [],
+            totalQuantity: 0,
+            totalAmount: 0,
+          };
+          docGroup.divisions.push(divGroup);
+        }
+
+        // Category Level
+        let catGroup = divGroup.categories.find((c) => c.categoryName === catName);
+        if (!catGroup) {
+          catGroup = {
+            categoryName: catName,
+            subCategoryName: subCatName,
+            genders: [],
+            totalQuantity: 0,
+            totalAmount: 0,
+          };
+          divGroup.categories.push(catGroup);
+        }
+
+        // Gender Level
+        let genGroup = catGroup.genders.find((g) => g.genderName === genderName);
+        if (!genGroup) {
+          genGroup = {
+            genderName,
+            silhouettes: [],
+            totalQuantity: 0,
+            totalAmount: 0,
+          };
+          catGroup.genders.push(genGroup);
+        }
+
+        // Silhouette Level
+        let silGroup = genGroup.silhouettes.find((s) => s.silhouetteName === silName);
+        if (!silGroup) {
+          silGroup = {
+            silhouetteName: silName,
+            articles: [],
+            totalQuantity: 0,
+            totalAmount: 0,
+          };
+          genGroup.silhouettes.push(silGroup);
+        }
+
+        // Article Level (Grouped by SKU & Description)
+        let artGroup = silGroup.articles.find((a) => a.sku === sku);
+        if (!artGroup) {
+          artGroup = {
+            sku,
+            description: description.toUpperCase(),
+            variants: [],
+            totalQuantity: 0,
+            totalAmount: 0,
+          };
+          silGroup.articles.push(artGroup);
+        }
+
+        // Variant Detail Level
+        artGroup.variants.push({
           color: colorName,
           size: sizeName,
+          barCode,
           quantity: qty,
           unitPrice,
           lineTotal,
         });
 
-        prodGroup.totalQuantity += qty;
-        prodGroup.totalAmount += lineTotal;
+        artGroup.totalQuantity += qty;
+        artGroup.totalAmount += lineTotal;
 
-        subCatGroup.totalQuantity += qty;
-        subCatGroup.totalAmount += lineTotal;
+        silGroup.totalQuantity += qty;
+        silGroup.totalAmount += lineTotal;
+
+        genGroup.totalQuantity += qty;
+        genGroup.totalAmount += lineTotal;
 
         catGroup.totalQuantity += qty;
         catGroup.totalAmount += lineTotal;
 
+        divGroup.totalQuantity += qty;
+        divGroup.totalAmount += lineTotal;
+
         docGroup.totalQuantity += qty;
         docGroup.totalAmount += lineTotal;
+      }
 
-        brandGroup.totalQuantity += qty;
-        brandGroup.totalAmount += lineTotal;
+      if (docGroup.divisions.length > 0) {
+        documents.push(docGroup);
       }
     }
 
-    const brands = Array.from(brandMap.values());
-
-    const grandTotals = brands.reduce(
-      (acc, b) => {
-        acc.quantity += b.totalQuantity;
-        acc.amount += b.totalAmount;
+    const grandTotals = documents.reduce(
+      (acc, d) => {
+        acc.quantity += d.totalQuantity;
+        acc.amount += d.totalAmount;
+        acc.totalDocuments += 1;
         return acc;
       },
-      { quantity: 0, amount: 0 },
+      { quantity: 0, amount: 0, totalDocuments: 0 },
     );
 
     return {
-      brands,
+      documents,
       grandTotals,
       startDate: startDate.toISOString().slice(0, 10),
       endDate: endDate.toISOString().slice(0, 10),
