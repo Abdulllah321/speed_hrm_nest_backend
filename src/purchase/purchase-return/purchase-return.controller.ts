@@ -1,13 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PurchaseReturnService } from './purchase-return.service';
+import { PurchaseReturnRegisterExportService } from './purchase-return-register-export.service';
 import { CreatePurchaseReturnDto } from './dto/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from './dto/update-purchase-return.dto';
 
 @ApiTags('purchase-returns')
 @Controller('api/purchase/purchase-returns')
 export class PurchaseReturnController {
-  constructor(private readonly purchaseReturnService: PurchaseReturnService,) {}
+  constructor(
+    private readonly purchaseReturnService: PurchaseReturnService,
+    private readonly purchaseReturnRegisterExportService: PurchaseReturnRegisterExportService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new purchase return' })
@@ -53,6 +57,73 @@ export class PurchaseReturnController {
   @ApiResponse({ status: 200, description: 'Next return number' })
   getNextReturnNumber() {
     return this.purchaseReturnService.getNextReturnNumber();
+  }
+
+  @Get('register-report/data')
+  @ApiOperation({ summary: 'Get Purchase Return Register Report data' })
+  getRegisterReportData(
+    @Query('brandId') brandId?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('status') status?: string,
+    @Query('returnType') returnType?: string,
+    @Query('sourceType') sourceType?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.purchaseReturnRegisterExportService.getReportData({
+      brandId,
+      supplierId,
+      startDate,
+      endDate,
+      status,
+      returnType,
+      sourceType,
+      search,
+    });
+  }
+
+  @Post('register-report/export')
+  @ApiOperation({ summary: 'Queue Purchase Return Register Report background export' })
+  queueRegisterReportExport(
+    @Body()
+    body: {
+      brandId?: string;
+      supplierId?: string;
+      startDate?: string;
+      endDate?: string;
+      status?: string;
+      returnType?: string;
+      sourceType?: string;
+      format: 'xlsx' | 'pdf';
+      search?: string;
+    },
+    @Req() req: any,
+  ) {
+    return this.purchaseReturnRegisterExportService.queueExport({
+      userId: req.user?.id || 'system',
+      brandId: body.brandId,
+      supplierId: body.supplierId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      status: body.status,
+      returnType: body.returnType,
+      sourceType: body.sourceType,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+  }
+
+  @Get('register-report/export/:jobId/status')
+  @ApiOperation({ summary: 'Get status of queued Purchase Return Register export' })
+  getRegisterExportStatus(@Param('jobId') jobId: string) {
+    return this.purchaseReturnRegisterExportService.getJobStatus(jobId);
+  }
+
+  @Get('register-report/export/:jobId/download')
+  @ApiOperation({ summary: 'Download completed Purchase Return Register export file' })
+  downloadRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.purchaseReturnRegisterExportService.streamExportFile(jobId, res);
   }
 
   @Get(':id')
