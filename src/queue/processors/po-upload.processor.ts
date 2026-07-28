@@ -282,7 +282,7 @@ export class PoUploadProcessor {
 
         if (itemsData.length === 0) return;
 
-        const poNumber = `PO-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+        const poNumber = await this.generatePoNumber(prisma);
 
         await (prisma as any).purchaseOrder.create({
             data: {
@@ -295,5 +295,50 @@ export class PoUploadProcessor {
         });
 
         progress.successRecords++;
+    }
+
+    private async generatePoNumber(prisma: PrismaService): Promise<string> {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-indexed; July = 6
+        const startYear = month >= 6 ? year : year - 1;
+        const endYear = startYear + 1;
+        const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
+        const prefix = `PO-${fy}-`;
+
+        const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+        const lastPo = await (prisma as any).purchaseOrder.findFirst({
+            where: {
+                poNumber: { startsWith: prefix },
+                createdAt: { gte: fiscalYearStartDate },
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { poNumber: true },
+        });
+
+        let seq = 1;
+        if (lastPo?.poNumber) {
+            const parts = lastPo.poNumber.split('-');
+            const lastSeq = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(lastSeq)) {
+                seq = lastSeq + 1;
+            }
+        }
+
+        let poNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+        let exists = await (prisma as any).purchaseOrder.findUnique({
+            where: { poNumber },
+            select: { id: true },
+        });
+        while (exists) {
+            seq++;
+            poNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+            exists = await (prisma as any).purchaseOrder.findUnique({
+                where: { poNumber },
+                select: { id: true },
+            });
+        }
+
+        return poNumber;
     }
 }

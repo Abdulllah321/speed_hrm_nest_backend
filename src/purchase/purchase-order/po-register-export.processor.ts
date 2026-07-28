@@ -182,17 +182,21 @@ export class PoRegisterExportProcessor {
       brandRow.commit();
 
       for (const doc of brand.documents) {
+        const grnSummary = (doc.grns || []).map((g) => `${g.grnNumber} (${g.status})`).join(', ') || 'None';
+
         // Document Header Box Row
         const docBoxRow1 = worksheet.addRow([
           `Document #: ${doc.docNoDisplay} (${doc.poNumber})`,
           `Date: ${doc.orderDate}`,
           `Supplier: ${doc.supplierName} (${doc.supplierLocation})`,
+          `GRN: ${grnSummary}`,
           `Status: ${doc.status}`,
         ]);
         docBoxRow1.height = 24;
         docBoxRow1.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11 };
         docBoxRow1.getCell(2).font = { bold: true, size: 10 };
         docBoxRow1.getCell(3).font = { bold: true, size: 10 };
+        docBoxRow1.getCell(4).font = { bold: true, color: { argb: 'FF0284C7' }, size: 10 };
         docBoxRow1.commit();
 
         // Header Labels
@@ -426,20 +430,28 @@ export class PoRegisterExportProcessor {
           `;
         }
 
+        const grnTagsHtml = (doc.grns || []).length > 0
+          ? doc.grns.map(g => `<span class="grn-badge">${g.grnNumber} (${g.status})</span>`).join(' ')
+          : '<span class="no-grn">No GRN Generated</span>';
+
         docsHtml += `
           <div class="doc-block">
             <div class="doc-box">
               <div class="doc-box-item">
                 <span class="lbl">Document #</span>
-                <span class="doc-num">${doc.docNoDisplay}</span>
+                <span class="doc-num">${doc.docNoDisplay} <span style="font-size:10px; color:#4b5563; text-decoration:none;">(${doc.poNumber})</span></span>
               </div>
               <div class="doc-box-item">
                 <span class="lbl">Date</span>
                 <span class="val">${doc.orderDate}</span>
               </div>
-              <div class="doc-box-item flex-grow">
+              <div class="doc-box-item">
                 <span class="lbl">Supplier</span>
-                <span class="val">${doc.supplierName} <span class="loc">${doc.supplierLocation}</span></span>
+                <span class="val">${doc.supplierName} <span class="loc">(${doc.supplierLocation})</span></span>
+              </div>
+              <div class="doc-box-item flex-grow">
+                <span class="lbl">GRN Info</span>
+                <span class="val">${grnTagsHtml}</span>
               </div>
             </div>
 
@@ -541,7 +553,7 @@ export class PoRegisterExportProcessor {
             padding: 4px 8px;
             margin-bottom: 8px;
             align-items: center;
-            gap: 24px;
+            gap: 20px;
             background-color: #fafafa;
           }
 
@@ -574,7 +586,23 @@ export class PoRegisterExportProcessor {
           .doc-box-item .loc {
             font-weight: normal;
             color: #4b5563;
-            margin-left: 8px;
+          }
+
+          .grn-badge {
+            display: inline-block;
+            background-color: #e0f2fe;
+            color: #0369a1;
+            font-size: 9.5px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+            border: 1px solid #bae6fd;
+          }
+
+          .no-grn {
+            color: #6b7280;
+            font-style: italic;
+            font-size: 10px;
           }
 
           .report-table {

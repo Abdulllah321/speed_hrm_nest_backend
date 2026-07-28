@@ -20,6 +20,12 @@ export interface QueuePoRegisterExportOptions {
   search?: string;
 }
 
+export interface PoRegisterGrnInfo {
+  grnNumber: string;
+  status: string;
+  receivedDate: string;
+}
+
 export interface PoRegisterVariantRow {
   color: string;
   size: string;
@@ -31,6 +37,9 @@ export interface PoRegisterVariantRow {
 export interface PoRegisterProductGroup {
   articleCode: string;
   articleName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   variants: PoRegisterVariantRow[];
   totalQuantity: number;
   totalAmount: number;
@@ -60,6 +69,7 @@ export interface PoRegisterDocumentGroup {
   orderType?: string;
   goodsType?: string;
   status: string;
+  grns: PoRegisterGrnInfo[];
   categories: PoRegisterCategoryGroup[];
   totalQuantity: number;
   totalAmount: number;
@@ -123,12 +133,18 @@ export class PoRegisterExportService {
     } = params;
 
     const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed; July = 6
+    const fyStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+
+    // Default start date is July 1st of current Financial Year
     const startDate = startStr
       ? new Date(startStr)
-      : new Date(now.getFullYear(), now.getMonth(), 1);
+      : new Date(fyStartYear, 6, 1, 0, 0, 0, 0);
+
     const endDate = endStr
       ? new Date(endStr)
-      : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     const where: any = {
       orderDate: {
@@ -174,13 +190,24 @@ export class PoRegisterExportService {
       where,
       include: {
         vendor: true,
+        goodsReceiptNotes: {
+          select: {
+            id: true,
+            grnNumber: true,
+            status: true,
+            receivedDate: true,
+          },
+        },
         items: {
           include: {
             item: {
               include: {
                 brand: true,
+                division: true,
                 category: true,
                 subCategory: true,
+                gender: true,
+                silhouette: true,
                 color: true,
                 size: true,
               },
@@ -200,6 +227,12 @@ export class PoRegisterExportService {
       const supplierLocation =
         po.vendor?.city || po.vendor?.address || po.vendor?.code || 'Location N/A';
       const poDateStr = po.orderDate ? new Date(po.orderDate).toISOString().slice(0, 10) : '';
+
+      const grns: PoRegisterGrnInfo[] = (po.goodsReceiptNotes || []).map((g: any) => ({
+        grnNumber: g.grnNumber,
+        status: g.status,
+        receivedDate: g.receivedDate ? new Date(g.receivedDate).toISOString().slice(0, 10) : '',
+      }));
 
       for (const itemRow of po.items) {
         const itemObj = itemRow.item;
@@ -230,6 +263,7 @@ export class PoRegisterExportService {
             orderType: po.orderType || undefined,
             goodsType: po.goodsType || undefined,
             status: po.status,
+            grns,
             categories: [],
             totalQuantity: 0,
             totalAmount: 0,
@@ -265,12 +299,18 @@ export class PoRegisterExportService {
 
         const articleCode = itemObj?.itemId || 'N/A';
         const articleName = itemObj?.description || itemRow.description || 'N/A';
+        const divisionName = (itemObj?.division?.name || 'N/A').toUpperCase();
+        const genderName = (itemObj?.gender?.name || 'N/A').toUpperCase();
+        const silhouetteName = (itemObj?.silhouette?.name || 'N/A').toUpperCase();
 
         let prodGroup = subCatGroup.products.find((p) => p.articleCode === articleCode);
         if (!prodGroup) {
           prodGroup = {
             articleCode,
             articleName: articleName.toUpperCase(),
+            divisionName,
+            genderName,
+            silhouetteName,
             variants: [],
             totalQuantity: 0,
             totalAmount: 0,
