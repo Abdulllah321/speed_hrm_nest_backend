@@ -74,6 +74,7 @@ model AdvanceSalary {
   approvedAt         DateTime?
   rejectionReason    String?
   status             String    @default("pending")
+  disbursementType   String    @default("with_payroll")
   createdById        String?
   updatedById        String?
   createdAt          DateTime  @default(now())
@@ -245,6 +246,7 @@ model PayrollDetail {
   overtimeAmount                   Decimal   @default(0) @db.Decimal(10, 2)
   bonusAmount                      Decimal   @default(0) @db.Decimal(10, 2)
   leaveEncashmentAmount            Decimal   @default(0) @db.Decimal(10, 2)
+  incrementArrears                 Decimal   @default(0) @db.Decimal(10, 2)
   socialSecurityContributionAmount Decimal   @default(0) @db.Decimal(10, 2)
   grossSalary                      Decimal   @db.Decimal(10, 2)
   netSalary                        Decimal   @db.Decimal(10, 2)

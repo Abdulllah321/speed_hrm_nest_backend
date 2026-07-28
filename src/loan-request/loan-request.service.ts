@@ -373,8 +373,19 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
+              fatherHusbandName: true,
+              joiningDate: true,
+              employeeSalary: true,
               departmentId: true,
               subDepartmentId: true,
+              designationId: true,
+              locationId: true,
+              designation: {
+                select: { id: true, name: true }
+              },
+              location: {
+                select: { id: true, name: true }
+              },
             },
           },
         },
@@ -623,6 +634,7 @@ export class LoanRequestService {
               approvalStatus,
               status,
               createdById: ctx.userId,
+              disbursementType: loanRequestItem.disbursementType || "with_payroll",
             },
             include: {
               employee: {
@@ -630,8 +642,19 @@ export class LoanRequestService {
                   id: true,
                   employeeId: true,
                   employeeName: true,
+                  fatherHusbandName: true,
+                  joiningDate: true,
+                  employeeSalary: true,
                   departmentId: true,
                   subDepartmentId: true,
+                  designationId: true,
+                  locationId: true,
+                  designation: {
+                    select: { id: true, name: true }
+                  },
+                  location: {
+                    select: { id: true, name: true }
+                  },
                 },
               },
             },
@@ -790,6 +813,10 @@ export class LoanRequestService {
         }
       }
 
+      if (body.disbursementType !== undefined) {
+        updateData.disbursementType = body.disbursementType;
+      }
+
       const updated = await this.prisma.loanRequest.update({
         where: { id },
         data: updateData,
@@ -799,8 +826,19 @@ export class LoanRequestService {
               id: true,
               employeeId: true,
               employeeName: true,
+              fatherHusbandName: true,
+              joiningDate: true,
+              employeeSalary: true,
               departmentId: true,
               subDepartmentId: true,
+              designationId: true,
+              locationId: true,
+              designation: {
+                select: { id: true, name: true }
+              },
+              location: {
+                select: { id: true, name: true }
+              },
             },
           },
         },

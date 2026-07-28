@@ -45,6 +45,11 @@ export class CreateAdvanceSalaryItemDto {
   @IsNotEmpty()
   @IsString()
   reason: string; // Detailed reason
+
+  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @IsOptional()
+  @IsString()
+  disbursementType?: string;
 }
 
 export class CreateAdvanceSalaryDto {
@@ -107,6 +112,11 @@ export class UpdateAdvanceSalaryDto {
   @IsOptional()
   @IsString()
   status?: string; // pending, active, completed, cancelled, rejected
+
+  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @IsOptional()
+  @IsString()
+  disbursementType?: string;
 }
 
 export class ApproveAdvanceSalaryDto {
