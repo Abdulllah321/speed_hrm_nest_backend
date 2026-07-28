@@ -148,9 +148,10 @@ export class PoRegisterExportProcessor {
     const worksheet = workbook.addWorksheet('PO Register');
 
     worksheet.columns = [
-      { header: 'GPC / Category / Product', key: 'description', width: 42 },
-      { header: 'Color', key: 'color', width: 18 },
-      { header: 'Size', key: 'size', width: 14 },
+      { header: 'Product Description / SKU', key: 'description', width: 44 },
+      { header: 'Color', key: 'color', width: 16 },
+      { header: 'Size', key: 'size', width: 12 },
+      { header: 'Barcode', key: 'barCode', width: 18 },
       { header: 'Quantity', key: 'quantity', width: 14 },
       { header: 'Unit Price', key: 'unitPrice', width: 16 },
       { header: 'Line Total', key: 'lineTotal', width: 18 },
@@ -164,169 +165,136 @@ export class PoRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Order Register', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow(['Purchase Order Register', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
     titleRow.height = 30;
     titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(6).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(7).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
 
-    for (const brand of reportData.brands) {
-      // Brand Header Row
-      const brandRow = worksheet.addRow([`BRAND: ${brand.brandName}`]);
-      brandRow.height = 26;
-      const bCell = brandRow.getCell(1);
-      bCell.font = { bold: true, color: { argb: 'FF005F5B' }, size: 13 };
-      bCell.alignment = { horizontal: 'center' };
-      brandRow.commit();
+    for (const doc of reportData.documents) {
+      const grnSummary = (doc.grns || []).map((g) => `${g.grnNumber} (${g.status})`).join(', ') || 'None';
 
-      for (const doc of brand.documents) {
-        const grnSummary = (doc.grns || []).map((g) => `${g.grnNumber} (${g.status})`).join(', ') || 'None';
+      // Document Box Header Row
+      const docBoxRow1 = worksheet.addRow([
+        `PO #: ${doc.poNumber}`,
+        `Brands: ${doc.brandsDisplay}`,
+        `Date: ${doc.orderDate}`,
+        `Supplier: ${doc.supplierName} (${doc.supplierLocation})`,
+        `GRN: ${grnSummary}`,
+        `Status: ${doc.status}`,
+        '',
+      ]);
+      docBoxRow1.height = 26;
+      docBoxRow1.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11 };
+      docBoxRow1.getCell(2).font = { bold: true, color: { argb: 'FF005F5B' }, size: 11 };
+      docBoxRow1.getCell(3).font = { bold: true, size: 10 };
+      docBoxRow1.getCell(4).font = { bold: true, size: 10 };
+      docBoxRow1.getCell(5).font = { bold: true, color: { argb: 'FF0284C7' }, size: 10 };
+      docBoxRow1.commit();
 
-        // Document Header Box Row
-        const docBoxRow1 = worksheet.addRow([
-          `Document #: ${doc.docNoDisplay} (${doc.poNumber})`,
-          `Date: ${doc.orderDate}`,
-          `Supplier: ${doc.supplierName} (${doc.supplierLocation})`,
-          `GRN: ${grnSummary}`,
-          `Status: ${doc.status}`,
-        ]);
-        docBoxRow1.height = 24;
-        docBoxRow1.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11 };
-        docBoxRow1.getCell(2).font = { bold: true, size: 10 };
-        docBoxRow1.getCell(3).font = { bold: true, size: 10 };
-        docBoxRow1.getCell(4).font = { bold: true, color: { argb: 'FF0284C7' }, size: 10 };
-        docBoxRow1.commit();
+      // Table Headers
+      const colHeaderRow = worksheet.addRow([
+        'Product Description / SKU',
+        'Color',
+        'Size',
+        'Barcode',
+        'Quantity',
+        'Unit Price',
+        'Line Total',
+      ]);
+      colHeaderRow.height = 22;
+      for (let c = 1; c <= 7; c++) {
+        const cell = colHeaderRow.getCell(c);
+        cell.font = { bold: true, color: { argb: 'FF333333' } };
+        cell.border = { bottom: { style: 'medium' } };
+        if (c >= 5) cell.alignment = { horizontal: 'right' };
+      }
+      colHeaderRow.commit();
 
-        // Header Labels
-        const colHeaderRow = worksheet.addRow([
-          'GPC / Category / Product',
-          'Color',
-          'Size',
-          'Quantity',
-          'Unit Price',
-          'Line Total',
-        ]);
-        colHeaderRow.height = 22;
-        for (let c = 1; c <= 6; c++) {
-          const cell = colHeaderRow.getCell(c);
-          cell.font = { bold: true, color: { argb: 'FF333333' } };
-          cell.border = { bottom: { style: 'medium' } };
-          if (c >= 4) cell.alignment = { horizontal: 'right' };
-        }
-        colHeaderRow.commit();
-
-        for (const cat of doc.categories) {
+      for (const div of doc.divisions) {
+        for (const cat of div.categories) {
           // Category Row (Green)
-          const catRow = worksheet.addRow([cat.categoryName, '', '', cat.totalQuantity, '', cat.totalAmount]);
+          const catRow = worksheet.addRow([`Category: ${cat.categoryName}`, '', '', '', cat.totalQuantity, '', cat.totalAmount]);
           catRow.height = 22;
-          const catCell = catRow.getCell(1);
-          catCell.font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
-          const catQtyCell = catRow.getCell(4);
-          catQtyCell.font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
-          catQtyCell.alignment = { horizontal: 'right' };
-          catQtyCell.numFmt = '#,##0';
-          catRow.getCell(6).font = { bold: true, color: { argb: 'FF008000' } };
-          catRow.getCell(6).numFmt = '#,##0.00';
+          catRow.getCell(1).font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
+          catRow.getCell(5).font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
+          catRow.getCell(5).alignment = { horizontal: 'right' };
+          catRow.getCell(5).numFmt = '#,##0';
+          catRow.getCell(7).font = { bold: true, color: { argb: 'FF008000' } };
+          catRow.getCell(7).numFmt = '#,##0.00';
           catRow.commit();
 
-          for (const subCat of cat.subcategories) {
-            // Subcategory Row (Purple)
-            const subRow = worksheet.addRow([`  ${subCat.subCategoryName}`, '', '', subCat.totalQuantity, '', subCat.totalAmount]);
-            subRow.height = 20;
-            subRow.getCell(1).font = { bold: true, color: { argb: 'FF800080' }, size: 10 };
-            const subQtyCell = subRow.getCell(4);
-            subQtyCell.font = { bold: true, color: { argb: 'FF800080' }, size: 10 };
-            subQtyCell.alignment = { horizontal: 'right' };
-            subQtyCell.numFmt = '#,##0';
-            subRow.getCell(6).font = { bold: true, color: { argb: 'FF800080' } };
-            subRow.getCell(6).numFmt = '#,##0.00';
-            subRow.commit();
+          for (const gen of cat.genders) {
+            for (const sil of gen.silhouettes) {
+              for (const art of sil.articles) {
+                // Article Row (Blue, SKU & Description)
+                const artRow = worksheet.addRow([`  SKU: ${art.sku} - ${art.description}`, '', '', '', art.totalQuantity, '', art.totalAmount]);
+                artRow.height = 20;
+                artRow.getCell(1).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
+                artRow.getCell(5).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
+                artRow.getCell(5).alignment = { horizontal: 'right' };
+                artRow.getCell(5).numFmt = '#,##0';
+                artRow.getCell(7).font = { bold: true, color: { argb: 'FF0000FF' } };
+                artRow.getCell(7).numFmt = '#,##0.00';
+                artRow.commit();
 
-            for (const prod of subCat.products) {
-              // Product Row (Blue)
-              const prodRow = worksheet.addRow([`    ${prod.articleCode} - ${prod.articleName}`, '', '', prod.totalQuantity, '', prod.totalAmount]);
-              prodRow.height = 20;
-              prodRow.getCell(1).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
-              const prodQtyCell = prodRow.getCell(4);
-              prodQtyCell.font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
-              prodQtyCell.alignment = { horizontal: 'right' };
-              prodQtyCell.numFmt = '#,##0';
-              prodRow.getCell(6).font = { bold: true, color: { argb: 'FF0000FF' } };
-              prodRow.getCell(6).numFmt = '#,##0.00';
-              prodRow.commit();
-
-              // Variant Detail Rows
-              for (const v of prod.variants) {
-                const vRow = worksheet.addRow(['', v.color, v.size, v.quantity, v.unitPrice, v.lineTotal]);
-                vRow.height = 18;
-                vRow.getCell(2).alignment = { horizontal: 'center' };
-                vRow.getCell(3).alignment = { horizontal: 'center' };
-                vRow.getCell(4).alignment = { horizontal: 'right' };
-                vRow.getCell(4).numFmt = '#,##0';
-                vRow.getCell(5).alignment = { horizontal: 'right' };
-                vRow.getCell(5).numFmt = '#,##0.00';
-                vRow.getCell(6).alignment = { horizontal: 'right' };
-                vRow.getCell(6).numFmt = '#,##0.00';
-                for (let c = 1; c <= 6; c++) {
-                  vRow.getCell(c).border = borderThin;
+                // Variant Detail Rows
+                for (const v of art.variants) {
+                  const vRow = worksheet.addRow(['', v.color, v.size, v.barCode, v.quantity, v.unitPrice, v.lineTotal]);
+                  vRow.height = 18;
+                  vRow.getCell(2).alignment = { horizontal: 'center' };
+                  vRow.getCell(3).alignment = { horizontal: 'center' };
+                  vRow.getCell(4).alignment = { horizontal: 'center' };
+                  vRow.getCell(5).alignment = { horizontal: 'right' };
+                  vRow.getCell(5).numFmt = '#,##0';
+                  vRow.getCell(6).alignment = { horizontal: 'right' };
+                  vRow.getCell(6).numFmt = '#,##0.00';
+                  vRow.getCell(7).alignment = { horizontal: 'right' };
+                  vRow.getCell(7).numFmt = '#,##0.00';
+                  for (let c = 1; c <= 7; c++) {
+                    vRow.getCell(c).border = borderThin;
+                  }
+                  vRow.commit();
                 }
-                vRow.commit();
               }
             }
           }
         }
-
-        // Document Total Row
-        const docTotRow = worksheet.addRow([`Total for Document #${doc.docNoDisplay}`, '', '', doc.totalQuantity, '', doc.totalAmount]);
-        docTotRow.height = 22;
-        for (let c = 1; c <= 6; c++) {
-          const cell = docTotRow.getCell(c);
-          cell.font = { bold: true, size: 10, color: { argb: 'FFCC0000' } };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F0' } };
-          cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
-        }
-        docTotRow.getCell(4).alignment = { horizontal: 'right' };
-        docTotRow.getCell(4).numFmt = '#,##0';
-        docTotRow.getCell(6).alignment = { horizontal: 'right' };
-        docTotRow.getCell(6).numFmt = '#,##0.00';
-        docTotRow.commit();
-
-        worksheet.addRow([]).commit();
       }
 
-      // Brand Total Row
-      const brandTotRow = worksheet.addRow([`Total for ${brand.brandName}`, '', '', brand.totalQuantity, '', brand.totalAmount]);
-      brandTotRow.height = 24;
-      for (let c = 1; c <= 6; c++) {
-        const cell = brandTotRow.getCell(c);
-        cell.font = { bold: true, size: 11, color: { argb: 'FF005F5B' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2F1' } };
-        cell.border = { top: { style: 'medium' }, bottom: { style: 'medium' } };
+      // Document Total Row
+      const docTotRow = worksheet.addRow([`Total for PO #${doc.poNumber}`, '', '', '', doc.totalQuantity, '', doc.totalAmount]);
+      docTotRow.height = 22;
+      for (let c = 1; c <= 7; c++) {
+        const cell = docTotRow.getCell(c);
+        cell.font = { bold: true, size: 10, color: { argb: 'FFCC0000' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F0' } };
+        cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
       }
-      brandTotRow.getCell(4).alignment = { horizontal: 'right' };
-      brandTotRow.getCell(4).numFmt = '#,##0';
-      brandTotRow.getCell(6).alignment = { horizontal: 'right' };
-      brandTotRow.getCell(6).numFmt = '#,##0.00';
-      brandTotRow.commit();
+      docTotRow.getCell(5).alignment = { horizontal: 'right' };
+      docTotRow.getCell(5).numFmt = '#,##0';
+      docTotRow.getCell(7).alignment = { horizontal: 'right' };
+      docTotRow.getCell(7).numFmt = '#,##0.00';
+      docTotRow.commit();
 
       worksheet.addRow([]).commit();
     }
 
     // Grand Total Row
-    const grandRow = worksheet.addRow(['GRAND TOTAL', '', '', reportData.grandTotals.quantity, '', reportData.grandTotals.amount]);
+    const grandRow = worksheet.addRow(['GRAND TOTAL', '', '', '', reportData.grandTotals.quantity, '', reportData.grandTotals.amount]);
     grandRow.height = 26;
-    for (let c = 1; c <= 6; c++) {
+    for (let c = 1; c <= 7; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
       cell.border = borderThin;
     }
-    grandRow.getCell(4).alignment = { horizontal: 'right' };
-    grandRow.getCell(4).numFmt = '#,##0';
-    grandRow.getCell(6).alignment = { horizontal: 'right' };
-    grandRow.getCell(6).numFmt = '#,##0.00';
+    grandRow.getCell(5).alignment = { horizontal: 'right' };
+    grandRow.getCell(5).numFmt = '#,##0';
+    grandRow.getCell(7).alignment = { horizontal: 'right' };
+    grandRow.getCell(7).numFmt = '#,##0.00';
     grandRow.commit();
 
     await workbook.commit();
@@ -366,122 +334,124 @@ export class PoRegisterExportProcessor {
   private buildHtmlReport(reportData: PoRegisterReportResult): string {
     const dateRangeStr = `${reportData.startDate} - ${reportData.endDate}`;
 
-    let brandsHtml = '';
+    let docsHtml = '';
 
-    for (const brand of reportData.brands) {
-      let docsHtml = '';
+    for (const doc of reportData.documents) {
+      let divHtml = '';
 
-      for (const doc of brand.documents) {
-        let categoriesHtml = '';
+      for (const div of doc.divisions) {
+        let catHtml = '';
 
-        for (const cat of doc.categories) {
-          let subCatsHtml = '';
+        for (const cat of div.categories) {
+          let genHtml = '';
 
-          for (const subCat of cat.subcategories) {
-            let prodsHtml = '';
+          for (const gen of cat.genders) {
+            let silHtml = '';
 
-            for (const prod of subCat.products) {
-              let variantsHtml = '';
+            for (const sil of gen.silhouettes) {
+              let artHtml = '';
 
-              for (const v of prod.variants) {
-                variantsHtml += `
-                  <tr class="variant-row">
-                    <td style="padding-left: 60px;"></td>
-                    <td class="text-center">${v.color}</td>
-                    <td class="text-center">${v.size}</td>
-                    <td class="text-right font-semibold">${v.quantity.toLocaleString()}</td>
+              for (const art of sil.articles) {
+                let variantHtml = '';
+
+                for (const v of art.variants) {
+                  variantHtml += `
+                    <tr class="variant-row">
+                      <td style="padding-left: 60px;"></td>
+                      <td class="text-center">${v.color}</td>
+                      <td class="text-center">${v.size}</td>
+                      <td class="text-center text-slate-500">${v.barCode}</td>
+                      <td class="text-right font-semibold">${v.quantity.toLocaleString()}</td>
+                    </tr>
+                  `;
+                }
+
+                artHtml += `
+                  <tr class="prod-row">
+                    <td class="prod-title" style="padding-left: 40px;">
+                      <span class="prod-code">SKU: ${art.sku}</span>
+                      <span class="prod-name">${art.description}</span>
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td class="text-right prod-qty">${art.totalQuantity.toLocaleString()}</td>
                   </tr>
+                  ${variantHtml}
                 `;
               }
 
-              prodsHtml += `
-                <tr class="prod-row">
-                  <td class="prod-title" style="padding-left: 40px;">
-                    <span class="prod-code">${prod.articleCode}</span>
-                    <span class="prod-name">${prod.articleName}</span>
-                  </td>
-                  <td></td>
-                  <td></td>
-                  <td class="text-right prod-qty">${prod.totalQuantity.toLocaleString()}</td>
-                </tr>
-                ${variantsHtml}
-              `;
+              silHtml += artHtml;
             }
 
-            subCatsHtml += `
-              <tr class="subcat-row">
-                <td class="subcat-title" style="padding-left: 20px;">${subCat.subCategoryName}</td>
-                <td></td>
-                <td></td>
-                <td class="text-right subcat-qty">${subCat.totalQuantity.toLocaleString()}</td>
-              </tr>
-              ${prodsHtml}
-            `;
+            genHtml += silHtml;
           }
 
-          categoriesHtml += `
+          catHtml += `
             <tr class="cat-row">
               <td class="cat-title">${cat.categoryName}</td>
               <td></td>
               <td></td>
+              <td></td>
               <td class="text-right cat-qty">${cat.totalQuantity.toLocaleString()}</td>
             </tr>
-            ${subCatsHtml}
+            ${genHtml}
           `;
         }
 
-        const grnTagsHtml = (doc.grns || []).length > 0
-          ? doc.grns.map(g => `<span class="grn-badge">${g.grnNumber} (${g.status})</span>`).join(' ')
-          : '<span class="no-grn">No GRN Generated</span>';
-
-        docsHtml += `
-          <div class="doc-block">
-            <div class="doc-box">
-              <div class="doc-box-item">
-                <span class="lbl">Document #</span>
-                <span class="doc-num">${doc.docNoDisplay} <span style="font-size:10px; color:#4b5563; text-decoration:none;">(${doc.poNumber})</span></span>
-              </div>
-              <div class="doc-box-item">
-                <span class="lbl">Date</span>
-                <span class="val">${doc.orderDate}</span>
-              </div>
-              <div class="doc-box-item">
-                <span class="lbl">Supplier</span>
-                <span class="val">${doc.supplierName} <span class="loc">(${doc.supplierLocation})</span></span>
-              </div>
-              <div class="doc-box-item flex-grow">
-                <span class="lbl">GRN Info</span>
-                <span class="val">${grnTagsHtml}</span>
-              </div>
-            </div>
-
-            <table class="report-table">
-              <colgroup>
-                <col style="width: 55%;" />
-                <col style="width: 20%;" />
-                <col style="width: 12%;" />
-                <col style="width: 13%;" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th class="text-left">GPC / Category / Product</th>
-                  <th class="text-center">Color</th>
-                  <th class="text-center">Size</th>
-                  <th class="text-right">Quantity</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${categoriesHtml}
-              </tbody>
-            </table>
-          </div>
-        `;
+        divHtml += catHtml;
       }
 
-      brandsHtml += `
-        <div class="brand-block">
-          <div class="brand-header">${brand.brandName}</div>
-          ${docsHtml}
+      const grnTagsHtml = (doc.grns || []).length > 0
+        ? doc.grns.map(g => `<span class="grn-badge">${g.grnNumber} (${g.status})</span>`).join(' ')
+        : '<span class="no-grn">No GRN Generated</span>';
+
+      docsHtml += `
+        <div class="doc-block">
+          <div class="doc-box">
+            <div class="doc-box-item">
+              <span class="lbl">PO Number</span>
+              <span class="doc-num">${doc.poNumber}</span>
+            </div>
+            <div class="doc-box-item">
+              <span class="lbl">Brands</span>
+              <span class="brand-display">${doc.brandsDisplay}</span>
+            </div>
+            <div class="doc-box-item">
+              <span class="lbl">Date</span>
+              <span class="val">${doc.orderDate}</span>
+            </div>
+            <div class="doc-box-item">
+              <span class="lbl">Supplier</span>
+              <span class="val">${doc.supplierName} <span class="loc">(${doc.supplierLocation})</span></span>
+            </div>
+            <div class="doc-box-item flex-grow">
+              <span class="lbl">GRN Info</span>
+              <span class="val">${grnTagsHtml}</span>
+            </div>
+          </div>
+
+          <table class="report-table">
+            <colgroup>
+              <col style="width: 45%;" />
+              <col style="width: 15%;" />
+              <col style="width: 12%;" />
+              <col style="width: 15%;" />
+              <col style="width: 13%;" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="text-left">Product Description / SKU</th>
+                <th class="text-center">Color</th>
+                <th class="text-center">Size</th>
+                <th class="text-center">Barcode</th>
+                <th class="text-right">Quantity</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${divHtml}
+            </tbody>
+          </table>
         </div>
       `;
     }
@@ -526,25 +496,9 @@ export class PoRegisterExportProcessor {
             text-decoration: underline;
           }
 
-          .brand-block {
-            margin-bottom: 24px;
-            page-break-inside: avoid;
-          }
-
-          .brand-header {
-            color: #006666;
-            font-size: 16px;
-            font-weight: bold;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            border-bottom: 2px solid #006666;
-            padding-bottom: 4px;
-            margin-bottom: 12px;
-          }
-
           .doc-block {
-            margin-bottom: 16px;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
           }
 
           .doc-box {
@@ -553,7 +507,7 @@ export class PoRegisterExportProcessor {
             padding: 4px 8px;
             margin-bottom: 8px;
             align-items: center;
-            gap: 20px;
+            gap: 16px;
             background-color: #fafafa;
           }
 
@@ -573,9 +527,15 @@ export class PoRegisterExportProcessor {
 
           .doc-box-item .doc-num {
             color: #cc0000;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
-            text-decoration: underline;
+          }
+
+          .doc-box-item .brand-display {
+            color: #006666;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
           }
 
           .doc-box-item .val {
@@ -642,24 +602,6 @@ export class PoRegisterExportProcessor {
             font-size: 11px;
           }
 
-          .subcat-row {
-            page-break-inside: avoid;
-            border-bottom: 1px solid #f3f4f6;
-          }
-
-          .subcat-title {
-            color: #800080;
-            font-size: 11px;
-            font-weight: bold;
-            text-transform: uppercase;
-          }
-
-          .subcat-qty {
-            color: #800080;
-            font-weight: bold;
-            font-size: 11px;
-          }
-
           .prod-row {
             page-break-inside: avoid;
           }
@@ -703,7 +645,7 @@ export class PoRegisterExportProcessor {
           <span class="report-title">Purchase Order Register</span>
           <span class="date-range">${dateRangeStr}</span>
         </div>
-        ${brandsHtml}
+        ${docsHtml}
       </body>
       </html>
     `;
