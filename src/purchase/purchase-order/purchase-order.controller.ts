@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, Patch, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { PurchaseOrderService } from './purchase-order.service';
+import { PoRegisterExportService } from './po-register-export.service';
 import {
   CreatePurchaseOrderDto,
   AwardFromRfqDto,
@@ -13,7 +14,10 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/purchase-order')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseOrderController {
-  constructor(private readonly purchaseOrderService: PurchaseOrderService,) {}
+  constructor(
+    private readonly purchaseOrderService: PurchaseOrderService,
+    private readonly poRegisterExportService: PoRegisterExportService,
+  ) {}
 
   @Get()
   @Permissions('erp.procurement.po.read')
@@ -25,6 +29,72 @@ export class PurchaseOrderController {
   @Permissions('erp.procurement.po.read')
   findPendingQuotations() {
     return this.purchaseOrderService.findPendingQuotations();
+  }
+
+  @Get('register-report')
+  @Permissions('erp.procurement.po.read')
+  getRegisterReport(
+    @Query('brandId') brandId?: string,
+    @Query('vendorId') vendorId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('orderType') orderType?: string,
+    @Query('goodsType') goodsType?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.poRegisterExportService.getReportData({
+      brandId,
+      vendorId,
+      startDate,
+      endDate,
+      orderType,
+      goodsType,
+      status,
+      search,
+    });
+  }
+
+  @Post('register-report/export')
+  @Permissions('erp.procurement.po.read')
+  queueRegisterExport(
+    @Body() body: {
+      brandId?: string;
+      vendorId?: string;
+      startDate?: string;
+      endDate?: string;
+      orderType?: string;
+      goodsType?: string;
+      status?: string;
+      format: 'xlsx' | 'pdf';
+      search?: string;
+    },
+    @Req() req: any,
+  ) {
+    return this.poRegisterExportService.queueExport({
+      userId: req.user?.id,
+      brandId: body.brandId,
+      vendorId: body.vendorId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      orderType: body.orderType,
+      goodsType: body.goodsType,
+      status: body.status,
+      format: body.format || 'xlsx',
+      search: body.search,
+    });
+  }
+
+  @Get('register-report/export/:jobId/status')
+  @Permissions('erp.procurement.po.read')
+  getRegisterExportStatus(@Param('jobId') jobId: string) {
+    return this.poRegisterExportService.getJobStatus(jobId);
+  }
+
+  @Get('register-report/export/:jobId/download')
+  @Permissions('erp.procurement.po.read')
+  async downloadRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
+    return this.poRegisterExportService.streamExportFile(jobId, res);
   }
 
   @Get(':id')

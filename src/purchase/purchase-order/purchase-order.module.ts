@@ -10,12 +10,23 @@ import { PoValidatorService } from '../../common/services/po-validator.service';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { DatabaseModule } from '../../database/database.module';
+import { ExportHistoryModule } from '../../warehouse/export-history/export-history.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
+import { UploadModule } from '../../upload/upload.module';
+import { PoRegisterExportService } from './po-register-export.service';
+import { PoRegisterExportProcessor } from './po-register-export.processor';
 
 @Module({
   imports: [
     PrismaModule,
     DatabaseModule,
-    BullModule.registerQueue({ name: 'po-upload' }),
+    ExportHistoryModule,
+    NotificationsModule,
+    UploadModule,
+    BullModule.registerQueue(
+      { name: 'po-upload' },
+      { name: 'po-register-export' },
+    ),
   ],
   controllers: [PurchaseOrderController, PoBulkUploadController],
   providers: [
@@ -25,7 +36,9 @@ import { DatabaseModule } from '../../database/database.module';
     PoCsvParserService,
     PoValidatorService,
     UploadEventsService,
+    PoRegisterExportService,
+    PoRegisterExportProcessor,
   ],
-  exports: [PurchaseOrderService],
+  exports: [PurchaseOrderService, PoRegisterExportService],
 })
 export class PurchaseOrderModule {}

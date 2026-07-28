@@ -51,7 +51,6 @@ export class EmployeeController {
   ) { }
 
   @Get('employees')
-  @Permissions('hr.employee.read', 'hr.leave.selectEmployee')
   @ApiOperation({ summary: 'List all employees' })
   async list(
     @Query('page') page?: number,
