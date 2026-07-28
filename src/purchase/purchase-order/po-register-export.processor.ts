@@ -118,6 +118,7 @@ export class PoRegisterExportProcessor {
       await job.progress(100);
 
       runInBackground(
+        'PO Register Export Notification',
         this.notificationsService.create({
           userId,
           title: 'Export Ready',
