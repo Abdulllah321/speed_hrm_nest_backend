@@ -78,6 +78,7 @@ export class PayrollController {
   async getAllPayrolls(
     @Query('year') year?: string,
     @Query('month') month?: string,
+    @Query('monthsYears') monthsYears?: string,
     @Query('departmentId') departmentId?: string,
     @Query('subDepartmentId') subDepartmentId?: string,
     @Query('employeeId') employeeId?: string,
@@ -86,6 +87,7 @@ export class PayrollController {
     return this.payrollService.getPayrollReport({
       month,
       year,
+      monthsYears,
       departmentId,
       subDepartmentId,
       employeeId,
@@ -130,6 +132,7 @@ export class PayrollController {
   async getPayrollReport(
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Query('monthsYears') monthsYears?: string,
     @Query('departmentId') departmentId?: string,
     @Query('subDepartmentId') subDepartmentId?: string,
     @Query('employeeId') employeeId?: string,
@@ -138,6 +141,7 @@ export class PayrollController {
     return this.payrollService.getPayrollReport({
       month,
       year,
+      monthsYears,
       departmentId,
       subDepartmentId,
       employeeId,
