@@ -312,6 +312,25 @@ export class PayrollService {
     for (const employee of enrichedEmployees) {
       // Type cast to any to handle Prisma relations that may not be in generated types yet
       const emp = employee as any;
+
+      // Fetch previous confirmed payrolls for YTD tax and arrears recalculation
+      const previousPayrolls = await this.prisma.payrollDetail.findMany({
+        where: {
+          employeeId: employee.id,
+          payroll: {
+            status: 'confirmed',
+          },
+        },
+        include: {
+          payroll: {
+            select: {
+              month: true,
+              year: true,
+              status: true,
+            },
+          },
+        },
+      });
       // ── Joining / Exit date window ─────────────────────────────────────
       const joiningDate = emp.joiningDate ? new Date(emp.joiningDate) : null;
       const lastExitDate = emp.lastExitDate ? new Date(emp.lastExitDate) : null;
@@ -360,7 +379,22 @@ export class PayrollService {
           monthStartDate,
           monthEndDate,
           totalDaysInMonth,
+          `${normalizedYear}-${normalizedMonth}`,
         );
+
+      // Calculate retroactive arrears (tax-free)
+      const { incrementArrears, incrementArrearsMonths, incrementArrearsBreakup } =
+        this.calculateIncrementArrears(
+          employee,
+          monthStartDate,
+          monthEndDate,
+          previousPayrolls,
+        );
+
+      const combinedIncrementBreakup = [
+        ...incrementBreakup,
+        ...incrementArrearsBreakup,
+      ];
 
       // Prorate packageAmount for salary base
       const proratedPackage = isMidMonthEntry
@@ -606,6 +640,8 @@ export class PayrollService {
           leaveEncashmentAmount: 0,
           socialSecurityContributionAmount: 0,
           incrementBreakup: [],
+          incrementArrears: 0,
+          incrementArrearsMonths: '',
           deductionBreakup: [],
           totalDeductions: 0,
           attendanceBreakup: {
@@ -693,12 +729,14 @@ export class PayrollService {
       // E. Calculate Gross Salary (Pre-tax, but after attendance deduction)
       // Gross = Sum of All Salary Breakup Components (after attendance adjustment) + AdHoc Allowances + Overtime + Bonus + Leave Encashment
       // All salary components are included in gross regardless of isDeductible flag
+      // isDeductible flag is only used for EOBI/PF/Social Security base calculation
       const adjustedTotalPackageAmount = totalPackageAmount.minus(attendanceDeduction);
       const grossSalary = adjustedTotalPackageAmount
         .add(totalAdHocAllowances)
         .add(overtimeAmount)
         .add(bonusAmount)
-        .add(leaveEncashmentAmount);
+        .add(leaveEncashmentAmount)
+        .add(incrementArrears);
 
       // F. Calculate Tax (with Rebates) - YTD Cumulative Method
       // Tax is calculated based on Year-to-Date actual income + projected remaining months
@@ -727,22 +765,38 @@ export class PayrollService {
         ...allowanceBreakup.filter(comp => comp.isTaxable !== false),
         ...bonusBreakup.filter(comp => comp.isTaxable !== false),
       ];
+
+      if (overtimeAmount.gt(0)) {
+        allTaxableComponents.push({
+          id: 'overtime',
+          name: 'Overtime',
+          amount: overtimeAmount.toNumber(),
+          isTaxable: true,
+          isRecurring: false,
+          percentage: null,
+        });
+      }
+
+      if (leaveEncashmentAmount.gt(0)) {
+        allTaxableComponents.push({
+          id: 'leave-encashment',
+          name: 'Leave Encashment',
+          amount: leaveEncashmentAmount.toNumber(),
+          isTaxable: true,
+          isRecurring: false,
+          percentage: null,
+        });
+      }
       
-      const { taxDeduction, taxBreakup } = await this.calculateTaxYTD(
+      const { taxDeduction, taxBreakup } = await this.calculateTaxAnnualized(
         employee.id,
         allTaxableComponents,
         emp.rebates || [],
-        taxablePackageAmount,
-        adjustedTaxablePackageAmount, // Current month's actual taxable amount after attendance
-        taxableAdHocAllowances,
-        overtimeAmount, // Overtime is fully taxable
-        taxableBonusAmount,
-        leaveEncashmentAmount,
         allTaxSlabs,
+        salaryFraction,
         normalizedMonth,
         normalizedYear,
-        salaryFraction,
-        emp.lastExitDate,
+        previousPayrolls,
       );
 
       // G. Calculate EOBI & PF
@@ -808,7 +862,9 @@ export class PayrollService {
         leaveEncashmentAmount: leaveEncashmentAmount.toNumber(),
         socialSecurityContributionAmount:
           socialSecurityContributionAmount.toNumber(),
-        incrementBreakup,
+        incrementBreakup: combinedIncrementBreakup,
+        incrementArrears: incrementArrears.toNumber(),
+        incrementArrearsMonths,
         deductionBreakup,
         totalDeductions: totalAdHocDeductions.toNumber(),
         attendanceBreakup,
@@ -928,6 +984,7 @@ export class PayrollService {
           overtimeBreakup: d.overtimeBreakup || [],
           bonusBreakup: d.bonusBreakup || [],
           incrementBreakup: d.incrementBreakup || [],
+          incrementArrears: new Decimal(d.incrementArrears || 0),
           // Snapshot bank info
           accountNumber: empInfo?.accountNumber,
           bankName: empInfo?.bankName,
@@ -1390,6 +1447,7 @@ export class PayrollService {
   async getPayrollReport(filters: {
     month?: string;
     year?: string;
+    monthsYears?: string;
     departmentId?: string;
     subDepartmentId?: string;
     employeeId?: string;
@@ -1397,10 +1455,19 @@ export class PayrollService {
   }) {
     const where: Prisma.PayrollDetailWhereInput = {};
 
-    if (filters.month || filters.year) {
+    if (filters.monthsYears) {
+      const pairs = filters.monthsYears.split(',').map((my) => {
+        const [year, month] = my.split('-');
+        const normalizedMonth = String(Number(month)).padStart(2, '0');
+        return { month: normalizedMonth, year };
+      });
+      where.payroll = {
+        OR: pairs,
+      };
+    } else if (filters.month || filters.year) {
       where.payroll = {
         ...(filters.month &&
-          filters.month !== 'all' && { month: filters.month }),
+          filters.month !== 'all' && { month: String(Number(filters.month)).padStart(2, '0') }),
         ...(filters.year && filters.year !== 'all' && { year: filters.year }),
       };
     }
@@ -2016,12 +2083,79 @@ export class PayrollService {
     // Loans
     const emp = employee as any;
     if (emp.loanRequests && emp.loanRequests.length > 0) {
-      for (const loan of emp.loanRequests) {
-        // Only process if the loan status is 'disbursed'
-        const loanStatus = (loan.status || '').toLowerCase();
-        if (loanStatus !== 'disbursed') {
-          continue;
+      // Get all disbursed loans
+      const activeLoans = emp.loanRequests.filter((l: any) =>
+        (l.status || '').toLowerCase() === 'disbursed',
+      );
+
+      // Sort active loans chronologically by repaymentStartMonthYear or createdAt
+      activeLoans.sort((a: any, b: any) => {
+        const dateA = a.repaymentStartMonthYear || '9999-12';
+        const dateB = b.repaymentStartMonthYear || '9999-12';
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+
+      // Get all confirmed payroll details for this employee with non-zero loan deduction
+      const confirmedPayrollDetails = await this.prisma.payrollDetail.findMany({
+        where: {
+          employeeId: employee.id,
+          payroll: {
+            status: 'confirmed',
+          },
+          loanDeduction: {
+            gt: 0,
+          },
+        },
+        include: {
+          payroll: {
+            select: {
+              month: true,
+              year: true,
+            },
+          },
+        },
+      });
+
+      // Sort confirmed payroll details chronologically
+      confirmedPayrollDetails.sort((a, b) => {
+        const dateA = `${a.payroll.year}-${a.payroll.month}`;
+        const dateB = `${b.payroll.year}-${b.payroll.month}`;
+        return dateA.localeCompare(dateB);
+      });
+
+      // Initialize loan tracking variables
+      const loanTrackers = activeLoans.map((l: any) => ({
+        loan: l,
+        amount: new Decimal(l.amount),
+        totalDeducted: new Decimal(0),
+        firstDeductionMonthYear: null as string | null,
+      }));
+
+      // Allocate historical confirmed deductions using FIFO
+      for (const detail of confirmedPayrollDetails) {
+        let deductionToAllocate = new Decimal(detail.loanDeduction);
+        const payrollMonthYearStr = `${detail.payroll.year}-${detail.payroll.month}`;
+
+        for (const tracker of loanTrackers) {
+          if (deductionToAllocate.isZero()) break;
+
+          const remainingToFullyRepay = tracker.amount.sub(tracker.totalDeducted);
+          if (remainingToFullyRepay.gt(0)) {
+            const allocation = Decimal.min(deductionToAllocate, remainingToFullyRepay);
+            tracker.totalDeducted = tracker.totalDeducted.add(allocation);
+            deductionToAllocate = deductionToAllocate.sub(allocation);
+
+            if (!tracker.firstDeductionMonthYear) {
+              tracker.firstDeductionMonthYear = payrollMonthYearStr;
+            }
+          }
         }
+      }
+
+      // Process each active loan's contribution to the current payroll period
+      for (const tracker of loanTrackers) {
+        const loan = tracker.loan;
 
         // 1. Calculate Disbursement (Addition)
         // Check if the loan was disbursed in the current payroll month/year
@@ -2043,7 +2177,7 @@ export class PayrollService {
             updatedY === normalizedYearForComparison;
         }
 
-        if (matchesDisbursementMonth) {
+        if (matchesDisbursementMonth && (loan as any).disbursementType !== 'separately') {
           loanDisbursement = loanDisbursement.add(new Decimal(loan.amount));
         }
 
@@ -2052,25 +2186,30 @@ export class PayrollService {
           continue;
         }
 
-        // Shift the repayment start month to the first unconfirmed payroll period
-        const shiftedStartMonthYear = await this.getUnconfirmedPayrollStartMonth(
-          loan.repaymentStartMonthYear,
-        );
+        // Determine actual repayment start month
+        let startMonthYearStr: string;
+        if (tracker.totalDeducted.gt(0) && tracker.firstDeductionMonthYear) {
+          // If deductions have already started, use the actual first deduction month
+          startMonthYearStr = tracker.firstDeductionMonthYear;
+        } else {
+          // If no deductions have been made yet, shift original repayment start month to first unconfirmed month
+          startMonthYearStr = await this.getUnconfirmedPayrollStartMonth(
+            loan.repaymentStartMonthYear,
+          );
+        }
 
-        const [startYear, startMonth] = shiftedStartMonthYear
-          .split('-')
-          .map(Number);
+        const [startYear, startMonth] = startMonthYearStr.split('-').map(Number);
         const currentY = Number(year);
         const currentM = Number(month);
 
-        const diffMonths =
-          (currentY - startYear) * 12 + (currentM - startMonth);
+        const diffMonths = (currentY - startYear) * 12 + (currentM - startMonth);
 
         if (diffMonths >= 0 && diffMonths < loan.numberOfInstallments) {
-          const installment = new Decimal(loan.amount).div(
-            loan.numberOfInstallments,
-          );
-          loanDeduction = loanDeduction.add(installment);
+          const installment = tracker.amount.div(loan.numberOfInstallments);
+          const remainingBalance = tracker.amount.sub(tracker.totalDeducted);
+          const contribution = Decimal.max(0, Decimal.min(installment, remainingBalance));
+
+          loanDeduction = loanDeduction.add(contribution);
         }
       }
     }
@@ -2092,7 +2231,8 @@ export class PayrollService {
           const neededY = String(neededDate.getFullYear());
           if (
             neededM === normalizedMonthForComparison &&
-            neededY === normalizedYearForComparison
+            neededY === normalizedYearForComparison &&
+            (advance as any).disbursementType !== 'separately'
           ) {
             advanceSalaryDisbursement = advanceSalaryDisbursement.add(new Decimal(advance.amount));
           }
@@ -2124,8 +2264,8 @@ export class PayrollService {
     monthStartDate: Date,
     monthEndDate: Date,
     totalDaysInMonth: number,
+    payrollMonthYear: string,
   ): { effectivePackage: Decimal; incrementBreakup: any[] } {
-    const baseSalary = new Decimal(employee.employeeSalary);
     const incrementBreakup: any[] = [];
 
     // Normalize dates to start of day for accurate comparison
@@ -2138,14 +2278,53 @@ export class PayrollService {
     const monthStart = normalizeDate(monthStartDate);
     const monthEnd = normalizeDate(monthEndDate);
 
-    // If no increments, return base salary
-    if (!employee.increments || employee.increments.length === 0) {
+    // Compute baseline salary by reversing future increments (relative to current payrollMonthYear)
+    let baselineSalary = new Decimal(employee.employeeSalary);
+    const futureIncrements = (employee.increments || [])
+      .filter((inc: any) => inc.currentMonth > payrollMonthYear)
+      .sort(
+        (a: any, b: any) =>
+          new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime() ||
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+
+    for (const inc of futureIncrements) {
+      const amount = inc.incrementAmount ? new Decimal(inc.incrementAmount) : new Decimal(0);
+      const percent = inc.incrementPercentage ? new Decimal(inc.incrementPercentage) : new Decimal(0);
+      const type = inc.incrementType;
+      const method = inc.incrementMethod;
+
+      if (type === 'Increment') {
+        if (method === 'Amount') {
+          baselineSalary = baselineSalary.minus(amount);
+        } else {
+          baselineSalary = baselineSalary.div(new Decimal(1).add(percent.div(100)));
+        }
+      } else {
+        // Decrement
+        if (method === 'Amount') {
+          baselineSalary = baselineSalary.add(amount);
+        } else {
+          baselineSalary = baselineSalary.div(new Decimal(1).minus(percent.div(100)));
+        }
+      }
+    }
+
+    const baseSalary = baselineSalary;
+
+    // Only consider increments that are applicable (declared on or before current payroll month)
+    const applicableIncrements = (employee.increments || []).filter(
+      (inc: any) => inc.currentMonth <= payrollMonthYear,
+    );
+
+    // If no applicable increments, return baseline salary
+    if (applicableIncrements.length === 0) {
       return { effectivePackage: baseSalary, incrementBreakup: [] };
     }
 
     // Filter increments that are effective before or during this month
     // Get the most recent increment before the month starts to know the starting salary
-    const incrementsBeforeMonth = employee.increments
+    const incrementsBeforeMonth = applicableIncrements
       .filter((inc: any) => {
         const incDate = normalizeDate(new Date(inc.promotionDate));
         return incDate < monthStart;
@@ -2163,7 +2342,7 @@ export class PayrollService {
         : baseSalary;
 
     // Find increments that occur during this month
-    const incrementsInMonth = employee.increments
+    const incrementsInMonth = applicableIncrements
       .filter((inc: any) => {
         const incDate = normalizeDate(new Date(inc.promotionDate));
         return incDate >= monthStart && incDate <= monthEnd;
@@ -2267,6 +2446,192 @@ export class PayrollService {
     }
 
     return { effectivePackage, incrementBreakup };
+  }
+
+  private getPaidPackageSalary(detail: any): Decimal {
+    const breakup = typeof detail.salaryBreakup === 'string'
+      ? JSON.parse(detail.salaryBreakup)
+      : (detail.salaryBreakup || []);
+
+    if (Array.isArray(breakup) && breakup.length > 0) {
+      const sum = breakup.reduce((acc, b) => acc + Number(b.amount || 0), 0);
+      return new Decimal(sum);
+    }
+
+    return new Decimal(detail.basicSalary);
+  }
+
+  private calculateIncrementArrears(
+    employee: any,
+    monthStartDate: Date,
+    monthEndDate: Date,
+    previousPayrolls: any[],
+  ): { incrementArrears: Decimal; incrementArrearsMonths: string; incrementArrearsBreakup: any[] } {
+    let totalArrears = new Decimal(0);
+    const arrearsBreakup: any[] = [];
+    const retroactiveMonthsSet = new Set<string>();
+
+    const payrollMonthYear = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, '0')}`;
+
+    // Only consider increments that are applicable (declared on or before current payroll month)
+    const applicableIncrements = (employee.increments || []).filter(
+      (inc: any) => inc.currentMonth <= payrollMonthYear,
+    );
+
+    if (applicableIncrements.length === 0) {
+      return {
+        incrementArrears: totalArrears,
+        incrementArrearsMonths: '',
+        incrementArrearsBreakup: [],
+      };
+    }
+
+    const normalizeDate = (date: Date): Date => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+
+    const monthStart = normalizeDate(monthStartDate);
+
+    // Identify active increments whose promotionDate is in the past (before current payroll month)
+    const pastIncrements = applicableIncrements.filter((inc: any) => {
+      const incDate = normalizeDate(new Date(inc.promotionDate));
+      return incDate < monthStart;
+    });
+
+    if (pastIncrements.length === 0) {
+      return {
+        incrementArrears: totalArrears,
+        incrementArrearsMonths: '',
+        incrementArrearsBreakup: [],
+      };
+    }
+
+    // Find all confirmed payrolls that fall in the retroactive period.
+    // The retroactive period for an increment is from the month of its promotionDate up to the current payroll month (exclusive).
+    for (const increment of pastIncrements) {
+      const promotionDate = normalizeDate(new Date(increment.promotionDate));
+      const promoYear = promotionDate.getFullYear();
+      const promoMonth = promotionDate.getMonth(); // 0-indexed
+
+      // We look at all previous confirmed payrolls of this employee
+      for (const payrollDetail of previousPayrolls) {
+        const payrollYear = parseInt(payrollDetail.payroll.year, 10);
+        const payrollMonth = parseInt(payrollDetail.payroll.month, 10) - 1; // Convert "01"-"12" to 0-indexed
+
+        const payrollDate = new Date(payrollYear, payrollMonth, 1);
+
+        // If the payroll month is on or after the increment's promotion date
+        // and before the current payroll month
+        if (
+          payrollDate >= new Date(promoYear, promoMonth, 1) &&
+          payrollDate < monthStart
+        ) {
+          const monthYearKey = `${payrollDetail.payroll.year}-${payrollDetail.payroll.month}`;
+
+          // Check if arrears for this month/increment were already paid in any confirmed payroll.
+          // Arrears are already paid if some previous payroll detail's incrementBreakup
+          // contains a record indicating that arrears for this specific month/year were paid.
+          let alreadyPaid = false;
+          for (const prevDetail of previousPayrolls) {
+            const prevIncBreakup = typeof prevDetail.incrementBreakup === 'string'
+              ? JSON.parse(prevDetail.incrementBreakup)
+              : (prevDetail.incrementBreakup || []);
+
+            if (Array.isArray(prevIncBreakup)) {
+              const paidRecord = prevIncBreakup.find(
+                (b: any) =>
+                  b.type === 'Arrears' &&
+                  b.month === payrollDetail.payroll.month &&
+                  b.year === payrollDetail.payroll.year &&
+                  b.id === increment.id
+              );
+              if (paidRecord) {
+                alreadyPaid = true;
+                break;
+              }
+            }
+          }
+
+          if (alreadyPaid) {
+            continue;
+          }
+
+          // Calculate revised basic salary for this past month.
+          // To find the revised salary, we find the latest increment that was effective during that month.
+          const incrementsEffectiveInMonth = applicableIncrements
+            .filter((inc: any) => {
+              const incDate = normalizeDate(new Date(inc.promotionDate));
+              const monthEnd = new Date(payrollYear, payrollMonth + 1, 0); // Last day of that month
+              return incDate <= monthEnd;
+            })
+            .sort(
+              (a: any, b: any) =>
+                new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime() ||
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+
+          const revisedSalary =
+            incrementsEffectiveInMonth.length > 0
+              ? new Decimal(incrementsEffectiveInMonth[0].salary)
+              : new Decimal(employee.employeeSalary);
+
+          // Get paid package salary instead of basicSalary (basicSalary is only 60% of package)
+          const paidSalary = this.getPaidPackageSalary(payrollDetail);
+
+          if (revisedSalary.gt(paidSalary)) {
+            const arrearsAmount = revisedSalary.minus(paidSalary);
+            totalArrears = totalArrears.add(arrearsAmount);
+
+            retroactiveMonthsSet.add(monthYearKey);
+
+            arrearsBreakup.push({
+              type: 'Arrears',
+              id: increment.id,
+              month: payrollDetail.payroll.month,
+              year: payrollDetail.payroll.year,
+              oldSalary: paidSalary.toNumber(),
+              newSalary: revisedSalary.toNumber(),
+              amount: arrearsAmount.toNumber(),
+            });
+          }
+        }
+      }
+    }
+
+    // Generate formatted month list, e.g. "Jul-Aug-Sep"
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const formattedMonths = Array.from(retroactiveMonthsSet)
+      .sort((a, b) => {
+        const [yA, mA] = a.split('-').map(Number);
+        const [yB, mB] = b.split('-').map(Number);
+        return yA - yB || mA - mB;
+      })
+      .map((key) => {
+        const [, m] = key.split('-');
+        return monthNames[parseInt(m, 10) - 1];
+      })
+      .join('-');
+
+    return {
+      incrementArrears: totalArrears,
+      incrementArrearsMonths: formattedMonths,
+      incrementArrearsBreakup: arrearsBreakup,
+    };
   }
 
   private async calculateAttendanceDeductions(
@@ -3015,6 +3380,203 @@ export class PayrollService {
     return { taxDeduction, taxBreakup };
   }
 
+  private async calculateTaxAnnualized(
+    employeeId: string,
+    salaryBreakup: Array<{
+      id: string;
+      name: string;
+      percentage: number | null;
+      amount: number;
+      isTaxable?: boolean;
+      isRecurring?: boolean;
+    }>,
+    rebates: any[],
+    allTaxSlabs: any[],
+    salaryFraction: Decimal,
+    currentMonth: string,
+    currentYear: string,
+    passedPreviousPayrolls?: any[],
+  ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
+    const monthNum = parseInt(currentMonth, 10);
+    const yearNum = parseInt(currentYear, 10);
+
+    // Determine tax year boundaries (July 1 to June 30)
+    let taxYearStart: Date;
+    let taxYearEnd: Date;
+    
+    if (monthNum >= 7) {
+      // July to December - tax year is current year to next year
+      taxYearStart = new Date(yearNum, 6, 1);
+      taxYearEnd = new Date(yearNum + 1, 5, 30);
+    } else {
+      // January to June - tax year is previous year to current year
+      taxYearStart = new Date(yearNum - 1, 6, 1);
+      taxYearEnd = new Date(yearNum, 5, 30);
+    }
+
+    // Calculate remaining months in the tax year (including current month)
+    let taxMonthNum = 0;
+    if (monthNum >= 7) {
+      taxMonthNum = monthNum - 6; // July = 1, August = 2, etc.
+    } else {
+      taxMonthNum = monthNum + 6; // January = 7, February = 8, etc.
+    }
+    const remainingMonths = 13 - taxMonthNum;
+
+    // Fetch previous months' actual tax deducted in the current tax year
+    const previousPayrolls = passedPreviousPayrolls || await this.prisma.payrollDetail.findMany({
+      where: {
+        employeeId: employeeId,
+        payroll: {
+          status: 'confirmed',
+        },
+      },
+      include: {
+        payroll: {
+          select: {
+            month: true,
+            year: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    let ytdTaxDeducted = new Decimal(0);
+    const currentMonthDate = new Date(yearNum, monthNum - 1, 1);
+
+    for (const payroll of previousPayrolls) {
+      const payrollDate = new Date(
+        parseInt(payroll.payroll.year),
+        parseInt(payroll.payroll.month) - 1,
+        1
+      );
+
+      // Check if payroll is within tax year and before current month
+      if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
+        ytdTaxDeducted = ytdTaxDeducted.add(new Decimal(payroll.taxDeduction || 0));
+      }
+    }
+
+    let annualTaxableIncome = new Decimal(0);
+    const taxableComponents: Array<{
+      name: string;
+      amount: number;
+      isRecurring: boolean;
+      annualAmount: number;
+    }> = [];
+
+    for (const component of salaryBreakup) {
+      if (component.isTaxable === true && component.amount > 0) {
+        const isRecurring = component.isRecurring !== false;
+        let annualAmount = new Decimal(0);
+
+        if (isRecurring) {
+          // Recurring components are annualized (x12)
+          annualAmount = new Decimal(component.amount).mul(12);
+        } else {
+          // Non-recurring (one-time) components are added as-is
+          annualAmount = new Decimal(component.amount);
+        }
+
+        annualTaxableIncome = annualTaxableIncome.add(annualAmount);
+
+        taxableComponents.push({
+          name: component.name,
+          amount: component.amount,
+          isRecurring: isRecurring,
+          annualAmount: annualAmount.toNumber(),
+        });
+      }
+    }
+
+    let taxableIncome = annualTaxableIncome;
+    let totalRebateAmount = new Decimal(0);
+    const rebateBreakup: any[] = [];
+
+    // Apply rebates (reduce taxable income by rebate amounts)
+    if (rebates && rebates.length > 0) {
+      for (const rebate of rebates) {
+        const rebateAmount = new Decimal(rebate.rebateAmount);
+        totalRebateAmount = totalRebateAmount.add(rebateAmount);
+        taxableIncome = taxableIncome.minus(rebateAmount);
+        rebateBreakup.push({
+          id: rebate.id,
+          name: rebate.rebateNature?.name || 'Rebate',
+          amount: rebateAmount.toNumber(),
+        });
+      }
+    }
+
+    // Ensure taxable income is not negative
+    if (taxableIncome.lt(0)) {
+      taxableIncome = new Decimal(0);
+    }
+
+    let taxDeduction = new Decimal(0);
+    let taxSlabUsed: {
+      minAmount: number;
+      maxAmount: number;
+      rate: number;
+    } | null = null;
+    let fixedAmountTax = new Decimal(0);
+    let percentageTaxAmount = new Decimal(0);
+
+    // Apply tax slab to taxable income
+    if (taxableIncome.gt(0)) {
+      const slab = allTaxSlabs
+        .filter((s) => s.status === 'active')
+        .sort((a, b) => Number(b.minAmount) - Number(a.minAmount))
+        .find(
+          (s) =>
+            new Decimal(taxableIncome).gte(new Decimal(s.minAmount)) &&
+            (s.maxAmount === null ||
+              new Decimal(taxableIncome).lte(new Decimal(s.maxAmount))),
+        );
+
+      if (slab) {
+        taxSlabUsed = {
+          minAmount: Number(slab.minAmount),
+          maxAmount: Number(slab.maxAmount),
+          rate: Number(slab.rate),
+        };
+
+        const slabFixedAmount = (slab as any).fixedAmount;
+        fixedAmountTax = slabFixedAmount
+          ? new Decimal(slabFixedAmount)
+          : new Decimal(0);
+        const excess = taxableIncome.minus(new Decimal(slab.minAmount));
+        percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
+        const annualTax = fixedAmountTax.add(percentageTaxAmount);
+        
+        // Annualized Cumulative Method: Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Months
+        taxDeduction = annualTax.minus(ytdTaxDeducted).div(remainingMonths);
+
+        if (taxDeduction.lt(0)) {
+          taxDeduction = new Decimal(0);
+        }
+      }
+    }
+
+    const taxBreakup = {
+      method: 'AnnualizedCumulative',
+      annualGross: annualTaxableIncome.toNumber(),
+      annualTaxableComponents: annualTaxableIncome.toNumber(),
+      taxableComponents: taxableComponents,
+      totalRebate: totalRebateAmount.toNumber(),
+      taxableIncome: taxableIncome.toNumber(),
+      taxSlab: taxSlabUsed,
+      fixedAmountTax: fixedAmountTax.toNumber(),
+      percentageTax: percentageTaxAmount.toNumber(),
+      monthlyTax: taxDeduction.toNumber(),
+      ytdTaxDeducted: ytdTaxDeducted.toNumber(),
+      remainingMonths: remainingMonths,
+      rebateBreakup,
+    };
+
+    return { taxDeduction, taxBreakup };
+  }
+
   /**
    * Calculate Tax using Year-to-Date (YTD) Cumulative Method
    * Pakistan Tax Year: July 1 to June 30
@@ -3048,6 +3610,7 @@ export class PayrollService {
     currentYear: string,
     salaryFraction: Decimal,
     lastExitDate?: string | Date | null,
+    passedPreviousPayrolls?: any[],
   ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
     
     const monthNum = parseInt(currentMonth, 10);
@@ -3068,7 +3631,7 @@ export class PayrollService {
     }
 
     // Step 1: Fetch previous months' actual payroll data (confirmed payrolls only)
-    const previousPayrolls = await this.prisma.payrollDetail.findMany({
+    const previousPayrolls = passedPreviousPayrolls || await this.prisma.payrollDetail.findMany({
       where: {
         employeeId: employeeId,
         payroll: {
