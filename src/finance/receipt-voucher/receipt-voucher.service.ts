@@ -157,9 +157,6 @@ export class ReceiptVoucherService {
     const { details, invoices: _invoices, ...data } = dto as any;
     const existing = await this.findOne(id);
 
-    if (existing.status !== 'pending') {
-      throw new BadRequestException('Receipt Voucher can only be edited when it is in pending status');
-    }
 
     // Only scalar fields that Prisma accepts on update
     const scalarData = {
@@ -215,9 +212,7 @@ export class ReceiptVoucherService {
 
   async remove(id: string) {
     const existing = await this.findOne(id);
-    if (existing.status !== 'pending') {
-      throw new BadRequestException('Receipt Voucher can only be deleted when it is in pending status');
-    }
+   
     return this.prisma.receiptVoucher.delete({ where: { id } });
   }
 

@@ -346,9 +346,7 @@ export class JournalVoucherService {
     try {
       const existing = await this.findOne(id);
 
-      if (existing.status !== 'pending') {
-        throw new BadRequestException('Journal Voucher can only be deleted when it is in pending status');
-      }
+
 
       await this.prisma.$transaction(async (prisma) => {
         // Reverse AccountTransaction entries before deleting ONLY if approved

@@ -279,9 +279,7 @@ export class PaymentVoucherService {
     const { details, ...data } = updatePaymentVoucherDto;
 
     const existing = await this.findOne(id);
-    if (existing.status !== 'pending') {
-      throw new BadRequestException('Payment Voucher can only be edited when it is in pending status');
-    }
+  
 
     if (details) {
       const totalDebit = details.reduce(
@@ -364,9 +362,7 @@ export class PaymentVoucherService {
 
   async remove(id: string) {
     const existing = await this.findOne(id);
-    if (existing.status !== 'pending') {
-      throw new BadRequestException('Payment Voucher can only be deleted when it is in pending status');
-    }
+   
     return this.prisma.paymentVoucher.delete({
       where: { id },
     });
