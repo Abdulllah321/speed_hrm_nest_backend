@@ -473,6 +473,7 @@ export class AdvanceSalaryService {
               approvalStatus,
               status,
               createdById: ctx.userId,
+              disbursementType: (advanceSalaryItem as any).disbursementType || "with_payroll",
             },
           });
           createdAdvanceSalaries.push(created);
@@ -616,6 +617,10 @@ export class AdvanceSalaryService {
 
       if (body.status !== undefined) {
         updateData.status = body.status;
+      }
+
+      if (body.disbursementType !== undefined) {
+        updateData.disbursementType = body.disbursementType;
       }
 
       const updated = await this.prisma.advanceSalary.update({
