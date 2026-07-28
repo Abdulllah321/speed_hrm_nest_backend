@@ -8,7 +8,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { AccountingModule } from '../../finance/accounting/accounting.module';
 import { StockLedgerModule } from '../../warehouse/stock-ledger/stock-ledger.module';
 import { FinanceAccountConfigModule } from '../../finance/finance-account-config/finance-account-config.module';
-import { UploadModule } from '../../upload/upload.service';
+import { UploadModule } from '../../upload/upload.module';
 import { ExportHistoryModule } from '../../warehouse/export-history/export-history.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
 
