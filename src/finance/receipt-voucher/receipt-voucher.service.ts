@@ -139,6 +139,67 @@ export class ReceiptVoucherService {
     });
   }
 
+  async findMissingTagAccounts(type?: string) {
+    const whereClause: any = {
+      details: {
+        some: {
+          OR: [
+            { tagAccountId: null },
+            { tagAccountId: '' },
+          ],
+        },
+      },
+    };
+    if (type) whereClause.type = type;
+
+    const vouchers = await this.prisma.receiptVoucher.findMany({
+      where: whereClause,
+      include: {
+        details: {
+          include: {
+            account: { select: { id: true, code: true, name: true } },
+            tagAccount: { select: { id: true, code: true, name: true } },
+          },
+        },
+        debitAccount: { select: { id: true, code: true, name: true } },
+        customer: { select: { id: true, name: true } },
+      },
+      orderBy: { rvDate: 'desc' },
+    });
+
+    const data = vouchers.map((rv) => {
+      const affectedDetails = rv.details.filter(d => !d.tagAccountId || d.tagAccountId.trim() === '');
+      return {
+        id: rv.id,
+        rvNo: rv.rvNo,
+        type: rv.type,
+        rvDate: rv.rvDate,
+        status: rv.status,
+        debitAccount: rv.debitAccount,
+        customer: rv.customer,
+        totalDetailsCount: rv.details.length,
+        missingTagDetailsCount: affectedDetails.length,
+        missingTagDetails: affectedDetails.map((d) => ({
+          id: d.id,
+          accountId: d.accountId,
+          accountCode: d.account?.code || 'N/A',
+          accountName: d.account?.name || 'N/A',
+          debit: Number(d.debit || 0),
+          credit: Number(d.credit || 0),
+          narration: d.narration,
+          refBillNo: d.refBillNo,
+        })),
+      };
+    });
+
+    return {
+      status: true,
+      totalVouchersWithMissingTag: data.length,
+      totalAffectedDetailLines: data.reduce((sum, v) => sum + v.missingTagDetailsCount, 0),
+      data,
+    };
+  }
+
   async findOne(id: string) {
     const rv = await this.prisma.receiptVoucher.findUnique({
       where: { id },
