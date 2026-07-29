@@ -14,6 +14,63 @@ export class StockAdjustmentService {
     private activityLogs: ActivityLogsService,
   ) {}
 
+  /**
+   * Generates the next sequential Stock Adjustment number for the current fiscal year.
+   * Fiscal year runs July 1 – June 30 (Pakistan standard).
+   * Format: SADJ-YY-YY-NNNNN  e.g. SADJ-25-26-00001
+   *
+   * @param tx  Optional Prisma transaction client (use when called inside $transaction)
+   */
+  private async generateAdjustmentNumber(tx?: any): Promise<string> {
+    const client = tx || this.prisma;
+
+    // Determine current fiscal year bounds
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed; July = 6
+    const startYear = month >= 6 ? year : year - 1;
+    const endYear = startYear + 1;
+    const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
+    const prefix = `SADJ-${fy}-`;
+
+    // Find the last Stock Adjustment issued in this fiscal year
+    const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+    const lastAdj = await client.stockAdjustment.findFirst({
+      where: {
+        adjustmentNo: { startsWith: prefix },
+        createdAt: { gte: fiscalYearStartDate },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { adjustmentNo: true },
+    });
+
+    let seq = 1;
+    if (lastAdj?.adjustmentNo) {
+      const parts = lastAdj.adjustmentNo.split('-');
+      const lastSeq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSeq)) {
+        seq = lastSeq + 1;
+      }
+    }
+
+    // Collision guard — loop until we find an unused number
+    let adjustmentNo = `${prefix}${String(seq).padStart(5, '0')}`;
+    let exists = await client.stockAdjustment.findUnique({
+      where: { adjustmentNo },
+      select: { id: true },
+    });
+    while (exists) {
+      seq++;
+      adjustmentNo = `${prefix}${String(seq).padStart(5, '0')}`;
+      exists = await client.stockAdjustment.findUnique({
+        where: { adjustmentNo },
+        select: { id: true },
+      });
+    }
+
+    return adjustmentNo;
+  }
+
   async findAll(options?: {
     warehouseId?: string;
     locationId?: string;
@@ -214,7 +271,7 @@ export class StockAdjustmentService {
   }
 
   async create(dto: CreateStockAdjustmentDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-    const adjustmentNo = `SADJ-${Date.now()}`;
+    const adjustmentNo = await this.generateAdjustmentNumber();
 
     let warehouseId = dto.warehouseId;
     if (!warehouseId) {
@@ -242,17 +299,20 @@ export class StockAdjustmentService {
           throw new BadRequestException(`Item with ID ${item.itemId} not found`);
         }
 
-        // Query current stock levels
-        const existingStock = await this.prisma.inventoryItem.findFirst({
+        // Query current stock levels across inventory items for this warehouse & location
+        const stockAgg = await this.prisma.inventoryItem.aggregate({
           where: {
             warehouseId,
             locationId: item.locationId || null,
             itemId: itemRecord.id,
             status: 'AVAILABLE',
           },
+          _sum: {
+            quantity: true,
+          },
         });
 
-        const currentQty = existingStock ? Number(existingStock.quantity) : 0;
+        const currentQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
         const adjustedQty = item.physicalQty - currentQty;
         const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitPrice || 0);
 
@@ -335,16 +395,19 @@ export class StockAdjustmentService {
           throw new BadRequestException(`Item with ID ${item.itemId} not found`);
         }
 
-        const existingStock = await this.prisma.inventoryItem.findFirst({
+        const stockAgg = await this.prisma.inventoryItem.aggregate({
           where: {
             warehouseId,
             locationId: item.locationId || null,
             itemId: itemRecord.id,
             status: 'AVAILABLE',
           },
+          _sum: {
+            quantity: true,
+          },
         });
 
-        const currentQty = existingStock ? Number(existingStock.quantity) : 0;
+        const currentQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
         const adjustedQty = item.physicalQty - currentQty;
         const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitPrice || 0);
 
@@ -499,7 +562,18 @@ export class StockAdjustmentService {
 
         const isPositive = adjustedQty > 0;
 
-        // Process stock update in InventoryItem
+        // Process stock update in InventoryItem for the location/warehouse
+        const stockAgg = await tx.inventoryItem.aggregate({
+          where: {
+            warehouseId: adj.warehouseId,
+            locationId: line.locationId || null,
+            itemId: line.itemId,
+            status: 'AVAILABLE',
+          },
+          _sum: { quantity: true },
+        });
+        const totalAvailableQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+
         const existingStock = await tx.inventoryItem.findFirst({
           where: {
             warehouseId: adj.warehouseId,
@@ -529,18 +603,18 @@ export class StockAdjustmentService {
           }
         } else {
           // Decrement Stock
-          if (!existingStock || Number(existingStock.quantity) < Math.abs(adjustedQty)) {
+          if (totalAvailableQty < Math.abs(adjustedQty)) {
             throw new BadRequestException(
-              `Insufficient stock for item ${line.itemId} in warehouse. Current: ${
-                existingStock ? Number(existingStock.quantity) : 0
-              }, Required Adjustment: ${adjustedQty}`,
+              `Insufficient stock for item ${line.itemId} in location/warehouse. Current: ${totalAvailableQty}, Required Adjustment: ${adjustedQty}`,
             );
           }
 
-          await tx.inventoryItem.update({
-            where: { id: existingStock.id },
-            data: { quantity: { decrement: new Prisma.Decimal(Math.abs(adjustedQty)) } },
-          });
+          if (existingStock) {
+            await tx.inventoryItem.update({
+              where: { id: existingStock.id },
+              data: { quantity: { decrement: new Prisma.Decimal(Math.abs(adjustedQty)) } },
+            });
+          }
         }
 
         // Create Stock Ledger entry

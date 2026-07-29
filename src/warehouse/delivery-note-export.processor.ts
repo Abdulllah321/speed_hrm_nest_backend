@@ -6,12 +6,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ExportHistoryService } from './export-history/export-history.service';
 
 export interface DeliveryNoteExportJobData {
   jobId: string;
   userId: string;
   tenantId: string;
   tenantDbUrl: string;
+  reportType?: 'summary' | 'detailed';
   warehouseId?: string;
   status?: string;
   transferType?: string;
@@ -27,11 +29,12 @@ const ALT_ROW_BG   = 'F0F4F8';
 const BORDER_COLOR = 'CBD5E1';
 
 const GROUP_COLORS: Record<string, string> = {
-  Transfer: '1A3A5C',
-  Detail:  '1E4D2B',
+  'Transfer Overview': '1A3A5C',
+  'Transfer Info':     '1A3A5C',
+  'Item Details':      '1E4D2B',
 };
 
-const COLUMNS: {
+const SUMMARY_COLUMNS: {
   header: string;
   key: string;
   width: number;
@@ -39,48 +42,75 @@ const COLUMNS: {
   numFmt?: string;
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
-  // Transfer
-  { header: 'Request No',        key: 'requestNo',              width: 18, group: 'Transfer', align: 'center' },
-  { header: 'Date',              key: 'requestDate',            width: 20, group: 'Transfer', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-  { header: 'Expected Date',     key: 'expectedDate',           width: 14, group: 'Transfer', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Transfer Type',     key: 'transferType',           width: 24, group: 'Transfer' },
-  { header: 'Status',            key: 'status',                 width: 12, group: 'Transfer', align: 'center' },
-  { header: 'From Location',     key: 'fromLocation',           width: 24, group: 'Transfer' },
-  { header: 'To Location',       key: 'toLocation',             width: 24, group: 'Transfer' },
-  { header: 'Notes',             key: 'notes',                  width: 30, group: 'Transfer' },
-  { header: 'Created By ID',     key: 'createdById',            width: 18, group: 'Transfer', align: 'center' },
-  { header: 'Approved By ID',    key: 'approvedById',           width: 18, group: 'Transfer', align: 'center' },
-  { header: 'Requires Src Appr', key: 'requiresSourceApproval', width: 18, group: 'Transfer', align: 'center' },
-  { header: 'Src Appr By ID',    key: 'sourceApprovedById',     width: 18, group: 'Transfer', align: 'center' },
-  { header: 'Src Appr At',       key: 'sourceApprovedAt',       width: 20, group: 'Transfer', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-  // Detail
-  { header: 'Line #',            key: 'lineNo',                 width: 8,  group: 'Detail', align: 'center' },
-  { header: 'SKU',               key: 'sku',                    width: 20, group: 'Detail' },
-  { header: 'Barcode',           key: 'barCode',                width: 18, group: 'Detail' },
-  { header: 'Description',       key: 'description',            width: 36, group: 'Detail' },
-  { header: 'Color',             key: 'color',                  width: 14, group: 'Detail' },
-  { header: 'Size',              key: 'size',                   width: 10, group: 'Detail', align: 'center' },
-  { header: 'Quantity',          key: 'quantity',               width: 14, group: 'Detail', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Fulfilled Qty',     key: 'fulfilledQty',           width: 14, group: 'Detail', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Transfer Number (STN)', key: 'requestNo',     width: 22, group: 'Transfer Overview', align: 'center' },
+  { header: 'Out No',                 key: 'outNo',         width: 14, group: 'Transfer Overview', align: 'center' },
+  { header: 'In No',                  key: 'inNo',          width: 14, group: 'Transfer Overview', align: 'center' },
+  { header: 'Status',                 key: 'status',        width: 14, group: 'Transfer Overview', align: 'center' },
+  { header: 'Transfer Type',          key: 'transferType',  width: 24, group: 'Transfer Overview' },
+  { header: 'Transfer Date',          key: 'requestDate',   width: 20, group: 'Transfer Overview', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  { header: 'Expected Date',          key: 'expectedDate',  width: 14, group: 'Transfer Overview', numFmt: 'dd-mmm-yyyy', align: 'center' },
+  { header: 'From Location / WH',     key: 'fromLocation',  width: 26, group: 'Transfer Overview' },
+  { header: 'To Location / WH',       key: 'toLocation',    width: 26, group: 'Transfer Overview' },
+  { header: 'Total SKU Types',        key: 'itemCount',     width: 16, group: 'Transfer Overview', numFmt: '#,##0', align: 'right' },
+  { header: 'Total Quantity',         key: 'totalQuantity', width: 16, group: 'Transfer Overview', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Remarks / Notes',        key: 'notes',         width: 32, group: 'Transfer Overview' },
+];
+
+const DETAILED_COLUMNS: {
+  header: string;
+  key: string;
+  width: number;
+  group: string;
+  numFmt?: string;
+  align?: ExcelJS.Alignment['horizontal'];
+}[] = [
+  // Transfer Info
+  { header: 'Transfer Number (STN)', key: 'requestNo',     width: 22, group: 'Transfer Info', align: 'center' },
+  { header: 'Out No',                 key: 'outNo',         width: 14, group: 'Transfer Info', align: 'center' },
+  { header: 'In No',                  key: 'inNo',          width: 14, group: 'Transfer Info', align: 'center' },
+  { header: 'Status',                 key: 'status',        width: 14, group: 'Transfer Info', align: 'center' },
+  { header: 'Transfer Type',          key: 'transferType',  width: 24, group: 'Transfer Info' },
+  { header: 'Transfer Date',          key: 'requestDate',   width: 20, group: 'Transfer Info', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  { header: 'Expected Date',          key: 'expectedDate',  width: 14, group: 'Transfer Info', numFmt: 'dd-mmm-yyyy', align: 'center' },
+  { header: 'From Location / WH',     key: 'fromLocation',  width: 26, group: 'Transfer Info' },
+  { header: 'To Location / WH',       key: 'toLocation',    width: 26, group: 'Transfer Info' },
+  { header: 'Total Quantity',         key: 'totalQuantity', width: 14, group: 'Transfer Info', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Remarks / Notes',        key: 'notes',         width: 32, group: 'Transfer Info' },
+
+  // Item Details
+  { header: 'Line #',                 key: 'lineNo',        width: 8,  group: 'Item Details', align: 'center' },
+  { header: 'SKU',                    key: 'sku',           width: 20, group: 'Item Details' },
+  { header: 'Barcode',                key: 'barCode',       width: 18, group: 'Item Details' },
+  { header: 'Description',            key: 'description',   width: 36, group: 'Item Details' },
+  { header: 'Color',                  key: 'color',         width: 14, group: 'Item Details' },
+  { header: 'Size',                   key: 'size',          width: 10, group: 'Item Details', align: 'center' },
+  { header: 'Line Qty',               key: 'quantity',      width: 14, group: 'Item Details', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Fulfilled Qty',          key: 'fulfilledQty',  width: 14, group: 'Item Details', numFmt: '#,##0.00', align: 'right' },
 ];
 
 @Processor('delivery-note-export')
 export class DeliveryNoteExportProcessor {
   private readonly logger = new Logger(DeliveryNoteExportProcessor.name);
 
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly exportHistoryService: ExportHistoryService,
+  ) {}
 
   @Process()
   async handleExport(job: Job<DeliveryNoteExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, warehouseId, status, transferType, search, dateFrom, dateTo } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, reportType = 'detailed', warehouseId, status, transferType, search, dateFrom, dateTo } = job.data;
 
-    this.logger.log(`[DeliveryNoteExport ${jobId}] Starting for user ${userId}`);
+    this.logger.log(`[DeliveryNoteExport ${jobId}] Starting ${reportType} export for user ${userId}`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
 
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
+    const fileName = `delivery-notes-${reportType}-${new Date().toISOString().slice(0, 10)}.xlsx`;
     const filePath = path.join(exportDir, `export-${jobId}.xlsx`);
+
+    const activeColumns = reportType === 'summary' ? SUMMARY_COLUMNS : DETAILED_COLUMNS;
 
     try {
       // ── Build WHERE ────────────────────────────────────────────────────────
@@ -109,7 +139,39 @@ export class DeliveryNoteExportProcessor {
       const where: any = andClauses.length ? { AND: andClauses } : {};
 
       const total = await prisma.transferRequest.count({ where });
-      this.logger.log(`[DeliveryNoteExport ${jobId}] ${total} transfer requests to export`);
+      this.logger.log(`[DeliveryNoteExport ${jobId}] ${total} transfer requests to export (${reportType})`);
+
+      // ── Pre-calculate Out No and In No for sequence ────────────────────────
+      const allTransfersMeta = await prisma.transferRequest.findMany({
+        where,
+        select: { id: true, fromLocationId: true, fromWarehouseId: true, toLocationId: true, toWarehouseId: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const outCounters = new Map<string, number>();
+      const inCounters = new Map<string, number>();
+      const outNoMap = new Map<string, string>();
+      const inNoMap = new Map<string, string>();
+
+      allTransfersMeta.forEach((t) => {
+        const srcKey = t.fromLocationId || t.fromWarehouseId;
+        if (srcKey) {
+          const count = (outCounters.get(srcKey) || 0) + 1;
+          outCounters.set(srcKey, count);
+          outNoMap.set(t.id, `OUT-${count.toString().padStart(4, '0')}`);
+        } else {
+          outNoMap.set(t.id, 'OUT-0000');
+        }
+
+        const destKey = t.toLocationId || t.toWarehouseId;
+        if (destKey) {
+          const count = (inCounters.get(destKey) || 0) + 1;
+          inCounters.set(destKey, count);
+          inNoMap.set(t.id, `IN-${count.toString().padStart(4, '0')}`);
+        } else {
+          inNoMap.set(t.id, 'IN-0000');
+        }
+      });
 
       // ── Streaming workbook ─────────────────────────────────────────────────
       const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -118,23 +180,24 @@ export class DeliveryNoteExportProcessor {
         useSharedStrings: false,
       });
 
-      const ws = workbook.addWorksheet('Delivery Notes', {
+      const sheetTitle = reportType === 'summary' ? 'Delivery Notes Summary' : 'Delivery Notes Detailed';
+      const ws = workbook.addWorksheet(sheetTitle, {
         pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
-      ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
+      ws.columns = activeColumns.map((c) => ({ key: c.key, width: c.width }));
 
       // ── Row 1: Group header bands ──────────────────────────────────────────
       const groups: Record<string, { start: number; end: number }> = {};
-      COLUMNS.forEach((col, idx) => {
+      activeColumns.forEach((col, idx) => {
         const n = idx + 1;
         if (!groups[col.group]) groups[col.group] = { start: n, end: n };
         else groups[col.group].end = n;
       });
 
       const groupRow = ws.getRow(1);
-      COLUMNS.forEach((col, idx) => {
+      activeColumns.forEach((col, idx) => {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
@@ -153,7 +216,7 @@ export class DeliveryNoteExportProcessor {
 
       // ── Row 2: Column headers ──────────────────────────────────────────────
       const headerRow = ws.getRow(2);
-      COLUMNS.forEach((col, idx) => {
+      activeColumns.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
         cell.value     = col.header;
         cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
@@ -169,18 +232,17 @@ export class DeliveryNoteExportProcessor {
       headerRow.height = 20;
       headerRow.commit();
 
-      // ── Data rows — cursor-paginated in chunks of 500 ──────────────────────
+      // ── Data rows — offset-paginated in chunks of 500 per AGENTS.md rule ────
       const CHUNK = 500;
-      let cursor: string | undefined;
       let rowIdx = 0;
       let processedTransfers = 0;
 
-      while (true) {
+      while (processedTransfers < total) {
         const chunk = await prisma.transferRequest.findMany({
           where,
           orderBy: { createdAt: 'desc' },
+          skip: processedTransfers,
           take: CHUNK,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           include: {
             items: {
               include: {
@@ -202,8 +264,6 @@ export class DeliveryNoteExportProcessor {
         if (!chunk.length) break;
 
         for (const transfer of chunk) {
-          const items = transfer.items.length > 0 ? transfer.items : [null];
-
           // Determine Transfer Path Details
           let fromLocName = '';
           let toLocName = '';
@@ -215,36 +275,32 @@ export class DeliveryNoteExportProcessor {
             toLocName = transfer.toLocation?.name || transfer.toWarehouse?.name || '';
           }
 
-          items.forEach((detail: any, dIdx: number) => {
+          const outNo = outNoMap.get(transfer.id) || 'OUT-0000';
+          const inNo = inNoMap.get(transfer.id) || 'IN-0000';
+          const totalQty = transfer.items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
+
+          if (reportType === 'summary') {
+            // ── SUMMARY / PREVIEW EXPORT: 1 ROW PER TRANSFER ────────────────
             const isAlt = rowIdx % 2 === 1;
             const isCompleted = transfer.status === 'COMPLETED' || transfer.status === 'completed';
 
             const rowData: Record<string, any> = {
-              requestNo:              transfer.requestNo,
-              requestDate:            new Date(transfer.createdAt),
-              expectedDate:           transfer.expectedDate ? new Date(transfer.expectedDate) : null,
-              transferType:           transfer.transferType,
-              status:                 transfer.status.toUpperCase(),
-              fromLocation:           fromLocName,
-              toLocation:             toLocName,
-              notes:                  transfer.notes ?? '',
-              createdById:            transfer.createdById ?? '',
-              approvedById:           transfer.approvedById ?? '',
-              requiresSourceApproval: transfer.requiresSourceApproval ? 'Yes' : 'No',
-              sourceApprovedById:     transfer.sourceApprovedById ?? '',
-              sourceApprovedAt:       transfer.sourceApprovedAt ? new Date(transfer.sourceApprovedAt) : null,
-              lineNo:                 detail ? dIdx + 1 : '',
-              sku:                    detail?.item?.sku            ?? '',
-              barCode:                detail?.item?.barCode        ?? '',
-              description:            detail?.item?.description    ?? '',
-              color:                  detail?.item?.color?.name    ?? '',
-              size:                   detail?.item?.size?.name     ?? '',
-              quantity:               detail ? Number(detail.quantity) : null,
-              fulfilledQty:           detail ? Number(detail.fulfilledQty) : null,
+              requestNo:     transfer.requestNo,
+              outNo:         outNo,
+              inNo:          inNo,
+              status:        transfer.status.toUpperCase(),
+              transferType:  transfer.transferType,
+              requestDate:   new Date(transfer.createdAt),
+              expectedDate:  transfer.expectedDate ? new Date(transfer.expectedDate) : null,
+              fromLocation:  fromLocName,
+              toLocation:    toLocName,
+              itemCount:     transfer.items.length,
+              totalQuantity: totalQty,
+              notes:         transfer.notes ?? '',
             };
 
             const dataRow = ws.getRow(rowIdx + 3);
-            COLUMNS.forEach((col, colIdx) => {
+            activeColumns.forEach((col, colIdx) => {
               const cell = dataRow.getCell(colIdx + 1);
               cell.value     = rowData[col.key] ?? null;
               if (col.numFmt && rowData[col.key] !== null && rowData[col.key] !== '')
@@ -254,10 +310,12 @@ export class DeliveryNoteExportProcessor {
 
               if (col.key === 'status') {
                 cell.font = { bold: true, size: 9, color: { argb: isCompleted ? 'FF15803D' : 'FFB45309' } };
-              } else if (col.key === 'quantity') {
-                cell.font = { size: 9, color: { argb: 'FF1D4ED8' } };
-              } else if (col.key === 'fulfilledQty') {
-                cell.font = { size: 9, color: { argb: 'FF15803D' } };
+              } else if (col.key === 'outNo') {
+                cell.font = { bold: true, size: 9, color: { argb: 'FFC05621' } };
+              } else if (col.key === 'inNo') {
+                cell.font = { bold: true, size: 9, color: { argb: 'FF0D9488' } };
+              } else if (col.key === 'totalQuantity') {
+                cell.font = { bold: true, size: 9, color: { argb: 'FF1D4ED8' } };
               } else {
                 cell.font = { size: 9 };
               }
@@ -270,28 +328,89 @@ export class DeliveryNoteExportProcessor {
               };
             });
 
-
-            dataRow.height = 16;
+            dataRow.height = 18;
             dataRow.commit();
             rowIdx++;
-          });
+          } else {
+            // ── DETAILED EXPORT: 1 ROW PER ITEM DETAIL ──────────────────────
+            const items = transfer.items.length > 0 ? transfer.items : [null];
+
+            items.forEach((detail: any, dIdx: number) => {
+              const isAlt = rowIdx % 2 === 1;
+              const isCompleted = transfer.status === 'COMPLETED' || transfer.status === 'completed';
+
+              const rowData: Record<string, any> = {
+                requestNo:              transfer.requestNo,
+                outNo:                  outNo,
+                inNo:                   inNo,
+                status:                 transfer.status.toUpperCase(),
+                transferType:           transfer.transferType,
+                requestDate:            new Date(transfer.createdAt),
+                expectedDate:           transfer.expectedDate ? new Date(transfer.expectedDate) : null,
+                fromLocation:           fromLocName,
+                toLocation:             toLocName,
+                totalQuantity:          totalQty,
+                notes:                  transfer.notes ?? '',
+                lineNo:                 detail ? dIdx + 1 : '',
+                sku:                    detail?.item?.sku            ?? '',
+                barCode:                detail?.item?.barCode        ?? '',
+                description:            detail?.item?.description    ?? '',
+                color:                  detail?.item?.color?.name    ?? '',
+                size:                   detail?.item?.size?.name     ?? '',
+                quantity:               detail ? Number(detail.quantity) : null,
+                fulfilledQty:           detail ? Number(detail.fulfilledQty) : null,
+              };
+
+              const dataRow = ws.getRow(rowIdx + 3);
+              activeColumns.forEach((col, colIdx) => {
+                const cell = dataRow.getCell(colIdx + 1);
+                cell.value     = rowData[col.key] ?? null;
+                if (col.numFmt && rowData[col.key] !== null && rowData[col.key] !== '')
+                  cell.numFmt = col.numFmt;
+                cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+                cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+
+                if (col.key === 'status') {
+                  cell.font = { bold: true, size: 9, color: { argb: isCompleted ? 'FF15803D' : 'FFB45309' } };
+                } else if (col.key === 'outNo') {
+                  cell.font = { bold: true, size: 9, color: { argb: 'FFC05621' } };
+                } else if (col.key === 'inNo') {
+                  cell.font = { bold: true, size: 9, color: { argb: 'FF0D9488' } };
+                } else if (col.key === 'quantity' || col.key === 'totalQuantity') {
+                  cell.font = { size: 9, color: { argb: 'FF1D4ED8' } };
+                } else if (col.key === 'fulfilledQty') {
+                  cell.font = { size: 9, color: { argb: 'FF15803D' } };
+                } else {
+                  cell.font = { size: 9 };
+                }
+
+                cell.border = {
+                  top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                  left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                  bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                  right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                };
+              });
+
+              dataRow.height = 16;
+              dataRow.commit();
+              rowIdx++;
+            });
+          }
         }
 
         processedTransfers += chunk.length;
-        cursor = chunk[chunk.length - 1].id;
 
         const pct = total > 0 ? Math.round((processedTransfers / total) * 95) : 50;
         await job.progress(pct);
         await new Promise((r) => setImmediate(r));
-
-        if (chunk.length < CHUNK) break;
       }
 
       // ── Summary sheet ──────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
       summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 24 }];
       const titleRow = summary.getRow(1);
-      titleRow.getCell(1).value     = 'Delivery Notes Export Summary';
+      titleRow.getCell(1).value     = `Delivery Notes Export Summary (${reportType.toUpperCase()})`;
       titleRow.getCell(1).font      = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
       titleRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
       titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -300,8 +419,9 @@ export class DeliveryNoteExportProcessor {
 
       const summaryRows = [
         ['Export Date',    new Date().toLocaleString('en-PK')],
+        ['Export Type',    reportType.toUpperCase()],
         ['Total Transfers', processedTransfers],
-        ['Total Item Rows', rowIdx],
+        ['Total Export Rows', rowIdx],
         ['Warehouse ID',   warehouseId ?? '(all)'],
         ['Status Filter',  status ?? '(all)'],
         ['Type Filter',    transferType ?? '(all)'],
@@ -323,12 +443,22 @@ export class DeliveryNoteExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[DeliveryNoteExport ${jobId}] File written (${processedTransfers} transfers, ${rowIdx} rows)`);
+      // Upload file to S3 / Object Storage & Update ExportHistory record to COMPLETED
+      const mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      await this.exportHistoryService.completeAndUploadExport(
+        prisma,
+        jobId,
+        filePath,
+        fileName,
+        mimeType,
+      );
+
+      this.logger.log(`[DeliveryNoteExport ${jobId}] File uploaded and ${reportType} export completed (${processedTransfers} transfers, ${rowIdx} rows)`);
 
       await this.notificationsService.create({
         userId,
         title: 'Delivery Note Export Ready',
-        message: `Your export of ${processedTransfers.toLocaleString()} delivery note${processedTransfers !== 1 ? 's' : ''} is ready to download.`,
+        message: `Your ${reportType} export of ${processedTransfers.toLocaleString()} delivery note${processedTransfers !== 1 ? 's' : ''} is ready to download.`,
         category: 'export',
         priority: 'high',
         actionType: 'delivery-note-export.ready',
@@ -341,6 +471,8 @@ export class DeliveryNoteExportProcessor {
     } catch (error: any) {
       this.logger.error(`[DeliveryNoteExport ${jobId}] FAILED: ${error.message}`, error.stack);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+      await this.exportHistoryService.failExport(prisma, jobId);
 
       await this.notificationsService.create({
         userId,

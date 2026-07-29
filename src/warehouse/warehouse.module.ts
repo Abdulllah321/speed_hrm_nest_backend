@@ -25,6 +25,7 @@ import { SrnCsvParserService } from '../common/services/srn-csv-parser.service';
 import { SrnValidatorService } from '../common/services/srn-validator.service';
 import { UploadEventsService } from '../finance/item/upload-events.service';
 import { ExportHistoryModule } from './export-history/export-history.module';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ExportHistoryModule } from './export-history/export-history.module';
     StockUploadModule,
     StockAdjustmentModule,
     NotificationsModule,
+    UploadModule,
     BullModule.registerQueue({ name: 'delivery-note-export' }),
     BullModule.registerQueue({ name: 'srn-upload' }),
     ExportHistoryModule,
