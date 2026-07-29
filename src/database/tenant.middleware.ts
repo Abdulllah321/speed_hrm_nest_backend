@@ -41,11 +41,12 @@ export class TenantMiddleware implements NestMiddleware {
       const tenantIdentifier = this.extractTenantIdentifier(req);
       const companyIdentifier = this.extractCompanyIdentifier(req);
 
-      // If no identifiers provided, continue without tenant context
-      if (!tenantIdentifier && !companyIdentifier) {
+      // If no identifiers provided and it's not an integration endpoint, continue without tenant context
+      if (!tenantIdentifier && !companyIdentifier && !req.url.includes('/api/inventory/stocks-by-center')) {
         this.logger.debug('No tenant/company context found in request');
         return next();
       }
+
 
       // Check cache first
       const cacheKey = `${tenantIdentifier || 'none'}-${companyIdentifier || 'none'}`;
@@ -230,8 +231,20 @@ export class TenantMiddleware implements NestMiddleware {
       }
     }
 
+    // Priority 3: Fallback for API integration requests when no tenant/company header is provided
+    const defaultCompany = await this.prismaMaster.company.findFirst({
+      where: { status: 'active' },
+      include: { tenant: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (defaultCompany && defaultCompany.tenant && defaultCompany.tenant.isActive) {
+      return defaultCompany as CompanyWithTenant;
+    }
+
     return null;
   }
+
 
   /**
    * Attach tenant context to request object
