@@ -7,12 +7,15 @@ import { SalesOrderService } from './services/sales-order.service';
 import { SalesInvoiceService } from './services/sales-invoice.service';
 import { DeliveryChallanService } from './services/delivery-challan.service';
 import { EzcommerceOrderService } from './services/ezcommerce-order.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { StockLedgerModule } from '../warehouse/stock-ledger/stock-ledger.module';
 import { FinanceAccountConfigModule } from '../finance/finance-account-config/finance-account-config.module';
+import { PosSalesModule } from '../pos-sales/pos-sales.module';
+import { StockLedgerModule } from '../warehouse/stock-ledger/stock-ledger.module';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Module({
-  imports: [FinanceAccountConfigModule, StockLedgerModule],
+  imports: [FinanceAccountConfigModule, StockLedgerModule, PosSalesModule],
+
+
   controllers: [
     SalesOrderController,
     SalesInvoiceController,

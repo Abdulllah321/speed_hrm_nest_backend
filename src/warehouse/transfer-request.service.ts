@@ -37,6 +37,17 @@ export class TransferRequestService {
         createdById?: string;
         notes?: string;
         isDirectTransfer?: boolean;
+        dispatchType?: string;
+        courierName?: string;
+        trackingNumber?: string;
+        dispatchDate?: Date | string;
+        estimatedDeliveryDate?: Date | string;
+        riderName?: string;
+        riderPhone?: string;
+        vehicleNumber?: string;
+        receiverPerson?: string;
+        shippingCost?: number;
+        dispatchNotes?: string;
     }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
         try {
             const transferType = data.transferType || 'WAREHOUSE_TO_OUTLET';
@@ -143,6 +154,17 @@ export class TransferRequestService {
                         notes: data.notes,
                         sourceApprovedById: isDirect ? createdById : null,
                         sourceApprovedAt: isDirect ? new Date() : null,
+                        dispatchType: data.dispatchType || null,
+                        courierName: data.courierName || null,
+                        trackingNumber: data.trackingNumber || null,
+                        dispatchDate: data.dispatchDate ? new Date(data.dispatchDate) : null,
+                        estimatedDeliveryDate: data.estimatedDeliveryDate ? new Date(data.estimatedDeliveryDate) : null,
+                        riderName: data.riderName || null,
+                        riderPhone: data.riderPhone || null,
+                        vehicleNumber: data.vehicleNumber || null,
+                        receiverPerson: data.receiverPerson || null,
+                        shippingCost: data.shippingCost !== undefined && data.shippingCost !== null ? new Prisma.Decimal(data.shippingCost) : null,
+                        dispatchNotes: data.dispatchNotes || null,
                         items: {
                             create: data.items.map((item) => ({
                                 itemId: item.itemId,
@@ -242,6 +264,7 @@ export class TransferRequestService {
         search?: string,
         dateFrom?: string,
         dateTo?: string,
+        dispatchType?: string,
     ) {
         const andClauses: any[] = [];
         
@@ -257,9 +280,17 @@ export class TransferRequestService {
         if (transferType && transferType !== 'all') {
             andClauses.push({ transferType });
         }
+        if (dispatchType && dispatchType !== 'all') {
+            andClauses.push({ dispatchType });
+        }
         if (search) {
             andClauses.push({
-                requestNo: { contains: search.trim(), mode: 'insensitive' }
+                OR: [
+                    { requestNo: { contains: search.trim(), mode: 'insensitive' } },
+                    { trackingNumber: { contains: search.trim(), mode: 'insensitive' } },
+                    { courierName: { contains: search.trim(), mode: 'insensitive' } },
+                    { riderName: { contains: search.trim(), mode: 'insensitive' } },
+                ]
             });
         }
         if (dateFrom || dateTo) {
@@ -297,6 +328,82 @@ export class TransferRequestService {
         });
 
         return Promise.all(requests.map(req => this.enrichRequest(req)));
+    }
+
+    async updateDispatchDetails(
+        id: string,
+        data: {
+            dispatchType?: string;
+            courierName?: string;
+            trackingNumber?: string;
+            dispatchDate?: Date | string;
+            estimatedDeliveryDate?: Date | string;
+            riderName?: string;
+            riderPhone?: string;
+            vehicleNumber?: string;
+            receiverPerson?: string;
+            shippingCost?: number;
+            dispatchNotes?: string;
+        },
+        ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
+    ) {
+        const existing = await this.prisma.transferRequest.findUnique({
+            where: { id },
+        });
+        if (!existing) {
+            throw new NotFoundException(`Transfer request with ID ${id} not found`);
+        }
+
+        const updated = await this.prisma.transferRequest.update({
+            where: { id },
+            data: {
+                dispatchType: data.dispatchType !== undefined ? data.dispatchType : existing.dispatchType,
+                courierName: data.courierName !== undefined ? data.courierName : existing.courierName,
+                trackingNumber: data.trackingNumber !== undefined ? data.trackingNumber : existing.trackingNumber,
+                dispatchDate: data.dispatchDate ? new Date(data.dispatchDate) : (data.dispatchDate === null ? null : existing.dispatchDate),
+                estimatedDeliveryDate: data.estimatedDeliveryDate ? new Date(data.estimatedDeliveryDate) : (data.estimatedDeliveryDate === null ? null : existing.estimatedDeliveryDate),
+                riderName: data.riderName !== undefined ? data.riderName : existing.riderName,
+                riderPhone: data.riderPhone !== undefined ? data.riderPhone : existing.riderPhone,
+                vehicleNumber: data.vehicleNumber !== undefined ? data.vehicleNumber : existing.vehicleNumber,
+                receiverPerson: data.receiverPerson !== undefined ? data.receiverPerson : existing.receiverPerson,
+                shippingCost: data.shippingCost !== undefined && data.shippingCost !== null ? new Prisma.Decimal(data.shippingCost) : (data.shippingCost === null ? null : existing.shippingCost),
+                dispatchNotes: data.dispatchNotes !== undefined ? data.dispatchNotes : existing.dispatchNotes,
+            },
+            include: {
+                items: {
+                    include: {
+                        item: {
+                            include: {
+                                color: true,
+                                size: true,
+                            }
+                        }
+                    }
+                },
+                fromWarehouse: { select: { name: true, code: true } },
+                toWarehouse: { select: { name: true, code: true } },
+                fromLocation: { select: { name: true, code: true } },
+                toLocation: { select: { name: true, code: true } },
+            }
+        });
+
+        runInBackground(
+            'Update Transfer Request Dispatch',
+            this.activityLogs.log({
+                userId: ctx?.userId,
+                action: 'update',
+                module: 'transfer-request',
+                entity: 'TransferRequest',
+                entityId: id,
+                description: `Updated dispatch details for transfer request ${existing.requestNo}`,
+                newValues: JSON.stringify(data),
+                ipAddress: ctx?.ipAddress,
+                userAgent: ctx?.userAgent,
+                status: 'success',
+            }),
+        );
+
+        return updated;
     }
 
 

@@ -24,6 +24,17 @@ export class TransferRequestController {
         createdById?: string;
         notes?: string;
         isDirectTransfer?: boolean;
+        dispatchType?: string;
+        courierName?: string;
+        trackingNumber?: string;
+        dispatchDate?: Date | string;
+        estimatedDeliveryDate?: Date | string;
+        riderName?: string;
+        riderPhone?: string;
+        vehicleNumber?: string;
+        receiverPerson?: string;
+        shippingCost?: number;
+        dispatchNotes?: string;
     }, @Req() req: any) {
         const data = await this.transferRequestService.createRequest(dto, {
             userId: req.user?.id,
@@ -44,6 +55,7 @@ export class TransferRequestController {
         @Query('search') search?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
+        @Query('dispatchType') dispatchType?: string,
     ) {
         const data = await this.transferRequestService.getRequests(
             warehouseId,
@@ -52,7 +64,8 @@ export class TransferRequestController {
             transferType,
             search,
             dateFrom,
-            dateTo
+            dateTo,
+            dispatchType
         );
         return { status: true, data };
     }
@@ -159,5 +172,33 @@ export class TransferRequestController {
             userAgent: req.headers['user-agent'],
         });
         return { status: true, data, message: 'Claim acknowledged successfully. PLM inventory updated.' };
+    }
+
+    @Patch(':id/dispatch')
+    @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create', 'pos.inventory.outbound.approve')
+    @ApiOperation({ summary: 'Update transfer request dispatch and courier details' })
+    async updateDispatch(
+        @Param('id') id: string,
+        @Body() dto: {
+            dispatchType?: string;
+            courierName?: string;
+            trackingNumber?: string;
+            dispatchDate?: Date | string;
+            estimatedDeliveryDate?: Date | string;
+            riderName?: string;
+            riderPhone?: string;
+            vehicleNumber?: string;
+            receiverPerson?: string;
+            shippingCost?: number;
+            dispatchNotes?: string;
+        },
+        @Req() req: any
+    ) {
+        const data = await this.transferRequestService.updateDispatchDetails(id, dto, {
+            userId: req.user?.id,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+        });
+        return { status: true, data, message: 'Courier & dispatch details updated successfully' };
     }
 }

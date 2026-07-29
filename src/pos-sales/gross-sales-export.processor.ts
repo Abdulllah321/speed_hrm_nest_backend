@@ -41,6 +41,8 @@ const COLUMNS = [
   { header: 'GPC / Category / Product', key: 'label', width: 38, align: 'left' },
   { header: 'Size', key: 'size', width: 10, align: 'center' },
   { header: 'Color', key: 'color', width: 14, align: 'center' },
+  { header: 'HS CODE', key: 'hsCode', width: 14, align: 'center' },
+  { header: 'Barcode', key: 'barcode', width: 16, align: 'center' },
   { header: 'Qty', key: 'qty', width: 10, align: 'right', numFmt: '#,##0' },
   { header: 'Retail Price (Rs.)', key: 'retailPrice', width: 16, align: 'right', numFmt: '#,##0.00' },
   { header: 'Total Price WOST', key: 'totalPriceWost', width: 18, align: 'right', numFmt: '#,##0.00' },
@@ -417,12 +419,14 @@ export class GrossSalesExportProcessor {
           <td class="label-col">${labelPadding}</td>
           <td class="center">${r.size || '-'}</td>
           <td class="center">${r.color || '-'}</td>
+          <td class="center">${r.hsCode || '-'}</td>
+          <td class="center">${r.barcode || '-'}</td>
           <td class="num font-bold">${r.qty || '-'}</td>
-          <td class="num">${r.type === 'variant' ? formatVal(r.retailPrice) : '-'}</td>
+          <td class="num">${r.type === 'variant' || r.type === 'invoice' ? formatVal(r.retailPrice) : '-'}</td>
           <td class="num">${formatVal(r.totalPriceWost)}</td>
           <td class="num">${formatVal(r.discountAmount)}</td>
           <td class="num font-bold">${formatVal(r.excludingSalesTax)}</td>
-          <td class="center">${r.type === 'variant' ? formatPct(r.salesTaxPercent) : '-'}</td>
+          <td class="center">${r.type === 'variant' || r.type === 'invoice' ? formatPct(r.salesTaxPercent) : '-'}</td>
           <td class="num">${formatVal(r.salesTaxAmount)}</td>
           <td class="num">${formatVal(r.furtherTaxAmount)}</td>
           <td class="num">${formatVal(r.totalTax)}</td>
@@ -544,6 +548,8 @@ export class GrossSalesExportProcessor {
               <th>GPC / Category / Product</th>
               <th>Size</th>
               <th>Color</th>
+              <th>HS CODE</th>
+              <th>Barcode</th>
               <th>Qty</th>
               <th>Retail Price</th>
               <th>Total Price WOST</th>
@@ -561,6 +567,8 @@ export class GrossSalesExportProcessor {
             ${rowsHtml}
             <tr class="grand-total-row">
               <td>GRAND TOTALS</td>
+              <td class="center">-</td>
+              <td class="center">-</td>
               <td class="center">-</td>
               <td class="center">-</td>
               <td class="num">${grandTotals.qty}</td>
