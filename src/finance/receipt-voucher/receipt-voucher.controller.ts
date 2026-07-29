@@ -41,6 +41,14 @@ export class ReceiptVoucherController {
     return this.receiptVoucherService.findAll(type);
   }
 
+  @Get('missing-tag-accounts')
+  @Permissions('erp.finance.receipt-voucher.read')
+  @ApiOperation({ summary: 'Get receipt vouchers where tagAccount (sub-ledger) is missing/unattached' })
+  @ApiQuery({ name: 'type', required: false, enum: ['bank', 'cash'] })
+  findMissingTagAccounts(@Query('type') type?: string) {
+    return this.receiptVoucherService.findMissingTagAccounts(type);
+  }
+
   @Get('customers')
   @Permissions('erp.finance.receipt-voucher.read')
   @ApiOperation({ summary: 'Get all customers for receipt voucher creation' })
