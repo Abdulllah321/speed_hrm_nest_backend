@@ -23,14 +23,14 @@ export class DeliveryNoteExportController {
 
   /**
    * POST /api/transfer-request/export
-   * Queues a background export job. Returns immediately with a jobId.
-   * User receives an in-app notification when the file is ready.
+   * Queues a background export job (summary or detailed). Returns immediately with a jobId.
    */
   @Post()
   @Permissions('erp.inventory.stock-transfer.read', 'erp.inventory.delivery-note.read')
-  @ApiOperation({ summary: 'Queue a delivery note export job (returns immediately, notifies when done)' })
+  @ApiOperation({ summary: 'Queue a delivery note export job (summary preview or detailed line-by-line)' })
   async queueExport(
     @Req() req: any,
+    @Query('reportType')   reportType?: 'summary' | 'detailed',
     @Query('warehouseId')  warehouseId?: string,
     @Query('status')       status?: string,
     @Query('transferType') transferType?: string,
@@ -40,6 +40,7 @@ export class DeliveryNoteExportController {
   ) {
     const result = await this.exportService.queueExport({
       userId: req.user?.userId || req.user?.id || 'system',
+      reportType: reportType || 'detailed',
       warehouseId,
       status,
       transferType,
