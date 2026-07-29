@@ -1,15 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
+import { EncryptionService } from '../common/utils/encryption.service';
 import { InventoryItem } from '@prisma/client';
 
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
+
 @Injectable()
 export class InventoryService {
   constructor(
     private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
+    private encryptionService: EncryptionService,
     private activityLogs: ActivityLogsService,
   ) { }
+
 
   async getStockLevel(itemId: string, warehouseId: string): Promise<any> {
     const inventory = await this.prisma.inventoryItem.groupBy({
@@ -267,6 +273,45 @@ export class InventoryService {
 
     const cleanCenterId = String(centerId).trim();
 
+    // Verify if active tenant database context exists in AsyncLocalStorage
+    const activeStore = PrismaService.asyncLocalStorage.getStore();
+
+    if (!activeStore) {
+      // Self-healing fallback: resolve default active company database context
+      const defaultCompany = await this.prismaMaster.company.findFirst({
+        where: { status: 'active' },
+        include: { tenant: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (defaultCompany && defaultCompany.tenant) {
+        let dbUrl = defaultCompany.dbUrl || '';
+        if (defaultCompany.dbPassword && defaultCompany.dbUser && defaultCompany.dbHost && defaultCompany.dbName) {
+          try {
+            const plainPassword = this.encryptionService.decrypt(defaultCompany.dbPassword);
+            const encodedPassword = encodeURIComponent(String(plainPassword));
+            const port = defaultCompany.dbPort || 5432;
+            dbUrl = `postgresql://${encodeURIComponent(defaultCompany.dbUser)}:${encodedPassword}@${defaultCompany.dbHost}:${port}/${encodeURIComponent(defaultCompany.dbName)}?schema=public&connection_limit=3&pool_timeout=15`;
+          } catch (e) {
+            // fallback to stored dbUrl if decryption fails
+          }
+        }
+
+        return PrismaService.asyncLocalStorage.run(
+          {
+            tenantId: defaultCompany.tenant.id,
+            companyId: defaultCompany.id,
+            dbUrl,
+          },
+          () => this.executeStockQuery(cleanCenterId),
+        );
+      }
+    }
+
+    return this.executeStockQuery(cleanCenterId);
+  }
+
+  private async executeStockQuery(cleanCenterId: string): Promise<{ items: Array<{ BarCode: string; ExStock: number }> }> {
     const items = await this.prisma.$queryRaw<Array<{ BarCode: string; ExStock: number }>>`
       WITH target_center AS (
         SELECT id AS loc_id, warehouse_id AS wh_id
@@ -320,6 +365,7 @@ export class InventoryService {
 
     return { items: items || [] };
   }
+
 
 }
 
