@@ -45,4 +45,23 @@ export class InventoryController {
     const data = await this.inventoryService.searchInventory(query, warehouseId, locationId, filters);
     return { status: true, data };
   }
+
+  @Get('stocks-by-center')
+  @ApiOperation({ summary: 'Get stock per BarCode for a cost centre / location / warehouse (Query param center_id)' })
+  async getStocksByCenterQuery(
+    @Query('center_id') centerIdQuery?: string,
+    @Query('centerId') centerIdAlt?: string,
+  ) {
+    const centerId = centerIdQuery || centerIdAlt || '';
+    return this.inventoryService.getStocksByCenter(centerId);
+  }
+
+  @Get('stocks-by-center/:center_id')
+  @ApiOperation({ summary: 'Get stock per BarCode for a cost centre / location / warehouse (URL param center_id)' })
+  async getStocksByCenterParam(
+    @Param('center_id') centerIdParam: string,
+  ) {
+    return this.inventoryService.getStocksByCenter(centerIdParam);
+  }
 }
+

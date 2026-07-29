@@ -259,4 +259,67 @@ export class InventoryService {
 
     return result;
   }
+
+  async getStocksByCenter(centerId: string): Promise<{ items: Array<{ BarCode: string; ExStock: number }> }> {
+    if (!centerId) {
+      return { items: [] };
+    }
+
+    const cleanCenterId = String(centerId).trim();
+
+    const items = await this.prisma.$queryRaw<Array<{ BarCode: string; ExStock: number }>>`
+      WITH target_center AS (
+        SELECT id AS loc_id, warehouse_id AS wh_id
+        FROM "Location"
+        WHERE (id = ${cleanCenterId} OR code = ${cleanCenterId} OR short_code = ${cleanCenterId}) AND "isDeleted" = false
+        LIMIT 1
+      ),
+      target_wh AS (
+        SELECT id AS wh_id
+        FROM "Warehouse"
+        WHERE (id = ${cleanCenterId} OR code = ${cleanCenterId}) AND "isDeleted" = false
+        LIMIT 1
+      ),
+      resolved AS (
+        SELECT 
+          COALESCE((SELECT loc_id FROM target_center), ${cleanCenterId}) AS loc_id,
+          COALESCE((SELECT wh_id FROM target_center), (SELECT wh_id FROM target_wh)) AS wh_id
+      ),
+      inv_agg AS (
+        SELECT 
+          i."itemId",
+          SUM(i.quantity) AS physical_qty
+        FROM "InventoryItem" i, resolved r
+        WHERE i.status = 'AVAILABLE'
+          AND (
+            (r.loc_id IS NOT NULL AND i."locationId" = r.loc_id)
+            OR (r.loc_id IS NULL AND r.wh_id IS NOT NULL AND i."warehouseId" = r.wh_id AND i."locationId" IS NULL)
+          )
+        GROUP BY i."itemId"
+      ),
+      res_agg AS (
+        SELECT 
+          sr."itemId",
+          SUM(sr.quantity) AS reserved_qty
+        FROM "StockReserve" sr, resolved r
+        WHERE (r.wh_id IS NOT NULL AND sr."warehouseId" = r.wh_id)
+          AND (sr."expiresAt" IS NULL OR sr."expiresAt" >= NOW())
+        GROUP BY sr."itemId"
+      )
+      SELECT 
+        TRIM(item."barCode") AS "BarCode",
+        GREATEST(0, COALESCE(SUM(inv.physical_qty - COALESCE(res.reserved_qty, 0)), 0))::float AS "ExStock"
+      FROM "Item" item
+      LEFT JOIN inv_agg inv ON (inv."itemId" = item.id OR inv."itemId" = item."itemId")
+      LEFT JOIN res_agg res ON (res."itemId" = item.id OR res."itemId" = item."itemId")
+      WHERE item."isActive" = true 
+        AND item."barCode" IS NOT NULL 
+        AND TRIM(item."barCode") != ''
+      GROUP BY TRIM(item."barCode")
+    `;
+
+    return { items: items || [] };
+  }
+
 }
+
