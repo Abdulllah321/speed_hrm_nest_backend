@@ -51,7 +51,7 @@ export class HmacAuthGuard implements CanActivate {
       '';
 
     const secretKey =
-      process.env.STOCK_SYNC_HMAC_SECRET || 'speedlimit_stock_sync_hmac_secret_key_2026';
+      process.env.HMAC_SECRET || 'hmac_secret_key_2026';
 
     // Construct data string to verify
     // If timestamp is present: "centerId:timestamp", else "centerId"
