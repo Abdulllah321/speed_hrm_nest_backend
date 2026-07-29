@@ -51,7 +51,8 @@ export class PosSalesService implements OnModuleInit {
   }
 
   // ─── Generate sequential numbers per location and Pakistan fiscal year ───
-  private async generateSequentialNumber(
+  async generateSequentialNumber(
+
     prefix: string,
     fieldName: 'orderNumber' | 'returnNumber' | 'refundNumber',
     locationId: string,
@@ -69,35 +70,31 @@ export class PosSalesService implements OnModuleInit {
       throw new Error(`Location not found for ID: ${locationId}`);
     }
 
-    // Determine shortCode: use custom configured shortCode or generate dynamically
-    let shortCode = location.shortCode?.trim();
-    if (!shortCode) {
-      shortCode = location.name
-        .split(/[\s\-_]+/)
-        .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
-        .filter((word) => word.length > 0)
-        .map((word) => word[0].toUpperCase())
-        .join('');
-    }
-    if (!shortCode) {
-      shortCode = 'LOC';
+    // Clean shortCode: remove spaces, dots, dashes, ampersands
+    let rawCode = location.shortCode?.trim() || location.name;
+    let cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (!cleanCode) {
+      cleanCode = 'LOC';
     }
 
-    // Fiscal Year Start (Pakistan: July 1st)
+    // Fiscal Year Start (Pakistan: July 1st) & 2-digit FY suffix (e.g. 26)
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth(); // 0-indexed, July is 6
     const fiscalYearStartYear = month >= 6 ? year : year - 1;
+    const fySuffix = String(fiscalYearStartYear).slice(-2);
     const fiscalYearStartDate = new Date(
       Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
     );
 
-    // Find the latest order/return/refund for this location/fiscal year, ordering by the field itself descending to get the highest suffix directly!
+    const effectivePrefix = prefix;
+    const matchPrefix = `${effectivePrefix}-${cleanCode}${fySuffix}-`;
+
     const lastOrder = await prismaClient.salesOrder.findFirst({
       where: {
         locationId,
         createdAt: { gte: fiscalYearStartDate },
-        [fieldName]: { startsWith: `${prefix}-${shortCode}-` },
+        [fieldName]: { startsWith: matchPrefix },
       },
       orderBy: { [fieldName]: 'desc' },
       select: { [fieldName]: true },
@@ -115,7 +112,7 @@ export class PosSalesService implements OnModuleInit {
       }
     }
 
-    let nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
+    let nextNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
     let exists = await prismaClient.salesOrder.findUnique({
       where: { [fieldName]: nextNumber } as any,
       select: { id: true },
@@ -123,7 +120,7 @@ export class PosSalesService implements OnModuleInit {
 
     while (exists) {
       seq++;
-      nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
+      nextNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
       exists = await prismaClient.salesOrder.findUnique({
         where: { [fieldName]: nextNumber } as any,
         select: { id: true },
@@ -132,6 +129,8 @@ export class PosSalesService implements OnModuleInit {
 
     return nextNumber;
   }
+
+
 
   private async generateOrderNumber(
     locationId: string,
@@ -5864,7 +5863,11 @@ export class PosSalesService implements OnModuleInit {
         },
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                hsCode: true,
+              },
+            },
           },
         },
       },
@@ -5878,7 +5881,11 @@ export class PosSalesService implements OnModuleInit {
         locationId,
       },
       include: {
-        item: true,
+        item: {
+          include: {
+            hsCode: true,
+          },
+        },
       },
     });
 
@@ -5892,7 +5899,7 @@ export class PosSalesService implements OnModuleInit {
           ...(cashierUserId ? { cashierUserId } : {}),
         },
         include: {
-          items: { include: { item: true } },
+          items: { include: { item: { include: { hsCode: true } } } },
           alliance: true,
           voucherRedemptions: { include: { voucher: true } },
         },
@@ -5918,6 +5925,19 @@ export class PosSalesService implements OnModuleInit {
         grossSale += qty * price;
         grossSaleWost += qty * (price / (1 + taxRate / 100));
       }
+
+      const hsCodesStr = [
+        ...new Set(
+          order.items
+            .map((i: any) => i.item?.hsCodeStr || i.item?.hsCode?.hsCode)
+            .filter(Boolean),
+        ),
+      ].join(', ');
+      const barcodesStr = [
+        ...new Set(
+          order.items.map((i: any) => i.item?.barCode).filter(Boolean),
+        ),
+      ].join(', ');
 
       let cash = Number(order.cashAmount || 0);
       let cardAmount = Number(order.cardAmount || 0);
@@ -5995,6 +6015,8 @@ export class PosSalesService implements OnModuleInit {
         id: order.id,
         cmNo: order.orderNumber,
         date: order.createdAt,
+        hsCode: hsCodesStr || '-',
+        barcodes: barcodesStr || '-',
         grossSale,
         grossSaleWost,
         disc: Number(order.discountAmount || 0),
@@ -6060,6 +6082,19 @@ export class PosSalesService implements OnModuleInit {
         sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
       }
 
+      const returnHsCodes = [
+        ...new Set(
+          entries
+            .map((e: any) => e.item?.hsCodeStr || e.item?.hsCode?.hsCode)
+            .filter(Boolean),
+        ),
+      ].join(', ');
+      const returnBarcodes = [
+        ...new Set(
+          entries.map((e: any) => e.item?.barCode).filter(Boolean),
+        ),
+      ].join(', ');
+
       const netSale = grossSaleWost - disc + sTax;
 
       let cash = 0;
@@ -6081,6 +6116,8 @@ export class PosSalesService implements OnModuleInit {
         id: `${refId}-return`,
         cmNo: docNum,
         date: entries[0].createdAt,
+        hsCode: returnHsCodes || '-',
+        barcodes: returnBarcodes || '-',
         grossSale: -grossSale,
         grossSaleWost: -grossSaleWost,
         disc: -disc,
@@ -6833,6 +6870,7 @@ export class PosSalesService implements OnModuleInit {
                 size: true,
                 color: true,
                 category: true,
+                hsCode: true,
               },
             },
           },
@@ -6867,6 +6905,8 @@ export class PosSalesService implements OnModuleInit {
       totalTax: 0,
       includingSalesTax: 0,
       salesPerson: '',
+      hsCode: '',
+      barcode: '',
       children: new Map<string, any>(),
       leaves: [] as any[],
     };
@@ -6878,6 +6918,8 @@ export class PosSalesService implements OnModuleInit {
       label: string,
       size = '',
       color = '',
+      hsCode = '',
+      barcode = '',
     ) => {
       if (!parent.children.has(key)) {
         parent.children.set(key, {
@@ -6885,6 +6927,8 @@ export class PosSalesService implements OnModuleInit {
           label,
           size,
           color,
+          hsCode,
+          barcode,
           qty: 0,
           totalPriceWost: 0,
           discountAmount: 0,
@@ -6956,6 +7000,8 @@ export class PosSalesService implements OnModuleInit {
         const productName = `${it.sku} ${it.description || ''}`.trim();
         const sizeName = it.size?.name || '-';
         const colorName = it.color?.name || '-';
+        const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
+        const itemBarcode = it.barCode || '-';
 
         // Traverse & Aggregate
         let currentNode = root;
@@ -6966,6 +7012,8 @@ export class PosSalesService implements OnModuleInit {
           let label = '';
           let size = '';
           let color = '';
+          let hsCode = '';
+          let barcode = '';
 
           if (lvl === 'brand') {
             key = brandName;
@@ -6991,12 +7039,16 @@ export class PosSalesService implements OnModuleInit {
             key = productName;
             type = 'product';
             label = productName;
+            hsCode = itemHsCode;
+            barcode = itemBarcode;
           } else if (lvl === 'variant') {
             key = `${sizeName}|${colorName}`;
             type = 'variant';
             label = `Size: ${sizeName} / Color: ${colorName}`;
             size = sizeName;
             color = colorName;
+            hsCode = itemHsCode;
+            barcode = itemBarcode;
           }
 
           currentNode = getOrAddChild(
@@ -7006,6 +7058,8 @@ export class PosSalesService implements OnModuleInit {
             label,
             size,
             color,
+            hsCode,
+            barcode,
           );
         }
 
@@ -7039,9 +7093,12 @@ export class PosSalesService implements OnModuleInit {
             updateNode.salesTaxAmount += salesTaxAmount;
             updateNode.totalTax += totalTax;
             updateNode.includingSalesTax += includingSalesTax;
-            // Track salesTaxPercent and salesPerson on each node (variant has a fixed taxPercent; groups show last seen)
             updateNode.salesTaxPercent = taxPercent;
             updateNode.salesPerson = salesPerson;
+            if (lvl === 'product' || lvl === 'variant') {
+              updateNode.hsCode = itemHsCode;
+              updateNode.barcode = itemBarcode;
+            }
           }
         }
 
@@ -7051,6 +7108,8 @@ export class PosSalesService implements OnModuleInit {
             date: order.createdAt,
             size: sizeName,
             color: colorName,
+            hsCode: itemHsCode,
+            barcode: itemBarcode,
             qty,
             retailPrice,
             totalPriceWost,
@@ -7076,6 +7135,8 @@ export class PosSalesService implements OnModuleInit {
           label: node.label,
           size: node.size || '',
           color: node.color || '',
+          hsCode: node.hsCode || '',
+          barcode: node.barcode || '',
           qty: node.qty,
           retailPrice:
             node.type === 'variant'
@@ -7113,6 +7174,8 @@ export class PosSalesService implements OnModuleInit {
             date: leaf.date,
             size: leaf.size,
             color: leaf.color,
+            hsCode: leaf.hsCode || '',
+            barcode: leaf.barcode || '',
             qty: leaf.qty,
             retailPrice: leaf.retailPrice,
             totalPriceWost: leaf.totalPriceWost,
@@ -7232,6 +7295,7 @@ export class PosSalesService implements OnModuleInit {
             size: true,
             color: true,
             category: true,
+            hsCode: true,
           },
         },
       },
@@ -7284,6 +7348,7 @@ export class PosSalesService implements OnModuleInit {
                 size: true,
                 color: true,
                 category: true,
+                hsCode: true,
               },
             },
           },
@@ -7320,6 +7385,8 @@ export class PosSalesService implements OnModuleInit {
       totalTax: 0,
       includingSalesTax: 0,
       salesPerson: '',
+      hsCode: '',
+      barcode: '',
       children: new Map<string, any>(),
       leaves: [] as any[],
     };
@@ -7331,6 +7398,8 @@ export class PosSalesService implements OnModuleInit {
       label: string,
       size = '',
       color = '',
+      hsCode = '',
+      barcode = '',
     ) => {
       if (!parent.children.has(key)) {
         parent.children.set(key, {
@@ -7338,6 +7407,8 @@ export class PosSalesService implements OnModuleInit {
           label,
           size,
           color,
+          hsCode,
+          barcode,
           qty: 0,
           totalPriceWost: 0,
           discountAmount: 0,
@@ -7373,6 +7444,8 @@ export class PosSalesService implements OnModuleInit {
       const productName = `${it.sku} ${it.description || ''}`.trim();
       const sizeName = it.size?.name || '-';
       const colorName = it.color?.name || '-';
+      const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
+      const itemBarcode = it.barCode || '-';
 
       // Traverse & Aggregate
       let currentNode = root;
@@ -7383,6 +7456,8 @@ export class PosSalesService implements OnModuleInit {
         let label = '';
         let size = '';
         let color = '';
+        let hsCode = '';
+        let barcode = '';
 
         if (lvl === 'brand') {
           key = brandName;
@@ -7408,15 +7483,28 @@ export class PosSalesService implements OnModuleInit {
           key = productName;
           type = 'product';
           label = productName;
+          hsCode = itemHsCode;
+          barcode = itemBarcode;
         } else if (lvl === 'variant') {
           key = `${sizeName}|${colorName}`;
           type = 'variant';
           label = `Size: ${sizeName} / Color: ${colorName}`;
           size = sizeName;
           color = colorName;
+          hsCode = itemHsCode;
+          barcode = itemBarcode;
         }
 
-        currentNode = getOrAddChild(currentNode, key, type, label, size, color);
+        currentNode = getOrAddChild(
+          currentNode,
+          key,
+          type,
+          label,
+          size,
+          color,
+          hsCode,
+          barcode,
+        );
       }
 
       // Update counts along path
@@ -7450,9 +7538,12 @@ export class PosSalesService implements OnModuleInit {
           updateNode.salesTaxAmount += leaf.salesTaxAmount;
           updateNode.totalTax += leaf.totalTax;
           updateNode.includingSalesTax += leaf.includingSalesTax;
-          // Track salesTaxPercent and salesPerson per node
           updateNode.salesTaxPercent = leaf.salesTaxPercent;
           updateNode.salesPerson = leaf.salesPerson;
+          if (lvl === 'product' || lvl === 'variant') {
+            updateNode.hsCode = itemHsCode;
+            updateNode.barcode = itemBarcode;
+          }
         }
       }
 
@@ -7495,12 +7586,16 @@ export class PosSalesService implements OnModuleInit {
           : order.returnNumber || `Return for ${order.orderNumber}`;
 
       const fbr = order.fbrInvoiceNumber ? 1 : 0;
+      const itemHsCode = entry.item?.hsCodeStr || entry.item?.hsCode?.hsCode || '-';
+      const itemBarcode = entry.item?.barCode || '-';
 
       const leaf = {
         invoiceNo: docNum,
         date: entry.createdAt,
         size: entry.item?.size?.name || '-',
         color: entry.item?.color?.name || '-',
+        hsCode: itemHsCode,
+        barcode: itemBarcode,
         qty,
         retailPrice,
         totalPriceWost,
@@ -7555,11 +7650,16 @@ export class PosSalesService implements OnModuleInit {
           ? cashierMap.get(order.cashierUserId) || 'Unknown'
           : 'Unknown';
 
+        const itemHsCode = claimItem.item?.hsCodeStr || claimItem.item?.hsCode?.hsCode || '-';
+        const itemBarcode = claimItem.item?.barCode || '-';
+
         const leaf = {
           invoiceNo: claim.claimNumber,
           date: claim.createdAt,
           size: claimItem.item?.size?.name || '-',
           color: claimItem.item?.color?.name || '-',
+          hsCode: itemHsCode,
+          barcode: itemBarcode,
           qty,
           retailPrice,
           totalPriceWost,
@@ -7588,6 +7688,8 @@ export class PosSalesService implements OnModuleInit {
           label: node.label,
           size: node.size || '',
           color: node.color || '',
+          hsCode: node.hsCode || '',
+          barcode: node.barcode || '',
           qty: node.qty,
           retailPrice:
             node.type === 'variant'
@@ -7625,6 +7727,8 @@ export class PosSalesService implements OnModuleInit {
             date: leaf.date,
             size: leaf.size,
             color: leaf.color,
+            hsCode: leaf.hsCode || '',
+            barcode: leaf.barcode || '',
             qty: leaf.qty,
             retailPrice: leaf.retailPrice,
             totalPriceWost: leaf.totalPriceWost,

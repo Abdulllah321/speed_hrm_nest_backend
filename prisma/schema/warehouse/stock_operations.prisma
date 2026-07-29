@@ -51,6 +51,17 @@ model TransferRequest {
   fromLocationId         String?
   notes                  String?
   toLocationId           String?
+  dispatchType           String?               @map("dispatch_type")
+  courierName            String?               @map("courier_name")
+  trackingNumber         String?               @map("tracking_number")
+  dispatchDate           DateTime?             @map("dispatch_date")
+  estimatedDeliveryDate  DateTime?             @map("estimated_delivery_date")
+  riderName              String?               @map("rider_name")
+  riderPhone             String?               @map("rider_phone")
+  vehicleNumber          String?               @map("vehicle_number")
+  receiverPerson         String?               @map("receiver_person")
+  shippingCost           Decimal?              @map("shipping_cost") @db.Decimal(15, 4)
+  dispatchNotes          String?               @map("dispatch_notes")
   fromWarehouse          Warehouse?            @relation("TransferRequest_fromWarehouse", fields: [fromWarehouseId], references: [id])
   toWarehouse            Warehouse?            @relation("TransferRequest_toWarehouse", fields: [toWarehouseId], references: [id])
   fromLocation           Location?             @relation("TransferRequest_fromLocationIdToWarehouseLocation", fields: [fromLocationId], references: [id])

@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
-import { EncryptionService } from '../../common/utils/encryption.service';
+import { PosSalesService } from '../../pos-sales/pos-sales.service';
 import { EzcommerceConfirmOrderDto } from '../dto/ezcommerce-order.dto';
 import { MovementType } from '@prisma/client';
+import { EncryptionService } from '../../common/utils/encryption.service';
 
 @Injectable()
+
 export class EzcommerceOrderService {
   private readonly logger = new Logger(EzcommerceOrderService.name);
 
@@ -18,7 +20,9 @@ export class EzcommerceOrderService {
     private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
     private readonly encryptionService: EncryptionService,
+    private readonly posSalesService: PosSalesService,
   ) {}
+
 
   async createConfirmedOrder(dto: EzcommerceConfirmOrderDto): Promise<any> {
     const activeStore = PrismaService.asyncLocalStorage.getStore();
@@ -234,8 +238,13 @@ export class EzcommerceOrderService {
       };
     }
 
-    // Generate sequential order number matching ERP/POS format: ORD-{shortCode}-{00001}
-    const orderNumber = await this.generateSequentialOrderNumber(locationId, warehouseId);
+    // Generate sequential order number reusing PosSalesService generator
+    const targetLocId = locationId || warehouseId || 'DEFAULT';
+    const orderNumber = await this.posSalesService.generateSequentialNumber(
+      'SI',
+      'orderNumber',
+      targetLocId,
+    );
 
     // 4. Create Sales Order & Items with ERP Tax & Discount breakdown
     const salesOrder = await this.prisma.salesOrder.create({
@@ -276,7 +285,6 @@ export class EzcommerceOrderService {
       const invItem = await this.prisma.inventoryItem.findFirst({
         where: {
           itemId: item.itemId,
-          status: 'AVAILABLE',
           ...(locationId ? { locationId } : {}),
           ...(warehouseId && !locationId ? { warehouseId, locationId: null } : {}),
         },
@@ -318,78 +326,4 @@ export class EzcommerceOrderService {
       itemsCount: salesOrder.items.length,
     };
   }
-
-  private async generateSequentialOrderNumber(
-    locationId: string | null,
-    warehouseId: string | null,
-  ): Promise<string> {
-    const prefix = 'ORD';
-    let shortCode = 'ONLINE';
-
-    if (locationId) {
-      const location = await this.prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true, shortCode: true, code: true },
-      });
-
-      if (location) {
-        shortCode = location.shortCode?.trim() || location.code?.trim() || 'LOC';
-      }
-    } else if (warehouseId) {
-      const warehouse = await this.prisma.warehouse.findUnique({
-        where: { id: warehouseId },
-        select: { name: true, code: true },
-      });
-
-      if (warehouse) {
-        shortCode = warehouse.code?.trim() || 'WH';
-      }
-    }
-
-    // Fiscal Year Start (Pakistan: July 1st)
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const fiscalYearStartYear = month >= 6 ? year : year - 1;
-    const fiscalYearStartDate = new Date(
-      Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
-    );
-
-    const matchPrefix = `${prefix}-${shortCode}-`;
-    const lastOrder = await this.prisma.salesOrder.findFirst({
-      where: {
-        createdAt: { gte: fiscalYearStartDate },
-        orderNumber: { startsWith: matchPrefix },
-      },
-      orderBy: { orderNumber: 'desc' },
-      select: { orderNumber: true },
-    });
-
-    let seq = 1;
-    if (lastOrder?.orderNumber) {
-      const parts = lastOrder.orderNumber.split('-');
-      const lastPart = parts[parts.length - 1];
-      if (/^\d+$/.test(lastPart)) {
-        seq = parseInt(lastPart, 10) + 1;
-      }
-    }
-
-    let nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
-    let exists = await this.prisma.salesOrder.findUnique({
-      where: { orderNumber: nextNumber },
-      select: { id: true },
-    });
-
-    while (exists) {
-      seq++;
-      nextNumber = `${prefix}-${shortCode}-${String(seq).padStart(5, '0')}`;
-      exists = await this.prisma.salesOrder.findUnique({
-        where: { orderNumber: nextNumber },
-        select: { id: true },
-      });
-    }
-
-    return nextNumber;
-  }
 }
-
