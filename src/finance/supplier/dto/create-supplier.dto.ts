@@ -4,9 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
   IsEmail,
-  IsArray,
 } from 'class-validator';
 import { SupplierNature, SupplierType } from '@prisma/client';
 
@@ -15,6 +13,11 @@ export class CreateSupplierDto {
   @IsString()
   @IsNotEmpty()
   code: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  code2?: string;
 
   @ApiProperty()
   @IsString()
@@ -97,9 +100,4 @@ export class CreateSupplierDto {
   @IsOptional()
   ictNo?: string;
 
-  @ApiProperty({ type: [String] })
-  @IsArray()
-  @IsString({ each: true })
-  @IsNotEmpty()
-  chartOfAccountIds: string[];
 }

@@ -35,7 +35,6 @@ model ChartOfAccount {
 
   // Other relations
   landedCostChargeTypes    LandedCostChargeType[]
-  suppliers                Supplier[]             @relation("ChartOfAccountToSupplier")
   financeConfigs           FinanceAccountConfig[]
 
   @@index([parentId])
