@@ -36,7 +36,8 @@ export class EobiService {
       amount?: number;
       employerContribution: number;
       employeeContribution: number;
-      yearMonth: string;
+      yearMonth?: string;
+      region?: string;
       status?: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -50,7 +51,8 @@ export class EobiService {
           amount: body.amount ? (body.amount as any) : null,
           employerContribution: body.employerContribution as any,
           employeeContribution: body.employeeContribution as any,
-          yearMonth: body.yearMonth,
+          yearMonth: body.yearMonth || 'Continuous',
+          region: body.region ?? 'Punjab',
           status: body.status ?? 'active',
           createdById: ctx.userId,
         },
@@ -101,7 +103,8 @@ export class EobiService {
       amount?: number;
       employerContribution: number;
       employeeContribution: number;
-      yearMonth: string;
+      yearMonth?: string;
+      region?: string;
       status?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -116,7 +119,8 @@ export class EobiService {
           amount: i.amount ? (i.amount as any) : null,
           employerContribution: i.employerContribution as any,
           employeeContribution: i.employeeContribution as any,
-          yearMonth: i.yearMonth,
+          yearMonth: i.yearMonth || 'Continuous',
+          region: i.region ?? 'Punjab',
           status: i.status ?? 'active',
           createdById: ctx.userId,
         })),
@@ -168,6 +172,7 @@ export class EobiService {
       employerContribution?: number;
       employeeContribution?: number;
       yearMonth?: string;
+      region?: string;
       status?: string;
     },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -199,7 +204,8 @@ export class EobiService {
             body.employeeContribution !== undefined
               ? (body.employeeContribution as any)
               : existing.employeeContribution,
-          yearMonth: body.yearMonth ?? existing.yearMonth,
+          yearMonth: body.yearMonth !== undefined ? (body.yearMonth || 'Continuous') : existing.yearMonth,
+          region: body.region !== undefined ? body.region : existing.region,
           status: body.status ?? existing.status,
         },
       });
@@ -347,7 +353,8 @@ export class EobiService {
       amount?: number;
       employerContribution: number;
       employeeContribution: number;
-      yearMonth: string;
+      yearMonth?: string;
+      region?: string;
       status?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -364,7 +371,8 @@ export class EobiService {
             amount: i.amount ? (i.amount as any) : null,
             employerContribution: i.employerContribution as any,
             employeeContribution: i.employeeContribution as any,
-            yearMonth: i.yearMonth,
+            yearMonth: i.yearMonth || 'Continuous',
+            region: i.region ?? 'Punjab',
             status: i.status ?? 'active',
           },
         });
