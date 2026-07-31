@@ -42,6 +42,22 @@ function extractRsrvNumber(text?: string | null): number | null {
   return null;
 }
 
+function analyzeRsrvGaps(extractedNumbers: number[]): { min: number; max: number; missing: number[] } | null {
+  if (extractedNumbers.length === 0) return null;
+  const sorted = Array.from(new Set(extractedNumbers)).sort((a, b) => a - b);
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  
+  const missing: number[] = [];
+  const presentSet = new Set(sorted);
+  for (let n = min; n <= max; n++) {
+    if (!presentSet.has(n)) {
+      missing.push(n);
+    }
+  }
+  return { min, max, missing };
+}
+
 async function migrateRsrvVouchers(prisma: any, dbName: string, isDryRun: boolean = false) {
   if (isDryRun) {
     console.log(`\n🔍 [DRY RUN MODE] Auditing DB "${dbName}"...`);
@@ -69,11 +85,16 @@ async function migrateRsrvVouchers(prisma: any, dbName: string, isDryRun: boolea
 
   let updatedCount = 0;
   let skippedCount = 0;
+  const extractedNumbers: number[] = [];
 
   for (const rv of rsrvVouchers) {
     const fyLabel = getFiscalYearLabel(rv.rvDate || rv.createdAt);
     const extractedNum = extractRsrvNumber(rv.remarks) || extractRsrvNumber(rv.description) || extractRsrvNumber(rv.rvNo);
     
+    if (extractedNum !== null) {
+      extractedNumbers.push(extractedNum);
+    }
+
     const isExplicitManualRsrv = extractedNum !== null;
     const isAlreadyRsrvFormat = rv.rvNo.startsWith('RS-RV-') || rv.rvNo.startsWith('RSRV-') || rv.type === 'rs_rv';
 
@@ -129,6 +150,24 @@ async function migrateRsrvVouchers(prisma: any, dbName: string, isDryRun: boolea
         }
       }
     }
+  }
+
+  // Print Gap Audit Summary
+  const gapReport = analyzeRsrvGaps(extractedNumbers);
+  if (gapReport) {
+    console.log(`=====================================================`);
+    console.log(`📊 RSRV SEQUENCE & GAP AUDIT REPORT ("${dbName}"):`);
+    console.log(`   Detected Number Range : RSRV # ${gapReport.min}  --->  RSRV # ${gapReport.max}`);
+    console.log(`   Explicit RSRV Vouchers: ${extractedNumbers.length} found`);
+    
+    if (gapReport.missing.length > 0) {
+      console.log(`\n⚠️  MISSING / SKIPPED IN SEQUENCE (${gapReport.missing.length} missing):`);
+      const formattedMissing = gapReport.missing.map(n => `RSRV # ${n}`).join(', ');
+      console.log(`   ${formattedMissing}`);
+    } else {
+      console.log(`\n✅  SEQUENCE COMPLETE: Zero missing numbers between RSRV #${gapReport.min} and #${gapReport.max}!`);
+    }
+    console.log(`=====================================================\n`);
   }
 
   if (isDryRun) {
