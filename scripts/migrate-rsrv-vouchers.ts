@@ -1,9 +1,36 @@
 // @ts-nocheck
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
-import { Client, Pool } from 'pg';
+import { PrismaService } from '../src/database/prisma.service';
+import { PrismaClient as ManagementClient } from '@prisma/management-client';
+import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as crypto from 'crypto';
 import { getFiscalYearLabel, generateNextFolioNumber } from '../src/common/utils/voucher-number.util';
+
+function decrypt(encryptedText: string, masterKeyString: string): string {
+  if (!masterKeyString || masterKeyString.length < 32) {
+    throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
+  }
+  const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
+  const algorithm = 'aes-256-gcm';
+
+  const parts = encryptedText.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted text format');
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+
+  const decipher = crypto.createDecipheriv(algorithm, masterKey, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
 
 function extractRsrvNumber(text?: string | null): number | null {
   if (!text) return null;
@@ -15,7 +42,7 @@ function extractRsrvNumber(text?: string | null): number | null {
   return null;
 }
 
-async function migrateRsrvVouchers(prisma: PrismaClient, dbName: string, isDryRun: boolean = false) {
+async function migrateRsrvVouchers(prisma: any, dbName: string, isDryRun: boolean = false) {
   if (isDryRun) {
     console.log(`\n🔍 [DRY RUN MODE] Auditing DB "${dbName}"...`);
   } else {
@@ -44,8 +71,6 @@ async function migrateRsrvVouchers(prisma: PrismaClient, dbName: string, isDryRu
 
   for (const rv of rsrvVouchers) {
     const fyLabel = getFiscalYearLabel(rv.rvDate || rv.createdAt);
-    
-    // Check if remarks, description, or rvNo contains explicit RSRV number e.g. "RSRV # 963"
     const extractedNum = extractRsrvNumber(rv.remarks) || extractRsrvNumber(rv.description) || extractRsrvNumber(rv.rvNo);
     
     let newRvNo = rv.rvNo;
@@ -110,68 +135,63 @@ async function main() {
   console.log(isDryRun ? 'No database records will be modified.' : 'Database records WILL be updated.');
   console.log('=====================================================\n');
 
-  const ports = [5432, 5433];
-  let foundAnyDb = false;
+  const masterKey = process.env.MASTER_ENCRYPTION_KEY;
+  const managementUrl = (process.env.DATABASE_URL_MANAGEMENT || '').replace('localhost', '127.0.0.1').replace(':5433', ':5432');
 
-  for (const port of ports) {
-    // 1. Get all databases on PostgreSQL server via pg Client
-    const adminConn = `postgresql://speedlimit:speedlimit123@127.0.0.1:${port}/postgres`;
-    const pgClient = new Client({ connectionString: adminConn, connectionTimeoutMillis: 2000 });
-    
-    let dbNames: string[] = [];
+  if (managementUrl && masterKey) {
     try {
-      await pgClient.connect();
-      const res = await pgClient.query("SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres', 'template1', 'template0')");
-      dbNames = res.rows.map(r => r.datname);
-      await pgClient.end();
-    } catch {
-      try { await pgClient.end(); } catch {}
-      // Fallback list of common DB names
-      dbNames = ['speedlimit', 'speedlimit_management', 'speedlimit_tenant', 'speed_limit_db'];
-    }
+      const pool = new Pool({ connectionString: managementUrl });
+      const adapter = new PrismaPg(pool);
+      const management = new ManagementClient({ adapter } as any);
 
-    for (const dbName of dbNames) {
-      const connectionString = `postgresql://speedlimit:speedlimit123@127.0.0.1:${port}/${dbName}?schema=public`;
-      const pool = new Pool({ connectionString, connectionTimeoutMillis: 2000 });
+      const companies = await management.company.findMany({
+        where: { status: 'active' },
+      });
 
-      try {
-        // Quick raw SQL check to see if ReceiptVoucher table exists in this DB
-        const rawCheckClient = new Client({ connectionString, connectionTimeoutMillis: 2000 });
-        await rawCheckClient.connect();
-        
-        let hasTable = false;
-        try {
-          const tblRes = await rawCheckClient.query(`SELECT count(*) FROM "ReceiptVoucher"`);
-          hasTable = true;
-          const totalCount = parseInt(tblRes.rows[0].count, 10);
-          console.log(`🎯 Found database "${dbName}" on port ${port} with ${totalCount} ReceiptVoucher records!`);
-        } catch {
-          hasTable = false;
-        } finally {
-          await rawCheckClient.end();
-        }
+      console.log(`📡 Found ${companies.length} active tenant companies in Master DB.`);
 
-        if (hasTable) {
-          foundAnyDb = true;
-          const adapter = new PrismaPg(pool);
-          const prisma = new PrismaClient({ adapter });
+      for (const company of companies) {
+        let tenantUrl = company.dbUrl;
+        if (company.dbPassword) {
           try {
-            await prisma.$connect();
-            await migrateRsrvVouchers(prisma, dbName, isDryRun);
-          } finally {
-            await prisma.$disconnect();
-          }
+            const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+            tenantUrl = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || '127.0.0.1'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+          } catch {}
         }
-      } catch {
-        // DB connection error
-      } finally {
-        try { await pool.end(); } catch {}
+
+        if (!tenantUrl) continue;
+        tenantUrl = tenantUrl.replace('localhost', '127.0.0.1').replace(':5433', ':5432');
+
+        console.log(`\n👉 Connecting to tenant: ${company.name} (${company.code})...`);
+        const prisma = new PrismaService({ tenantDbUrl: tenantUrl });
+
+        try {
+          await migrateRsrvVouchers(prisma, company.code, isDryRun);
+        } catch (err: any) {
+          console.error(`❌ Migration error for ${company.code}: ${err.message}`);
+        } finally {
+          await prisma.$disconnect();
+        }
       }
+
+      await management.$disconnect();
+      await pool.end();
+      return;
+    } catch (mErr: any) {
+      console.warn(`⚠️ Management DB connect skipped/failed (${mErr.message}).`);
     }
   }
 
-  if (!foundAnyDb) {
-    console.log('⚠️ Could not find any PostgreSQL database containing the "ReceiptVoucher" table.');
+  // Fallback to DATABASE_URL in .env
+  const singleDbUrl = (process.env.DATABASE_URL || '').replace('localhost', '127.0.0.1').replace(':5433', ':5432');
+  if (singleDbUrl) {
+    console.log(`\n📡 Connecting to single DB using DATABASE_URL...`);
+    const prisma = new PrismaService({ tenantDbUrl: singleDbUrl });
+    try {
+      await migrateRsrvVouchers(prisma, 'SINGLE_DB', isDryRun);
+    } finally {
+      await prisma.$disconnect();
+    }
   }
 }
 
