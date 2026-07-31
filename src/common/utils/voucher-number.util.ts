@@ -65,7 +65,40 @@ export async function generateNextPvNumber(prisma: any, type: string, date: Date
   return `${prefixWithFy}${nextSeq.toString().padStart(4, '0')}`;
 }
 
+export async function generateNextRsrvNumber(prisma: any, date: Date | string): Promise<string> {
+  const fyLabel = getFiscalYearLabel(date);
+  const prefixWithFy = `RSRV-${fyLabel}-`;
+
+  const lastRSRV = await prisma.receiptVoucher.findFirst({
+    where: {
+      type: 'rs_rv',
+      rvNo: {
+        startsWith: prefixWithFy,
+      },
+    },
+    orderBy: {
+      rvNo: 'desc',
+    },
+    select: { rvNo: true },
+  });
+
+  let nextSeq = 1;
+  if (lastRSRV) {
+    const parts = lastRSRV.rvNo.split('-');
+    const lastSeq = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastSeq)) {
+      nextSeq = lastSeq + 1;
+    }
+  }
+
+  return `${prefixWithFy}${nextSeq.toString().padStart(5, '0')}`;
+}
+
 export async function generateNextRvNumber(prisma: any, type: string, date: Date | string): Promise<string> {
+  if (type === 'rs_rv') {
+    return generateNextRsrvNumber(prisma, date);
+  }
+
   const fyLabel = getFiscalYearLabel(date);
   const prefix = type === 'bank' ? 'BRV' : 'CRV';
   const prefixWithFy = `${prefix}-${fyLabel}-`;
