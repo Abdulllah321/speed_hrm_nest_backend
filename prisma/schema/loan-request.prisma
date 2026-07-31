@@ -3,6 +3,7 @@ model LoanRequest {
   employeeId              String
   loanTypeId              String
   amount                  Decimal   @db.Decimal(10, 2)
+  paidAmount              Decimal   @default(0) @db.Decimal(10, 2)
   requestedDate           DateTime
   repaymentStartMonthYear String?
   numberOfInstallments    Int?
