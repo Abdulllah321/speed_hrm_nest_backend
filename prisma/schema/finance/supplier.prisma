@@ -1,6 +1,7 @@
 model Supplier {
   id               String                      @id @default(uuid())
   code             String                      @unique
+  code2            String?                     // GL code for import
   brand            String?
   name             String
   nature           String?
@@ -33,7 +34,7 @@ model Supplier {
   purchaseReturns  PurchaseReturn[]
   rfqVendors       RequestForQuotationVendor[]
   vendorQuotations VendorQuotation[]
-  chartOfAccounts  ChartOfAccount[]            @relation("ChartOfAccountToSupplier")
+
   debitNotes       DebitNote[]
   ledgerEntries    SupplierLedger[]
 

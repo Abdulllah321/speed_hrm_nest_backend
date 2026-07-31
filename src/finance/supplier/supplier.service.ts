@@ -15,14 +15,8 @@ export class SupplierService {
 
   async create(createSupplierDto: CreateSupplierDto) {
     try {
-      const { chartOfAccountIds, ...data } = createSupplierDto;
       const supplier = await this.prisma.supplier.create({
-        data: {
-          ...data,
-          chartOfAccounts: {
-            connect: chartOfAccountIds?.map((id) => ({ id })),
-          },
-        },
+        data: createSupplierDto,
       });
       return {
         status: true,
@@ -38,11 +32,6 @@ export class SupplierService {
     try {
       const suppliers = await this.prisma.supplier.findMany({
         orderBy: { createdAt: 'desc' },
-        include: {
-          chartOfAccounts: {
-            select: { code: true, name: true },
-          },
-        },
       });
       return { status: true, data: suppliers };
     } catch (error: any) {
@@ -54,11 +43,6 @@ export class SupplierService {
     try {
       const supplier = await this.prisma.supplier.findUnique({
         where: { id },
-        include: {
-          chartOfAccounts: {
-            select: { code: true, name: true, id: true },
-          },
-        },
       });
       if (!supplier) return { status: false, message: 'Supplier not found' };
 
@@ -103,17 +87,9 @@ export class SupplierService {
 
   async update(id: string, updateSupplierDto: UpdateSupplierDto) {
     try {
-      const { chartOfAccountIds, ...data } = updateSupplierDto;
       const supplier = await this.prisma.supplier.update({
         where: { id },
-        data: {
-          ...data,
-          chartOfAccounts: chartOfAccountIds
-            ? {
-                set: chartOfAccountIds.map((id) => ({ id })),
-              }
-            : undefined,
-        },
+        data: updateSupplierDto,
       });
       return {
         status: true,
