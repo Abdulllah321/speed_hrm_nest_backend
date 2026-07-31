@@ -449,3 +449,28 @@ enum AutoApprovalTrigger {
   time_based
   manual_override
 }
+
+model CprTax {
+  id                  String    @id @default(uuid())
+  employeeId          String?
+  cnic                String
+  name                String
+  city                String?
+  cprNo               String
+  carAmount           Decimal?  @db.Decimal(15, 2)
+  ntn                 String?
+  taxableAmountAnnual Decimal?  @db.Decimal(15, 2)
+  taxableAmountGross  Decimal?  @db.Decimal(15, 2)
+  taxAmountMonthlyTax Decimal?  @db.Decimal(15, 2)
+  taxAmountAnnual     Decimal?  @db.Decimal(15, 2)
+  taxPeriod           String?
+  paymentDate         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  employee            Employee? @relation("EmployeeCprTaxes", fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([cprNo])
+}
+
