@@ -91,6 +91,8 @@ export class EmployeeController {
     @Query('providentFund') providentFund?: string,
     @Query('locationId') locationId?: string,
     @Query('eobi') eobi?: string,
+    @Query('status') status?: string,
+    @Query('isActive') isActive?: string,
   ) {
     return this.service.listForDropdown({
       page,
@@ -101,6 +103,8 @@ export class EmployeeController {
       providentFund,
       locationId,
       eobi,
+      status,
+      isActive,
     });
   }
 

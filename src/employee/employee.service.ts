@@ -1,6 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
@@ -19,7 +17,6 @@ export class EmployeeService {
     private prismaMaster: PrismaMasterService,
 
     private webhooks: WebhookService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
   ) { }
 
@@ -186,12 +183,33 @@ export class EmployeeService {
     providentFund?: string;
     locationId?: string;
     eobi?: string;
+    status?: string;
+    isActive?: string;
   }) {
     const search = query?.search || '';
 
-    const where: Prisma.EmployeeWhereInput = {
-      status: 'active',
-    };
+    let statusFilter: any = 'active';
+    if (
+      query?.status === 'inactive' ||
+      query?.isActive === 'false' ||
+      query?.status === 'deactivated' ||
+      query?.status === 'false'
+    ) {
+      statusFilter = { not: 'active' };
+    } else if (query?.status === 'all' || query?.isActive === 'all' || query?.status === 'any') {
+      statusFilter = undefined;
+    } else if (query?.status) {
+      statusFilter = query.status;
+    }
+
+    const where: Prisma.EmployeeWhereInput = {};
+    if (statusFilter !== undefined) {
+      if (typeof statusFilter === 'string') {
+        where.status = { equals: statusFilter, mode: 'insensitive' };
+      } else {
+        where.status = statusFilter;
+      }
+    }
 
     if (query?.departmentId) {
       where.departmentId = query.departmentId;
@@ -1170,8 +1188,6 @@ export class EmployeeService {
 
       await this.ensureSocialSecuritySync(created);
 
-      await this.cacheManager.del('employees_list');
-      await this.cacheManager.del('employees_dropdown');
       return { status: true, data: created };
     } catch (error: unknown) {
       await this.activityLogs.log({
@@ -2033,8 +2049,6 @@ export class EmployeeService {
         this.logger.error(`Failed to trigger employee.deleted webhook: ${err.message}`);
       });
 
-      await this.cacheManager.del('employees_list');
-      await this.cacheManager.del('employees_dropdown');
       return { status: true, data: removed };
     } catch (error: any) {
       await this.activityLogs.log({
@@ -2822,9 +2836,6 @@ export class EmployeeService {
         userAgent: ctx.userAgent,
         status: 'success',
       });
-
-      await this.cacheManager.del('employees_list');
-      await this.cacheManager.del('employees_dropdown');
 
       // Trigger webhook
       this.webhooks.trigger('employee.updated', rejoined).catch((err) => {
