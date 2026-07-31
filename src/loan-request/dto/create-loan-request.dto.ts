@@ -56,6 +56,12 @@ export class CreateLoanRequestItemDto {
   @IsString()
   additionalDetails?: string;
 
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  paidAmount?: number;
+
   @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
   @IsOptional()
   @IsString()
@@ -144,6 +150,12 @@ export class UpdateLoanRequestDto {
   @IsOptional()
   @IsString()
   disbursementType?: string;
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  paidAmount?: number;
 }
 
 export class ApproveLoanRequestDto {

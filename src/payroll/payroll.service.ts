@@ -158,9 +158,9 @@ export class PayrollService {
         where: {
           employeeId: { in: ids },
           OR: [
-            { approvalStatus: 'approved' },
-            { status: 'approved' },
-            { status: 'disbursed' },
+            { approvalStatus: { equals: 'approved', mode: 'insensitive' } },
+            { status: { equals: 'approved', mode: 'insensitive' } },
+            { status: { equals: 'disbursed', mode: 'insensitive' } },
           ],
         },
       }),
@@ -1054,6 +1054,9 @@ export class PayrollService {
           status: 'confirmed',
         },
       });
+
+      // Update LoanRequest paidAmount in database for deducted loans
+      await this.updateLoanPaidAmountsForPayroll(details);
 
       // Add EOBI contributions for employees with EOBI enabled
       await this.addEOBIContributionsForPayroll(payroll.id, month, year, details);
@@ -2092,10 +2095,41 @@ export class PayrollService {
 
   private async getUnconfirmedPayrollStartMonth(
     startMonthYear: string,
+    targetMonth?: string,
+    targetYear?: string,
   ): Promise<string> {
-    let [year, month] = startMonthYear.split('-').map(Number);
+    let year: number;
+    let month: number;
+
+    if (startMonthYear.includes('-')) {
+      const parts = startMonthYear.split('-').map(Number);
+      year = parts[0];
+      month = parts[1];
+    } else if (startMonthYear.includes('/')) {
+      const parts = startMonthYear.split('/').map(Number);
+      if (parts[0] > 1000) {
+        year = parts[0];
+        month = parts[1];
+      } else {
+        month = parts[0];
+        year = parts[1];
+      }
+    } else {
+      return startMonthYear;
+    }
+
+    if (!year || !month) return startMonthYear;
+
+    const targetY = targetYear ? Number(targetYear) : Infinity;
+    const targetM = targetMonth ? Number(targetMonth) : 12;
 
     while (true) {
+      if (year > targetY || (year === targetY && month >= targetM)) {
+        const monthStr = String(month).padStart(2, '0');
+        const yearStr = String(year);
+        return `${yearStr}-${monthStr}`;
+      }
+
       const monthStr = String(month).padStart(2, '0');
       const yearStr = String(year);
 
@@ -2140,10 +2174,18 @@ export class PayrollService {
     // Loans
     const emp = employee as any;
     if (emp.loanRequests && emp.loanRequests.length > 0) {
-      // Get all disbursed loans
-      const activeLoans = emp.loanRequests.filter((l: any) =>
-        (l.status || '').toLowerCase() === 'disbursed',
-      );
+      // Get all active (approved or disbursed) loans
+      const activeLoans = emp.loanRequests.filter((l: any) => {
+        const status = (l.status || '').toLowerCase();
+        const approvalStatus = (l.approvalStatus || '').toLowerCase();
+        return (
+          status === 'disbursed' ||
+          status === 'approved' ||
+          approvalStatus === 'approved' ||
+          approvalStatus === 'auto-approved' ||
+          approvalStatus === 'auto_approved'
+        );
+      });
 
       // Sort active loans chronologically by repaymentStartMonthYear or createdAt
       activeLoans.sort((a: any, b: any) => {
@@ -2153,62 +2195,12 @@ export class PayrollService {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
 
-      // Get all confirmed payroll details for this employee with non-zero loan deduction
-      const confirmedPayrollDetails = await this.prisma.payrollDetail.findMany({
-        where: {
-          employeeId: employee.id,
-          payroll: {
-            status: 'confirmed',
-          },
-          loanDeduction: {
-            gt: 0,
-          },
-        },
-        include: {
-          payroll: {
-            select: {
-              month: true,
-              year: true,
-            },
-          },
-        },
-      });
-
-      // Sort confirmed payroll details chronologically
-      confirmedPayrollDetails.sort((a, b) => {
-        const dateA = `${a.payroll.year}-${a.payroll.month}`;
-        const dateB = `${b.payroll.year}-${b.payroll.month}`;
-        return dateA.localeCompare(dateB);
-      });
-
-      // Initialize loan tracking variables
+      // Initialize loan tracking variables with DB paidAmount
       const loanTrackers = activeLoans.map((l: any) => ({
         loan: l,
         amount: new Decimal(l.amount),
-        totalDeducted: new Decimal(0),
-        firstDeductionMonthYear: null as string | null,
+        totalDeducted: new Decimal(l.paidAmount || 0),
       }));
-
-      // Allocate historical confirmed deductions using FIFO
-      for (const detail of confirmedPayrollDetails) {
-        let deductionToAllocate = new Decimal(detail.loanDeduction);
-        const payrollMonthYearStr = `${detail.payroll.year}-${detail.payroll.month}`;
-
-        for (const tracker of loanTrackers) {
-          if (deductionToAllocate.isZero()) break;
-
-          const remainingToFullyRepay = tracker.amount.sub(tracker.totalDeducted);
-          if (remainingToFullyRepay.gt(0)) {
-            const allocation = Decimal.min(deductionToAllocate, remainingToFullyRepay);
-            tracker.totalDeducted = tracker.totalDeducted.add(allocation);
-            deductionToAllocate = deductionToAllocate.sub(allocation);
-
-            if (!tracker.firstDeductionMonthYear) {
-              tracker.firstDeductionMonthYear = payrollMonthYearStr;
-            }
-          }
-        }
-      }
 
       // Process each active loan's contribution to the current payroll period
       for (const tracker of loanTrackers) {
@@ -2239,30 +2231,53 @@ export class PayrollService {
         }
 
         // 2. Calculate Deduction
-        if (!loan.repaymentStartMonthYear || !loan.numberOfInstallments) {
+        let repaymentStart = loan.repaymentStartMonthYear;
+        if (!repaymentStart && loan.requestedDate) {
+          const d = new Date(loan.requestedDate);
+          repaymentStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        } else if (!repaymentStart && loan.createdAt) {
+          const d = new Date(loan.createdAt);
+          repaymentStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        if (!repaymentStart) {
           continue;
         }
 
-        // Determine actual repayment start month
-        let startMonthYearStr: string;
-        if (tracker.totalDeducted.gt(0) && tracker.firstDeductionMonthYear) {
-          // If deductions have already started, use the actual first deduction month
-          startMonthYearStr = tracker.firstDeductionMonthYear;
+        const totalInstallments =
+          loan.numberOfInstallments && Number(loan.numberOfInstallments) > 0
+            ? Number(loan.numberOfInstallments)
+            : 1;
+
+        // Use original repaymentStart month as the fixed scheduled start period
+        const startMonthYearStr: string = repaymentStart;
+
+        let startYear: number;
+        let startMonth: number;
+        if (startMonthYearStr.includes('-')) {
+          const parts = startMonthYearStr.split('-').map(Number);
+          startYear = parts[0];
+          startMonth = parts[1];
+        } else if (startMonthYearStr.includes('/')) {
+          const parts = startMonthYearStr.split('/').map(Number);
+          if (parts[0] > 1000) {
+            startYear = parts[0];
+            startMonth = parts[1];
+          } else {
+            startMonth = parts[0];
+            startYear = parts[1];
+          }
         } else {
-          // If no deductions have been made yet, shift original repayment start month to first unconfirmed month
-          startMonthYearStr = await this.getUnconfirmedPayrollStartMonth(
-            loan.repaymentStartMonthYear,
-          );
+          continue;
         }
 
-        const [startYear, startMonth] = startMonthYearStr.split('-').map(Number);
         const currentY = Number(year);
         const currentM = Number(month);
 
         const diffMonths = (currentY - startYear) * 12 + (currentM - startMonth);
 
-        if (diffMonths >= 0 && diffMonths < loan.numberOfInstallments) {
-          const installment = tracker.amount.div(loan.numberOfInstallments);
+        if (diffMonths >= 0 && diffMonths < totalInstallments) {
+          const installment = tracker.amount.div(totalInstallments);
           const remainingBalance = tracker.amount.sub(tracker.totalDeducted);
           const contribution = Decimal.max(0, Decimal.min(installment, remainingBalance));
 
@@ -2314,6 +2329,48 @@ export class PayrollService {
     }
 
     return { loanDeduction, loanDisbursement, advanceSalaryDisbursement, advanceSalaryDeduction };
+  }
+
+  private async updateLoanPaidAmountsForPayroll(details: any[]) {
+    for (const d of details) {
+      const deduction = new Decimal(d.loanDeduction || 0);
+      if (deduction.gt(0)) {
+        const activeLoans = await this.prisma.loanRequest.findMany({
+          where: {
+            employeeId: d.employeeId,
+            OR: [
+              { approvalStatus: { equals: 'approved', mode: 'insensitive' } },
+              { status: { equals: 'approved', mode: 'insensitive' } },
+              { status: { equals: 'disbursed', mode: 'insensitive' } },
+            ],
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        let remDeduction = deduction;
+        for (const loan of activeLoans) {
+          if (remDeduction.isZero()) break;
+          const currentPaid = new Decimal(loan.paidAmount || 0);
+          const loanAmount = new Decimal(loan.amount || 0);
+          const remainingToPay = loanAmount.sub(currentPaid);
+
+          if (remainingToPay.gt(0)) {
+            const toAdd = Decimal.min(remDeduction, remainingToPay);
+            const newPaid = currentPaid.add(toAdd);
+            remDeduction = remDeduction.sub(toAdd);
+
+            const isFullyPaid = newPaid.gte(loanAmount);
+            await this.prisma.loanRequest.update({
+              where: { id: loan.id },
+              data: {
+                paidAmount: newPaid.toNumber(),
+                status: isFullyPaid ? 'completed' : loan.status,
+              },
+            });
+          }
+        }
+      }
+    }
   }
 
   private calculateEffectiveSalary(
