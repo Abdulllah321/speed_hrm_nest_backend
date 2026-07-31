@@ -161,8 +161,14 @@ export class LoanRequestService {
         : null,
     ]);
 
+    const totalPaid = Number(loanRequest.paidAmount || 0);
+    const totalAmount = Number(loanRequest.amount || 0);
+    const remaining = Math.max(0, totalAmount - totalPaid);
+
     return {
       ...loanRequest,
+      paidAmount: totalPaid,
+      remainingAmount: remaining,
       loanType,
       employee: loanRequest.employee
         ? {
@@ -319,21 +325,16 @@ export class LoanRequestService {
         ]);
 
       // Create maps for efficient lookups
-      const loanTypeMap = new Map(loanTypes.map((t) => [t.id, t]));
-      const deptMap = new Map(departments.map((d) => [d.id, d]));
-      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
-      const userMap = new Map(users.map((u) => [u.id, u]));
-      const paidAmountMap = new Map(
-        payrollAggregates.map((pa) => [
-          pa.employeeId,
-          Number(pa._sum.loanDeduction || 0),
-        ]),
-      );
-
       const data = loanRequests.map((loan) => {
         const lr = loan as any;
+        const totalPaid = Number(lr.paidAmount || 0);
+        const totalAmount = Number(lr.amount || 0);
+        const remaining = Math.max(0, totalAmount - totalPaid);
+
         return {
           ...lr,
+          paidAmount: totalPaid,
+          remainingAmount: remaining,
           loanType: loanTypeMap.get(lr.loanTypeId) || null,
           employee: lr.employee
             ? {
@@ -346,7 +347,6 @@ export class LoanRequestService {
           approvedBy: userMap.get(lr.approvedById) || null,
           createdBy: userMap.get(lr.createdById) || null,
           updatedBy: userMap.get(lr.updatedById) || null,
-          paidAmount: paidAmountMap.get(lr.employeeId) || 0,
         };
       });
 
@@ -618,6 +618,7 @@ export class LoanRequestService {
               employeeId: loanRequestItem.employeeId,
               loanTypeId: loanRequestItem.loanTypeId,
               amount: loanRequestItem.amount,
+              paidAmount: loanRequestItem.paidAmount || 0,
               requestedDate: requestedDate,
               repaymentStartMonthYear:
                 loanRequestItem.repaymentStartMonthYear || null,
@@ -815,6 +816,10 @@ export class LoanRequestService {
 
       if (body.disbursementType !== undefined) {
         updateData.disbursementType = body.disbursementType;
+      }
+
+      if (body.paidAmount !== undefined) {
+        updateData.paidAmount = body.paidAmount;
       }
 
       const updated = await this.prisma.loanRequest.update({
