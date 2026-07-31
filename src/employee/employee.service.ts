@@ -18,7 +18,7 @@ export class EmployeeService {
 
     private webhooks: WebhookService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(query?: { page?: number; limit?: number; search?: string }) {
     const page = Number(query?.page) || 1;
@@ -62,8 +62,8 @@ export class EmployeeService {
     const userIds = employees.map((e) => e.userId).filter(Boolean) as string[];
     const users = userIds.length
       ? await this.prismaMaster.user.findMany({
-        where: { id: { in: userIds } },
-      })
+          where: { id: { in: userIds } },
+        })
       : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -77,7 +77,8 @@ export class EmployeeService {
         cityName: emp.city?.name || null,
         stateName: emp.state?.name || null,
         countryName: emp.country?.name || null,
-        socialSecurityInstitutionName: emp.socialSecurityInstitution?.name || null,
+        socialSecurityInstitutionName:
+          emp.socialSecurityInstitution?.name || null,
         avatarUrl: user?.avatar || null,
         // Legacy compatibility
         department: emp.department?.name || emp.departmentId,
@@ -172,7 +173,6 @@ export class EmployeeService {
     };
   }
 
-
   // Minimal fields for dropdowns/selects
   async listForDropdown(query?: {
     page?: number;
@@ -196,7 +196,11 @@ export class EmployeeService {
       query?.status === 'false'
     ) {
       statusFilter = { not: 'active' };
-    } else if (query?.status === 'all' || query?.isActive === 'all' || query?.status === 'any') {
+    } else if (
+      query?.status === 'all' ||
+      query?.isActive === 'all' ||
+      query?.status === 'any'
+    ) {
       statusFilter = undefined;
     } else if (query?.status) {
       statusFilter = query.status;
@@ -331,21 +335,21 @@ export class EmployeeService {
         equipmentAssignments: { include: { equipment: true } },
         ...(includeHistory
           ? {
-            rejoiningHistory: {
-              select: {
-                id: true,
-                rejoiningDate: true,
-                previousEmployeeId: true,
-                newEmployeeId: true,
-                remarks: true,
-                createdAt: true,
+              rejoiningHistory: {
+                select: {
+                  id: true,
+                  rejoiningDate: true,
+                  previousEmployeeId: true,
+                  newEmployeeId: true,
+                  remarks: true,
+                  createdAt: true,
+                },
+                orderBy: {
+                  rejoiningDate: 'desc' as const,
+                },
+                take: 1,
               },
-              orderBy: {
-                rejoiningDate: 'desc' as const,
-              },
-              take: 1,
-            },
-          }
+            }
           : {}),
       },
     });
@@ -354,9 +358,9 @@ export class EmployeeService {
     // User lives in Master DB — must be queried separately
     const user = employee.userId
       ? await this.prismaMaster.user.findUnique({
-        where: { id: employee.userId },
-        select: { id: true, avatar: true },
-      })
+          where: { id: employee.userId },
+          select: { id: true, avatar: true },
+        })
       : null;
 
     // Apply latest active increment salary if available
@@ -463,16 +467,16 @@ export class EmployeeService {
       socialSecurityInstitutionRelation: emp.socialSecurityInstitution,
       // Add rejoining context if requested
       ...(includeHistory &&
-        emp.rejoiningHistory &&
-        emp.rejoiningHistory.length > 0
+      emp.rejoiningHistory &&
+      emp.rejoiningHistory.length > 0
         ? {
-          lastRejoinInfo: {
-            date: emp.rejoiningHistory[0].rejoiningDate,
-            remarks: emp.rejoiningHistory[0].remarks,
-          },
-          hasRejoinHistory: emp.isRejoined,
-          rejoinCount: emp.rejoinCount,
-        }
+            lastRejoinInfo: {
+              date: emp.rejoiningHistory[0].rejoiningDate,
+              remarks: emp.rejoiningHistory[0].remarks,
+            },
+            hasRejoinHistory: emp.isRejoined,
+            rejoinCount: emp.rejoinCount,
+          }
         : {}),
     };
 
@@ -1041,8 +1045,8 @@ export class EmployeeService {
           eobiRegion: eobiRegionValue || 'Punjab',
           ...(documentUrlsValue
             ? {
-              documentUrls: documentUrlsValue as Prisma.InputJsonValue,
-            }
+                documentUrls: documentUrlsValue as Prisma.InputJsonValue,
+              }
             : {}),
           providentFund: !!providentFundValue,
           overtimeApplicable: !!overtimeApplicableValue,
@@ -1063,114 +1067,116 @@ export class EmployeeService {
           status: 'active',
           equipmentAssignments:
             equipmentAssignmentsValue &&
-              Array.isArray(equipmentAssignmentsValue) &&
-              equipmentAssignmentsValue.length > 0
+            Array.isArray(equipmentAssignmentsValue) &&
+            equipmentAssignmentsValue.length > 0
               ? {
-                create: (equipmentAssignmentsValue as any[])
-                  .filter((ea) => ea.equipmentId)
-                  .map((ea: any) => ({
-                    equipmentId: ea.equipmentId,
-                    productId:
-                      ea.productId ||
-                      `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
-                    assignedDate: ea.assignedDate
-                      ? new Date(ea.assignedDate)
-                      : new Date(),
-                    notes: ea.notes || null,
-                    assignedById: ctx.userId,
-                    status: 'assigned',
-                  })),
-              }
+                  create: (equipmentAssignmentsValue as any[])
+                    .filter((ea) => ea.equipmentId)
+                    .map((ea: any) => ({
+                      equipmentId: ea.equipmentId,
+                      productId:
+                        ea.productId ||
+                        `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                      assignedDate: ea.assignedDate
+                        ? new Date(ea.assignedDate)
+                        : new Date(),
+                      notes: ea.notes || null,
+                      assignedById: ctx.userId,
+                      status: 'assigned',
+                    })),
+                }
               : undefined,
           qualifications:
             qualificationsValue &&
-              Array.isArray(qualificationsValue) &&
-              qualificationsValue.length > 0
+            Array.isArray(qualificationsValue) &&
+            qualificationsValue.length > 0
               ? {
-                create: (
-                  qualificationsValue as Array<{
-                    qualification?: unknown;
-                    qualificationId?: unknown;
-                    instituteId?: unknown;
-                    cityId?: unknown;
-                    stateId?: unknown;
-                    year?: unknown;
-                    grade?: unknown;
-                  }>
-                )
-                  .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
-                  .map((q) => {
-                    // Safely convert qualification/qualificationId to string
-                    const qualificationIdValue =
-                      q.qualification || q.qualificationId;
-                    const qualificationIdStr =
-                      typeof qualificationIdValue === 'string'
-                        ? qualificationIdValue
-                        : typeof qualificationIdValue === 'number'
-                          ? String(qualificationIdValue)
-                          : '';
+                  create: (
+                    qualificationsValue as Array<{
+                      qualification?: unknown;
+                      qualificationId?: unknown;
+                      instituteId?: unknown;
+                      cityId?: unknown;
+                      stateId?: unknown;
+                      year?: unknown;
+                      grade?: unknown;
+                    }>
+                  )
+                    .filter((q) => q.qualification || q.qualificationId) // Only include if qualification ID exists
+                    .map((q) => {
+                      // Safely convert qualification/qualificationId to string
+                      const qualificationIdValue =
+                        q.qualification || q.qualificationId;
+                      const qualificationIdStr =
+                        typeof qualificationIdValue === 'string'
+                          ? qualificationIdValue
+                          : typeof qualificationIdValue === 'number'
+                            ? String(qualificationIdValue)
+                            : '';
 
-                    // Safely convert other fields
-                    const instituteIdStr =
-                      q.instituteId && typeof q.instituteId === 'string'
-                        ? q.instituteId
-                        : q.instituteId &&
-                          (typeof q.instituteId === 'number' ||
-                            typeof q.instituteId === 'bigint')
-                          ? String(q.instituteId)
-                          : null;
+                      // Safely convert other fields
+                      const instituteIdStr =
+                        q.instituteId && typeof q.instituteId === 'string'
+                          ? q.instituteId
+                          : q.instituteId &&
+                              (typeof q.instituteId === 'number' ||
+                                typeof q.instituteId === 'bigint')
+                            ? String(q.instituteId)
+                            : null;
 
-                    const cityIdStr =
-                      q.cityId && typeof q.cityId === 'string'
-                        ? q.cityId
-                        : q.cityId &&
-                          (typeof q.cityId === 'number' ||
-                            typeof q.cityId === 'bigint')
-                          ? String(q.cityId)
-                          : null;
+                      const cityIdStr =
+                        q.cityId && typeof q.cityId === 'string'
+                          ? q.cityId
+                          : q.cityId &&
+                              (typeof q.cityId === 'number' ||
+                                typeof q.cityId === 'bigint')
+                            ? String(q.cityId)
+                            : null;
 
-                    const stateIdStr =
-                      q.stateId && typeof q.stateId === 'string'
-                        ? q.stateId
-                        : q.stateId &&
-                          (typeof q.stateId === 'number' ||
-                            typeof q.stateId === 'bigint')
-                          ? String(q.stateId)
-                          : null;
+                      const stateIdStr =
+                        q.stateId && typeof q.stateId === 'string'
+                          ? q.stateId
+                          : q.stateId &&
+                              (typeof q.stateId === 'number' ||
+                                typeof q.stateId === 'bigint')
+                            ? String(q.stateId)
+                            : null;
 
-                    const yearValue =
-                      q.year && typeof q.year === 'number'
-                        ? q.year
-                        : q.year && typeof q.year === 'string'
-                          ? parseInt(q.year, 10)
-                          : null;
+                      const yearValue =
+                        q.year && typeof q.year === 'number'
+                          ? q.year
+                          : q.year && typeof q.year === 'string'
+                            ? parseInt(q.year, 10)
+                            : null;
 
-                    const gradeStr =
-                      q.grade && typeof q.grade === 'string'
-                        ? q.grade
-                        : q.grade &&
-                          (typeof q.grade === 'number' ||
-                            typeof q.grade === 'bigint')
-                          ? String(q.grade)
-                          : null;
+                      const gradeStr =
+                        q.grade && typeof q.grade === 'string'
+                          ? q.grade
+                          : q.grade &&
+                              (typeof q.grade === 'number' ||
+                                typeof q.grade === 'bigint')
+                            ? String(q.grade)
+                            : null;
 
-                    return {
-                      qualificationId: qualificationIdStr,
-                      instituteId: instituteIdStr,
-                      cityId: cityIdStr,
-                      stateId: stateIdStr,
-                      year: yearValue,
-                      grade: gradeStr,
-                    };
-                  }),
-              }
+                      return {
+                        qualificationId: qualificationIdStr,
+                        instituteId: instituteIdStr,
+                        cityId: cityIdStr,
+                        stateId: stateIdStr,
+                        year: yearValue,
+                        grade: gradeStr,
+                      };
+                    }),
+                }
               : undefined,
         },
       });
 
       // Trigger webhook
       this.webhooks.trigger('employee.created', created).catch((err) => {
-        this.logger.error(`Failed to trigger employee.created webhook: ${err.message}`);
+        this.logger.error(
+          `Failed to trigger employee.created webhook: ${err.message}`,
+        );
       });
 
       await this.activityLogs.log({
@@ -1457,9 +1463,9 @@ export class EmployeeService {
       if (workingHoursPolicyValue !== undefined) {
         resolvedWorkingHoursPolicyId = !isUUID(workingHoursPolicyValue)
           ? await this.findOrCreateWorkingHoursPolicy(
-            workingHoursPolicyValue,
-            ctx,
-          )
+              workingHoursPolicyValue,
+              ctx,
+            )
           : workingHoursPolicyValue;
       }
 
@@ -1610,8 +1616,8 @@ export class EmployeeService {
               : existing?.eobiRegion,
           ...(documentUrlsValue !== undefined
             ? {
-              documentUrls: documentUrlsValue as Prisma.InputJsonValue,
-            }
+                documentUrls: documentUrlsValue as Prisma.InputJsonValue,
+              }
             : {}),
           providentFund: providentFundValue ?? existing?.providentFund,
           overtimeApplicable:
@@ -1645,112 +1651,112 @@ export class EmployeeService {
             (body as { socialSecurityInstitutionId?: unknown })
               .socialSecurityInstitutionId !== undefined
               ? ((body as { socialSecurityInstitutionId?: unknown })
-                .socialSecurityInstitutionId as string) || undefined
+                  .socialSecurityInstitutionId as string) || undefined
               : existing?.socialSecurityInstitutionId,
           status: statusValue ?? existing?.status,
           equipmentAssignments:
             equipmentAssignmentsValue !== undefined &&
-              Array.isArray(equipmentAssignmentsValue) &&
-              equipmentAssignmentsValue.length > 0
+            Array.isArray(equipmentAssignmentsValue) &&
+            equipmentAssignmentsValue.length > 0
               ? {
-                create: (equipmentAssignmentsValue as any[])
-                  .filter((ea) => ea.equipmentId)
-                  .map((ea: any) => ({
-                    equipmentId: ea.equipmentId,
-                    productId:
-                      ea.productId ||
-                      `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
-                    assignedDate: ea.assignedDate
-                      ? new Date(ea.assignedDate)
-                      : new Date(),
-                    notes: ea.notes || null,
-                    assignedById: ctx.userId,
-                    status: 'assigned',
-                  })),
-              }
+                  create: (equipmentAssignmentsValue as any[])
+                    .filter((ea) => ea.equipmentId)
+                    .map((ea: any) => ({
+                      equipmentId: ea.equipmentId,
+                      productId:
+                        ea.productId ||
+                        `EQ-${ea.equipmentId.substring(0, 8).toUpperCase()}`,
+                      assignedDate: ea.assignedDate
+                        ? new Date(ea.assignedDate)
+                        : new Date(),
+                      notes: ea.notes || null,
+                      assignedById: ctx.userId,
+                      status: 'assigned',
+                    })),
+                }
               : undefined,
           qualifications:
             qualificationsValue !== undefined &&
-              Array.isArray(qualificationsValue) &&
-              qualificationsValue.length > 0
+            Array.isArray(qualificationsValue) &&
+            qualificationsValue.length > 0
               ? {
-                create: (
-                  qualificationsValue as Array<{
-                    qualification?: unknown;
-                    qualificationId?: unknown;
-                    instituteId?: unknown;
-                    cityId?: unknown;
-                    stateId?: unknown;
-                    year?: unknown;
-                    grade?: unknown;
-                  }>
-                )
-                  .filter((q) => q.qualification || q.qualificationId)
-                  .map((q) => {
-                    // Safely convert qualification/qualificationId to string
-                    const qualificationIdValue =
-                      q.qualification || q.qualificationId;
-                    const qualificationIdStr =
-                      typeof qualificationIdValue === 'string'
-                        ? qualificationIdValue
-                        : typeof qualificationIdValue === 'number'
-                          ? String(qualificationIdValue)
-                          : '';
+                  create: (
+                    qualificationsValue as Array<{
+                      qualification?: unknown;
+                      qualificationId?: unknown;
+                      instituteId?: unknown;
+                      cityId?: unknown;
+                      stateId?: unknown;
+                      year?: unknown;
+                      grade?: unknown;
+                    }>
+                  )
+                    .filter((q) => q.qualification || q.qualificationId)
+                    .map((q) => {
+                      // Safely convert qualification/qualificationId to string
+                      const qualificationIdValue =
+                        q.qualification || q.qualificationId;
+                      const qualificationIdStr =
+                        typeof qualificationIdValue === 'string'
+                          ? qualificationIdValue
+                          : typeof qualificationIdValue === 'number'
+                            ? String(qualificationIdValue)
+                            : '';
 
-                    // Safely convert other fields
-                    const instituteIdStr =
-                      q.instituteId && typeof q.instituteId === 'string'
-                        ? q.instituteId
-                        : q.instituteId &&
-                          (typeof q.instituteId === 'number' ||
-                            typeof q.instituteId === 'bigint')
-                          ? String(q.instituteId)
-                          : null;
+                      // Safely convert other fields
+                      const instituteIdStr =
+                        q.instituteId && typeof q.instituteId === 'string'
+                          ? q.instituteId
+                          : q.instituteId &&
+                              (typeof q.instituteId === 'number' ||
+                                typeof q.instituteId === 'bigint')
+                            ? String(q.instituteId)
+                            : null;
 
-                    const cityIdStr =
-                      q.cityId && typeof q.cityId === 'string'
-                        ? q.cityId
-                        : q.cityId &&
-                          (typeof q.cityId === 'number' ||
-                            typeof q.cityId === 'bigint')
-                          ? String(q.cityId)
-                          : null;
+                      const cityIdStr =
+                        q.cityId && typeof q.cityId === 'string'
+                          ? q.cityId
+                          : q.cityId &&
+                              (typeof q.cityId === 'number' ||
+                                typeof q.cityId === 'bigint')
+                            ? String(q.cityId)
+                            : null;
 
-                    const stateIdStr =
-                      q.stateId && typeof q.stateId === 'string'
-                        ? q.stateId
-                        : q.stateId &&
-                          (typeof q.stateId === 'number' ||
-                            typeof q.stateId === 'bigint')
-                          ? String(q.stateId)
-                          : null;
+                      const stateIdStr =
+                        q.stateId && typeof q.stateId === 'string'
+                          ? q.stateId
+                          : q.stateId &&
+                              (typeof q.stateId === 'number' ||
+                                typeof q.stateId === 'bigint')
+                            ? String(q.stateId)
+                            : null;
 
-                    const yearValue =
-                      q.year && typeof q.year === 'number'
-                        ? q.year
-                        : q.year && typeof q.year === 'string'
-                          ? parseInt(q.year, 10)
-                          : null;
+                      const yearValue =
+                        q.year && typeof q.year === 'number'
+                          ? q.year
+                          : q.year && typeof q.year === 'string'
+                            ? parseInt(q.year, 10)
+                            : null;
 
-                    const gradeStr =
-                      q.grade && typeof q.grade === 'string'
-                        ? q.grade
-                        : q.grade &&
-                          (typeof q.grade === 'number' ||
-                            typeof q.grade === 'bigint')
-                          ? String(q.grade)
-                          : null;
+                      const gradeStr =
+                        q.grade && typeof q.grade === 'string'
+                          ? q.grade
+                          : q.grade &&
+                              (typeof q.grade === 'number' ||
+                                typeof q.grade === 'bigint')
+                            ? String(q.grade)
+                            : null;
 
-                    return {
-                      qualificationId: qualificationIdStr,
-                      instituteId: instituteIdStr,
-                      cityId: cityIdStr,
-                      stateId: stateIdStr,
-                      year: yearValue,
-                      grade: gradeStr,
-                    };
-                  }),
-              }
+                      return {
+                        qualificationId: qualificationIdStr,
+                        instituteId: instituteIdStr,
+                        cityId: cityIdStr,
+                        stateId: stateIdStr,
+                        year: yearValue,
+                        grade: gradeStr,
+                      };
+                    }),
+                }
               : undefined,
         },
       });
@@ -1774,9 +1780,12 @@ export class EmployeeService {
           if (existingUser) {
             userExistsInMaster = true;
             const updateData: any = {};
-            if (avatarUrlValue !== undefined) updateData.avatar = avatarUrlValue;
-            if (employeeIdValue !== undefined) updateData.employeeId = employeeIdValue;
-            if (officialEmailValue !== undefined) updateData.email = officialEmailValue || null;
+            if (avatarUrlValue !== undefined)
+              updateData.avatar = avatarUrlValue;
+            if (employeeIdValue !== undefined)
+              updateData.employeeId = employeeIdValue;
+            if (officialEmailValue !== undefined)
+              updateData.email = officialEmailValue || null;
             if (Object.keys(updateData).length > 0) {
               await this.prismaMaster.user.update({
                 where: { id: updated.userId },
@@ -1807,9 +1816,12 @@ export class EmployeeService {
             });
 
             const updateData: any = {};
-            if (avatarUrlValue !== undefined) updateData.avatar = avatarUrlValue;
-            if (employeeIdValue !== undefined) updateData.employeeId = employeeIdValue;
-            if (officialEmailValue !== undefined) updateData.email = officialEmailValue || null;
+            if (avatarUrlValue !== undefined)
+              updateData.avatar = avatarUrlValue;
+            if (employeeIdValue !== undefined)
+              updateData.employeeId = employeeIdValue;
+            if (officialEmailValue !== undefined)
+              updateData.email = officialEmailValue || null;
             if (Object.keys(updateData).length > 0) {
               await this.prismaMaster.user.update({
                 where: { id: user.id },
@@ -1827,7 +1839,7 @@ export class EmployeeService {
             const lastName = nameParts.slice(1).join(' ') || '';
 
             // Generate temporary password and hash it
-            const tempPassword = "Access@123";
+            const tempPassword = 'Access@123';
             const hashedPassword: string = await bcrypt.hash(tempPassword, 10);
 
             user = await this.prismaMaster.user.create({
@@ -1867,55 +1879,63 @@ export class EmployeeService {
         status: 'success',
       });
 
-      await this.cacheManager.del('employees_list');
-      await this.cacheManager.del('employees_dropdown');
-
       // Trigger webhook
       this.webhooks.trigger('employee.updated', updated).catch((err) => {
-        this.logger.error(`Failed to trigger employee.updated webhook: ${err.message}`);
+        this.logger.error(
+          `Failed to trigger employee.updated webhook: ${err.message}`,
+        );
       });
 
       // Ensure Social Security Employee Registration and Contribution Sync
       if (updated.socialSecurityInstitutionId) {
         try {
           const instId = updated.socialSecurityInstitutionId;
-          let reg = await this.prisma.socialSecurityEmployeeRegistration.findFirst({
-            where: {
-              employeeId: updated.id,
-              institutionId: instId,
-              isDeleted: false,
-            },
-          });
-
-          if (!reg) {
-            let employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
+          let reg =
+            await this.prisma.socialSecurityEmployeeRegistration.findFirst({
               where: {
+                employeeId: updated.id,
                 institutionId: instId,
-                status: 'active',
                 isDeleted: false,
               },
             });
-            if (!employerReg) {
-              employerReg = await this.prisma.socialSecurityEmployerRegistration.create({
-                data: {
-                  companyId: (updated as any).companyId || 'default-company',
+
+          if (!reg) {
+            let employerReg =
+              await this.prisma.socialSecurityEmployerRegistration.findFirst({
+                where: {
                   institutionId: instId,
-                  registrationNumber: `AUTO-${instId}-${Date.now()}`,
-                  employerName: 'Auto Employer',
-                  employerType: 'company',
-                  businessAddress: 'N/A',
-                  registrationDate: new Date(),
                   status: 'active',
-                  totalEmployees: 0,
-                  monthlyContribution: 0,
+                  isDeleted: false,
                 },
               });
+            if (!employerReg) {
+              employerReg =
+                await this.prisma.socialSecurityEmployerRegistration.create({
+                  data: {
+                    companyId: (updated as any).companyId || 'default-company',
+                    institutionId: instId,
+                    registrationNumber: `AUTO-${instId}-${Date.now()}`,
+                    employerName: 'Auto Employer',
+                    employerType: 'company',
+                    businessAddress: 'N/A',
+                    registrationDate: new Date(),
+                    status: 'active',
+                    totalEmployees: 0,
+                    monthlyContribution: 0,
+                  },
+                });
             }
-            const inst = await this.prisma.socialSecurityInstitution.findUnique({
-              where: { id: instId },
-            });
-            const rate = inst?.contributionRate ? Number(inst.contributionRate) : 0;
-            const salary = updated.employeeSalary ? Number(updated.employeeSalary) : 0;
+            const inst = await this.prisma.socialSecurityInstitution.findUnique(
+              {
+                where: { id: instId },
+              },
+            );
+            const rate = inst?.contributionRate
+              ? Number(inst.contributionRate)
+              : 0;
+            const salary = updated.employeeSalary
+              ? Number(updated.employeeSalary)
+              : 0;
             const monthlyContrib = rate;
 
             reg = await this.prisma.socialSecurityEmployeeRegistration.create({
@@ -1948,26 +1968,37 @@ export class EmployeeService {
             if (!pd.payroll) continue;
             const monthStr = pd.payroll.month.padStart(2, '0');
             const yearStr = pd.payroll.year.toString();
-            const date = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 28);
+            const date = new Date(
+              parseInt(yearStr, 10),
+              parseInt(monthStr, 10) - 1,
+              28,
+            );
 
-            const existingContrib = await this.prisma.socialSecurityContribution.findFirst({
-              where: {
-                employeeRegistrationId: reg.id,
-                month: monthStr,
-                year: yearStr,
-                isDeleted: false,
-              },
-            });
+            const existingContrib =
+              await this.prisma.socialSecurityContribution.findFirst({
+                where: {
+                  employeeRegistrationId: reg.id,
+                  month: monthStr,
+                  year: yearStr,
+                  isDeleted: false,
+                },
+              });
 
             if (!existingContrib) {
-              const inst = await this.prisma.socialSecurityInstitution.findUnique({
-                where: { id: instId },
-              });
-              const rate = inst?.contributionRate ? Number(inst.contributionRate) : 6;
-              const salary = Number(pd.basicSalary || updated.employeeSalary || 0);
-              const amount = Number(pd.socialSecurityContributionAmount) > 0
-                ? Number(pd.socialSecurityContributionAmount)
-                : (salary * rate) / 100;
+              const inst =
+                await this.prisma.socialSecurityInstitution.findUnique({
+                  where: { id: instId },
+                });
+              const rate = inst?.contributionRate
+                ? Number(inst.contributionRate)
+                : 6;
+              const salary = Number(
+                pd.basicSalary || updated.employeeSalary || 0,
+              );
+              const amount =
+                Number(pd.socialSecurityContributionAmount) > 0
+                  ? Number(pd.socialSecurityContributionAmount)
+                  : (salary * rate) / 100;
 
               if (amount > 0) {
                 await this.prisma.socialSecurityContribution.create({
@@ -2046,7 +2077,9 @@ export class EmployeeService {
 
       // Trigger webhook
       this.webhooks.trigger('employee.deleted', existing).catch((err) => {
-        this.logger.error(`Failed to trigger employee.deleted webhook: ${err.message}`);
+        this.logger.error(
+          `Failed to trigger employee.deleted webhook: ${err.message}`,
+        );
       });
 
       return { status: true, data: removed };
@@ -2207,7 +2240,7 @@ export class EmployeeService {
       if (
         (body as { officialEmail?: unknown }).officialEmail &&
         (body as { officialEmail?: unknown }).officialEmail !==
-        existing.officialEmail
+          existing.officialEmail
       ) {
         const duplicateEmail = await this.prisma.employee.findUnique({
           where: {
@@ -2323,7 +2356,7 @@ export class EmployeeService {
       }
       if (
         (body as { employmentStatusId?: string }).employmentStatusId !==
-        undefined ||
+          undefined ||
         (body as { employmentStatus?: unknown }).employmentStatus !== undefined
       ) {
         const resolvedEmploymentStatusId = resolveField(
@@ -2341,17 +2374,17 @@ export class EmployeeService {
           body as { probationExpiryDate?: unknown }
         ).probationExpiryDate
           ? new Date(
-            (body as { probationExpiryDate?: unknown })
-              .probationExpiryDate as string,
-          )
+              (body as { probationExpiryDate?: unknown })
+                .probationExpiryDate as string,
+            )
           : null;
       }
       if ((body as { cnicExpiryDate?: unknown }).cnicExpiryDate !== undefined) {
         updateData.cnicExpiryDate = (body as { cnicExpiryDate?: unknown })
           .cnicExpiryDate
           ? new Date(
-            (body as { cnicExpiryDate?: unknown }).cnicExpiryDate as string,
-          )
+              (body as { cnicExpiryDate?: unknown }).cnicExpiryDate as string,
+            )
           : null;
       }
       if ((body as { lifetimeCnic?: unknown }).lifetimeCnic !== undefined)
@@ -2465,9 +2498,9 @@ export class EmployeeService {
           .reportingManager as string;
       if (
         (body as { workingHoursPolicyId?: unknown }).workingHoursPolicyId !==
-        undefined ||
+          undefined ||
         (body as { workingHoursPolicy?: unknown }).workingHoursPolicy !==
-        undefined
+          undefined
       ) {
         const resolvedWorkingHoursPolicyId = resolveField(
           (body as { workingHoursPolicyId?: unknown }).workingHoursPolicyId,
@@ -2526,9 +2559,8 @@ export class EmployeeService {
         (body as { socialSecurityInstitutionId?: string })
           .socialSecurityInstitutionId !== undefined
       ) {
-        const instId = (
-          body as { socialSecurityInstitutionId?: string }
-        ).socialSecurityInstitutionId as string;
+        const instId = (body as { socialSecurityInstitutionId?: string })
+          .socialSecurityInstitutionId as string;
         updateData.socialSecurityInstitutionId = instId || null;
 
         if (instId) {
@@ -2543,20 +2575,19 @@ export class EmployeeService {
               });
             if (!existingReg) {
               let employerReg =
-                await this.prisma.socialSecurityEmployerRegistration.findFirst(
-                  {
-                    where: {
-                      institutionId: instId,
-                      status: 'active',
-                      isDeleted: false,
-                    },
+                await this.prisma.socialSecurityEmployerRegistration.findFirst({
+                  where: {
+                    institutionId: instId,
+                    status: 'active',
+                    isDeleted: false,
                   },
-                );
+                });
               if (!employerReg) {
                 employerReg =
                   await this.prisma.socialSecurityEmployerRegistration.create({
                     data: {
-                      companyId: (existing as any).companyId || 'default-company',
+                      companyId:
+                        (existing as any).companyId || 'default-company',
                       institutionId: instId,
                       registrationNumber: `AUTO-${instId}-${Date.now()}`,
                       employerName: 'Auto Employer',
@@ -2623,20 +2654,19 @@ export class EmployeeService {
                   where: { id: reg.institutionId },
                 });
               let employerReg =
-                await this.prisma.socialSecurityEmployerRegistration.findFirst(
-                  {
-                    where: {
-                      institutionId: reg.institutionId,
-                      status: 'active',
-                    },
+                await this.prisma.socialSecurityEmployerRegistration.findFirst({
+                  where: {
+                    institutionId: reg.institutionId,
+                    status: 'active',
                   },
-                );
+                });
 
               if (!employerReg) {
                 employerReg =
                   await this.prisma.socialSecurityEmployerRegistration.create({
                     data: {
-                      companyId: (existing as any).companyId || 'default-company',
+                      companyId:
+                        (existing as any).companyId || 'default-company',
                       institutionId: reg.institutionId,
                       registrationNumber: `AUTO-${reg.institutionId}-${Date.now()}`,
                       employerName: 'Auto Employer',
@@ -2651,39 +2681,37 @@ export class EmployeeService {
               }
 
               if (employerReg) {
-                await this.prisma.socialSecurityEmployeeRegistration.create(
-                  {
-                    data: {
-                      companyId: employerReg.companyId,
-                      institutionId: reg.institutionId,
-                      employerRegistrationId: employerReg.id,
-                      employeeId: existing.id,
-                      registrationNumber: reg.registrationNumber,
-                      cardNumber: reg.cardNumber || null,
-                      registrationDate: reg.registrationDate
-                        ? new Date(reg.registrationDate)
-                        : new Date(),
-                      expiryDate: reg.expiryDate
-                        ? new Date(reg.expiryDate)
-                        : null,
-                      contributionRate: reg.contributionRate
-                        ? Number(reg.contributionRate)
-                        : 0,
-                      baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
-                      monthlyContribution: reg.monthlyContribution
-                        ? Number(reg.monthlyContribution)
-                        : 0,
-                      employeeContribution: reg.employeeContribution
-                        ? Number(reg.employeeContribution)
-                        : 0,
-                      employerContribution: reg.employerContribution
-                        ? Number(reg.employerContribution)
-                        : 0,
-                      status: reg.status || 'active',
-                      isEmployerContribution: true,
-                    },
+                await this.prisma.socialSecurityEmployeeRegistration.create({
+                  data: {
+                    companyId: employerReg.companyId,
+                    institutionId: reg.institutionId,
+                    employerRegistrationId: employerReg.id,
+                    employeeId: existing.id,
+                    registrationNumber: reg.registrationNumber,
+                    cardNumber: reg.cardNumber || null,
+                    registrationDate: reg.registrationDate
+                      ? new Date(reg.registrationDate)
+                      : new Date(),
+                    expiryDate: reg.expiryDate
+                      ? new Date(reg.expiryDate)
+                      : null,
+                    contributionRate: reg.contributionRate
+                      ? Number(reg.contributionRate)
+                      : 0,
+                    baseSalary: reg.baseSalary ? Number(reg.baseSalary) : 0,
+                    monthlyContribution: reg.monthlyContribution
+                      ? Number(reg.monthlyContribution)
+                      : 0,
+                    employeeContribution: reg.employeeContribution
+                      ? Number(reg.employeeContribution)
+                      : 0,
+                    employerContribution: reg.employerContribution
+                      ? Number(reg.employerContribution)
+                      : 0,
+                    status: reg.status || 'active',
+                    isEmployerContribution: true,
                   },
-                );
+                });
               }
             }
           }
@@ -2711,7 +2739,9 @@ export class EmployeeService {
           equipmentAssignmentsValue.length > 0
         ) {
           // Create equipment assignments separately after the main update
-          for (const ea of (equipmentAssignmentsValue as any[]).filter((ea: any) => ea.equipmentId)) {
+          for (const ea of (equipmentAssignmentsValue as any[]).filter(
+            (ea: any) => ea.equipmentId,
+          )) {
             await this.prisma.employeeEquipment.create({
               data: {
                 employeeId: existing.id,
@@ -2839,7 +2869,9 @@ export class EmployeeService {
 
       // Trigger webhook
       this.webhooks.trigger('employee.updated', rejoined).catch((err) => {
-        this.logger.error(`Failed to trigger employee.updated (rejoin) webhook: ${err.message}`);
+        this.logger.error(
+          `Failed to trigger employee.updated (rejoin) webhook: ${err.message}`,
+        );
       });
 
       return {
@@ -2894,7 +2926,7 @@ export class EmployeeService {
           // Extract key changes for easy viewing
           keyChanges:
             entryWithJson.changedFields &&
-              Array.isArray(entryWithJson.changedFields)
+            Array.isArray(entryWithJson.changedFields)
               ? entryWithJson.changedFields
               : [],
           // Previous state snapshot
@@ -3762,9 +3794,9 @@ export class EmployeeService {
           const equipmentList =
             selectedEquipments && selectedEquipments.trim()
               ? selectedEquipments
-                .split(',')
-                .map((e: string) => e.trim())
-                .filter((e: string) => e.length > 0)
+                  .split(',')
+                  .map((e: string) => e.trim())
+                  .filter((e: string) => e.length > 0)
               : [];
 
           // Validate required fields
@@ -4323,28 +4355,30 @@ export class EmployeeService {
       });
 
       if (!reg) {
-        let employerReg = await this.prisma.socialSecurityEmployerRegistration.findFirst({
-          where: {
-            institutionId: instId,
-            status: 'active',
-            isDeleted: false,
-          },
-        });
-        if (!employerReg) {
-          employerReg = await this.prisma.socialSecurityEmployerRegistration.create({
-            data: {
-              companyId: (emp as any).companyId || 'default-company',
+        let employerReg =
+          await this.prisma.socialSecurityEmployerRegistration.findFirst({
+            where: {
               institutionId: instId,
-              registrationNumber: `AUTO-${instId}-${Date.now()}`,
-              employerName: 'Auto Employer',
-              employerType: 'company',
-              businessAddress: 'N/A',
-              registrationDate: new Date(),
               status: 'active',
-              totalEmployees: 0,
-              monthlyContribution: 0,
+              isDeleted: false,
             },
           });
+        if (!employerReg) {
+          employerReg =
+            await this.prisma.socialSecurityEmployerRegistration.create({
+              data: {
+                companyId: (emp as any).companyId || 'default-company',
+                institutionId: instId,
+                registrationNumber: `AUTO-${instId}-${Date.now()}`,
+                employerName: 'Auto Employer',
+                employerType: 'company',
+                businessAddress: 'N/A',
+                registrationDate: new Date(),
+                status: 'active',
+                totalEmployees: 0,
+                monthlyContribution: 0,
+              },
+            });
         }
         const inst = await this.prisma.socialSecurityInstitution.findUnique({
           where: { id: instId },
@@ -4383,26 +4417,34 @@ export class EmployeeService {
         if (!pd.payroll) continue;
         const monthStr = pd.payroll.month.padStart(2, '0');
         const yearStr = pd.payroll.year.toString();
-        const date = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 28);
+        const date = new Date(
+          parseInt(yearStr, 10),
+          parseInt(monthStr, 10) - 1,
+          28,
+        );
 
-        const existingContrib = await this.prisma.socialSecurityContribution.findFirst({
-          where: {
-            employeeRegistrationId: reg.id,
-            month: monthStr,
-            year: yearStr,
-            isDeleted: false,
-          },
-        });
+        const existingContrib =
+          await this.prisma.socialSecurityContribution.findFirst({
+            where: {
+              employeeRegistrationId: reg.id,
+              month: monthStr,
+              year: yearStr,
+              isDeleted: false,
+            },
+          });
 
         if (!existingContrib) {
           const inst = await this.prisma.socialSecurityInstitution.findUnique({
             where: { id: instId },
           });
-          const rate = inst?.contributionRate ? Number(inst.contributionRate) : 0;
+          const rate = inst?.contributionRate
+            ? Number(inst.contributionRate)
+            : 0;
           const salary = Number(pd.basicSalary || emp.employeeSalary || 0);
-          const amount = Number(pd.socialSecurityContributionAmount) > 0
-            ? Number(pd.socialSecurityContributionAmount)
-            : rate;
+          const amount =
+            Number(pd.socialSecurityContributionAmount) > 0
+              ? Number(pd.socialSecurityContributionAmount)
+              : rate;
 
           if (amount > 0) {
             await this.prisma.socialSecurityContribution.create({
