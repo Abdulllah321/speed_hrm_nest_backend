@@ -294,7 +294,7 @@ export class LoanRequestService {
       const employeeIds = [...new Set(loanRequests.map((lr) => lr.employeeId))];
 
       // Fetch all required data in parallel
-      const [loanTypes, departments, subDepartments, users, payrollAggregates] =
+      const [loanTypes, departments, subDepartments, users] =
         await Promise.all([
           this.prisma.loanType.findMany({
             where: { id: { in: loanTypeIds } },
@@ -312,19 +312,14 @@ export class LoanRequestService {
             where: { id: { in: userIds as string[] } },
             select: { id: true, firstName: true, lastName: true, email: true },
           }),
-          this.prisma.payrollDetail.groupBy({
-            by: ['employeeId'],
-            where: {
-              employeeId: { in: employeeIds },
-              payroll: { status: 'confirmed' },
-            },
-            _sum: {
-              loanDeduction: true,
-            },
-          }),
         ]);
 
       // Create maps for efficient lookups
+      const loanTypeMap = new Map(loanTypes.map((t) => [t.id, t]));
+      const deptMap = new Map(departments.map((d) => [d.id, d]));
+      const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
       const data = loanRequests.map((loan) => {
         const lr = loan as any;
         const totalPaid = Number(lr.paidAmount || 0);
