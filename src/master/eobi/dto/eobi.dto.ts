@@ -36,10 +36,15 @@ export class CreateEobiDto {
   @Type(() => Number)
   employeeContribution: number;
 
-  @ApiProperty({ example: 'January 2024' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'January 2024' })
+  @IsOptional()
   @IsString()
-  yearMonth: string;
+  yearMonth?: string;
+
+  @ApiPropertyOptional({ example: 'Punjab' })
+  @IsOptional()
+  @IsString()
+  region?: string;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()
@@ -86,10 +91,15 @@ export class UpdateEobiDto {
   @Type(() => Number)
   employeeContribution: number;
 
-  @ApiProperty({ example: 'February 2024' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'February 2024' })
+  @IsOptional()
   @IsString()
-  yearMonth: string;
+  yearMonth?: string;
+
+  @ApiPropertyOptional({ example: 'Punjab' })
+  @IsOptional()
+  @IsString()
+  region?: string;
 
   @ApiPropertyOptional({ example: 'active' })
   @IsOptional()

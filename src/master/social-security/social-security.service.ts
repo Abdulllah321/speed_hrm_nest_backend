@@ -651,10 +651,9 @@ export class SocialSecurityService {
             where: { id: created.id },
             data: {
               contributionRate: (inst as any).contributionRate,
-              monthlyContribution:
-                (Number((inst as any).contributionRate) *
-                  Number(body.baseSalary)) /
-                100,
+              monthlyContribution: body.monthlyContribution !== undefined && body.monthlyContribution !== null
+                ? (body.monthlyContribution as any)
+                : (inst as any).contributionRate,
             },
           });
         }
