@@ -87,6 +87,21 @@ export class PayrollService {
     const monthEndDate = new Date(Number(year), Number(month), 0);
     const monthStartDate = new Date(`${normalizedYear}-${normalizedMonth}-01`);
 
+    const monthNum = Number(month);
+    const yearNum = Number(year);
+    let fiscalYearStart: Date;
+    let fiscalYearEnd: Date;
+
+    if (monthNum >= 7) {
+      // July to December - fiscal year is current year to next year
+      fiscalYearStart = new Date(yearNum, 6, 1);
+      fiscalYearEnd = new Date(yearNum + 1, 5, 30, 23, 59, 59);
+    } else {
+      // January to June - fiscal year is previous year to current year
+      fiscalYearStart = new Date(yearNum - 1, 6, 1);
+      fiscalYearEnd = new Date(yearNum, 5, 30, 23, 59, 59);
+    }
+
     // 2. Fetch all transactional and Master data in parallel
     const [
       salaryBreakups,
@@ -116,8 +131,19 @@ export class PayrollService {
         where: {
           employeeId: { in: ids },
           status: 'active',
-          month: normalizedMonth,
-          year: normalizedYear,
+          OR: [
+            {
+              month: normalizedMonth,
+              year: normalizedYear,
+            },
+            {
+              type: 'recurring',
+              date: {
+                gte: fiscalYearStart,
+                lte: monthEndDate,
+              },
+            },
+          ],
         },
       }),
       this.prisma.deduction.findMany({
@@ -267,12 +293,26 @@ export class PayrollService {
       socialSecurityRegistrations: ssRegistrations.filter(
         (r) => r.employeeId === emp.id,
       ),
-      allowances: allowances
-        .filter((a) => a.employeeId === emp.id)
-        .map((a) => ({
+      allowances: (() => {
+        const empAllowances = allowances.filter((a) => a.employeeId === emp.id);
+        const specificAllowances = empAllowances.filter((a) => a.type !== 'recurring');
+        const recurringAllowances = empAllowances.filter((a) => a.type === 'recurring');
+
+        // Group recurring allowances by allowanceHeadId and keep the one with the latest date/createdAt
+        const latestRecurringMap = new Map<string, any>();
+        for (const a of recurringAllowances) {
+          const existing = latestRecurringMap.get(a.allowanceHeadId);
+          if (!existing || new Date(a.date) > new Date(existing.date) || (new Date(a.date).getTime() === new Date(existing.date).getTime() && a.createdAt > existing.createdAt)) {
+            latestRecurringMap.set(a.allowanceHeadId, a);
+          }
+        }
+
+        const uniqueRecurring = Array.from(latestRecurringMap.values());
+        return [...specificAllowances, ...uniqueRecurring].map((a) => ({
           ...a,
           allowanceHead: allowanceHeadMap.get(a.allowanceHeadId),
-        })),
+        }));
+      })(),
       deductions: deductions
         .filter((d) => d.employeeId === emp.id)
         .map((d) => ({
@@ -513,16 +553,20 @@ export class PayrollService {
       // Prepare allowance breakdown (only allowances with paymentMethod 'with_salary')
       const allowanceBreakup = (emp.allowances || [])
         .filter((allow: any) => allow.paymentMethod === 'with_salary')
-        .map((allow: any) => ({
-          id: allow.id,
-          name: allow.allowanceHead?.name || 'Unknown',
-          amount: Number(allow.amount),
-          isTaxable: allow.isTaxable,
-          taxPercentage: allow.taxPercentage
-            ? Number(allow.taxPercentage)
-            : null,
-          isRecurring: allow.type === 'recurring', // Honor the allowance type
-        }));
+        .map((allow: any) => {
+          const name = allow.allowanceHead?.name || 'Unknown';
+          const isRecurring = allow.type === 'recurring' && name.toLowerCase() !== 'incentive';
+          return {
+            id: allow.id,
+            name: name,
+            amount: Number(allow.amount),
+            isTaxable: allow.isTaxable,
+            taxPercentage: allow.taxPercentage
+              ? Number(allow.taxPercentage)
+              : null,
+            isRecurring: isRecurring,
+          };
+        });
 
       // Calculate Social Security Contribution as an addition/allowance
       // Prefer explicit employee social security institution; fallback to latest registration's institution
@@ -548,23 +592,9 @@ export class PayrollService {
       }
 
       if (socialSecurityRate && socialSecurityRate.gt(0)) {
-        // SSI base calculation: Use salary components marked as deductible or fallback to calculatedBasicSalary
-        let ssiBase = salaryBreakup
-          .filter((comp) => comp.isDeductible === true)
-          .reduce(
-            (sum, comp) => sum.add(new Decimal(comp.amount)),
-            new Decimal(0),
-          );
+        socialSecurityContributionAmount = socialSecurityRate;
 
-        if (ssiBase.lte(0)) {
-          ssiBase = calculatedBasicSalary;
-        }
-
-        socialSecurityContributionAmount = ssiBase
-          .mul(socialSecurityRate)
-          .div(100);
-
-        // Social Security contribution is calculated but NOT added to gross salary
+        // Social Security contribution is a fixed amount, NOT added to gross salary
         // It's kept separate for reporting purposes only
       }
 
@@ -759,12 +789,24 @@ export class PayrollService {
         .filter(b => b.isTaxable !== false)
         .reduce((sum, b) => sum.add(new Decimal(b.amount)), new Decimal(0));
       
-      // Combine all taxable components - use adjusted salary breakup and filter by isTaxable
+      // Combine all taxable components - use original salary breakup for regular projection
       const allTaxableComponents = [
-        ...adjustedSalaryBreakup.filter(comp => comp.isTaxable !== false),
+        ...salaryBreakup.filter(comp => comp.isTaxable !== false),
         ...allowanceBreakup.filter(comp => comp.isTaxable !== false),
         ...bonusBreakup.filter(comp => comp.isTaxable !== false),
       ];
+
+      // Add attendance deduction as a negative one-time taxable component
+      if (attendanceDeduction.gt(0)) {
+        allTaxableComponents.push({
+          id: 'attendance-deduction',
+          name: 'Attendance Deduction',
+          amount: -attendanceDeduction.toNumber(),
+          isTaxable: true,
+          isRecurring: false,
+          percentage: null,
+        });
+      }
 
       if (overtimeAmount.gt(0)) {
         allTaxableComponents.push({
@@ -1507,11 +1549,23 @@ export class PayrollService {
         employee: true,
         payroll: true,
       },
-      orderBy: {
-        employee: {
-          employeeName: 'asc',
+      orderBy: [
+        {
+          payroll: {
+            year: 'desc',
+          },
         },
-      },
+        {
+          payroll: {
+            month: 'desc',
+          },
+        },
+        {
+          employee: {
+            employeeName: 'asc',
+          },
+        },
+      ],
     });
 
     // Fetch Master data for all employees in parallel
@@ -1966,11 +2020,14 @@ export class PayrollService {
         // Also try "YYYY-MM" format as fallback
         const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
 
-        // Fetch EOBI record for the payroll month/year
+        const employeeRegion = (employee as any).eobiRegion || 'Punjab';
+
+        // Fetch EOBI record for the region (continuous)
         const eobiRecord = await this.prisma.eOBI.findFirst({
           where: {
-            OR: [{ yearMonth: yearMonth }, { yearMonth: yearMonthAlt }],
+            region: employeeRegion,
             status: 'active',
+            isDeleted: false,
           },
           orderBy: { createdAt: 'desc' },
         });
@@ -2769,14 +2826,18 @@ export class PayrollService {
 
       const dayName = dayNames[checkDate.getDay()];
 
-      // Check if it's a weekend or day-off based on policy
       let isDayOff = dayName === 'saturday' || dayName === 'sunday';
-      if (policy?.dayOverrides && typeof policy.dayOverrides === 'object') {
-        const overrides = policy.dayOverrides as any;
-        if (overrides[dayName]) {
-          // If explicitly mentioned in overrides, use the enabled flag
-          // If enabled is true, it's a working day. If false, it's a day off.
-          isDayOff = !overrides[dayName].enabled;
+      if (policy?.dayOverrides) {
+        const overrides = policy.dayOverrides;
+        let dayConfig: any = null;
+        if (Array.isArray(overrides)) {
+          dayConfig = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+        } else if (typeof overrides === 'object') {
+          dayConfig = (overrides as any)[dayName];
+        }
+
+        if (dayConfig) {
+          isDayOff = !dayConfig.enabled;
         }
       }
 
@@ -3120,20 +3181,17 @@ export class PayrollService {
       ];
       const dayName = dayNames[date.getDay()];
 
-      // If policy has dayOverrides, check if this day is marked as off
-      if (
-        policy &&
-        policy.dayOverrides &&
-        typeof policy.dayOverrides === 'object'
-      ) {
-        const overrides = policy.dayOverrides as Record<string, any>;
-        const dayConfig = overrides[dayName];
-        if (dayConfig && dayConfig.dayType === 'off') {
-          return true;
+      if (policy && policy.dayOverrides) {
+        const overrides = policy.dayOverrides;
+        let dayConfig: any = null;
+        if (Array.isArray(overrides)) {
+          dayConfig = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+        } else if (typeof overrides === 'object') {
+          dayConfig = (overrides as any)[dayName];
         }
-        // If day is explicitly enabled/working, it's not an off day
-        if (dayConfig && dayConfig.enabled && dayConfig.dayType !== 'off') {
-          return false;
+
+        if (dayConfig) {
+          return !dayConfig.enabled;
         }
       }
 
@@ -3443,6 +3501,8 @@ export class PayrollService {
     });
 
     let ytdTaxDeducted = new Decimal(0);
+    let ytdNonRecurringTaxable = new Decimal(0);
+    let ytdAttendanceDeductions = new Decimal(0);
     const currentMonthDate = new Date(yearNum, monthNum - 1, 1);
 
     for (const payroll of previousPayrolls) {
@@ -3455,6 +3515,56 @@ export class PayrollService {
       // Check if payroll is within tax year and before current month
       if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
         ytdTaxDeducted = ytdTaxDeducted.add(new Decimal(payroll.taxDeduction || 0));
+
+        if (payroll.attendanceDeduction) {
+          ytdAttendanceDeductions = ytdAttendanceDeductions.add(new Decimal(payroll.attendanceDeduction));
+        }
+
+        // Sum up taxable non-recurring allowances
+        let allowances: any[] = [];
+        try {
+          allowances = Array.isArray(payroll.allowanceBreakup)
+            ? payroll.allowanceBreakup
+            : (typeof payroll.allowanceBreakup === 'string'
+                ? JSON.parse(payroll.allowanceBreakup)
+                : []);
+        } catch (e) {
+          allowances = [];
+        }
+
+        for (const allow of allowances) {
+          if (allow && allow.isTaxable === true && allow.isRecurring === false) {
+            ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(allow.amount || 0));
+          }
+        }
+
+        // Sum up taxable bonuses
+        let bonuses: any[] = [];
+        try {
+          bonuses = Array.isArray(payroll.bonusBreakup)
+            ? payroll.bonusBreakup
+            : (typeof payroll.bonusBreakup === 'string'
+                ? JSON.parse(payroll.bonusBreakup)
+                : []);
+        } catch (e) {
+          bonuses = [];
+        }
+
+        for (const bonus of bonuses) {
+          if (bonus && bonus.isTaxable !== false) {
+            ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(bonus.amount || 0));
+          }
+        }
+
+        // Add taxable overtime
+        if (payroll.overtimeAmount) {
+          ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(payroll.overtimeAmount));
+        }
+
+        // Add taxable leave encashment
+        if (payroll.leaveEncashmentAmount) {
+          ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(payroll.leaveEncashmentAmount));
+        }
       }
     }
 
@@ -3467,7 +3577,7 @@ export class PayrollService {
     }> = [];
 
     for (const component of salaryBreakup) {
-      if (component.isTaxable === true && component.amount > 0) {
+      if (component.isTaxable === true && component.amount !== 0) {
         const isRecurring = component.isRecurring !== false;
         let annualAmount = new Decimal(0);
 
@@ -3488,6 +3598,26 @@ export class PayrollService {
           annualAmount: annualAmount.toNumber(),
         });
       }
+    }
+
+    if (ytdNonRecurringTaxable.gt(0)) {
+      annualTaxableIncome = annualTaxableIncome.add(ytdNonRecurringTaxable);
+      taxableComponents.push({
+        name: 'Previous Non-Recurring Taxable Components',
+        amount: ytdNonRecurringTaxable.toNumber(),
+        isRecurring: false,
+        annualAmount: ytdNonRecurringTaxable.toNumber(),
+      });
+    }
+
+    if (ytdAttendanceDeductions.gt(0)) {
+      annualTaxableIncome = annualTaxableIncome.minus(ytdAttendanceDeductions);
+      taxableComponents.push({
+        name: 'Previous Attendance Deductions',
+        amount: -ytdAttendanceDeductions.toNumber(),
+        isRecurring: false,
+        annualAmount: -ytdAttendanceDeductions.toNumber(),
+      });
     }
 
     let taxableIncome = annualTaxableIncome;
@@ -3875,11 +4005,14 @@ export class PayrollService {
           const yearMonth = `${monthName} ${year}`;
           const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
 
-          // Fetch EOBI record for employer contribution
+          const employeeRegion = (employee as any).eobiRegion || 'Punjab';
+
+          // Fetch EOBI record for employer contribution and region (continuous)
           const eobiRecord = await this.prisma.eOBI.findFirst({
             where: {
-              OR: [{ yearMonth: yearMonth }, { yearMonth: yearMonthAlt }],
+              region: employeeRegion,
               status: 'active',
+              isDeleted: false,
             },
             orderBy: { createdAt: 'desc' },
           });
@@ -3952,8 +4085,7 @@ export class PayrollService {
             empCheck.socialSecurityInstitution.contributionRate
           ) {
             const rate = Number(empCheck.socialSecurityInstitution.contributionRate);
-            const baseSalary = Number(d.basicSalary || empCheck.employeeSalary || 0);
-            amount = (baseSalary * rate) / 100;
+            amount = rate;
           }
         }
 
