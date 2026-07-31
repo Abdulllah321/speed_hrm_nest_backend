@@ -2701,7 +2701,7 @@ export class PosSessionService {
           : (await this.prisma.chartOfAccount.findFirst())?.id || 'MISSING';
 
         await this.receiptVoucherService.create({
-          type: 'cash',
+          type: 'rs_rv',
           rvNo,
           rvDate: date,
           debitAccountId,
@@ -2786,7 +2786,7 @@ export class PosSessionService {
     ];
 
     await this.receiptVoucherService.create({
-      type: 'cash',
+      type: 'rs_rv',
       rvNo,
       rvDate: new Date(dateStr),
       debitAccountId: cashAccount?.id || fallbackAccount,

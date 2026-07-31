@@ -126,7 +126,12 @@ export class ReceiptVoucherService {
   }
 
   async findAll(type?: string) {
-    const where = type ? { type } : {};
+    let where: any = {};
+    if (type) {
+      where = { type };
+    } else {
+      where = { type: { not: 'rs_rv' } };
+    }
     return this.prisma.receiptVoucher.findMany({
       where,
       include: {
