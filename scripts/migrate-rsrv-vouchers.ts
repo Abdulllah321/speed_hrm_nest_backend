@@ -5,6 +5,7 @@ import { PrismaClient as ManagementClient } from '@prisma/management-client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as crypto from 'crypto';
+import { getFiscalYearLabel, generateNextFolioNumber } from '../src/common/utils/voucher-number.util';
 
 function decrypt(encryptedText: string, masterKeyString: string): string {
   if (!masterKeyString || masterKeyString.length < 32) {
@@ -31,8 +32,22 @@ function decrypt(encryptedText: string, masterKeyString: string): string {
   return decrypted;
 }
 
-async function migrateRsrvVouchers(prisma: PrismaClient, tenantCode: string = 'MAIN') {
-  console.log(`Starting RSRV Voucher Migration for ${tenantCode}...`);
+function extractRsrvNumber(text?: string | null): number | null {
+  if (!text) return null;
+  const match = text.match(/RS[-_\s]?RV\s*#?\s*:?\s*(\d+)/i);
+  if (match && match[1]) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num)) return num;
+  }
+  return null;
+}
+
+async function migrateRsrvVouchers(prisma: PrismaClient, tenantCode: string = 'MAIN', isDryRun: boolean = false) {
+  if (isDryRun) {
+    console.log(`🔍 [DRY RUN MODE] Auditing RSRV candidates for ${tenantCode} (no DB changes will be saved)...`);
+  } else {
+    console.log(`🚀 Starting Smart RSRV Voucher Migration for ${tenantCode}...`);
+  }
 
   const rsrvVouchers = await prisma.receiptVoucher.findMany({
     where: {
@@ -40,49 +55,90 @@ async function migrateRsrvVouchers(prisma: PrismaClient, tenantCode: string = 'M
         { type: 'rs_rv' },
         { rvNo: { startsWith: 'RS-RV-' } },
         { rvNo: { startsWith: 'RSRV-' } },
-        { description: { contains: 'POS Reconciliation' } },
-        { description: { contains: 'Daily RSRV' } },
+        { description: { contains: 'RSRV', mode: 'insensitive' } },
+        { description: { contains: 'RS-RV', mode: 'insensitive' } },
+        { description: { contains: 'POS Reconciliation', mode: 'insensitive' } },
+        { remarks: { contains: 'RSRV', mode: 'insensitive' } },
+        { remarks: { contains: 'RS-RV', mode: 'insensitive' } },
       ],
     },
     orderBy: { createdAt: 'asc' },
   });
 
-  console.log(`Found ${rsrvVouchers.length} RSRV candidates to update in ${tenantCode}.`);
+  console.log(`Found ${rsrvVouchers.length} potential RSRV vouchers in ${tenantCode}.\n`);
 
   let updatedCount = 0;
 
   for (const rv of rsrvVouchers) {
+    const fyLabel = getFiscalYearLabel(rv.rvDate || rv.createdAt);
+    
+    // Check if remarks, description, or rvNo contains explicit RSRV number e.g. "RSRV # 963"
+    const extractedNum = extractRsrvNumber(rv.remarks) || extractRsrvNumber(rv.description) || extractRsrvNumber(rv.rvNo);
+    
     let newRvNo = rv.rvNo;
+    if (extractedNum !== null) {
+      newRvNo = `RSRV-${fyLabel}-${extractedNum.toString().padStart(5, '0')}`;
+    } else if (rv.rvNo.startsWith('RS-RV-')) {
+      const suffix = rv.rvNo.replace('RS-RV-', '');
+      newRvNo = `RSRV-${fyLabel}-${suffix}`;
+    } else if (!rv.rvNo.startsWith('RSRV-')) {
+      newRvNo = `RSRV-${fyLabel}-${rv.id.slice(-5).toUpperCase()}`;
+    }
 
-    if (rv.rvNo.startsWith('RS-RV-')) {
-      const datePart = rv.rvNo.replace('RS-RV-', '');
-      newRvNo = `RSRV-${datePart}`;
+    let folio = rv.folio;
+    if (!folio) {
+      folio = await generateNextFolioNumber(prisma, rv.rvDate || rv.createdAt);
     }
 
     const needsTypeUpdate = rv.type !== 'rs_rv';
     const needsRvNoUpdate = newRvNo !== rv.rvNo;
+    const needsFolioUpdate = folio !== rv.folio;
 
-    if (needsTypeUpdate || needsRvNoUpdate) {
-      try {
-        await prisma.receiptVoucher.update({
-          where: { id: rv.id },
-          data: {
-            type: 'rs_rv',
-            rvNo: newRvNo,
-          },
-        });
-        updatedCount++;
-        console.log(`Updated voucher ${rv.id}: ${rv.rvNo} -> ${newRvNo} (type: rs_rv)`);
-      } catch (err: any) {
-        console.error(`Failed to update voucher ${rv.id} (${rv.rvNo}):`, err.message);
+    if (needsTypeUpdate || needsRvNoUpdate || needsFolioUpdate) {
+      updatedCount++;
+      if (isDryRun) {
+        console.log(`🔍 [DRY RUN] Would Migrate Voucher [ID: ${rv.id}]:`);
+        console.log(`   Original rvNo: "${rv.rvNo}" -> Proposed RSRV No: "${newRvNo}"`);
+        console.log(`   Extracted Number: ${extractedNum ?? 'None'} | Proposed Folio: "${folio}"`);
+        console.log(`   Remarks/Description: "${rv.remarks || rv.description || ''}"\n`);
+      } else {
+        try {
+          await prisma.receiptVoucher.update({
+            where: { id: rv.id },
+            data: {
+              type: 'rs_rv',
+              rvNo: newRvNo,
+              folio: folio,
+            },
+          });
+          console.log(`✅ Migrated Voucher [ID: ${rv.id}]:`);
+          console.log(`   Original rvNo: "${rv.rvNo}" -> New RSRV No: "${newRvNo}"`);
+          console.log(`   Extracted Number: ${extractedNum ?? 'None'} | Folio: "${folio}"`);
+          console.log(`   Remarks: "${rv.remarks || rv.description || ''}"\n`);
+        } catch (err: any) {
+          console.error(`❌ Failed to update voucher ${rv.id} (${rv.rvNo}):`, err.message);
+        }
       }
     }
   }
 
-  console.log(`Migration completed for ${tenantCode}. Total vouchers updated: ${updatedCount}/${rsrvVouchers.length}\n`);
+  if (isDryRun) {
+    console.log(`🔍 [DRY RUN FINISHED] Would update ${updatedCount} out of ${rsrvVouchers.length} vouchers.\n`);
+  } else {
+    console.log(`✨ Migration completed for ${tenantCode}. Total vouchers updated: ${updatedCount}/${rsrvVouchers.length}\n`);
+  }
 }
 
 async function main() {
+  const isDryRun = process.argv.includes('--dryrun') || process.argv.includes('--dry-run');
+
+  if (isDryRun) {
+    console.log('=====================================================');
+    console.log('🔍 RUNNING IN DRY-RUN MODE (--dryrun)');
+    console.log('No database records will be modified or saved.');
+    console.log('=====================================================\n');
+  }
+
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
   let managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
 
@@ -91,7 +147,7 @@ async function main() {
     process.exit(1);
   }
 
-  managementUrl = managementUrl.replace('localhost', '127.0.0.1');
+  managementUrl = managementUrl.replace('localhost', '127.0.0.1').replace(':5433', ':5432');
 
   if (masterKey) {
     try {
@@ -112,13 +168,13 @@ async function main() {
           if (company.dbPassword) {
             try {
               const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
-              connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || '127.0.0.1'}:${company.dbPort || 5433}/${company.dbName}?schema=public`;
+              connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || '127.0.0.1'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
             } catch (e) {
               console.warn(`   ⚠️ Decryption failed for ${company.code}, using dbUrl...`);
             }
           }
           if (!connectionString) continue;
-          connectionString = connectionString.replace('localhost', '127.0.0.1');
+          connectionString = connectionString.replace('localhost', '127.0.0.1').replace(':5433', ':5432');
 
           const tenantPool = new Pool({ connectionString });
           const tenantAdapter = new PrismaPg(tenantPool);
@@ -126,7 +182,7 @@ async function main() {
 
           try {
             await tenantPrisma.$connect();
-            await migrateRsrvVouchers(tenantPrisma, company.code);
+            await migrateRsrvVouchers(tenantPrisma, company.code, isDryRun);
           } finally {
             await tenantPrisma.$disconnect();
             await tenantPool.end();
@@ -142,6 +198,22 @@ async function main() {
     } catch (mErr: any) {
       console.warn(`⚠️ Multi-tenant connect error (${mErr.message}).`);
     }
+  }
+
+  // Single DB Fallback
+  console.log('📡 Running Single Database Migration...');
+  const connStr = (process.env.DATABASE_URL || 'postgresql://speedlimit:speedlimit123@127.0.0.1:5432/speedlimit')
+    .replace('localhost', '127.0.0.1').replace(':5433', ':5432');
+  const tenantPool = new Pool({ connectionString: connStr });
+  const tenantAdapter = new PrismaPg(tenantPool);
+  const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
+
+  try {
+    await tenantPrisma.$connect();
+    await migrateRsrvVouchers(tenantPrisma, 'SINGLE_DB', isDryRun);
+  } finally {
+    await tenantPrisma.$disconnect();
+    await tenantPool.end();
   }
 }
 
