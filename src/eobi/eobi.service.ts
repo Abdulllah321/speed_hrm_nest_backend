@@ -30,6 +30,7 @@ export class EOBIService {
           departmentId: true,
           subDepartmentId: true,
           designationId: true,
+          eobiRegion: true,
         },
         orderBy: {
           employeeName: 'asc',
@@ -124,6 +125,7 @@ export class EOBIService {
             id: employee.id,
             employeeId: employee.employeeId,
             employeeName: employee.employeeName,
+            eobiRegion: employee.eobiRegion,
             department:
               (employee.departmentId
                 ? deptMap.get(employee.departmentId)?.name
