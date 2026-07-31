@@ -792,7 +792,6 @@ export class PurchaseInvoiceService {
       // Fetch supplier with linked payable accounts
       const supplier = await this.prisma.supplier.findUnique({
         where: { id: invoice.supplierId },
-        include: { chartOfAccounts: { select: { id: true } } },
       });
 
       if (!supplier) {
@@ -847,10 +846,6 @@ export class PurchaseInvoiceService {
               `Tag account with code "${supplier.code}" not found under the configured Accounts Payable Parties account.`,
             );
           }
-        } else if (supplier?.chartOfAccounts?.length) {
-          payableAccounts = supplier.chartOfAccounts.map(acc => ({
-            accountId: acc.id,
-          }));
         }
 
         if (supplier?.type === 'IMPORT') {
@@ -1214,7 +1209,6 @@ export class PurchaseInvoiceService {
         if (invoice.status === 'APPROVED') {
           const supplier = await tx.supplier.findUnique({
             where: { id: invoice.supplierId },
-            include: { chartOfAccounts: { select: { id: true } } },
           });
 
           if (!supplier) {
@@ -1259,10 +1253,6 @@ export class PurchaseInvoiceService {
                 `Tag account with code "${supplier.code}" not found under the configured Accounts Payable Parties account.`,
               );
             }
-          } else if (supplier?.chartOfAccounts?.length) {
-            payableAccounts = supplier.chartOfAccounts.map(acc => ({
-              accountId: acc.id,
-            }));
           }
 
           if (supplier?.type === 'IMPORT') {

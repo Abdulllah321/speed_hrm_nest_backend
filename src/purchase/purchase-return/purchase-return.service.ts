@@ -711,7 +711,6 @@ export class PurchaseReturnService {
       // 2. Post Journal Entry to GL
       const supplier = await tx.supplier.findUnique({
         where: { id: purchaseReturn.supplierId },
-        include: { chartOfAccounts: { select: { id: true } } },
       });
 
       let apPartiesAccountId: string | null = null;
@@ -743,15 +742,7 @@ export class PurchaseReturnService {
             accountId: apPartiesAccountId,
             tagAccountId: tagAccount.id,
           });
-        } else if (supplier.chartOfAccounts?.length) {
-          payableAccounts = supplier.chartOfAccounts.map(acc => ({
-            accountId: acc.id,
-          }));
         }
-      } else if (supplier?.chartOfAccounts?.length) {
-        payableAccounts = supplier.chartOfAccounts.map(acc => ({
-          accountId: acc.id,
-        }));
       }
 
       if (purchasesReturnAccountId && payableAccounts.length > 0) {
