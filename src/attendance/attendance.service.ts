@@ -129,13 +129,18 @@ export class AttendanceService {
             isOff = policy.isDefault
               ? dayName === 'saturday' || dayName === 'sunday'
               : false;
-            if (
-              policy.dayOverrides &&
-              typeof policy.dayOverrides === 'object'
-            ) {
+            if (policy.dayOverrides) {
               const overrides = policy.dayOverrides as any;
-              if (overrides[dayName]?.enabled) {
-                isOff = false; // It is overrides to a working day
+              if (Array.isArray(overrides)) {
+                const group = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+                if (group) {
+                  isOff = !group.enabled;
+                }
+              } else if (typeof overrides === 'object') {
+                const overridesObj = overrides as any;
+                if (overridesObj[dayName] !== undefined) {
+                  isOff = !overridesObj[dayName]?.enabled;
+                }
               }
             }
           }
@@ -183,8 +188,29 @@ export class AttendanceService {
 
           const existingAtt = attendanceMap.get(dateKey);
 
+          const policy = getPolicyForDateInMemory(currentDate);
+          const isOff = isDayOff(currentDate, policy);
+          const isHoliday = holidays.some((holiday) => {
+            const holidayStart = new Date(
+              new Date(holiday.dateFrom).getTime() + 12 * 60 * 60 * 1000,
+            )
+              .toISOString()
+              .split('T')[0];
+            const holidayEnd = new Date(
+              new Date(holiday.dateTo).getTime() + 12 * 60 * 60 * 1000,
+            )
+              .toISOString()
+              .split('T')[0];
+            const checkDate = currentDate.toISOString().split('T')[0];
+            return checkDate >= holidayStart && checkDate <= holidayEnd;
+          });
+
           if (existingAtt) {
-            mergedRecords.push(existingAtt);
+            mergedRecords.push({
+              ...existingAtt,
+              isWeeklyOff: isOff,
+              isHoliday: isHoliday,
+            });
           } else {
             let virtualStatus = 'absent';
             let notes: null | string = null;
@@ -253,6 +279,8 @@ export class AttendanceService {
               checkIn: null,
               checkOut: null,
               notes: notes,
+              isWeeklyOff: isOff,
+              isHoliday: isHoliday,
               employee: {
                 id: employee.id,
                 employeeId: employee.employeeId,
@@ -419,12 +447,17 @@ export class AttendanceService {
       isDayOff = true;
     }
 
-    if (policy.dayOverrides && typeof policy.dayOverrides === 'object') {
+    if (policy.dayOverrides) {
       const overrides = policy.dayOverrides as any;
-      if (overrides[dayName]?.enabled) {
-        // If override is enabled for this day, it might be a working day now
+      let override: any = null;
+      if (Array.isArray(overrides)) {
+        override = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+      } else if (typeof overrides === 'object') {
+        override = (overrides as any)[dayName];
+      }
+
+      if (override && override.enabled) {
         isDayOff = false;
-        const override = overrides[dayName];
         if (override.overrideHours) {
           startTime = override.startTime || startTime;
           endTime = override.endTime || endTime;
@@ -439,6 +472,9 @@ export class AttendanceService {
           startBreak = override.startBreakTime;
           endBreak = override.endBreakTime;
         }
+      } else if (override && !override.enabled) {
+        isDayOff = true;
+        expectedHours = 0;
       }
     }
 
@@ -1319,6 +1355,77 @@ export class AttendanceService {
   }
 
   /**
+   * Helper to check if a date is a weekly off day for a specific employee
+   */
+  private async isDateWeeklyOff(employeeId: string, date: Date): Promise<boolean> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { workingHoursPolicyId: true },
+    });
+
+    if (!employee?.workingHoursPolicyId) {
+      const day = date.getDay();
+      return day === 0 || day === 6;
+    }
+
+    const dateStart = new Date(date);
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(date);
+    dateEnd.setHours(23, 59, 59, 999);
+
+    const assignment = await this.prisma.workingHoursPolicyAssignment.findFirst({
+      where: {
+        employeeId,
+        startDate: { lte: dateEnd },
+        endDate: { gte: dateStart },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const policyId = assignment?.workingHoursPolicyId || employee.workingHoursPolicyId;
+    const policy = await this.prisma.workingHoursPolicy.findUnique({
+      where: { id: policyId },
+    });
+
+    if (!policy) {
+      const day = date.getDay();
+      return day === 0 || day === 6;
+    }
+
+    const dayNames = [
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ];
+    const dayName = dayNames[date.getDay()];
+
+    let isOff = policy.isDefault
+      ? dayName === 'saturday' || dayName === 'sunday'
+      : false;
+
+    if (policy.dayOverrides) {
+      const overrides = policy.dayOverrides as any;
+      if (Array.isArray(overrides)) {
+        const group = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+        if (group) {
+          isOff = !group.enabled;
+        }
+      } else if (typeof overrides === 'object') {
+        const overridesObj = overrides as any;
+        if (overridesObj[dayName] !== undefined) {
+          isOff = !overridesObj[dayName]?.enabled;
+        }
+      }
+    }
+
+    return isOff;
+  }
+
+  /**
    * Mark Saturday and Sunday as absent (sandwich days)
    */
   private async markWeekendAsAbsent(
@@ -1337,6 +1444,13 @@ export class AttendanceService {
     const weekendDates = [saturday, sunday];
 
     for (const date of weekendDates) {
+      // Check if this date is actually a weekly off day for the employee
+      const isWeeklyOff = await this.isDateWeeklyOff(employeeId, date);
+      if (!isWeeklyOff) {
+        console.log(`🔍 [SANDWICH RULE] Skipping ${date.toISOString().split('T')[0]} because it is NOT a weekly off day`);
+        continue;
+      }
+
       const existing = await this.prisma.attendance.findUnique({
         where: {
           employeeId_date: {
@@ -2042,25 +2156,33 @@ export class AttendanceService {
 
           let isWeeklyOff = false;
           if (policy) {
-            // Check dayOverrides for weekly off days (dayType === 'off')
-            if (
-              policy.dayOverrides &&
-              typeof policy.dayOverrides === 'object'
-            ) {
-              const dayNames = [
-                'sunday',
-                'monday',
-                'tuesday',
-                'wednesday',
-                'thursday',
-                'friday',
-                'saturday',
-              ];
-              const dayName = dayNames[date.getDay()];
-              const overrides = policy.dayOverrides as Record<string, any>;
-              const dayConfig = overrides[dayName];
-              if (dayConfig && dayConfig.dayType === 'off') {
-                isWeeklyOff = true;
+            const dayNames = [
+              'sunday',
+              'monday',
+              'tuesday',
+              'wednesday',
+              'thursday',
+              'friday',
+              'saturday',
+            ];
+            const dayName = dayNames[date.getDay()];
+            // Default weekly off for default policy: Saturday/Sunday
+            isWeeklyOff = policy.isDefault
+              ? (dayName === 'saturday' || dayName === 'sunday')
+              : false;
+
+            if (policy.dayOverrides) {
+              const overrides = policy.dayOverrides as any;
+              if (Array.isArray(overrides)) {
+                const group = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+                if (group) {
+                  isWeeklyOff = !group.enabled;
+                }
+              } else if (typeof overrides === 'object') {
+                const overridesObj = overrides as any;
+                if (overridesObj[dayName] !== undefined) {
+                  isWeeklyOff = !overridesObj[dayName]?.enabled;
+                }
               }
             }
           }

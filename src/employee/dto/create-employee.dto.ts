@@ -212,6 +212,11 @@ export class CreateEmployeeDto {
   @IsString()
   eobiNumber?: string;
 
+  @ApiPropertyOptional({ example: 'Punjab' })
+  @IsOptional()
+  @IsString()
+  eobiRegion?: string;
+
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
@@ -493,6 +498,11 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
   eobiNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Punjab' })
+  @IsOptional()
+  @IsString()
+  eobiRegion?: string;
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()

@@ -691,6 +691,7 @@ export class EmployeeUploadProcessor {
             emergencyContactPerson: getValParsed(data.emergencyContactPerson ?? data['Emergency Person'] ?? data['Emergency Contact Person'], getOptionalString, null),
             eobi: getValParsed(data.eobi || data['EOBI'], parseBool, false),
             eobiNumber: getValParsed(data.eobiNumber ?? data['EOBI Number'], getOptionalString, null),
+            eobiRegion: getValParsed(data.eobiRegion || data['EOBI Region'], getOptionalString, 'Punjab'),
             providentFund: getValParsed(data.providentFund || data['Provident Fund'], parseBool, false),
             qualifications: qualificationId ? [
                 {
