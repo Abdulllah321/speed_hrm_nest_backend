@@ -875,6 +875,7 @@ export class EmployeeService {
       const eobiCodeValue = getBodyString('eobiCode');
       const eobiNumberValue = getBodyString('eobiNumber');
       const eobiDocumentUrlValue = getBodyString('eobiDocumentUrl');
+      const eobiRegionValue = getBodyString('eobiRegion');
       const documentUrlsValue = (body as { documentUrls?: unknown })
         .documentUrls as Prisma.InputJsonValue | undefined;
       // Convert employeeSalary to number, ensuring it's not undefined
@@ -1019,6 +1020,7 @@ export class EmployeeService {
           eobiCode: eobiCodeValue || null,
           eobiNumber: eobiNumberValue || null,
           eobiDocumentUrl: eobiDocumentUrlValue || null,
+          eobiRegion: eobiRegionValue || 'Punjab',
           ...(documentUrlsValue
             ? {
               documentUrls: documentUrlsValue as Prisma.InputJsonValue,
@@ -1584,6 +1586,12 @@ export class EmployeeService {
           eobiNumber: eobiNumberValue ?? existing?.eobiNumber,
           eobiDocumentUrl:
             eobiDocumentUrlValue ?? existing?.eobiDocumentUrl ?? null,
+          eobiRegion:
+            (body as { eobiRegion?: unknown }).eobiRegion !== undefined
+              ? (body as { eobiRegion?: unknown }).eobiRegion
+                ? ((body as { eobiRegion?: unknown }).eobiRegion as string)
+                : null
+              : existing?.eobiRegion,
           ...(documentUrlsValue !== undefined
             ? {
               documentUrls: documentUrlsValue as Prisma.InputJsonValue,
@@ -1742,19 +1750,27 @@ export class EmployeeService {
       // If we have an email OR an employeeId, manage the user account
       const currentEmployeeId = employeeIdValue || existing?.employeeId;
       if (officialEmailValue || currentEmployeeId) {
+        let userExistsInMaster = false;
         if (updated.userId) {
-          // Employee already has a user, update details
-          const updateData: any = {};
-          if (avatarUrlValue !== undefined) updateData.avatar = avatarUrlValue;
-          if (employeeIdValue !== undefined) updateData.employeeId = employeeIdValue;
-          if (officialEmailValue !== undefined) updateData.email = officialEmailValue || null;
-          if (Object.keys(updateData).length > 0) {
-            await this.prismaMaster.user.update({
-              where: { id: updated.userId },
-              data: updateData,
-            });
+          const existingUser = await this.prismaMaster.user.findUnique({
+            where: { id: updated.userId },
+          });
+          if (existingUser) {
+            userExistsInMaster = true;
+            const updateData: any = {};
+            if (avatarUrlValue !== undefined) updateData.avatar = avatarUrlValue;
+            if (employeeIdValue !== undefined) updateData.employeeId = employeeIdValue;
+            if (officialEmailValue !== undefined) updateData.email = officialEmailValue || null;
+            if (Object.keys(updateData).length > 0) {
+              await this.prismaMaster.user.update({
+                where: { id: updated.userId },
+                data: updateData,
+              });
+            }
           }
-        } else {
+        }
+
+        if (!userExistsInMaster) {
           // Employee doesn't have a user yet, create or link one
           let user: any = null;
           if (officialEmailValue) {
@@ -1882,9 +1898,9 @@ export class EmployeeService {
             const inst = await this.prisma.socialSecurityInstitution.findUnique({
               where: { id: instId },
             });
-            const rate = inst?.contributionRate ? Number(inst.contributionRate) : 6;
+            const rate = inst?.contributionRate ? Number(inst.contributionRate) : 0;
             const salary = updated.employeeSalary ? Number(updated.employeeSalary) : 0;
-            const monthlyContrib = (salary * rate) / 100;
+            const monthlyContrib = rate;
 
             reg = await this.prisma.socialSecurityEmployeeRegistration.create({
               data: {
@@ -2549,7 +2565,7 @@ export class EmployeeService {
               const salary = existing.employeeSalary
                 ? Number(existing.employeeSalary)
                 : 0;
-              const monthlyContrib = (salary * rate) / 100;
+              const monthlyContrib = rate;
 
               await this.prisma.socialSecurityEmployeeRegistration.create({
                 data: {
@@ -2782,10 +2798,15 @@ export class EmployeeService {
 
       // Reactivate user if exists
       if (existing.userId) {
-        await this.prismaMaster.user.update({
+        const existingUser = await this.prismaMaster.user.findUnique({
           where: { id: existing.userId },
-          data: { status: 'active' },
         });
+        if (existingUser) {
+          await this.prismaMaster.user.update({
+            where: { id: existing.userId },
+            data: { status: 'active' },
+          });
+        }
       }
 
       await this.activityLogs.log({
@@ -4317,9 +4338,9 @@ export class EmployeeService {
         const inst = await this.prisma.socialSecurityInstitution.findUnique({
           where: { id: instId },
         });
-        const rate = inst?.contributionRate ? Number(inst.contributionRate) : 6;
+        const rate = inst?.contributionRate ? Number(inst.contributionRate) : 0;
         const salary = emp.employeeSalary ? Number(emp.employeeSalary) : 0;
-        const monthlyContrib = (salary * rate) / 100;
+        const monthlyContrib = rate;
 
         reg = await this.prisma.socialSecurityEmployeeRegistration.create({
           data: {
@@ -4366,11 +4387,11 @@ export class EmployeeService {
           const inst = await this.prisma.socialSecurityInstitution.findUnique({
             where: { id: instId },
           });
-          const rate = inst?.contributionRate ? Number(inst.contributionRate) : 6;
+          const rate = inst?.contributionRate ? Number(inst.contributionRate) : 0;
           const salary = Number(pd.basicSalary || emp.employeeSalary || 0);
           const amount = Number(pd.socialSecurityContributionAmount) > 0
             ? Number(pd.socialSecurityContributionAmount)
-            : (salary * rate) / 100;
+            : rate;
 
           if (amount > 0) {
             await this.prisma.socialSecurityContribution.create({
