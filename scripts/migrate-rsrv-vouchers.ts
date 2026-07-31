@@ -45,10 +45,11 @@ function decrypt(encryptedText: string, masterKeyString: string): string {
  */
 function extractRsrvNumber(text?: string | null): number | null {
   if (!text) return null;
-  const match = text.match(/(?:RS[-_\.\s]?RV|RSRV)\s*(?:NO\.?|NUM\.?|NUMBER|#|:|-|\.)?\s*(\d+)/i);
+  // Match RSRV sequence numbers (1 to 4 digits) to avoid false matches on long invoice/phone numbers
+  const match = text.match(/(?:RS[-_\.\s]?RV|RSRV)\s*(?:NO\.?|NUM\.?|NUMBER|#|:|-|\.)?\s*(\d{1,4})\b/i);
   if (match && match[1]) {
     const num = parseInt(match[1], 10);
-    if (!isNaN(num)) return num;
+    if (!isNaN(num) && num > 0 && num <= 1000) return num;
   }
   return null;
 }
@@ -177,11 +178,11 @@ async function migrateRsrvVouchers(prisma: any, dbName: string, isDryRun: boolea
   if (gapReport) {
     console.log(`=====================================================`);
     console.log(`📊 RSRV SEQUENCE & GAP AUDIT REPORT ("${dbName}"):`);
-    console.log(`   Detected Number Range : RSRV # ${gapReport.min}  --->  RSRV # ${gapReport.max}`);
+    console.log(`   Detected RSRV Range   : RSRV # ${gapReport.min}  --->  RSRV # ${gapReport.max}`);
     console.log(`   Explicit RSRV Vouchers: ${extractedNumbers.length} found`);
     
     if (gapReport.missing.length > 0) {
-      console.log(`\n⚠️  MISSING / SKIPPED IN SEQUENCE (${gapReport.missing.length} missing):`);
+      console.log(`\n⚠️  MISSING / SKIPPED IN SEQUENCE (${gapReport.missing.length} missing in range 1..${gapReport.max}):`);
       const formattedMissing = gapReport.missing.map(n => `RSRV # ${n}`).join(', ');
       console.log(`   ${formattedMissing}`);
     } else {
