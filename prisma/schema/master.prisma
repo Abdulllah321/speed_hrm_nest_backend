@@ -350,6 +350,7 @@ model EOBI {
   createdById          String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+  region               String   @default("Punjab")
 }
 
 model EmployeeGrade {
@@ -497,7 +498,7 @@ model SocialSecurityInstitution {
   website               String?
   contactNumber         String?
   address               String?
-  contributionRate      Decimal                              @default(0) @db.Decimal(5, 2)
+  contributionRate      Decimal                              @default(0) @db.Decimal(10, 2)
   createdAt             DateTime                             @default(now())
   updatedAt             DateTime                             @updatedAt
   createdById           String?
@@ -562,7 +563,7 @@ model SocialSecurityEmployeeRegistration {
   registrationDate       DateTime
   expiryDate             DateTime?
   status                 String                             @default("active")
-  contributionRate       Decimal                            @db.Decimal(5, 2)
+  contributionRate       Decimal                            @db.Decimal(10, 2)
   baseSalary             Decimal                            @db.Decimal(10, 2)
   monthlyContribution    Decimal                            @db.Decimal(10, 2)
   isEmployerContribution Boolean                            @default(true)
@@ -605,7 +606,7 @@ model SocialSecurityContribution {
   year                   String
   date                   DateTime
   baseSalary             Decimal                            @db.Decimal(10, 2)
-  contributionRate       Decimal                            @db.Decimal(5, 2)
+  contributionRate       Decimal                            @db.Decimal(10, 2)
   contributionAmount     Decimal                            @db.Decimal(10, 2)
   employeeContribution   Decimal?                           @db.Decimal(10, 2)
   employerContribution   Decimal?                           @db.Decimal(10, 2)

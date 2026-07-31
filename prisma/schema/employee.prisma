@@ -34,6 +34,7 @@ model Employee {
   eobiCode                    String?
   eobiNumber                  String?
   eobiDocumentUrl             String?
+  eobiRegion                  String?   @default("Punjab")
   documentUrls                Json?
   providentFund               Boolean   @default(false)
   overtimeApplicable          Boolean   @default(false)
@@ -101,6 +102,7 @@ model Employee {
   headedSubDepartment             SubDepartment?                   @relation("SubDepartmentHead")
   policyAssignments               WorkingHoursPolicyAssignment[]
   kpiReviews                      KpiReview[]
+  cprTaxes                        CprTax[]                         @relation("EmployeeCprTaxes")
 }
 
 model EmployeeRejoiningHistory {
