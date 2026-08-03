@@ -265,7 +265,8 @@ export class SalesHistoryBulkUploadService {
         }
 
         sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
-        return (await workbook.xlsx.writeBuffer()) as Buffer;
+        const buf = await workbook.xlsx.writeBuffer();
+        return Buffer.from(buf);
     }
 
     generateErrorReport(errors: any[]): string {
