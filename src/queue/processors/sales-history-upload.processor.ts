@@ -286,10 +286,16 @@ export class SalesHistoryUploadProcessor {
                 }
             });
 
-            // Group rows by DocumentNumber
+            // Group rows by DocumentNumber. For files without DocumentNumber,
+            // fall back to FBR Invoice# (clean) so multi-item receipts are grouped correctly.
             const orderGroups = new Map<string, SalesHistoryParsedRecord[]>();
             for (const row of allValidRows) {
-                const key = row.data.documentNumber || `__row_${row.row}`;
+                let key = row.data.documentNumber;
+                if (!key && row.data.fbrInvoiceNumber) {
+                    // Strip leading apostrophe that Excel adds to force text formatting
+                    key = row.data.fbrInvoiceNumber.replace(/^'/, '').trim();
+                }
+                if (!key) key = `__row_${row.row}`;
                 if (!orderGroups.has(key)) orderGroups.set(key, []);
                 orderGroups.get(key)!.push(row);
             }
@@ -721,10 +727,12 @@ export class SalesHistoryUploadProcessor {
                     totalPaid >= grandTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
                 const rawFbr = firstRow.fbrInvoiceNumber;
-                const fbrInvoiceNumber = rawFbr ? rawFbr.replace(/^'/, '') : undefined;
+                const fbrInvoiceNumber = rawFbr ? rawFbr.replace(/^'/, '').trim() : undefined;
 
                 const notesParts: string[] = [];
-                if (firstRow.documentNumber) notesParts.push(`Ref: ${firstRow.documentNumber}`);
+                // Use documentNumber if present, otherwise fall back to FBR invoice# as the canonical reference
+                const canonicalRef = firstRow.documentNumber || fbrInvoiceNumber || documentNumber;
+                notesParts.push(`Ref: ${canonicalRef}`);
                 if (firstRow.fkExchangeVoucherNumber) notesParts.push(`ExVoucher: ${firstRow.fkExchangeVoucherNumber}`);
                 if (firstRow.costCentre) notesParts.push(`CostCentre: ${firstRow.costCentre}`);
                 if (firstRow.remarks) notesParts.push(firstRow.remarks);
