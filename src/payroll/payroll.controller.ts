@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { PayrollService } from './payroll.service';
@@ -192,4 +193,34 @@ export class PayrollController {
   async getPayslipDetail(@Param('detailId') detailId: string) {
     return this.payrollService.getPayslipDetail(detailId);
   }
+
+  @Get('payroll/reconciliation')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read', 'hr.salary-sheet.read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get payroll reconciliation report data' })
+  async getPayrollReconciliation(
+    @Query('month') month: string,
+    @Query('year') year: string,
+  ) {
+    return this.payrollService.getPayrollReconciliation(month, year);
+  }
+
+  @Get('payroll/reconciliation/excel')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read', 'hr.salary-sheet.read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Export payroll reconciliation report to Excel' })
+  async exportPayrollReconciliationExcel(
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @Res() res: any,
+  ) {
+    return this.payrollService.exportPayrollReconciliationExcel(
+      month,
+      year,
+      res,
+    );
+  }
 }
+

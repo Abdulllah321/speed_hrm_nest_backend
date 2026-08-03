@@ -16,6 +16,7 @@ import { runInBackground } from '../common/utils/run-in-background.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/client';
 import { EOBIService } from '../eobi/eobi.service';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class PayrollService {
@@ -4337,4 +4338,697 @@ export class PayrollService {
       );
     }
   }
+
+  async getPayrollReconciliation(month: string, year: string) {
+    const normMonth = String(Number(month)).padStart(2, '0');
+    const normYear = String(year);
+
+    const mNum = Number(month);
+    const yNum = Number(year);
+    const prevMonthNum = mNum === 1 ? 12 : mNum - 1;
+    const prevYearNum = mNum === 1 ? yNum - 1 : yNum;
+    const prevMonthStr = String(prevMonthNum).padStart(2, '0');
+    const prevYearStr = String(prevYearNum);
+
+    const monthNames = [
+      'JANUARY',
+      'FEBRUARY',
+      'MARCH',
+      'APRIL',
+      'MAY',
+      'JUNE',
+      'JULY',
+      'AUGUST',
+      'SEPTEMBER',
+      'OCTOBER',
+      'NOVEMBER',
+      'DECEMBER',
+    ];
+
+    const currentMonthName = monthNames[mNum - 1];
+    const prevMonthName = monthNames[prevMonthNum - 1];
+
+    // Fetch current month payroll
+    let currentPayroll = await this.prisma.payroll.findFirst({
+      where: { month: normMonth, year: normYear },
+      include: {
+        details: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                employeeName: true,
+                joiningDate: true,
+                lastExitDate: true,
+                designation: { select: { name: true } },
+                department: { select: { name: true } },
+                subDepartment: { select: { name: true } },
+                location: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    let currentDetails: any[] = [];
+    const hasCurrentPayroll = !!(currentPayroll && currentPayroll.details?.length > 0);
+    if (hasCurrentPayroll) {
+      currentDetails = currentPayroll.details;
+    }
+
+    // Fetch previous month payroll
+    let prevPayroll = await this.prisma.payroll.findFirst({
+      where: { month: prevMonthStr, year: prevYearStr },
+      include: {
+        details: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                employeeName: true,
+                joiningDate: true,
+                lastExitDate: true,
+                designation: { select: { name: true } },
+                department: { select: { name: true } },
+                subDepartment: { select: { name: true } },
+                location: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    let prevDetails: any[] = [];
+    const hasPrevPayroll = !!(prevPayroll && prevPayroll.details?.length > 0);
+    if (hasPrevPayroll) {
+      prevDetails = prevPayroll.details;
+    }
+
+    // Fetch month M-2 payroll for previous month incentive comparison
+    const prevPrevMonthNum = prevMonthNum === 1 ? 12 : prevMonthNum - 1;
+    const prevPrevYearNum = prevMonthNum === 1 ? prevYearNum - 1 : prevYearNum;
+    const prevPrevMonthStr = String(prevPrevMonthNum).padStart(2, '0');
+    const prevPrevYearStr = String(prevPrevYearNum);
+    const prevPrevMonthName = monthNames[prevPrevMonthNum - 1];
+
+    let prevPrevPayroll = await this.prisma.payroll.findFirst({
+      where: { month: prevPrevMonthStr, year: prevPrevYearStr },
+      include: { details: true },
+    });
+    let prevPrevDetails: any[] = [];
+    if (prevPrevPayroll && prevPrevPayroll.details?.length > 0) {
+      prevPrevDetails = prevPrevPayroll.details;
+    }
+
+
+
+
+    // Lookup maps
+    const currentEmpMap = new Map<string, any>();
+    currentDetails.forEach((d) =>
+      currentEmpMap.set(d.employeeId || d.employee?.id, d),
+    );
+
+    const prevEmpMap = new Map<string, any>();
+    prevDetails.forEach((d) =>
+      prevEmpMap.set(d.employeeId || d.employee?.id, d),
+    );
+
+    // 1. BASELINE GROSS SALARY
+    const prevGrossTotal = prevDetails.reduce(
+      (sum, d) => sum + Number(d.grossSalary || 0),
+      0,
+    );
+    const currentGrossTotal = currentDetails.reduce(
+      (sum, d) => sum + Number(d.grossSalary || 0),
+      0,
+    );
+
+    // 2. LEFT / RESIGNED EMPLOYEES
+    const leftEmployees: any[] = [];
+    let totalLeftAmount = 0;
+    prevDetails.forEach((pDetail) => {
+      const empId = pDetail.employeeId || pDetail.employee?.id;
+      if (!currentEmpMap.has(empId)) {
+        const emp = pDetail.employee || {};
+        const desig = emp.designation?.name || '';
+        const loc =
+          emp.location?.name ||
+          emp.subDepartment?.name ||
+          emp.department?.name ||
+          '';
+        const exitDateStr = emp.lastExitDate
+          ? new Date(emp.lastExitDate).toLocaleDateString('en-GB')
+          : '';
+        const nameStr =
+          `${emp.employeeName || 'Employee'}-${desig} ${loc} ${exitDateStr ? '(' + exitDateStr + ')' : ''}`.trim();
+        const amt = Number(pDetail.grossSalary || pDetail.basicSalary || 0);
+        leftEmployees.push({
+          employeeId: empId,
+          name: nameStr,
+          amount: amt,
+        });
+        totalLeftAmount += amt;
+      }
+    });
+
+    // 3. INCOMING EMPLOYEES
+    const incomingEmployees: any[] = [];
+    let totalIncomingAmount = 0;
+    currentDetails.forEach((cDetail) => {
+      const empId = cDetail.employeeId || cDetail.employee?.id;
+      if (!prevEmpMap.has(empId)) {
+        const emp = cDetail.employee || {};
+        const desig = emp.designation?.name || '';
+        const loc =
+          emp.location?.name ||
+          emp.subDepartment?.name ||
+          emp.department?.name ||
+          '';
+        const joinDateStr = emp.joiningDate
+          ? new Date(emp.joiningDate).toLocaleDateString('en-GB')
+          : '';
+        const nameStr =
+          `${emp.employeeName || 'Employee'}-${desig} ${loc} ${joinDateStr ? '(' + joinDateStr + ')' : ''}`.trim();
+        const amt = Number(cDetail.grossSalary || cDetail.basicSalary || 0);
+        incomingEmployees.push({
+          employeeId: empId,
+          name: nameStr,
+          amount: amt,
+        });
+        totalIncomingAmount += amt;
+      }
+    });
+
+    // 4. INCREMENTS
+    const currentIncrementsTotal = currentDetails.reduce(
+      (sum, d) => sum + Number(d.incrementArrears || 0),
+      0,
+    );
+    const prevIncrementsTotal = prevDetails.reduce(
+      (sum, d) => sum + Number(d.incrementArrears || 0),
+      0,
+    );
+
+    // 5. ALLOWANCE INCENTIVES
+    const extractIncentiveAmount = (detail: any): number => {
+      let total = Number(detail.bonusAmount || 0);
+
+      const parseBreakup = (raw: any) => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string') {
+          try {
+            return JSON.parse(raw);
+          } catch (e) {
+            return [];
+          }
+        }
+        return [];
+      };
+
+      const sBreakup = parseBreakup(detail.salaryBreakup);
+      sBreakup.forEach((item: any) => {
+        const name = String(
+          item.name || item.headName || item.componentName || '',
+        ).toLowerCase();
+        if (
+          name.includes('incentive') ||
+          name.includes('performance bonus') ||
+          name.includes('bonus')
+        ) {
+          total += Number(item.amount || item.value || 0);
+        }
+      });
+
+      const aBreakup = parseBreakup(detail.allowanceBreakup);
+      aBreakup.forEach((item: any) => {
+        const name = String(
+          item.name ||
+            item.headName ||
+            item.componentName ||
+            item.allowanceHeadName ||
+            '',
+        ).toLowerCase();
+        if (
+          name.includes('incentive') ||
+          name.includes('performance bonus') ||
+          name.includes('bonus')
+        ) {
+          total += Number(item.amount || item.value || 0);
+        }
+      });
+
+      return total;
+    };
+
+    const currentIncentivesTotal = currentDetails.reduce(
+      (sum, d) => sum + extractIncentiveAmount(d),
+      0,
+    );
+    const prevIncentivesTotal = prevDetails.reduce(
+      (sum, d) => sum + extractIncentiveAmount(d),
+      0,
+    );
+    const prevPrevIncentivesTotal = prevPrevDetails.reduce(
+      (sum, d) => sum + extractIncentiveAmount(d),
+      0,
+    );
+
+
+
+    // 6. DEDUCTIONS
+    const currentLwp = currentDetails.reduce(
+      (sum, d) => sum + Number(d.attendanceDeduction || 0),
+      0,
+    );
+    const prevLwp = prevDetails.reduce(
+      (sum, d) => sum + Number(d.attendanceDeduction || 0),
+      0,
+    );
+
+    const currentTax = currentDetails.reduce(
+      (sum, d) => sum + Number(d.taxDeduction || 0),
+      0,
+    );
+    const prevTax = prevDetails.reduce(
+      (sum, d) => sum + Number(d.taxDeduction || 0),
+      0,
+    );
+
+    const currentAdvance = currentDetails.reduce(
+      (sum, d) => sum + Number(d.advanceSalaryDeduction || 0),
+      0,
+    );
+    const prevAdvance = prevDetails.reduce(
+      (sum, d) => sum + Number(d.advanceSalaryDeduction || 0),
+      0,
+    );
+
+    const currentLoan = currentDetails.reduce(
+      (sum, d) => sum + Number(d.loanDeduction || 0),
+      0,
+    );
+    const prevLoan = prevDetails.reduce(
+      (sum, d) => sum + Number(d.loanDeduction || 0),
+      0,
+    );
+
+    const currentPf = currentDetails.reduce(
+      (sum, d) => sum + Number(d.providentFundDeduction || 0),
+      0,
+    );
+    const prevPf = prevDetails.reduce(
+      (sum, d) => sum + Number(d.providentFundDeduction || 0),
+      0,
+    );
+
+    const currentTotalDeductions =
+      currentLwp + currentTax + currentAdvance + currentLoan + currentPf;
+    const prevTotalDeductions =
+      prevLwp + prevTax + prevAdvance + prevLoan + prevPf;
+
+    // 7. NET PAYABLE
+    const currentNetPayable = currentDetails.reduce(
+      (sum, d) => sum + Number(d.netSalary || 0),
+      0,
+    );
+    const prevNetPayable = prevDetails.reduce(
+      (sum, d) => sum + Number(d.netSalary || 0),
+      0,
+    );
+
+    // 8. STATUTORY SUMMARY
+    const [currentEobiContribs, prevEobiContribs] = await Promise.all([
+      this.prisma.eOBIContribution.findMany({
+        where: { month: normMonth, year: normYear },
+      }),
+      this.prisma.eOBIContribution.findMany({
+        where: { month: prevMonthStr, year: prevYearStr },
+      }),
+    ]);
+
+    let currentEobiEmployee = currentDetails.reduce(
+      (sum, d) => sum + Number(d.eobiDeduction || 0),
+      0,
+    );
+    let currentEobiCompany = 0;
+    if (currentEobiContribs.length > 0) {
+      currentEobiCompany = currentEobiContribs.reduce(
+        (sum, c) => sum + Number(c.employerContribution || 0),
+        0,
+      );
+      currentEobiEmployee = currentEobiContribs.reduce(
+        (sum, c) => sum + Number(c.employeeContribution || 0),
+        0,
+      );
+    } else {
+      currentEobiCompany = currentEobiEmployee * 5;
+    }
+
+    let prevEobiEmployee = prevDetails.reduce(
+      (sum, d) => sum + Number(d.eobiDeduction || 0),
+      0,
+    );
+    let prevEobiCompany = 0;
+    if (prevEobiContribs.length > 0) {
+      prevEobiCompany = prevEobiContribs.reduce(
+        (sum, c) => sum + Number(c.employerContribution || 0),
+        0,
+      );
+      prevEobiEmployee = prevEobiContribs.reduce(
+        (sum, c) => sum + Number(c.employeeContribution || 0),
+        0,
+      );
+    } else {
+      prevEobiCompany = prevEobiEmployee * 5;
+    }
+
+    return {
+      month: normMonth,
+      year: normYear,
+      hasCurrentPayroll,
+      hasPrevPayroll,
+      currentMonthLabel: `${currentMonthName} ${normYear}`,
+      prevMonthLabel: `${prevMonthName} ${prevYearStr}`,
+
+      basePayroll: {
+        prevMonthName: `PAYROLL ${prevMonthName} ${prevYearStr}`,
+        currentAmount: prevGrossTotal,
+        prevAmount: prevGrossTotal,
+      },
+      leftEmployees: {
+        list: leftEmployees,
+        totalAmount: totalLeftAmount,
+      },
+      incomingEmployees: {
+        list: incomingEmployees,
+        totalAmount: totalIncomingAmount,
+      },
+      increments: {
+        currentAmount: currentIncrementsTotal,
+        prevAmount: prevIncrementsTotal,
+      },
+      incentives: {
+        prevMonthIncentive: {
+          label: `Performance Bonus ${prevPrevMonthName.charAt(0) + prevPrevMonthName.slice(1, 3).toLowerCase()}' ${prevPrevYearStr.slice(2)}-(Incentive)`,
+          currentAmount: prevPrevIncentivesTotal,
+          prevAmount: 0,
+        },
+        currentMonthIncentive: {
+          label: `Performance Bonus ${prevMonthName.charAt(0) + prevMonthName.slice(1, 3).toLowerCase()}' ${prevYearStr.slice(2)}-(Incentive)`,
+          currentAmount: currentIncentivesTotal,
+          prevAmount: prevIncentivesTotal,
+        },
+      },
+
+
+      deductions: {
+        lwp: { currentAmount: currentLwp, prevAmount: prevLwp },
+        taxSalary: { currentAmount: currentTax, prevAmount: prevTax },
+        taxBonus: { currentAmount: 0, prevAmount: 0 },
+        advanceSalary: { currentAmount: currentAdvance, prevAmount: prevAdvance },
+        loanToEmployees: { currentAmount: currentLoan, prevAmount: prevLoan },
+        providentFund: { currentAmount: currentPf, prevAmount: prevPf },
+        totalDeductions: {
+          currentAmount: currentTotalDeductions,
+          prevAmount: prevTotalDeductions,
+        },
+      },
+      netPayable: {
+        currentAmount: currentNetPayable,
+        prevAmount: prevNetPayable,
+      },
+      statutory: {
+        eobiCompany: {
+          label: 'EOBI CONTRIBUTION COMPANY',
+          currentAmount: currentEobiCompany,
+          prevAmount: prevEobiCompany,
+        },
+        eobiEmployee: {
+          label: 'EOBI CONTRIBUTION EMPLOYEE',
+          currentAmount: currentEobiEmployee,
+          prevAmount: prevEobiEmployee,
+        },
+        totalEobi: {
+          currentAmount: currentEobiCompany + currentEobiEmployee,
+          prevAmount: prevEobiCompany + prevEobiEmployee,
+        },
+        pfCompany: { currentAmount: currentPf, prevAmount: prevPf },
+        pfEmployee: { currentAmount: currentPf, prevAmount: prevPf },
+        totalPf: { currentAmount: currentPf * 2, prevAmount: prevPf * 2 },
+        incomeTax: { currentAmount: currentTax, prevAmount: prevTax },
+      },
+    };
+  }
+
+
+  async exportPayrollReconciliationExcel(month: string, year: string, res: any) {
+    const data = await this.getPayrollReconciliation(month, year);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(
+      `${data.currentMonthLabel.slice(0, 3)} '${data.year.slice(2)}`,
+    );
+
+    // Title rows
+    worksheet.addRow(['SPEED (PRIVATE LIMITED)']);
+    worksheet.addRow(['SUMMARY OF PAYROLL RECONCILIATION']);
+    worksheet.addRow([`FOR ${data.currentMonthLabel.toUpperCase()}`]);
+    worksheet.addRow(['', '', '', '', 'Current Month', '', 'Previous Month']);
+    worksheet.addRow(['DESCRIPTION', 'V.NO', 'CHEQUE NO', 'DATE', 'AMOUNT', '', 'AMOUNT']);
+
+    worksheet.mergeCells('A1:G1');
+    worksheet.mergeCells('A2:G2');
+    worksheet.mergeCells('A3:G3');
+
+    // Style Title
+    ['A1', 'A2', 'A3'].forEach((cellRef) => {
+      const cell = worksheet.getCell(cellRef);
+      cell.font = { bold: true, size: 12 };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    // Base Payroll
+    worksheet.addRow([
+      data.basePayroll.prevMonthName,
+      '',
+      '',
+      '',
+      data.basePayroll.currentAmount,
+      '',
+      data.basePayroll.prevAmount,
+    ]);
+
+    // Left Employees
+    data.leftEmployees.list.forEach((emp: any) => {
+      worksheet.addRow([emp.name, '', '', '', emp.amount]);
+    });
+
+    // Incentive Previous Month
+    if (data.incentives?.prevMonthIncentive) {
+      worksheet.addRow(['']);
+      worksheet.addRow([
+        data.incentives.prevMonthIncentive.label,
+        '',
+        '',
+        '',
+        data.incentives.prevMonthIncentive.currentAmount,
+        '',
+        data.incentives.prevMonthIncentive.prevAmount,
+      ]);
+    }
+
+    // Incoming Employees
+    worksheet.addRow(['']);
+    worksheet.addRow(['ADD : INCOMING EMPLOYEES/INCREMENTS']);
+    data.incomingEmployees.list.forEach((emp: any) => {
+      worksheet.addRow([emp.name, '', '', '', emp.amount, '', emp.amount]);
+    });
+
+    // Incentive Current Month
+    if (data.incentives?.currentMonthIncentive) {
+      worksheet.addRow([
+        data.incentives.currentMonthIncentive.label,
+        '',
+        '',
+        '',
+        data.incentives.currentMonthIncentive.currentAmount,
+        '',
+        data.incentives.currentMonthIncentive.prevAmount,
+      ]);
+    }
+
+
+    // Deductions section
+    worksheet.addRow(['']);
+    worksheet.addRow(['LESS: DEDUCTION MADE DURING THE MONTH']);
+    worksheet.addRow([
+      'LEAVE WITHOUT PAY attendence',
+      '',
+      '',
+      '',
+      data.deductions.lwp.currentAmount,
+      '',
+      data.deductions.lwp.prevAmount,
+    ]);
+    worksheet.addRow([
+      'INCOME TAX-SALARY',
+      '',
+      '',
+      '',
+      data.deductions.taxSalary.currentAmount,
+      '',
+      data.deductions.taxSalary.prevAmount,
+    ]);
+    worksheet.addRow([
+      'ADVANCE SALARY ',
+      '',
+      '',
+      '',
+      data.deductions.advanceSalary.currentAmount,
+      '',
+      data.deductions.advanceSalary.prevAmount,
+    ]);
+    worksheet.addRow([
+      'LOAN TO EMPLOYEES',
+      '',
+      '',
+      '',
+      data.deductions.loanToEmployees.currentAmount,
+      '',
+      data.deductions.loanToEmployees.prevAmount,
+    ]);
+    worksheet.addRow([
+      'PROVIDENT FUND',
+      '',
+      '',
+      '',
+      data.deductions.providentFund.currentAmount,
+      '',
+      data.deductions.providentFund.prevAmount,
+    ]);
+    worksheet.addRow([
+      'TOTAL DEDUCTIONS',
+      '',
+      '',
+      '',
+      data.deductions.totalDeductions.currentAmount,
+      '',
+      data.deductions.totalDeductions.prevAmount,
+    ]);
+
+    worksheet.addRow(['']);
+    worksheet.addRow([
+      'NET PAYABLE',
+      '',
+      '',
+      '',
+      data.netPayable.currentAmount,
+      '',
+      data.netPayable.prevAmount,
+    ]);
+
+    // Statutory Contributions
+    worksheet.addRow(['']);
+    worksheet.addRow([
+      'EOBI CONTRIBUTION COMPANY',
+      '',
+      '',
+      '',
+      data.statutory.eobiCompany.currentAmount,
+      '',
+      data.statutory.eobiCompany.prevAmount,
+    ]);
+    worksheet.addRow([
+      'EOBI CONTRIBUTION EMPLOYEE',
+      '',
+      '',
+      '',
+      data.statutory.eobiEmployee.currentAmount,
+      '',
+      data.statutory.eobiEmployee.prevAmount,
+    ]);
+
+    worksheet.addRow([
+      'TOTAL EOBI',
+      'CHQ #',
+      '',
+      '',
+      data.statutory.totalEobi.currentAmount,
+      '',
+      data.statutory.totalEobi.prevAmount,
+    ]);
+
+    worksheet.addRow(['']);
+    worksheet.addRow([
+      "PROVIDENT FUND-CO'S CONT.",
+      '',
+      '',
+      '',
+      data.statutory.pfCompany.currentAmount,
+      '',
+      data.statutory.pfCompany.prevAmount,
+    ]);
+    worksheet.addRow([
+      'PROVIDENT FUND-EMPLOYEES CONT.',
+      '',
+      '',
+      '',
+      data.statutory.pfEmployee.currentAmount,
+      '',
+      data.statutory.pfEmployee.prevAmount,
+    ]);
+    worksheet.addRow([
+      'TOTAL P.F.',
+      'CHQ #',
+      '',
+      '',
+      data.statutory.totalPf.currentAmount,
+      '',
+      data.statutory.totalPf.prevAmount,
+    ]);
+
+    worksheet.addRow(['']);
+    worksheet.addRow([
+      'INCOME TAX',
+      'CHQ #',
+      'Advice',
+      '',
+      data.statutory.incomeTax.currentAmount,
+      '',
+      data.statutory.incomeTax.prevAmount,
+    ]);
+
+    // Approval sign-off
+    worksheet.addRow(['']);
+    worksheet.addRow(['__________', '__________', '', '', '__________']);
+    worksheet.addRow(['Prepared by', 'Checked by', '', '', 'Approved by']);
+
+    // Set Column Widths
+    worksheet.columns = [
+      { width: 45 },
+      { width: 15 },
+      { width: 15 },
+      { width: 15 },
+      { width: 18 },
+      { width: 5 },
+      { width: 18 },
+    ];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="PAYROLL_RECONCILIATION_${data.month}_${data.year}.xlsx"`,
+    );
+    res.send(buffer);
+  }
 }
+
