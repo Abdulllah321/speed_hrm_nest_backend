@@ -381,6 +381,7 @@ export class SalesHistoryUploadProcessor {
     /**
      * Process a batch of order groups.
      * Each group = one DocumentNumber = one SalesOrder with N items.
+     * High-speed optimized: in-memory location resolution & sequential number generation, plus Override on existing orders.
      */
     private async processOrderBatch(
         batch: [string, SalesHistoryParsedRecord[]][],
@@ -389,7 +390,7 @@ export class SalesHistoryUploadProcessor {
         prisma: PrismaService,
         terminalCtx: { posId?: string; terminalId?: string; locationId?: string } = {},
     ): Promise<void> {
-        // Collect all barcodes in this batch for a single bulk lookup
+        // 1. Bulk item lookup by barCode & itemId
         const allBarCodes = [
             ...new Set(
                 batch.flatMap(([, rows]) =>
@@ -398,14 +399,12 @@ export class SalesHistoryUploadProcessor {
             ),
         ];
 
-        // Bulk item lookup by barCode
         const items = await prisma.item.findMany({
             where: { barCode: { in: allBarCodes } },
             select: { id: true, barCode: true, unitPrice: true, taxRate1: true },
         });
         const itemByBarCode = new Map(items.map((i) => [i.barCode!, i]));
 
-        // Also try by itemId (some barcodes may be stored as itemId)
         const missingBarCodes = allBarCodes.filter((bc) => !itemByBarCode.has(bc));
         if (missingBarCodes.length > 0) {
             const byItemId = await prisma.item.findMany({
@@ -413,16 +412,46 @@ export class SalesHistoryUploadProcessor {
                 select: { id: true, barCode: true, itemId: true, unitPrice: true, taxRate1: true },
             });
             for (const item of byItemId) {
-                // Index by the barCode we searched for (which was the itemId)
                 const searchedAs = missingBarCodes.find((bc) => bc === item.itemId);
                 if (searchedAs) itemByBarCode.set(searchedAs, item);
             }
         }
 
-        // Determine default target location for batch if needed
-        const batchDefaultLocationId = await this.resolveLocation(undefined, terminalCtx.locationId, prisma);
+        // 2. Pre-fetch all locations in memory for instant zero-query resolution
+        const allLocations = await prisma.location.findMany({
+            where: { isDeleted: false },
+            select: { id: true, name: true, code: true, shortCode: true, status: true },
+        });
 
-        // Check which DocumentNumbers already exist to avoid duplicates (check orderNumber & notes ref)
+        const defaultLocationId =
+            (terminalCtx.locationId && allLocations.find((l) => l.id === terminalCtx.locationId)?.id) ||
+            allLocations.find((l) => l.status === 'active')?.id ||
+            allLocations[0]?.id;
+
+        const resolveLocInMem = (costCentre?: string): string | undefined => {
+            if (costCentre) {
+                const cleanCC = costCentre.trim().toLowerCase();
+                for (const loc of allLocations) {
+                    if (
+                        loc.name.toLowerCase() === cleanCC ||
+                        loc.code.toLowerCase() === cleanCC ||
+                        (loc.shortCode && loc.shortCode.toLowerCase() === cleanCC)
+                    ) {
+                        return loc.id;
+                    }
+                }
+                const normCC = cleanCC.replace(/[^a-z0-9]/g, '');
+                for (const loc of allLocations) {
+                    const normName = loc.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (normName === normCC || normName.includes(normCC) || normCC.includes(normName)) {
+                        return loc.id;
+                    }
+                }
+            }
+            return defaultLocationId;
+        };
+
+        // 3. Pre-fetch existing orders for Override / Upsert support
         const docNumbers = batch.map(([docNum]) => docNum);
         const existingOrders = await prisma.salesOrder.findMany({
             where: {
@@ -431,68 +460,96 @@ export class SalesHistoryUploadProcessor {
                     ...docNumbers.map((d) => ({ notes: { contains: `Ref: ${d}` } })),
                 ],
             },
-            select: { orderNumber: true, notes: true },
+            select: { id: true, orderNumber: true, notes: true },
         });
 
-        const existingSet = new Set<string>();
+        const existingOrderByDocNum = new Map<string, { id: string; orderNumber: string }>();
         for (const order of existingOrders) {
             if (docNumbers.includes(order.orderNumber)) {
-                existingSet.add(order.orderNumber);
+                existingOrderByDocNum.set(order.orderNumber, { id: order.id, orderNumber: order.orderNumber });
             }
             if (order.notes) {
                 for (const docNum of docNumbers) {
                     if (order.notes.includes(`Ref: ${docNum}`)) {
-                        existingSet.add(docNum);
+                        existingOrderByDocNum.set(docNum, { id: order.id, orderNumber: order.orderNumber });
                     }
                 }
             }
         }
 
+        // 4. Pre-fetch next sequential order numbers in memory for each location
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const fiscalYearStartYear = month >= 6 ? year : year - 1;
+        const fySuffix = String(fiscalYearStartYear).slice(-2);
+        const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
+
+        const locSequenceMap = new Map<string, { prefix: string; currentSeq: number }>();
+        const distinctLocIds = new Set<string>();
+        for (const [, rows] of batch) {
+            const locId = resolveLocInMem(rows[0]?.data?.costCentre) || defaultLocationId;
+            if (locId) distinctLocIds.add(locId);
+        }
+
+        for (const locId of distinctLocIds) {
+            const loc = allLocations.find((l) => l.id === locId);
+            let rawCode = loc?.shortCode?.trim() || loc?.name || 'LOC';
+            let cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'LOC';
+            const matchPrefix = `SI-${cleanCode}${fySuffix}-`;
+
+            const lastOrder = await prisma.salesOrder.findFirst({
+                where: {
+                    locationId: locId,
+                    createdAt: { gte: fiscalYearStartDate },
+                    orderNumber: { startsWith: matchPrefix },
+                },
+                orderBy: { orderNumber: 'desc' },
+                select: { orderNumber: true },
+            });
+
+            let seq = 1;
+            if (lastOrder?.orderNumber) {
+                const parts = lastOrder.orderNumber.split('-');
+                const lastPart = parts[parts.length - 1];
+                if (/^\d+$/.test(lastPart)) {
+                    seq = parseInt(lastPart, 10) + 1;
+                }
+            }
+            locSequenceMap.set(locId, { prefix: matchPrefix, currentSeq: seq });
+        }
+
+        const generateOrderNumberInMem = (locId?: string, docNum?: string): string => {
+            if (!locId) return docNum || 'SO-00001';
+            const entry = locSequenceMap.get(locId);
+            if (!entry) return docNum || 'SO-00001';
+            const num = `${entry.prefix}${String(entry.currentSeq).padStart(5, '0')}`;
+            entry.currentSeq++;
+            return num;
+        };
+
+        // 5. Execute processing loop
         for (const [documentNumber, rows] of batch) {
-            // Count all rows in this group as processed
             progress.processedRecords += rows.length;
 
-            if (existingSet.has(documentNumber)) {
-                this.logger.warn(`Order "${documentNumber}" already exists — skipping.`);
-                progress.skippedRecords += rows.length;
-                progress.errors.push({
-                    row: rows[0].row,
-                    reason: `Order "${documentNumber}" already exists in the database.`,
-                    data: { documentNumber },
-                });
-                continue;
-            }
-
             try {
-                // Use the first row for order-level fields
                 const firstRow = rows[0].data;
+                const targetLocationId = resolveLocInMem(firstRow.costCentre) || defaultLocationId;
 
-                // Resolve location (prioritizes CostCentre in row, then terminalCtx, then default active location)
-                const targetLocationId =
-                    (await this.resolveLocation(firstRow.costCentre, terminalCtx.locationId, prisma)) ||
-                    batchDefaultLocationId;
-
-                // Generate sequential order / invoice number using PosSalesService standard format
+                const existingEntry = existingOrderByDocNum.get(documentNumber);
                 let orderNumber: string;
-                if (targetLocationId) {
-                    orderNumber = await this.posSalesService.generateSequentialNumber(
-                        'SI',
-                        'orderNumber',
-                        targetLocationId,
-                        prisma,
-                    );
+                if (existingEntry) {
+                    orderNumber = existingEntry.orderNumber;
                 } else {
-                    orderNumber = documentNumber;
+                    orderNumber = generateOrderNumberInMem(targetLocationId, documentNumber);
                 }
 
-                // Resolve order date
                 let createdAt: Date | undefined;
                 if (firstRow.documentDate) {
                     const d = new Date(firstRow.documentDate);
                     if (!isNaN(d.getTime())) createdAt = d;
                 }
 
-                // Determine payment method and amounts from tender columns
                 const cashSale = firstRow.cashSale || 0;
                 const cardSale = firstRow.cardSale || 0;
                 const giftVoucher = (firstRow.giftVoucherAmount || 0) + (firstRow.giftVoucherCorporate || 0);
@@ -516,7 +573,6 @@ export class SalesHistoryUploadProcessor {
                     paymentMethod = 'credit_account';
                 }
 
-                // Build line items according to standard system WOST calculation
                 const lineItems: {
                     itemId: string;
                     quantity: number;
@@ -550,13 +606,11 @@ export class SalesHistoryUploadProcessor {
                     const unitPrice = d.unitPrice ?? Number(item.unitPrice);
                     const itemMasterTax = Number(item.taxRate1 || 0);
 
-                    // Determine tax percentage: if salesTax & totalPriceWithoutTax provided in CSV, calculate rate, else use item master
                     let taxPct = itemMasterTax;
                     if (d.salesTax !== undefined && d.totalPriceWithoutTax && (d.totalPriceWithoutTax - (d.discountAmount || 0)) > 0) {
                         taxPct = Math.round((d.salesTax / (d.totalPriceWithoutTax - (d.discountAmount || 0))) * 100 * 100) / 100;
                     }
 
-                    // Calculate WOST per unit & total WOST (matching PosSalesService wostPerUnit formula)
                     const taxDivisor = 1 + taxPct / 100;
                     const wostPerUnit = unitPrice / taxDivisor;
                     const totalWost = d.totalPriceWithoutTax ?? Math.round(wostPerUnit * qty * 100) / 100;
@@ -580,13 +634,11 @@ export class SalesHistoryUploadProcessor {
                     });
                 }
 
-                // Skip order if ALL items failed lookup
                 if (lineItems.length === 0) {
                     progress.failedRecords += rows.length;
                     continue;
                 }
 
-                // Subtotal is sum of WOST (Value Excl Sales Tax before discount), matching PosSalesService & system reports
                 const subtotal = lineItems.reduce((s, i) => s + i.totalWost, 0);
                 const totalDiscount = lineItems.reduce((s, i) => s + i.discountAmount, 0);
                 const totalTax = lineItems.reduce((s, i) => s + i.taxAmount, 0);
@@ -595,7 +647,6 @@ export class SalesHistoryUploadProcessor {
                 const paymentStatus =
                     totalPaid >= grandTotal ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
-                // FBR invoice — strip leading apostrophe that Excel sometimes adds
                 const rawFbr = firstRow.fbrInvoiceNumber;
                 const fbrInvoiceNumber = rawFbr ? rawFbr.replace(/^'/, '') : undefined;
 
@@ -607,48 +658,93 @@ export class SalesHistoryUploadProcessor {
                 if (firstRow.isAllianceDiscount) notesParts.push('[Alliance Discount]');
                 if (firstRow.salesPerson) notesParts.push(`SP: ${firstRow.salesPerson}`);
 
-                const salesOrder = await prisma.salesOrder.create({
-                    data: {
-                        orderNumber,
-                        posId: firstRow.posId || terminalCtx.posId || undefined,
-                        terminalId: terminalCtx.terminalId || undefined,
-                        locationId: targetLocationId || undefined,
-                        paymentMethod,
-                        paymentStatus,
-                        status: 'completed',
-                        subtotal,
-                        discountAmount: totalDiscount,
-                        taxAmount: totalTax,
-                        grandTotal,
-                        cashAmount: cashSale || undefined,
-                        cardAmount: cardSale || undefined,
-                        voucherAmount: voucherAmount || undefined,
-                        tenderType: paymentMethod,
-                        fbrInvoiceNumber: fbrInvoiceNumber || undefined,
-                        fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
-                        notes: notesParts.join(' | ') || undefined,
-                        createdAt: createdAt || undefined,
-                        items: {
-                            create: lineItems.map((i) => ({
-                                itemId: i.itemId,
-                                quantity: i.quantity,
-                                unitPrice: i.unitPrice,
-                                discountPercent: i.discountPercent,
-                                discountAmount: i.discountAmount,
-                                taxPercent: i.taxPercent,
-                                taxAmount: i.taxAmount,
-                                lineTotal: i.lineTotal,
-                            })),
-                        },
-                    },
-                });
+                let salesOrderId: string;
 
-                // Trigger voucher redemption update if a voucher was used
+                if (existingEntry) {
+                    salesOrderId = existingEntry.id;
+                    // Delete previous items to replace with updated line items
+                    await prisma.salesOrderItem.deleteMany({
+                        where: { salesOrderId },
+                    });
+
+                    // Update existing sales order
+                    await prisma.salesOrder.update({
+                        where: { id: salesOrderId },
+                        data: {
+                            paymentMethod,
+                            paymentStatus,
+                            status: 'completed',
+                            subtotal,
+                            discountAmount: totalDiscount,
+                            taxAmount: totalTax,
+                            grandTotal,
+                            cashAmount: cashSale || undefined,
+                            cardAmount: cardSale || undefined,
+                            voucherAmount: voucherAmount || undefined,
+                            tenderType: paymentMethod,
+                            fbrInvoiceNumber: fbrInvoiceNumber || undefined,
+                            fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
+                            notes: notesParts.join(' | ') || undefined,
+                            createdAt: createdAt || undefined,
+                            items: {
+                                create: lineItems.map((i) => ({
+                                    itemId: i.itemId,
+                                    quantity: i.quantity,
+                                    unitPrice: i.unitPrice,
+                                    discountPercent: i.discountPercent,
+                                    discountAmount: i.discountAmount,
+                                    taxPercent: i.taxPercent,
+                                    taxAmount: i.taxAmount,
+                                    lineTotal: i.lineTotal,
+                                })),
+                            },
+                        },
+                    });
+                    this.logger.log(`Overrode existing order "${documentNumber}" (ID: ${salesOrderId})`);
+                } else {
+                    const salesOrder = await prisma.salesOrder.create({
+                        data: {
+                            orderNumber,
+                            posId: firstRow.posId || terminalCtx.posId || undefined,
+                            terminalId: terminalCtx.terminalId || undefined,
+                            locationId: targetLocationId || undefined,
+                            paymentMethod,
+                            paymentStatus,
+                            status: 'completed',
+                            subtotal,
+                            discountAmount: totalDiscount,
+                            taxAmount: totalTax,
+                            grandTotal,
+                            cashAmount: cashSale || undefined,
+                            cardAmount: cardSale || undefined,
+                            voucherAmount: voucherAmount || undefined,
+                            tenderType: paymentMethod,
+                            fbrInvoiceNumber: fbrInvoiceNumber || undefined,
+                            fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
+                            notes: notesParts.join(' | ') || undefined,
+                            createdAt: createdAt || undefined,
+                            items: {
+                                create: lineItems.map((i) => ({
+                                    itemId: i.itemId,
+                                    quantity: i.quantity,
+                                    unitPrice: i.unitPrice,
+                                    discountPercent: i.discountPercent,
+                                    discountAmount: i.discountAmount,
+                                    taxPercent: i.taxPercent,
+                                    taxAmount: i.taxAmount,
+                                    lineTotal: i.lineTotal,
+                                })),
+                            },
+                        },
+                    });
+                    salesOrderId = salesOrder.id;
+                }
+
                 if (firstRow.fkExchangeVoucherNumber || voucherAmount > 0) {
                     await this.redeemVoucherIfAny(
                         firstRow.fkExchangeVoucherNumber,
                         voucherAmount,
-                        salesOrder.id,
+                        salesOrderId,
                         orderNumber,
                         documentNumber,
                         targetLocationId,
@@ -656,17 +752,15 @@ export class SalesHistoryUploadProcessor {
                     );
                 }
 
-                // Count each successfully created line item as a success
                 progress.successRecords += lineItems.length;
 
-                // If some items in this order failed lookup, count those as failed
                 if (hasItemError) {
                     const failedCount = rows.length - lineItems.length;
                     progress.failedRecords += failedCount;
                 }
             } catch (error) {
                 this.logger.error(
-                    `Failed to create order "${documentNumber}": ${error.message}`,
+                    `Failed to process order "${documentNumber}": ${error.message}`,
                 );
                 progress.failedRecords += rows.length;
                 progress.errors.push({
