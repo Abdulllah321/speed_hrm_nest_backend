@@ -745,22 +745,65 @@ export class SalesHistoryUploadProcessor {
         if (!fkVoucherRef || !fkVoucherRef.trim()) return;
 
         const cleanRef = fkVoucherRef.trim();
-        const docNoStr = cleanRef.replace(/^0+/, '');
+
+        // Extract last numeric portion if reference is e.g. "25-26-61" or "25-26-0061"
+        const parts = cleanRef.split('-').map((p) => p.trim()).filter(Boolean);
+        const lastPart = parts[parts.length - 1] || cleanRef;
+        const docNoStr = lastPart.replace(/^0+/, '') || lastPart;
+        const paddedNum = docNoStr.padStart(4, '0');
+
+        // Fetch location details if available to build expected codes like EXC-SS-LG-0061 / EXC-SSLG-0061
+        const locationCodes: string[] = [];
+        if (locationId) {
+            const loc = await prisma.location.findUnique({
+                where: { id: locationId },
+                select: { code: true, shortCode: true, name: true },
+            });
+            if (loc) {
+                if (loc.shortCode) {
+                    locationCodes.push(loc.shortCode.toUpperCase().replace(/[^A-Z0-9-]/g, ''));
+                    locationCodes.push(loc.shortCode.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+                }
+                if (loc.code) {
+                    locationCodes.push(loc.code.toUpperCase().replace(/[^A-Z0-9-]/g, ''));
+                    locationCodes.push(loc.code.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+                }
+            }
+        }
+
+        const candidateCodes = new Set<string>();
+        candidateCodes.add(cleanRef.toUpperCase());
+
+        for (const locCode of locationCodes) {
+            candidateCodes.add(`EXC-${locCode}-${paddedNum}`);
+            candidateCodes.add(`EXC-${locCode}-${docNoStr}`);
+            candidateCodes.add(`GFT-${locCode}-${paddedNum}`);
+            candidateCodes.add(`GFT-${locCode}-${docNoStr}`);
+            candidateCodes.add(`CRD-${locCode}-${paddedNum}`);
+            candidateCodes.add(`CRD-${locCode}-${docNoStr}`);
+        }
+
+        const orConditions: any[] = Array.from(candidateCodes).map((code) => ({
+            code: { equals: code, mode: 'insensitive' },
+        }));
+
+        orConditions.push({ code: { contains: cleanRef, mode: 'insensitive' } });
+        orConditions.push({ code: { endsWith: `-${paddedNum}`, mode: 'insensitive' } });
+        orConditions.push({ code: { endsWith: `-${docNoStr}`, mode: 'insensitive' } });
+        orConditions.push({ description: { contains: `Doc #${cleanRef}`, mode: 'insensitive' } });
+        orConditions.push({ description: { contains: `Doc #${docNoStr}`, mode: 'insensitive' } });
 
         const voucher = await prisma.voucher.findFirst({
             where: {
                 isDeleted: false,
-                OR: [
-                    { code: { equals: cleanRef, mode: 'insensitive' } },
-                    { code: { contains: cleanRef, mode: 'insensitive' } },
-                    { description: { contains: `Doc #${cleanRef}`, mode: 'insensitive' } },
-                    { description: { contains: `Doc #${docNoStr}`, mode: 'insensitive' } },
-                ],
+                OR: orConditions,
             },
         });
 
         if (!voucher) {
-            this.logger.warn(`No matching voucher found for reference "${cleanRef}" (Order: ${orderNumber})`);
+            this.logger.warn(
+                `No matching voucher found for reference "${cleanRef}" (Tried codes: ${Array.from(candidateCodes).join(', ')}) (Order: ${orderNumber})`,
+            );
             return;
         }
 
