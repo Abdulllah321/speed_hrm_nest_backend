@@ -8,9 +8,12 @@ import { StockUploadValidatorService } from '../../common/services/stock-upload-
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { DatabaseModule } from '../../database/database.module';
 
+import { UploadModule } from '../../upload/upload.module';
+
 @Module({
     imports: [
         DatabaseModule,
+        UploadModule,
         BullModule.registerQueue({ name: 'stock-upload' }),
     ],
     controllers: [StockBulkUploadController],

@@ -6,6 +6,7 @@ import { StockUploadCsvParserService, StockUploadParsedRecord } from '../../comm
 import { StockUploadValidatorService } from '../../common/services/stock-upload-validator.service';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { UploadService } from '../../upload/upload.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MovementType } from '@prisma/client';
@@ -39,6 +40,7 @@ export class StockUploadProcessor {
         private readonly validator: StockUploadValidatorService,
         private readonly eventsService: UploadEventsService,
         private readonly notificationsService: NotificationsService,
+        private readonly uploadService: UploadService,
     ) { }
 
     @Process()
@@ -120,53 +122,40 @@ export class StockUploadProcessor {
                     data: { field: e.field, value: e.value },
                 }));
 
-                // Pre-load location code → id map
-                // Try Location first (POS outlets), then WarehouseLocation (WMS bins), then Warehouse itself.
-                // Location.warehouseId is nullable — for those, derive warehouseId from
-                // the WarehouseLocation table which always has one.
+                // Pre-load location code → id + name map
                 const allLocations = await prisma.location.findMany({
-                    select: { id: true, code: true, warehouseId: true },
+                    select: { id: true, code: true, name: true, warehouseId: true },
                 });
 
-                // Also load WarehouseLocation bins as a fallback
                 const allWarehouseLocations = await (prisma as any).warehouseLocation?.findMany?.({
                     select: { id: true, code: true, warehouseId: true },
                 }).catch(() => []) ?? [];
 
-                // Load Warehouse entries to support uploading directly to a warehouse (opening balances)
                 const allWarehouses = await prisma.warehouse.findMany({
                     where: { isActive: true },
-                    select: { id: true, code: true },
+                    select: { id: true, code: true, name: true },
                 });
 
-                // Build a unified map: code.toUpperCase() → { id, warehouseId }
-                // Warehouse entries go in first (lowest priority), then WarehouseLocation, then Location
-                // entries overwrite so POS outlets take precedence when codes collide.
-                const locationByCode = new Map<string, { id: string | null; code: string; warehouseId: string | null }>();
+                const locationByCode = new Map<string, { id: string | null; code: string; name: string; warehouseId: string | null }>();
 
                 for (const wh of allWarehouses) {
                     const upper = wh.code.toUpperCase();
-                    locationByCode.set(upper, { id: null, code: wh.code, warehouseId: wh.id });
-                    // Map prefixed codes to target the warehouse explicitly (useful when warehouse and location share the same code)
-                    locationByCode.set(`WH-${upper}`, { id: null, code: wh.code, warehouseId: wh.id });
-                    locationByCode.set(`WH_${upper}`, { id: null, code: wh.code, warehouseId: wh.id });
-                    locationByCode.set(`WH:${upper}`, { id: null, code: wh.code, warehouseId: wh.id });
+                    const entry = { id: null, code: wh.code, name: wh.name || wh.code, warehouseId: wh.id };
+                    locationByCode.set(upper, entry);
+                    locationByCode.set(`WH-${upper}`, entry);
+                    locationByCode.set(`WH_${upper}`, entry);
+                    locationByCode.set(`WH:${upper}`, entry);
                 }
 
                 for (const wl of allWarehouseLocations) {
-                    locationByCode.set(wl.code.toUpperCase(), { id: wl.id, code: wl.code, warehouseId: wl.warehouseId });
+                    locationByCode.set(wl.code.toUpperCase(), { id: wl.id, code: wl.code, name: wl.code, warehouseId: wl.warehouseId });
                 }
 
-                // For Location entries with null warehouseId, try to find a warehouse
-                // via the WarehouseLocation join (locations that are POS outlets linked
-                // to a warehouse bin area). Fall back to the first warehouse in the DB.
                 let fallbackWarehouseId: string | null = null;
 
                 for (const loc of allLocations) {
                     let warehouseId = loc.warehouseId;
-
                     if (!warehouseId) {
-                        // Lazy-load fallback warehouse once
                         if (!fallbackWarehouseId) {
                             const firstWarehouse = await prisma.warehouse.findFirst({
                                 where: { isActive: true },
@@ -177,12 +166,19 @@ export class StockUploadProcessor {
                         }
                         warehouseId = fallbackWarehouseId;
                     }
-
-                    locationByCode.set(loc.code.toUpperCase(), { id: loc.id, code: loc.code, warehouseId });
+                    locationByCode.set(loc.code.toUpperCase(), { id: loc.id, code: loc.code, name: loc.name || loc.code, warehouseId });
                 }
 
                 const startTime = Date.now();
                 let importBatch: StockUploadParsedRecord[] = [];
+                const allSuccessRecords: Array<{
+                    row: number;
+                    barCode: string;
+                    locationCode: string;
+                    locationName: string;
+                    qty: number;
+                    movementType: string;
+                }> = [];
 
                 await this.csvParser.parseFileStreaming(fileBuffer, filename, async (record) => {
                     totalRecordsCount++;
@@ -191,7 +187,7 @@ export class StockUploadProcessor {
                     importBatch.push(record);
 
                     if (importBatch.length >= 500) {
-                        await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode);
+                        await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode, allSuccessRecords);
                         importBatch = [];
 
                         await new Promise((resolve) => setImmediate(resolve));
@@ -238,8 +234,79 @@ export class StockUploadProcessor {
 
                 // Final batch
                 if (importBatch.length > 0) {
-                    await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode);
+                    await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode, allSuccessRecords);
                 }
+
+                // ─────────────────────────────────────────────────────────
+                // Import complete — generate success report file & summary
+                // ─────────────────────────────────────────────────────────
+                let successCsv = 'Row,BarCode,LocationCode,LocationName,Qty,MovementType,Status\n';
+                const outletMap = new Map<string, { locationCode: string; locationName: string; count: number; totalQty: number }>();
+
+                for (const s of allSuccessRecords) {
+                    const locName = (s.locationName || '').replace(/"/g, '""');
+                    successCsv += `${s.row},${s.barCode},${s.locationCode},"${locName}",${s.qty},${s.movementType},SUCCESS\n`;
+
+                    const existing = outletMap.get(s.locationCode) || {
+                        locationCode: s.locationCode,
+                        locationName: s.locationName,
+                        count: 0,
+                        totalQty: 0,
+                    };
+                    existing.count += 1;
+                    existing.totalQty += Number(s.qty);
+                    outletMap.set(s.locationCode, existing);
+                }
+
+                const successSummary = Array.from(outletMap.values());
+                let successReportPath: string | null = null;
+
+                if (allSuccessRecords.length > 0) {
+                    try {
+                        const uploadRes = await this.uploadService.uploadExportBuffer(
+                            Buffer.from(successCsv),
+                            `stock-upload-success-${uploadId}.csv`,
+                            'text/csv',
+                        );
+                        successReportPath = uploadRes.url;
+                    } catch (e: any) {
+                        this.logger.warn(`Failed to save success report: ${e.message}`);
+                    }
+                }
+
+                await prisma.bulkUpload.update({
+                    where: { id: uploadId },
+                    data: {
+                        status: 'completed',
+                        message: `Stock import completed: ${progress.successRecords} ledger entries created across ${successSummary.length} locations.`,
+                        successReportPath,
+                        successSummary: successSummary as any,
+                        completedAt: new Date(),
+                    },
+                });
+
+                await this.notificationsService.create({
+                    userId,
+                    title: 'Stock Import Completed',
+                    message: `Stock bulk import finished: ${progress.successRecords} entries created across ${successSummary.length} locations.`,
+                    category: 'system',
+                    priority: 'high',
+                    channels: ['inApp'],
+                });
+
+                this.eventsService.emit({
+                    uploadId,
+                    type: 'completed',
+                    data: {
+                        status: 'completed',
+                        successRecords: progress.successRecords,
+                        failedRecords: progress.failedRecords,
+                        progress: 100,
+                        successSummary,
+                        successReportPath,
+                    },
+                });
+                return;
 
             // ─────────────────────────────────────────────────────────
             // VALIDATE PHASE
@@ -254,8 +321,6 @@ export class StockUploadProcessor {
                 let validationBatch: StockUploadParsedRecord[] = [];
                 const allValidationErrors: any[] = [];
 
-                // Pre-load all location codes for existence check during validation
-                // Include Location (POS outlets), WarehouseLocation (WMS bins), and Warehouse (for opening balances)
                 const allLocations = await prisma.location.findMany({
                     select: { code: true },
                 });
@@ -277,7 +342,6 @@ export class StockUploadProcessor {
                 for (const w of allWarehousesV) {
                     const upper = w.code.toUpperCase();
                     validLocationCodes.add(upper);
-                    // Add prefixed codes so they are also recognized as valid targets
                     validLocationCodes.add(`WH-${upper}`);
                     validLocationCodes.add(`WH_${upper}`);
                     validLocationCodes.add(`WH:${upper}`);
@@ -290,7 +354,6 @@ export class StockUploadProcessor {
                     if (validationBatch.length >= 500) {
                         const batchErrors = this.validator.validateRecords(validationBatch);
 
-                        // Additional: check location codes exist in DB
                         for (const rec of validationBatch) {
                             if (rec.data.locationCode && !validLocationCodes.has(rec.data.locationCode.toUpperCase())) {
                                 batchErrors.push({
@@ -342,6 +405,32 @@ export class StockUploadProcessor {
                     successRecordsCount += (validationBatch.length - batchErrors.length);
                 }
 
+                // Generate Error Report CSV
+                let errorCsv = 'Row,BarCode,LocationCode,Field,Reason,Value\n';
+                allValidationErrors.forEach((e) => {
+                    const row = e.row || 'N/A';
+                    const barCode = e.barCode || e.data?.barCode || e.data?.data?.barCode || 'N/A';
+                    const locationCode = e.locationCode || e.data?.locationCode || e.data?.data?.locationCode || 'N/A';
+                    const field = e.field || e.data?.field || 'N/A';
+                    const reason = (e.reason || '').replace(/"/g, '""');
+                    const value = e.value || e.data?.value || 'N/A';
+                    errorCsv += `${row},${barCode},${locationCode},${field},"${reason}",${value}\n`;
+                });
+
+                let errorReportPath: string | null = null;
+                if (allValidationErrors.length > 0) {
+                    try {
+                        const uploadRes = await this.uploadService.uploadExportBuffer(
+                            Buffer.from(errorCsv),
+                            `stock-upload-errors-${uploadId}.csv`,
+                            'text/csv',
+                        );
+                        errorReportPath = uploadRes.url;
+                    } catch (e: any) {
+                        this.logger.warn(`Failed to save error report: ${e.message}`);
+                    }
+                }
+
                 await prisma.bulkUpload.update({
                     where: { id: uploadId },
                     data: {
@@ -350,6 +439,7 @@ export class StockUploadProcessor {
                         failedRecords: allValidationErrors.length,
                         successRecords: successRecordsCount,
                         errors: allValidationErrors as any,
+                        errorReportPath,
                         message: `Stock validation complete: ${successRecordsCount} valid, ${allValidationErrors.length} invalid.`,
                         completedAt: new Date(),
                     },
@@ -374,43 +464,12 @@ export class StockUploadProcessor {
                         successRecords: successRecordsCount,
                         failedRecords: allValidationErrors.length,
                         errors: allValidationErrors,
+                        errorReportPath,
                         progress: 100,
                     },
                 });
                 return;
             }
-
-            // ─────────────────────────────────────────────────────────
-            // Import complete
-            // ─────────────────────────────────────────────────────────
-            await prisma.bulkUpload.update({
-                where: { id: uploadId },
-                data: {
-                    status: 'completed',
-                    message: `Stock import completed: ${progress.successRecords} ledger entries created.`,
-                    completedAt: new Date(),
-                },
-            });
-
-            await this.notificationsService.create({
-                userId,
-                title: 'Stock Import Completed',
-                message: `Stock bulk import finished: ${progress.successRecords} entries created, ${progress.failedRecords} failed.`,
-                category: 'system',
-                priority: 'high',
-                channels: ['inApp'],
-            });
-
-            this.eventsService.emit({
-                uploadId,
-                type: 'completed',
-                data: {
-                    status: 'completed',
-                    successRecords: progress.successRecords,
-                    failedRecords: progress.failedRecords,
-                    progress: 100,
-                },
-            });
 
         } catch (error) {
             this.logger.error(`[Job ${job.id}] FAILED: ${error.message}`, error.stack);
@@ -450,7 +509,15 @@ export class StockUploadProcessor {
         progress: StockUploadProgress,  
         uploadId: string,
         prisma: PrismaService,
-        locationByCode: Map<string, { id: string | null; code: string; warehouseId: string | null }>,
+        locationByCode: Map<string, { id: string | null; code: string; name: string; warehouseId: string | null }>,
+        allSuccessRecords?: Array<{
+            row: number;
+            barCode: string;
+            locationCode: string;
+            locationName: string;
+            qty: number;
+            movementType: string;
+        }>,
     ): Promise<void> {
         // Collect unique barcodes for bulk item lookup
         const barCodes = [...new Set(batch.map((r) => r.data.barCode))];
@@ -540,6 +607,17 @@ export class StockUploadProcessor {
                 locationId: location.id,
                 qty,
             });
+
+            if (allSuccessRecords) {
+                allSuccessRecords.push({
+                    row: record.row,
+                    barCode,
+                    locationCode,
+                    locationName: location.name,
+                    qty,
+                    movementType,
+                });
+            }
 
             progress.processedRecords++;
         }

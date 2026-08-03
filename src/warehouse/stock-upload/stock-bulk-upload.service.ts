@@ -146,6 +146,9 @@ export class StockBulkUploadService {
             progress: jobProgress,
             jobState,
             errors: upload.errors,
+            successSummary: upload.successSummary,
+            errorReportPath: upload.errorReportPath,
+            successReportPath: upload.successReportPath,
             message: upload.message,
             createdAt: upload.createdAt,
             completedAt: upload.completedAt,
@@ -195,13 +198,28 @@ export class StockBulkUploadService {
 
     generateErrorReport(errors: any[]): string {
         if (!errors || errors.length === 0) return 'No errors found';
-        let csv = 'Row,Field,Reason,Value\n';
+        let csv = 'Row,BarCode,LocationCode,Field,Reason,Value\n';
         errors.forEach((e) => {
             const row = e.row || 'N/A';
+            const barCode = e.barCode || e.data?.barCode || 'N/A';
+            const locationCode = e.locationCode || e.data?.locationCode || 'N/A';
             const field = e.field || e.data?.field || 'N/A';
             const reason = (e.reason || '').replace(/"/g, '""');
             const value = e.value || e.data?.value || 'N/A';
-            csv += `${row},${field},"${reason}",${value}\n`;
+            csv += `${row},${barCode},${locationCode},${field},"${reason}",${value}\n`;
+        });
+        return csv;
+    }
+
+    generateSuccessReport(successSummary: any[]): string {
+        if (!successSummary || successSummary.length === 0) return 'No success summary available';
+        let csv = 'LocationCode,LocationName,SuccessCount,TotalQtyUploaded\n';
+        successSummary.forEach((s) => {
+            const code = s.locationCode || 'N/A';
+            const name = (s.locationName || 'N/A').replace(/"/g, '""');
+            const count = s.count ?? s.successCount ?? 0;
+            const qty = s.totalQty ?? 0;
+            csv += `${code},"${name}",${count},${qty}\n`;
         });
         return csv;
     }

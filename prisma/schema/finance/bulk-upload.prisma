@@ -10,6 +10,9 @@ model BulkUpload {
   status           String    @default("pending")
   message          String?
   errors           Json?
+  errorReportPath  String?
+  successReportPath String?
+  successSummary   Json?
   uploadedBy       String
   createdAt        DateTime  @default(now())
   completedAt      DateTime?

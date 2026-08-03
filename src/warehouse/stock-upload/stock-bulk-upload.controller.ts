@@ -19,6 +19,8 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { Observable } from 'rxjs';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @ApiTags('Stock Bulk Upload')
 @Controller('api/warehouse/stock/bulk-upload')
@@ -118,9 +120,49 @@ export class StockBulkUploadController {
     @UseGuards(JwtAuthGuard, PermissionGuard('warehouse.stock.read'))
     async downloadErrorReport(@Param('uploadId') uploadId: string, @Res() res: any) {
         const upload = await this.bulkUploadService.getUploadStatus(uploadId);
+        if (upload.errorReportPath) {
+            if (upload.errorReportPath.startsWith('http://') || upload.errorReportPath.startsWith('https://')) {
+                return res.redirect(upload.errorReportPath, 302);
+            }
+            const fullPath = path.isAbsolute(upload.errorReportPath)
+                ? upload.errorReportPath
+                : path.join(process.cwd(), upload.errorReportPath);
+            if (fs.existsSync(fullPath)) {
+                res.header('Content-Type', 'text/csv');
+                res.header('Content-Disposition', `attachment; filename="stock-upload-errors-${uploadId}.csv"`);
+                return res.status(HttpStatus.OK).send(fs.readFileSync(fullPath));
+            }
+        }
         const csv = this.bulkUploadService.generateErrorReport(upload.errors as any[]);
         res.header('Content-Type', 'text/csv');
         res.header('Content-Disposition', `attachment; filename="stock-upload-errors-${uploadId}.csv"`);
+        return res.status(HttpStatus.OK).send(csv);
+    }
+
+    /**
+     * GET /api/warehouse/stock/bulk-upload/:uploadId/success-report
+     */
+    @Get(':uploadId/success-report')
+    @ApiOperation({ summary: 'Download stock upload success report' })
+    @UseGuards(JwtAuthGuard, PermissionGuard('warehouse.stock.read'))
+    async downloadSuccessReport(@Param('uploadId') uploadId: string, @Res() res: any) {
+        const upload = await this.bulkUploadService.getUploadStatus(uploadId);
+        if (upload.successReportPath) {
+            if (upload.successReportPath.startsWith('http://') || upload.successReportPath.startsWith('https://')) {
+                return res.redirect(upload.successReportPath, 302);
+            }
+            const fullPath = path.isAbsolute(upload.successReportPath)
+                ? upload.successReportPath
+                : path.join(process.cwd(), upload.successReportPath);
+            if (fs.existsSync(fullPath)) {
+                res.header('Content-Type', 'text/csv');
+                res.header('Content-Disposition', `attachment; filename="stock-upload-success-${uploadId}.csv"`);
+                return res.status(HttpStatus.OK).send(fs.readFileSync(fullPath));
+            }
+        }
+        const csv = this.bulkUploadService.generateSuccessReport((upload.successSummary || []) as any[]);
+        res.header('Content-Type', 'text/csv');
+        res.header('Content-Disposition', `attachment; filename="stock-upload-success-${uploadId}.csv"`);
         return res.status(HttpStatus.OK).send(csv);
     }
 
