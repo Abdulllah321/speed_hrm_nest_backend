@@ -945,6 +945,7 @@ export class SalesHistoryUploadProcessor {
     /**
      * Finds and marks redeemed any voucher matching FKExchangeVoucherNumber
      * or voucher reference during sales history upload.
+     * Strictly restricted to exchange vouchers (EXC-) and the target store location.
      */
     private async redeemVoucherIfAny(
         fkVoucherRef: string | undefined,
@@ -965,7 +966,7 @@ export class SalesHistoryUploadProcessor {
         const docNoStr = lastPart.replace(/^0+/, '') || lastPart;
         const paddedNum = docNoStr.padStart(4, '0');
 
-        // Fetch location details if available to build expected codes like EXC-SS-LG-0061 / EXC-SSLG-0061
+        // Fetch target store location codes (e.g. SS-LG, SSLG)
         const locationCodes: string[] = [];
         if (locationId) {
             const loc = await prisma.location.findUnique({
@@ -984,25 +985,19 @@ export class SalesHistoryUploadProcessor {
             }
         }
 
+        // Strictly target exchange vouchers (EXC-) for the target location
         const candidateCodes = new Set<string>();
         candidateCodes.add(cleanRef.toUpperCase());
 
         for (const locCode of locationCodes) {
             candidateCodes.add(`EXC-${locCode}-${paddedNum}`);
             candidateCodes.add(`EXC-${locCode}-${docNoStr}`);
-            candidateCodes.add(`GFT-${locCode}-${paddedNum}`);
-            candidateCodes.add(`GFT-${locCode}-${docNoStr}`);
-            candidateCodes.add(`CRD-${locCode}-${paddedNum}`);
-            candidateCodes.add(`CRD-${locCode}-${docNoStr}`);
         }
 
         const orConditions: any[] = Array.from(candidateCodes).map((code) => ({
             code: { equals: code, mode: 'insensitive' },
         }));
 
-        orConditions.push({ code: { contains: cleanRef, mode: 'insensitive' } });
-        orConditions.push({ code: { endsWith: `-${paddedNum}`, mode: 'insensitive' } });
-        orConditions.push({ code: { endsWith: `-${docNoStr}`, mode: 'insensitive' } });
         orConditions.push({ description: { contains: `Doc #${cleanRef}`, mode: 'insensitive' } });
         orConditions.push({ description: { contains: `Doc #${docNoStr}`, mode: 'insensitive' } });
 
@@ -1015,7 +1010,7 @@ export class SalesHistoryUploadProcessor {
 
         if (!voucher) {
             this.logger.warn(
-                `No matching voucher found for reference "${cleanRef}" (Tried codes: ${Array.from(candidateCodes).join(', ')}) (Order: ${orderNumber})`,
+                `No matching exchange voucher found for reference "${cleanRef}" (Tried codes: ${Array.from(candidateCodes).join(', ')}) (Order: ${orderNumber})`,
             );
             return;
         }
@@ -1027,6 +1022,11 @@ export class SalesHistoryUploadProcessor {
                     isRedeemed: true,
                     isActive: false,
                 },
+            });
+
+            // Remove any existing redemption record for this order to prevent unique constraint conflict on re-upload
+            await prisma.voucherRedemption.deleteMany({
+                where: { orderId: salesOrderId },
             });
 
             await prisma.voucherRedemption.create({
