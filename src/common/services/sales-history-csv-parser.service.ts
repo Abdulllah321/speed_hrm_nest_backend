@@ -28,14 +28,19 @@ export interface SalesHistoryParsedRecord {
         cashSale?: number;
         cashReturn?: number;
         cardSale?: number;
+        creditSale?: number;
         giftVoucherAmount?: number;
+        giftVoucherCorporate?: number;
         creditVoucherAmount?: number;
         exchangeVoucherAmount?: number;
         claimVoucherAmount?: number;
+        creditVoucherIssuedAmount?: number;
+        rewardVoucherAmount?: number;
         onCreditAmount?: number;
 
-        // FBR
+        // FBR & Voucher References
         fbrInvoiceNumber?: string;
+        fkExchangeVoucherNumber?: string;
 
         // Location / POS
         posId?: string;
@@ -186,8 +191,16 @@ export class SalesHistoryCsvParserService {
                 'CardSale', 'Card Sale', 'Card',
             ])) ?? undefined,
 
+            creditSale: this.parseNumber(this.getValue(row, [
+                'CreditSale', 'Credit Sale',
+            ])) ?? undefined,
+
             giftVoucherAmount: this.parseNumber(this.getValue(row, [
                 'GiftVoucherAmount', 'Gift Voucher Amount',
+            ])) ?? undefined,
+
+            giftVoucherCorporate: this.parseNumber(this.getValue(row, [
+                'GiftVoucherAmount_Corporate', 'GiftVoucherAmountCorporate', 'Corporate Gift Voucher',
             ])) ?? undefined,
 
             creditVoucherAmount: this.parseNumber(this.getValue(row, [
@@ -202,12 +215,24 @@ export class SalesHistoryCsvParserService {
                 'ClaimVoucherAmount', 'Claim Voucher Amount',
             ])) ?? undefined,
 
+            creditVoucherIssuedAmount: this.parseNumber(this.getValue(row, [
+                'CreditVoucherIssuedAmount', 'Credit Voucher Issued Amount',
+            ])) ?? undefined,
+
+            rewardVoucherAmount: this.parseNumber(this.getValue(row, [
+                'RewardVoucherAmount', 'Reward Voucher Amount',
+            ])) ?? undefined,
+
             onCreditAmount: this.parseNumber(this.getValue(row, [
                 'OnCreditAmount', 'On Credit Amount', 'Balance',
             ])) ?? undefined,
 
             fbrInvoiceNumber: this.normalizeValue(this.getValue(row, [
-                'FBR Invoice#', 'FBRInvoice', 'FBR Invoice Number', 'FKExchangeVoucherNumber',
+                'FBR Invoice#', 'FBRInvoice', 'FBR Invoice Number', 'FBRInvoiceNo', 'FBR Invoice No',
+            ])) ?? undefined,
+
+            fkExchangeVoucherNumber: this.normalizeValue(this.getValue(row, [
+                'FKExchangeVoucherNumber', 'FK Exchange Voucher Number', 'Exchange Voucher #', 'ExchangeVoucherNo', 'FKExchangeVoucherNo',
             ])) ?? undefined,
 
             posId: this.normalizeValue(this.getValue(row, [

@@ -419,21 +419,8 @@ export class SalesHistoryUploadProcessor {
             }
         }
 
-        // Determine target location for sequential number generation & order creation
-        let targetLocationId = terminalCtx.locationId;
-        if (targetLocationId) {
-            const locExists = await prisma.location.findUnique({
-                where: { id: targetLocationId },
-                select: { id: true },
-            });
-            if (!locExists) targetLocationId = undefined;
-        }
-        if (!targetLocationId) {
-            const firstLoc =
-                (await prisma.location.findFirst({ where: { isDeleted: false, status: 'active' }, select: { id: true } })) ||
-                (await prisma.location.findFirst({ select: { id: true } }));
-            targetLocationId = firstLoc?.id;
-        }
+        // Determine default target location for batch if needed
+        const batchDefaultLocationId = await this.resolveLocation(undefined, terminalCtx.locationId, prisma);
 
         // Check which DocumentNumbers already exist to avoid duplicates (check orderNumber & notes ref)
         const docNumbers = batch.map(([docNum]) => docNum);
@@ -477,6 +464,14 @@ export class SalesHistoryUploadProcessor {
             }
 
             try {
+                // Use the first row for order-level fields
+                const firstRow = rows[0].data;
+
+                // Resolve location (prioritizes CostCentre in row, then terminalCtx, then default active location)
+                const targetLocationId =
+                    (await this.resolveLocation(firstRow.costCentre, terminalCtx.locationId, prisma)) ||
+                    batchDefaultLocationId;
+
                 // Generate sequential order / invoice number using PosSalesService standard format
                 let orderNumber: string;
                 if (targetLocationId) {
@@ -490,9 +485,6 @@ export class SalesHistoryUploadProcessor {
                     orderNumber = documentNumber;
                 }
 
-                // Use the first row for order-level fields
-                const firstRow = rows[0].data;
-
                 // Resolve order date
                 let createdAt: Date | undefined;
                 if (firstRow.documentDate) {
@@ -503,20 +495,28 @@ export class SalesHistoryUploadProcessor {
                 // Determine payment method and amounts from tender columns
                 const cashSale = firstRow.cashSale || 0;
                 const cardSale = firstRow.cardSale || 0;
-                const giftVoucher = firstRow.giftVoucherAmount || 0;
+                const giftVoucher = (firstRow.giftVoucherAmount || 0) + (firstRow.giftVoucherCorporate || 0);
                 const creditVoucher = firstRow.creditVoucherAmount || 0;
                 const exchangeVoucher = firstRow.exchangeVoucherAmount || 0;
-                const onCredit = firstRow.onCreditAmount || 0;
-                const voucherAmount = giftVoucher + creditVoucher + exchangeVoucher;
+                const claimVoucher = firstRow.claimVoucherAmount || 0;
+                const rewardVoucher = firstRow.rewardVoucherAmount || 0;
+                const onCredit = (firstRow.onCreditAmount || 0) + (firstRow.creditSale || 0);
 
-                const totalPaid = cashSale + cardSale + giftVoucher + creditVoucher + exchangeVoucher;
+                const voucherAmount = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + rewardVoucher;
+                const totalPaid = cashSale + cardSale + voucherAmount;
+
                 let paymentMethod = 'cash';
-                if (cardSale > 0 && cashSale > 0) paymentMethod = 'split';
-                else if (cardSale > 0) paymentMethod = 'card';
-                else if (giftVoucher > 0 || creditVoucher > 0 || exchangeVoucher > 0) paymentMethod = 'voucher';
-                else if (onCredit > 0) paymentMethod = 'credit_account';
+                if ((cardSale > 0 && cashSale > 0) || (cardSale > 0 && voucherAmount > 0) || (cashSale > 0 && voucherAmount > 0)) {
+                    paymentMethod = 'split';
+                } else if (cardSale > 0) {
+                    paymentMethod = 'card';
+                } else if (voucherAmount > 0) {
+                    paymentMethod = 'voucher';
+                } else if (onCredit > 0) {
+                    paymentMethod = 'credit_account';
+                }
 
-                // Build line items
+                // Build line items according to standard system WOST calculation
                 const lineItems: {
                     itemId: string;
                     quantity: number;
@@ -526,6 +526,7 @@ export class SalesHistoryUploadProcessor {
                     taxPercent: number;
                     taxAmount: number;
                     lineTotal: number;
+                    totalWost: number;
                 }[] = [];
 
                 let hasItemError = false;
@@ -547,11 +548,22 @@ export class SalesHistoryUploadProcessor {
 
                     const qty = d.quantity || 1;
                     const unitPrice = d.unitPrice ?? Number(item.unitPrice);
+                    const itemMasterTax = Number(item.taxRate1 || 0);
+
+                    // Determine tax percentage: if salesTax & totalPriceWithoutTax provided in CSV, calculate rate, else use item master
+                    let taxPct = itemMasterTax;
+                    if (d.salesTax !== undefined && d.totalPriceWithoutTax && (d.totalPriceWithoutTax - (d.discountAmount || 0)) > 0) {
+                        taxPct = Math.round((d.salesTax / (d.totalPriceWithoutTax - (d.discountAmount || 0))) * 100 * 100) / 100;
+                    }
+
+                    // Calculate WOST per unit & total WOST (matching PosSalesService wostPerUnit formula)
+                    const taxDivisor = 1 + taxPct / 100;
+                    const wostPerUnit = unitPrice / taxDivisor;
+                    const totalWost = d.totalPriceWithoutTax ?? Math.round(wostPerUnit * qty * 100) / 100;
+
                     const discPct = d.discountPercent || 0;
-                    const subtotal = unitPrice * qty;
-                    const discAmt = d.discountAmount ?? Math.round(subtotal * (discPct / 100) * 100) / 100;
-                    const afterDisc = subtotal - discAmt;
-                    const taxPct = Number(item.taxRate1 || 0);
+                    const discAmt = d.discountAmount ?? Math.round(totalWost * (discPct / 100) * 100) / 100;
+                    const afterDisc = totalWost - discAmt;
                     const taxAmt = d.salesTax ?? Math.round(afterDisc * (taxPct / 100) * 100) / 100;
                     const lineTotal = d.totalPriceWithTax ?? Math.round((afterDisc + taxAmt) * 100) / 100;
 
@@ -564,6 +576,7 @@ export class SalesHistoryUploadProcessor {
                         taxPercent: taxPct,
                         taxAmount: taxAmt,
                         lineTotal: Math.max(0, lineTotal),
+                        totalWost,
                     });
                 }
 
@@ -573,7 +586,8 @@ export class SalesHistoryUploadProcessor {
                     continue;
                 }
 
-                const subtotal = lineItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+                // Subtotal is sum of WOST (Value Excl Sales Tax before discount), matching PosSalesService & system reports
+                const subtotal = lineItems.reduce((s, i) => s + i.totalWost, 0);
                 const totalDiscount = lineItems.reduce((s, i) => s + i.discountAmount, 0);
                 const totalTax = lineItems.reduce((s, i) => s + i.taxAmount, 0);
                 const grandTotal = lineItems.reduce((s, i) => s + i.lineTotal, 0);
@@ -587,14 +601,16 @@ export class SalesHistoryUploadProcessor {
 
                 const notesParts: string[] = [];
                 if (firstRow.documentNumber) notesParts.push(`Ref: ${firstRow.documentNumber}`);
+                if (firstRow.fkExchangeVoucherNumber) notesParts.push(`ExVoucher: ${firstRow.fkExchangeVoucherNumber}`);
+                if (firstRow.costCentre) notesParts.push(`CostCentre: ${firstRow.costCentre}`);
                 if (firstRow.remarks) notesParts.push(firstRow.remarks);
                 if (firstRow.isAllianceDiscount) notesParts.push('[Alliance Discount]');
                 if (firstRow.salesPerson) notesParts.push(`SP: ${firstRow.salesPerson}`);
 
-                await prisma.salesOrder.create({
+                const salesOrder = await prisma.salesOrder.create({
                     data: {
                         orderNumber,
-                        posId: terminalCtx.posId || undefined,
+                        posId: firstRow.posId || terminalCtx.posId || undefined,
                         terminalId: terminalCtx.terminalId || undefined,
                         locationId: targetLocationId || undefined,
                         paymentMethod,
@@ -613,10 +629,32 @@ export class SalesHistoryUploadProcessor {
                         notes: notesParts.join(' | ') || undefined,
                         createdAt: createdAt || undefined,
                         items: {
-                            create: lineItems,
+                            create: lineItems.map((i) => ({
+                                itemId: i.itemId,
+                                quantity: i.quantity,
+                                unitPrice: i.unitPrice,
+                                discountPercent: i.discountPercent,
+                                discountAmount: i.discountAmount,
+                                taxPercent: i.taxPercent,
+                                taxAmount: i.taxAmount,
+                                lineTotal: i.lineTotal,
+                            })),
                         },
                     },
                 });
+
+                // Trigger voucher redemption update if a voucher was used
+                if (firstRow.fkExchangeVoucherNumber || voucherAmount > 0) {
+                    await this.redeemVoucherIfAny(
+                        firstRow.fkExchangeVoucherNumber,
+                        voucherAmount,
+                        salesOrder.id,
+                        orderNumber,
+                        documentNumber,
+                        targetLocationId,
+                        prisma,
+                    );
+                }
 
                 // Count each successfully created line item as a success
                 progress.successRecords += lineItems.length;
@@ -637,6 +675,126 @@ export class SalesHistoryUploadProcessor {
                     data: { documentNumber },
                 });
             }
+        }
+    }
+
+    /**
+     * Resolves location from CostCentre string or terminal context.
+     * Uses exact match and normalized fuzzy matching against Location records.
+     */
+    private async resolveLocation(
+        costCentre?: string,
+        terminalLocationId?: string,
+        prisma?: PrismaService,
+    ): Promise<string | undefined> {
+        if (!prisma) return terminalLocationId;
+
+        if (costCentre) {
+            const cleanCC = costCentre.trim().toLowerCase();
+            const locations = await prisma.location.findMany({
+                where: { isDeleted: false },
+                select: { id: true, name: true, code: true, shortCode: true },
+            });
+
+            for (const loc of locations) {
+                if (
+                    loc.name.toLowerCase() === cleanCC ||
+                    loc.code.toLowerCase() === cleanCC ||
+                    (loc.shortCode && loc.shortCode.toLowerCase() === cleanCC)
+                ) {
+                    return loc.id;
+                }
+            }
+
+            const normCC = cleanCC.replace(/[^a-z0-9]/g, '');
+            for (const loc of locations) {
+                const normName = loc.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (normName === normCC || normName.includes(normCC) || normCC.includes(normName)) {
+                    return loc.id;
+                }
+            }
+        }
+
+        if (terminalLocationId) {
+            const locExists = await prisma.location.findUnique({
+                where: { id: terminalLocationId },
+                select: { id: true },
+            });
+            if (locExists) return terminalLocationId;
+        }
+
+        const defaultLoc =
+            (await prisma.location.findFirst({ where: { isDeleted: false, status: 'active' }, select: { id: true } })) ||
+            (await prisma.location.findFirst({ select: { id: true } }));
+        return defaultLoc?.id;
+    }
+
+    /**
+     * Finds and marks redeemed any voucher matching FKExchangeVoucherNumber
+     * or voucher reference during sales history upload.
+     */
+    private async redeemVoucherIfAny(
+        fkVoucherRef: string | undefined,
+        voucherAmount: number,
+        salesOrderId: string,
+        orderNumber: string,
+        documentNumber: string,
+        locationId: string | undefined,
+        prisma: PrismaService,
+    ): Promise<void> {
+        if (!fkVoucherRef || !fkVoucherRef.trim()) return;
+
+        const cleanRef = fkVoucherRef.trim();
+        const docNoStr = cleanRef.replace(/^0+/, '');
+
+        const voucher = await prisma.voucher.findFirst({
+            where: {
+                isDeleted: false,
+                OR: [
+                    { code: { equals: cleanRef, mode: 'insensitive' } },
+                    { code: { contains: cleanRef, mode: 'insensitive' } },
+                    { description: { contains: `Doc #${cleanRef}`, mode: 'insensitive' } },
+                    { description: { contains: `Doc #${docNoStr}`, mode: 'insensitive' } },
+                ],
+            },
+        });
+
+        if (!voucher) {
+            this.logger.warn(`No matching voucher found for reference "${cleanRef}" (Order: ${orderNumber})`);
+            return;
+        }
+
+        try {
+            await prisma.voucher.update({
+                where: { id: voucher.id },
+                data: {
+                    isRedeemed: true,
+                    isActive: false,
+                },
+            });
+
+            await prisma.voucherRedemption.create({
+                data: {
+                    voucherId: voucher.id,
+                    orderId: salesOrderId,
+                    amountUsed: voucherAmount || Number(voucher.faceValue),
+                },
+            });
+
+            await prisma.voucherTransaction.create({
+                data: {
+                    voucherId: voucher.id,
+                    orderId: salesOrderId,
+                    locationId: locationId || undefined,
+                    action: 'REDEEMED',
+                    amountUsed: voucherAmount || Number(voucher.faceValue),
+                    notes: `Redeemed during Sales History Bulk Upload for order ${orderNumber} (Ref: ${documentNumber})`,
+                },
+            });
+
+            this.logger.log(`Redeemed voucher ${voucher.code} (ID: ${voucher.id}) for order ${orderNumber}`);
+        } catch (e) {
+            this.logger.error(`Failed to record redemption for voucher ${voucher.code}: ${e.message}`);
         }
     }
 }
