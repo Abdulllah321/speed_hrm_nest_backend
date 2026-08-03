@@ -35,46 +35,131 @@ export class VoucherService {
         private notificationsService: NotificationsService,
     ) {}
 
-    // ── List vouchers (admin) ─────────────────────────────────────
+    // ── List vouchers (admin / POS with full pagination & filters) ─
     async listVouchers(filters?: {
         voucherType?: string;
         locationId?: string;
         isActive?: boolean;
+        status?: string; // 'ALL' | 'ACTIVE' | 'REDEEMED' | 'VOIDED' | 'EXPIRED'
         search?: string;
+        startDate?: string;
+        endDate?: string;
         includeVoided?: boolean;
+        page?: number;
+        limit?: number;
     }) {
         try {
             const where: any = {};
-            if (!filters?.includeVoided) {
+            const now = new Date();
+
+            // 1. Status Filter
+            const statusFilter = (filters?.status || 'ALL').toUpperCase();
+            if (statusFilter === 'ACTIVE') {
                 where.isDeleted = false;
+                where.isActive = true;
+                where.isRedeemed = false;
+                where.OR = [{ expiresAt: null }, { expiresAt: { gte: now } }];
+            } else if (statusFilter === 'REDEEMED') {
+                where.isRedeemed = true;
+            } else if (statusFilter === 'VOIDED') {
+                where.OR = [{ isDeleted: true }, { isActive: false }];
+                where.isRedeemed = false;
+            } else if (statusFilter === 'EXPIRED') {
+                where.isDeleted = false;
+                where.isActive = true;
+                where.isRedeemed = false;
+                where.expiresAt = { lt: now };
+            } else {
+                // ALL Statuses
+                if (!filters?.includeVoided) {
+                    where.isDeleted = false;
+                }
             }
-            if (filters?.voucherType) where.voucherType = filters.voucherType;
-            if (filters?.isActive !== undefined) where.isActive = filters.isActive;
-            if (filters?.search) {
+
+            // 2. Voucher Type Filter
+            if (filters?.voucherType && filters.voucherType !== 'ALL') {
+                const vType = filters.voucherType.toUpperCase();
+                if (vType === 'CLAIM') {
+                    where.OR = [
+                        { claims: { some: {} } },
+                        { description: { contains: 'approved claim', mode: 'insensitive' } },
+                    ];
+                } else if (vType === 'EXCHANGE') {
+                    where.voucherType = 'EXCHANGE';
+                    where.NOT = [
+                        { claims: { some: {} } },
+                        { description: { contains: 'approved claim', mode: 'insensitive' } },
+                    ];
+                } else {
+                    where.voucherType = vType;
+                }
+            }
+
+            // 3. Location Filter
+            if (filters?.locationId) {
                 where.OR = [
-                    { code: { contains: filters.search, mode: 'insensitive' } },
-                    { description: { contains: filters.search, mode: 'insensitive' } },
-                    { companyName: { contains: filters.search, mode: 'insensitive' } },
-                    { customer: { name: { contains: filters.search, mode: 'insensitive' } } },
-                    { customer: { traderId: { contains: filters.search, mode: 'insensitive' } } },
-                    { customer: { contactNo: { contains: filters.search, mode: 'insensitive' } } },
+                    { issuedByLocationId: filters.locationId },
+                    { locations: { some: { locationId: filters.locationId } } },
                 ];
             }
-            if (filters?.locationId) {
-                where.issuedByLocationId = filters.locationId;
+
+            // 4. Date Range Filter (createdAt)
+            if (filters?.startDate || filters?.endDate) {
+                where.createdAt = {};
+                if (filters.startDate) {
+                    const start = new Date(filters.startDate);
+                    start.setUTCHours(0, 0, 0, 0);
+                    where.createdAt.gte = start;
+                }
+                if (filters.endDate) {
+                    const end = new Date(filters.endDate);
+                    end.setUTCHours(23, 59, 59, 999);
+                    where.createdAt.lte = end;
+                }
             }
 
-            const vouchers = await this.prisma.voucher.findMany({
-                where,
-                include: {
-                    customer: { select: { id: true, name: true, traderId: true, contactNo: true, cnicNo: true } },
-                    locations: { include: { location: { select: { id: true, name: true, code: true, shortCode: true } } } },
-                    redemptions: { select: { amountUsed: true, orderId: true } },
-                    claims: { select: { id: true, claimNumber: true } },
-                },
-                orderBy: { createdAt: 'desc' },
-            });
+            // 5. Search Filter
+            if (filters?.search && filters.search.trim() !== '') {
+                const term = filters.search.trim();
+                const searchConditions = [
+                    { code: { contains: term, mode: 'insensitive' } },
+                    { description: { contains: term, mode: 'insensitive' } },
+                    { companyName: { contains: term, mode: 'insensitive' } },
+                    { companyGlCode: { contains: term, mode: 'insensitive' } },
+                    { customer: { name: { contains: term, mode: 'insensitive' } } },
+                    { customer: { traderId: { contains: term, mode: 'insensitive' } } },
+                    { customer: { contactNo: { contains: term, mode: 'insensitive' } } },
+                ];
+                if (where.OR) {
+                    where.AND = [{ OR: searchConditions }];
+                } else {
+                    where.OR = searchConditions;
+                }
+            }
 
+            // 6. Pagination Parameters
+            const page = Math.max(Number(filters?.page || 1), 1);
+            const limit = Math.min(Math.max(Number(filters?.limit || 25), 1), 200);
+            const skip = (page - 1) * limit;
+
+            // Execute Count & FindMany concurrently for 50k+ dataset performance
+            const [total, vouchers] = await Promise.all([
+                this.prisma.voucher.count({ where }),
+                this.prisma.voucher.findMany({
+                    where,
+                    skip,
+                    take: limit,
+                    include: {
+                        customer: { select: { id: true, name: true, traderId: true, contactNo: true, cnicNo: true } },
+                        locations: { include: { location: { select: { id: true, name: true, code: true, shortCode: true } } } },
+                        redemptions: { select: { amountUsed: true, orderId: true } },
+                        claims: { select: { id: true, claimNumber: true } },
+                    },
+                    orderBy: { createdAt: 'desc' },
+                }),
+            ]);
+
+            // Optimize maps for current page slice only
             const sourceOrderIds = vouchers
                 .map(v => v.sourceOrderId)
                 .filter((id): id is string => !!id);
@@ -120,7 +205,18 @@ export class VoucherService {
                 };
             });
 
-            return { status: true, data };
+            const totalPages = Math.ceil(total / limit);
+
+            return {
+                status: true,
+                data,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages,
+                },
+            };
         } catch (error: any) {
             return { status: false, message: error.message };
         }

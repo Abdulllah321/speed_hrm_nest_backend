@@ -210,12 +210,17 @@ export class PosConfigController {
     @Get('vouchers')
     @UseGuards(JwtAuthGuard, PermissionsGuard)
     @Permissions('pos.voucher.view')
-    @ApiOperation({ summary: 'List vouchers' })
+    @ApiOperation({ summary: 'List vouchers with pagination and rich filters' })
     async listVouchers(
         @Req() req: any,
         @Query('voucherType') voucherType?: string,
+        @Query('status') status?: string,
         @Query('locationId') locationIdQuery?: string,
         @Query('search') search?: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
         @Query('includeVoided') includeVoided?: string,
     ) {
         let locationId = locationIdQuery;
@@ -229,8 +234,13 @@ export class PosConfigController {
         }
         return this.voucherService.listVouchers({
             voucherType,
+            status,
             locationId,
             search,
+            startDate,
+            endDate,
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 25,
             includeVoided: includeVoided === 'true',
         });
     }
