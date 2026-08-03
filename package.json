@@ -37,6 +37,7 @@
     "seed:brands-divisions": "bun scripts/seed-brands-divisions.ts",
     "seed:categories": "bun scripts/seed-categories.ts",
     "recalculate:order-numbers": "bun scripts/recalculate-location-order-numbers.ts",
+    "seed:pos-terminals": "bun scripts/create-stock-location-pos.ts",
     "wipe:location-data": "bun scripts/wipe-location-data.ts",
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
     "prisma:studio": "prisma studio"
