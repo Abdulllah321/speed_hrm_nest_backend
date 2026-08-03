@@ -9,6 +9,7 @@ import {
 import { SalesHistoryValidatorService } from '../../common/services/sales-history-validator.service';
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { PosSalesService } from '../../pos-sales/pos-sales.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -39,6 +40,7 @@ export class SalesHistoryUploadProcessor {
         private readonly validator: SalesHistoryValidatorService,
         private readonly eventsService: UploadEventsService,
         private readonly notificationsService: NotificationsService,
+        private readonly posSalesService: PosSalesService,
     ) {}
 
     @Process()
@@ -417,13 +419,47 @@ export class SalesHistoryUploadProcessor {
             }
         }
 
-        // Check which DocumentNumbers already exist to avoid duplicates
+        // Determine target location for sequential number generation & order creation
+        let targetLocationId = terminalCtx.locationId;
+        if (targetLocationId) {
+            const locExists = await prisma.location.findUnique({
+                where: { id: targetLocationId },
+                select: { id: true },
+            });
+            if (!locExists) targetLocationId = undefined;
+        }
+        if (!targetLocationId) {
+            const firstLoc =
+                (await prisma.location.findFirst({ where: { isDeleted: false, status: 'active' }, select: { id: true } })) ||
+                (await prisma.location.findFirst({ select: { id: true } }));
+            targetLocationId = firstLoc?.id;
+        }
+
+        // Check which DocumentNumbers already exist to avoid duplicates (check orderNumber & notes ref)
         const docNumbers = batch.map(([docNum]) => docNum);
         const existingOrders = await prisma.salesOrder.findMany({
-            where: { orderNumber: { in: docNumbers } },
-            select: { orderNumber: true },
+            where: {
+                OR: [
+                    { orderNumber: { in: docNumbers } },
+                    ...docNumbers.map((d) => ({ notes: { contains: `Ref: ${d}` } })),
+                ],
+            },
+            select: { orderNumber: true, notes: true },
         });
-        const existingSet = new Set(existingOrders.map((o) => o.orderNumber));
+
+        const existingSet = new Set<string>();
+        for (const order of existingOrders) {
+            if (docNumbers.includes(order.orderNumber)) {
+                existingSet.add(order.orderNumber);
+            }
+            if (order.notes) {
+                for (const docNum of docNumbers) {
+                    if (order.notes.includes(`Ref: ${docNum}`)) {
+                        existingSet.add(docNum);
+                    }
+                }
+            }
+        }
 
         for (const [documentNumber, rows] of batch) {
             // Count all rows in this group as processed
@@ -441,6 +477,19 @@ export class SalesHistoryUploadProcessor {
             }
 
             try {
+                // Generate sequential order / invoice number using PosSalesService standard format
+                let orderNumber: string;
+                if (targetLocationId) {
+                    orderNumber = await this.posSalesService.generateSequentialNumber(
+                        'SI',
+                        'orderNumber',
+                        targetLocationId,
+                        prisma,
+                    );
+                } else {
+                    orderNumber = documentNumber;
+                }
+
                 // Use the first row for order-level fields
                 const firstRow = rows[0].data;
 
@@ -537,16 +586,17 @@ export class SalesHistoryUploadProcessor {
                 const fbrInvoiceNumber = rawFbr ? rawFbr.replace(/^'/, '') : undefined;
 
                 const notesParts: string[] = [];
+                if (firstRow.documentNumber) notesParts.push(`Ref: ${firstRow.documentNumber}`);
                 if (firstRow.remarks) notesParts.push(firstRow.remarks);
                 if (firstRow.isAllianceDiscount) notesParts.push('[Alliance Discount]');
                 if (firstRow.salesPerson) notesParts.push(`SP: ${firstRow.salesPerson}`);
 
                 await prisma.salesOrder.create({
                     data: {
-                        orderNumber: documentNumber,
+                        orderNumber,
                         posId: terminalCtx.posId || undefined,
                         terminalId: terminalCtx.terminalId || undefined,
-                        locationId: terminalCtx.locationId || undefined,
+                        locationId: targetLocationId || undefined,
                         paymentMethod,
                         paymentStatus,
                         status: 'completed',
