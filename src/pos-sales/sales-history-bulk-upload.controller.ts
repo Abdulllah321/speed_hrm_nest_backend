@@ -163,16 +163,16 @@ export class SalesHistoryBulkUploadController {
      */
     @Get(':uploadId/error-report')
     @Permissions('pos.sales.history.import')
-    @ApiOperation({ summary: 'Download error report CSV' })
+    @ApiOperation({ summary: 'Download error and sequence gap report (Excel)' })
     async downloadErrorReport(@Param('uploadId') uploadId: string, @Res() res: any) {
         const upload = await this.bulkUploadService.getUploadStatus(uploadId);
-        const csv = this.bulkUploadService.generateErrorReport(upload.errors as any[]);
-        res.header('Content-Type', 'text/csv');
+        const excelBuffer = await this.bulkUploadService.generateExcelErrorReport(upload.errors as any[]);
+        res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.header(
             'Content-Disposition',
-            `attachment; filename="sales-history-errors-${uploadId}.csv"`,
+            `attachment; filename="sales-history-errors-${uploadId}.xlsx"`,
         );
-        return res.status(HttpStatus.OK).send(csv);
+        return res.status(HttpStatus.OK).send(excelBuffer);
     }
 
     /**
