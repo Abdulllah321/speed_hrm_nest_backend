@@ -956,11 +956,11 @@ export class SalesHistoryUploadProcessor {
     /**
      * Finds and marks redeemed any EXCHANGE voucher matching FKExchangeVoucherNumber.
      *
-     * Rules:
-     *  - FKExchangeVoucherNumber IS the actual voucher code (e.g. "EXC-NDC-0381", "EXC-SS-LG-0400").
-     *  - Only EXC- prefixed vouchers are system voucher objects. GFT/CRD/Claim/Reward are
-     *    direct payment amounts — no system voucher record to redeem.
-     *  - Only redeem if the voucher belongs to THIS store (code contains our location code).
+     * Two input formats supported:
+     *   1. Full EXC code:    "EXC-SS-LG-0095" — used directly (store ownership checked)
+     *   2. Fiscal shorthand: "25-26-95"        — means EXC-{THIS_STORE}-0095
+     *
+     * GFT-, CRD-, plain text etc. are direct payment amounts — no system voucher object to redeem.
      */
     private async redeemVoucherIfAny(
         fkVoucherRef: string | undefined,
@@ -979,18 +979,7 @@ export class SalesHistoryUploadProcessor {
 
         const upperRef = cleanRef.toUpperCase();
 
-        // ── Rule 1: Only process EXC- type vouchers ──────────────────────────
-        // GiftVoucher, CreditVoucher, ClaimVoucher, RewardVoucher amounts are
-        // direct payment fields — no corresponding system voucher object to redeem.
-        if (!upperRef.startsWith('EXC-')) {
-            this.logger.debug(
-                `Skipping non-EXC voucher ref "${cleanRef}" for order ${orderNumber} (GFT/CRD/Claim/Reward = direct amount, not a system voucher)`,
-            );
-            return;
-        }
-
-        // ── Rule 2: Only redeem if voucher belongs to THIS store ─────────────
-        // Fetch location codes for the target store (e.g. SS-LG, SSLG)
+        // ── Fetch target store location codes (e.g. "SS-LG", "SSLG") ─────────
         const locationCodes: string[] = [];
         if (locationId) {
             const loc = await prisma.location.findUnique({
@@ -1009,32 +998,67 @@ export class SalesHistoryUploadProcessor {
             }
         }
 
-        // EXC-SS-LG-0400 → must contain one of our location codes (SS-LG or SSLG)
-        const belongsToThisStore =
-            locationCodes.length === 0 ||
-            locationCodes.some((lc) => upperRef.includes(lc));
+        const candidateCodes = new Set<string>();
 
-        if (!belongsToThisStore) {
-            this.logger.warn(
-                `Skipping voucher "${cleanRef}" for order ${orderNumber} — belongs to a different store. ` +
-                `Expected location codes: [${locationCodes.join(', ')}]`,
+        // ── Detect reference format and build candidate codes ─────────────────
+        //
+        // Format A — Fiscal shorthand: "25-26-95" → EXC-{THIS_STORE}-0095
+        //   The column contains a season-sequence shorthand used at LG store.
+        //   Always resolves to THIS store's EXC voucher.
+        //
+        // Format B — Full EXC code: "EXC-SS-LG-0095" or "EXC-NDC-0381"
+        //   Used directly, but only if it belongs to this store (same location code).
+        //
+        // Anything else (GFT-, CRD-, plain text) = direct payment amount, skip.
+        const isFiscalShorthand = /^\d{2}-\d{2}-\d+$/.test(cleanRef);
+        const isFullExcCode = upperRef.startsWith('EXC-');
+
+        if (isFiscalShorthand) {
+            // "25-26-95" → EXC-SS-LG-0095 (THIS store only)
+            const parts = cleanRef.split('-').map((p) => p.trim()).filter(Boolean);
+            const seqStr = parts[parts.length - 1];
+            const seqNum = seqStr.replace(/^0+/, '') || seqStr;
+            const paddedSeq = seqNum.padStart(4, '0');
+            for (const lc of locationCodes) {
+                candidateCodes.add(`EXC-${lc}-${paddedSeq}`);
+                candidateCodes.add(`EXC-${lc}-${seqNum}`);
+            }
+            this.logger.debug(
+                `Fiscal shorthand "${cleanRef}" → candidates: ${Array.from(candidateCodes).join(', ')} (Order: ${orderNumber})`,
+            );
+
+        } else if (isFullExcCode) {
+            // Check that this EXC voucher belongs to THIS store
+            const belongsToThisStore =
+                locationCodes.length === 0 ||
+                locationCodes.some((lc) => upperRef.includes(lc));
+            if (!belongsToThisStore) {
+                this.logger.warn(
+                    `Skipping voucher "${cleanRef}" for order ${orderNumber} — belongs to a different store. ` +
+                    `Expected location codes: [${locationCodes.join(', ')}]`,
+                );
+                return;
+            }
+            candidateCodes.add(upperRef);
+            // Also try padded/unpadded numeric suffix variants
+            const excParts = cleanRef.split('-').map((p) => p.trim()).filter(Boolean);
+            const lastPart = excParts[excParts.length - 1] || '';
+            const seqNum = lastPart.replace(/^0+/, '') || lastPart;
+            const paddedSeq = seqNum.padStart(4, '0');
+            for (const lc of locationCodes) {
+                candidateCodes.add(`EXC-${lc}-${paddedSeq}`);
+                candidateCodes.add(`EXC-${lc}-${seqNum}`);
+            }
+
+        } else {
+            // GFT-, CRD-, plain text — direct payment amounts, no system voucher to redeem
+            this.logger.debug(
+                `Skipping ref "${cleanRef}" for order ${orderNumber} — not an EXC voucher (direct payment amount)`,
             );
             return;
         }
 
-        // ── Lookup: exact code match only, no description fuzzy search ────────
-        // Also try numeric-padded variants in case the ref is stored as "25-26-1" shorthand
-        const parts = cleanRef.split('-').map((p) => p.trim()).filter(Boolean);
-        const lastPart = parts[parts.length - 1] || cleanRef;
-        const docNoStr = lastPart.replace(/^0+/, '') || lastPart;
-        const paddedNum = docNoStr.padStart(4, '0');
-
-        const candidateCodes = new Set<string>();
-        candidateCodes.add(upperRef);
-        for (const lc of locationCodes) {
-            candidateCodes.add(`EXC-${lc}-${paddedNum}`);
-            candidateCodes.add(`EXC-${lc}-${docNoStr}`);
-        }
+        if (candidateCodes.size === 0) return;
 
         const voucher = await prisma.voucher.findFirst({
             where: {
