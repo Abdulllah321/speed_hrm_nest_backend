@@ -3677,6 +3677,41 @@ export class PayrollService {
       });
     }
 
+    // Check if employee has a CPR Tax record or assigned Car Amount (Car Perk Benefit 5%)
+    const monthStrPadded = String(monthNum).padStart(2, '0');
+    const targetTaxPeriod = `${yearNum}-${monthStrPadded}`;
+
+    const cprRecord = await this.prisma.cprTax.findFirst({
+      where: {
+        employeeId: employeeId,
+        OR: [
+          { taxPeriod: targetTaxPeriod },
+          { carAmount: { not: null } },
+        ],
+      },
+      orderBy: [
+        { taxPeriod: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+
+    let carAmountVal = 0;
+    let carBenefitVal = 0;
+
+    if (cprRecord && cprRecord.carAmount !== null && cprRecord.carAmount !== undefined) {
+      carAmountVal = Number(cprRecord.carAmount);
+      if (carAmountVal > 0) {
+        carBenefitVal = carAmountVal * 0.05;
+        annualTaxableIncome = annualTaxableIncome.add(new Decimal(carBenefitVal));
+        taxableComponents.push({
+          name: 'Car Perk Benefit (5%)',
+          amount: carBenefitVal,
+          isRecurring: true,
+          annualAmount: carBenefitVal,
+        });
+      }
+    }
+
     let taxableIncome = annualTaxableIncome;
     let totalRebateAmount = new Decimal(0);
     const rebateBreakup: any[] = [];
@@ -3745,11 +3780,26 @@ export class PayrollService {
       }
     }
 
+    // If CPR Tax has a confirmed/calculated monthly tax for this specific period, sync exact monthly tax
+    if (
+      cprRecord &&
+      cprRecord.taxPeriod === targetTaxPeriod &&
+      cprRecord.taxAmountMonthlyTax !== null &&
+      cprRecord.taxAmountMonthlyTax !== undefined
+    ) {
+      const cprMonthlyTax = Number(cprRecord.taxAmountMonthlyTax);
+      if (cprMonthlyTax >= 0) {
+        taxDeduction = new Decimal(cprMonthlyTax);
+      }
+    }
+
     const taxBreakup = {
       method: 'AnnualizedCumulative',
       annualGross: annualTaxableIncome.toNumber(),
       annualTaxableComponents: annualTaxableIncome.toNumber(),
       taxableComponents: taxableComponents,
+      carAmount: carAmountVal,
+      carBenefit: carBenefitVal,
       totalRebate: totalRebateAmount.toNumber(),
       taxableIncome: taxableIncome.toNumber(),
       taxSlab: taxSlabUsed,
@@ -3760,6 +3810,7 @@ export class PayrollService {
       remainingMonths: remainingMonths,
       rebateBreakup,
     };
+
 
     return { taxDeduction, taxBreakup };
   }
