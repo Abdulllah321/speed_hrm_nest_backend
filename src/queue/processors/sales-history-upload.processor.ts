@@ -301,10 +301,11 @@ export class SalesHistoryUploadProcessor {
             // Process in batches of 50 orders at a time
             const BATCH_SIZE = 50;
             const groups = Array.from(orderGroups.entries());
+            const locSequenceMap = new Map<string, { prefix: string; currentSeq: number }>();
 
             for (let i = 0; i < groups.length; i += BATCH_SIZE) {
                 const batch = groups.slice(i, i + BATCH_SIZE);
-                await this.processOrderBatch(batch, progress, uploadId, prisma, { posId, terminalId, locationId });
+                await this.processOrderBatch(batch, progress, uploadId, prisma, { posId, terminalId, locationId }, locSequenceMap);
 
                 // Yield to event loop
                 await new Promise((resolve) => setImmediate(resolve));
@@ -459,6 +460,7 @@ export class SalesHistoryUploadProcessor {
         uploadId: string,
         prisma: PrismaService,
         terminalCtx: { posId?: string; terminalId?: string; locationId?: string } = {},
+        locSequenceMap: Map<string, { prefix: string; currentSeq: number }> = new Map(),
     ): Promise<void> {
         // 1. Bulk item lookup by barCode & itemId
         const allBarCodes = [
@@ -525,11 +527,9 @@ export class SalesHistoryUploadProcessor {
         const docNumbers = batch.map(([docNum]) => docNum);
         const orConditions: any[] = [];
         for (const d of docNumbers) {
-            const dPadded = d.padStart(5, '0');
             orConditions.push({ orderNumber: { equals: d, mode: 'insensitive' } });
-            orConditions.push({ orderNumber: { endsWith: `-${dPadded}`, mode: 'insensitive' } });
-            orConditions.push({ orderNumber: { endsWith: `-${d}`, mode: 'insensitive' } });
-            orConditions.push({ notes: { contains: `Ref: ${d}`, mode: 'insensitive' } });
+            orConditions.push({ notes: { startsWith: `Ref: ${d} |`, mode: 'insensitive' } });
+            orConditions.push({ notes: { equals: `Ref: ${d}`, mode: 'insensitive' } });
         }
 
         const existingOrders = await prisma.salesOrder.findMany({
@@ -540,19 +540,20 @@ export class SalesHistoryUploadProcessor {
         const existingOrderByDocNum = new Map<string, { id: string; orderNumber: string }>();
         for (const order of existingOrders) {
             for (const docNum of docNumbers) {
-                const docPadded = docNum.padStart(5, '0');
+                const isExactRef = order.notes && (
+                    order.notes === `Ref: ${docNum}` ||
+                    order.notes.startsWith(`Ref: ${docNum} |`)
+                );
                 if (
                     order.orderNumber.toUpperCase() === docNum.toUpperCase() ||
-                    order.orderNumber.endsWith(`-${docPadded}`) ||
-                    order.orderNumber.endsWith(`-${docNum}`) ||
-                    (order.notes && order.notes.includes(`Ref: ${docNum}`))
+                    isExactRef
                 ) {
                     existingOrderByDocNum.set(docNum, { id: order.id, orderNumber: order.orderNumber });
                 }
             }
         }
 
-        // 4. Pre-fetch next sequential order numbers in memory for each location
+        // 4. Pre-fetch next sequential order numbers in memory for each location (persist across batches)
         const now = new Date();
         const year = now.getFullYear();
         const month = now.getMonth();
@@ -560,7 +561,6 @@ export class SalesHistoryUploadProcessor {
         const fySuffix = String(fiscalYearStartYear).slice(-2);
         const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
 
-        const locSequenceMap = new Map<string, { prefix: string; currentSeq: number }>();
         const distinctLocIds = new Set<string>();
         for (const [, rows] of batch) {
             const locId = resolveLocInMem(rows[0]?.data?.costCentre) || defaultLocationId;
@@ -568,30 +568,32 @@ export class SalesHistoryUploadProcessor {
         }
 
         for (const locId of distinctLocIds) {
-            const loc = allLocations.find((l) => l.id === locId);
-            let rawCode = loc?.shortCode?.trim() || loc?.name || 'LOC';
-            let cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'LOC';
-            const matchPrefix = `SI-${cleanCode}${fySuffix}-`;
+            if (!locSequenceMap.has(locId)) {
+                const loc = allLocations.find((l) => l.id === locId);
+                let rawCode = loc?.shortCode?.trim() || loc?.name || 'LOC';
+                let cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'LOC';
+                const matchPrefix = `SI-${cleanCode}${fySuffix}-`;
 
-            const lastOrder = await prisma.salesOrder.findFirst({
-                where: {
-                    locationId: locId,
-                    createdAt: { gte: fiscalYearStartDate },
-                    orderNumber: { startsWith: matchPrefix },
-                },
-                orderBy: { orderNumber: 'desc' },
-                select: { orderNumber: true },
-            });
+                const existingOrderNums = await prisma.salesOrder.findMany({
+                    where: {
+                        locationId: locId,
+                        createdAt: { gte: fiscalYearStartDate },
+                        orderNumber: { startsWith: matchPrefix },
+                    },
+                    select: { orderNumber: true },
+                });
 
-            let seq = 1;
-            if (lastOrder?.orderNumber) {
-                const parts = lastOrder.orderNumber.split('-');
-                const lastPart = parts[parts.length - 1];
-                if (/^\d+$/.test(lastPart)) {
-                    seq = parseInt(lastPart, 10) + 1;
+                let maxSeq = 0;
+                for (const o of existingOrderNums) {
+                    const parts = o.orderNumber.split('-');
+                    const lastPart = parts[parts.length - 1];
+                    if (/^\d+$/.test(lastPart)) {
+                        const parsed = parseInt(lastPart, 10);
+                        if (parsed > maxSeq) maxSeq = parsed;
+                    }
                 }
+                locSequenceMap.set(locId, { prefix: matchPrefix, currentSeq: maxSeq + 1 });
             }
-            locSequenceMap.set(locId, { prefix: matchPrefix, currentSeq: seq });
         }
 
         const generateOrderNumberInMem = (locId?: string, docNum?: string): string => {
@@ -777,7 +779,8 @@ export class SalesHistoryUploadProcessor {
                         where: {
                             OR: [
                                 { orderNumber: orderNumber },
-                                { notes: { contains: `Ref: ${documentNumber}` } },
+                                { notes: { equals: `Ref: ${documentNumber}` } },
+                                { notes: { startsWith: `Ref: ${documentNumber} |` } },
                             ],
                         },
                         select: { id: true, orderNumber: true },

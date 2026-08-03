@@ -208,36 +208,16 @@ export class PosSalesController {
     @Req() req: any,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
-    @Query('posId') posId?: string, // This could be Code or UUID from frontend filter
+    @Query('posId') posId?: string, // Explicit query parameter
+    @Query('locationId') locationId?: string, // Explicit query parameter
     @Query('status') status?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('search') search?: string,
   ) {
-    // Determine effective filtering context
-    let effectivePosId = posId; // The ID/Code to filter by
-    let effectiveLocationId: string | undefined = undefined;
-
-    // 1. Context from logged-in user
-    if (req.user?.isPosUser || req.user?.isTerminal) {
-      if (!effectivePosId)
-        effectivePosId = req.user.posId || req.user.terminalId;
-      effectiveLocationId = req.user.locationId;
-    }
-
-    // 2. Fallback to terminal cookie
-    if (!effectivePosId && req.cookies?.posTerminalToken) {
-      try {
-        const decoded: any = jwt.decode(req.cookies.posTerminalToken);
-        effectivePosId = decoded?.posId || decoded?.terminalId;
-        if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
-      } catch (e) {}
-    }
-
-    // 3. Fallback: any user with a locationId on their token (e.g. manager/admin scoped to a location)
-    if (!effectiveLocationId && req.user?.locationId) {
-      effectiveLocationId = req.user.locationId;
-    }
+    // Use explicit query parameters if provided, without forcing terminal cookie restrictions on history view
+    const effectivePosId = posId;
+    const effectiveLocationId = locationId;
 
     return this.posSalesService.listOrders(
       req.user,
