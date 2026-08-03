@@ -954,9 +954,13 @@ export class SalesHistoryUploadProcessor {
     }
 
     /**
-     * Finds and marks redeemed any voucher matching FKExchangeVoucherNumber
-     * or voucher reference during sales history upload.
-     * Strictly restricted to exchange vouchers (EXC-) and the target store location.
+     * Finds and marks redeemed any EXCHANGE voucher matching FKExchangeVoucherNumber.
+     *
+     * Rules:
+     *  - FKExchangeVoucherNumber IS the actual voucher code (e.g. "EXC-NDC-0381", "EXC-SS-LG-0400").
+     *  - Only EXC- prefixed vouchers are system voucher objects. GFT/CRD/Claim/Reward are
+     *    direct payment amounts — no system voucher record to redeem.
+     *  - Only redeem if the voucher belongs to THIS store (code contains our location code).
      */
     private async redeemVoucherIfAny(
         fkVoucherRef: string | undefined,
@@ -969,20 +973,29 @@ export class SalesHistoryUploadProcessor {
     ): Promise<void> {
         if (!fkVoucherRef || !fkVoucherRef.trim()) return;
 
-        const cleanRef = fkVoucherRef.trim();
+        // Strip leading apostrophe/spaces (Excel text-force artifact)
+        const cleanRef = fkVoucherRef.trim().replace(/^'/, '').trim();
+        if (!cleanRef) return;
 
-        // Extract last numeric portion if reference is e.g. "25-26-61" or "25-26-0061"
-        const parts = cleanRef.split('-').map((p) => p.trim()).filter(Boolean);
-        const lastPart = parts[parts.length - 1] || cleanRef;
-        const docNoStr = lastPart.replace(/^0+/, '') || lastPart;
-        const paddedNum = docNoStr.padStart(4, '0');
+        const upperRef = cleanRef.toUpperCase();
 
-        // Fetch target store location codes (e.g. SS-LG, SSLG)
+        // ── Rule 1: Only process EXC- type vouchers ──────────────────────────
+        // GiftVoucher, CreditVoucher, ClaimVoucher, RewardVoucher amounts are
+        // direct payment fields — no corresponding system voucher object to redeem.
+        if (!upperRef.startsWith('EXC-')) {
+            this.logger.debug(
+                `Skipping non-EXC voucher ref "${cleanRef}" for order ${orderNumber} (GFT/CRD/Claim/Reward = direct amount, not a system voucher)`,
+            );
+            return;
+        }
+
+        // ── Rule 2: Only redeem if voucher belongs to THIS store ─────────────
+        // Fetch location codes for the target store (e.g. SS-LG, SSLG)
         const locationCodes: string[] = [];
         if (locationId) {
             const loc = await prisma.location.findUnique({
                 where: { id: locationId },
-                select: { code: true, shortCode: true, name: true },
+                select: { code: true, shortCode: true },
             });
             if (loc) {
                 if (loc.shortCode) {
@@ -996,32 +1009,43 @@ export class SalesHistoryUploadProcessor {
             }
         }
 
-        // Strictly target exchange vouchers (EXC-) for the target location
-        const candidateCodes = new Set<string>();
-        candidateCodes.add(cleanRef.toUpperCase());
+        // EXC-SS-LG-0400 → must contain one of our location codes (SS-LG or SSLG)
+        const belongsToThisStore =
+            locationCodes.length === 0 ||
+            locationCodes.some((lc) => upperRef.includes(lc));
 
-        for (const locCode of locationCodes) {
-            candidateCodes.add(`EXC-${locCode}-${paddedNum}`);
-            candidateCodes.add(`EXC-${locCode}-${docNoStr}`);
+        if (!belongsToThisStore) {
+            this.logger.warn(
+                `Skipping voucher "${cleanRef}" for order ${orderNumber} — belongs to a different store. ` +
+                `Expected location codes: [${locationCodes.join(', ')}]`,
+            );
+            return;
         }
 
-        const orConditions: any[] = Array.from(candidateCodes).map((code) => ({
-            code: { equals: code, mode: 'insensitive' },
-        }));
+        // ── Lookup: exact code match only, no description fuzzy search ────────
+        // Also try numeric-padded variants in case the ref is stored as "25-26-1" shorthand
+        const parts = cleanRef.split('-').map((p) => p.trim()).filter(Boolean);
+        const lastPart = parts[parts.length - 1] || cleanRef;
+        const docNoStr = lastPart.replace(/^0+/, '') || lastPart;
+        const paddedNum = docNoStr.padStart(4, '0');
 
-        orConditions.push({ description: { contains: `Doc #${cleanRef}`, mode: 'insensitive' } });
-        orConditions.push({ description: { contains: `Doc #${docNoStr}`, mode: 'insensitive' } });
+        const candidateCodes = new Set<string>();
+        candidateCodes.add(upperRef);
+        for (const lc of locationCodes) {
+            candidateCodes.add(`EXC-${lc}-${paddedNum}`);
+            candidateCodes.add(`EXC-${lc}-${docNoStr}`);
+        }
 
         const voucher = await prisma.voucher.findFirst({
             where: {
                 isDeleted: false,
-                OR: orConditions,
+                code: { in: Array.from(candidateCodes), mode: 'insensitive' },
             },
         });
 
         if (!voucher) {
             this.logger.warn(
-                `No matching exchange voucher found for reference "${cleanRef}" (Tried codes: ${Array.from(candidateCodes).join(', ')}) (Order: ${orderNumber})`,
+                `No matching EXC voucher found for "${cleanRef}" (tried: ${Array.from(candidateCodes).join(', ')}) — Order: ${orderNumber}`,
             );
             return;
         }
@@ -1029,13 +1053,10 @@ export class SalesHistoryUploadProcessor {
         try {
             await prisma.voucher.update({
                 where: { id: voucher.id },
-                data: {
-                    isRedeemed: true,
-                    isActive: false,
-                },
+                data: { isRedeemed: true, isActive: false },
             });
 
-            // Remove any existing redemption record for this order to prevent unique constraint conflict on re-upload
+            // Delete existing redemption first to avoid unique constraint on re-upload
             await prisma.voucherRedemption.deleteMany({
                 where: { orderId: salesOrderId },
             });
