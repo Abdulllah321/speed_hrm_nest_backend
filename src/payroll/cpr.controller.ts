@@ -13,7 +13,7 @@ import { CprService } from './cpr.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
-import { CreateCprDto, UpdateCprDto } from './dto/cpr.dto';
+import { CreateCprDto, UpdateCprDto, PreviewCprDto, ConfirmBatchCprDto } from './dto/cpr.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -25,6 +25,28 @@ import {
 @Controller('api')
 export class CprController {
   constructor(private readonly service: CprService) {}
+
+  @Post('cpr-tax/preview')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Preview CPR Tax calculations' })
+  @ApiResponse({ status: 200, description: 'Returns CPR Tax calculation preview array' })
+  async preview(@Body() body: PreviewCprDto) {
+    const data = await this.service.preview(body);
+    return { status: true, data, message: 'CPR Tax preview calculated successfully' };
+  }
+
+  @Post('cpr-tax/confirm-batch')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.payroll.create')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Batch confirm and save CPR Tax records' })
+  @ApiResponse({ status: 201, description: 'CPR Tax records confirmed successfully' })
+  async confirmBatch(@Body() body: ConfirmBatchCprDto) {
+    const res = await this.service.confirmBatch(body);
+    return { status: true, data: res, message: res.message };
+  }
 
   @Post('cpr-tax')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -85,3 +107,4 @@ export class CprController {
     return { status: true, data, message: 'CPR Tax record deleted successfully' };
   }
 }
+
