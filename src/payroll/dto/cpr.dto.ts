@@ -235,3 +235,46 @@ export class UpdateCprDto {
   @IsOptional()
   paymentDate?: string;
 }
+
+export class PreviewCprDto {
+  @ApiProperty({ description: 'Month (e.g., 07)', example: '07' })
+  @IsString()
+  @IsNotEmpty()
+  month: string;
+
+  @ApiProperty({ description: 'Year (e.g., 2026)', example: '2026' })
+  @IsString()
+  @IsNotEmpty()
+  year: string;
+
+  @ApiProperty({ description: 'Department ID', required: false })
+  @IsString()
+  @IsOptional()
+  departmentId?: string;
+
+  @ApiProperty({ description: 'Sub Department ID', required: false })
+  @IsString()
+  @IsOptional()
+  subDepartmentId?: string;
+
+  @ApiProperty({ description: 'Location ID', required: false })
+  @IsString()
+  @IsOptional()
+  locationId?: string;
+
+  @ApiProperty({ description: 'Array of selected Employee IDs', required: false })
+  @IsOptional()
+  employeeIds?: string[];
+}
+
+export class ConfirmBatchCprDto {
+  @ApiProperty({ description: 'Tax Period (e.g. 2026-07)', example: '2026-07' })
+  @IsString()
+  @IsNotEmpty()
+  taxPeriod: string;
+
+  @ApiProperty({ description: 'Array of CPR Tax records to save' })
+  @IsNotEmpty()
+  records: CreateCprDto[];
+}
+
