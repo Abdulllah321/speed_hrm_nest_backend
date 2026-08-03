@@ -134,6 +134,17 @@ export class SalesHistoryBulkUploadController {
         return res.status(HttpStatus.OK).send(template);
     }
 
+    /**
+     * GET /api/pos-sales/bulk-upload/active
+     */
+    @Get('active')
+    @Permissions('pos.sales.history.import')
+    @ApiOperation({ summary: 'Get currently active sales history bulk upload job' })
+    async getActiveUpload(@GetUser('id') userId: string) {
+        const active = await this.bulkUploadService.getActiveUpload(userId);
+        return { status: true, data: active };
+    }
+
     // ── Param routes last ──────────────────────────────────────────────────
 
     /**

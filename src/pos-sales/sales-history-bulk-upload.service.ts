@@ -203,6 +203,19 @@ export class SalesHistoryBulkUploadService {
         });
     }
 
+    async getActiveUpload(userId: string) {
+        const active = await this.prisma.bulkUpload.findFirst({
+            where: {
+                uploadedBy: userId,
+                status: { in: ['validating', 'validated', 'pending', 'processing'] },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        if (!active) return null;
+        return this.getUploadStatus(active.id);
+    }
+
     generateErrorReport(errors: any[]): string {
         if (!errors || errors.length === 0) return 'No errors found';
         let csv = 'Row,DocumentNumber,BarCode,Reason\n';
