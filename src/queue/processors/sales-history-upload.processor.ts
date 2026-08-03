@@ -31,6 +31,42 @@ interface OrderGroup {
     rows: SalesHistoryParsedRecord[];
 }
 
+function parseDocumentDate(rawDate: any): Date | undefined {
+    if (!rawDate) return undefined;
+
+    // Handle Excel date serial numbers like 45839 (7/1/2025)
+    if (typeof rawDate === 'number' || (!isNaN(Number(rawDate)) && !String(rawDate).includes('/') && !String(rawDate).includes('-'))) {
+        const num = Number(rawDate);
+        if (num > 30000 && num < 70000) {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            return new Date(excelEpoch.getTime() + num * 86400000);
+        }
+    }
+
+    const str = String(rawDate).trim();
+    if (!str) return undefined;
+
+    // Handle M/D/YYYY or D/M/YYYY (e.g. 7/1/2025)
+    const parts = str.split(/[/.\-]/);
+    if (parts.length === 3) {
+        let p1 = parseInt(parts[0], 10);
+        let p2 = parseInt(parts[1], 10);
+        let p3 = parseInt(parts[2], 10);
+
+        if (p3 > 1900 && p3 < 2100) {
+            const date = new Date(Date.UTC(p3, p1 - 1, p2, 12, 0, 0));
+            if (!isNaN(date.getTime())) return date;
+        }
+        if (p1 > 1900 && p1 < 2100) {
+            const date = new Date(Date.UTC(p1, p2 - 1, p3, 12, 0, 0));
+            if (!isNaN(date.getTime())) return date;
+        }
+    }
+
+    const fallback = new Date(str);
+    return !isNaN(fallback.getTime()) ? fallback : undefined;
+}
+
 @Processor('sales-history-upload')
 export class SalesHistoryUploadProcessor {
     private readonly logger = new Logger(SalesHistoryUploadProcessor.name);
@@ -313,6 +349,39 @@ export class SalesHistoryUploadProcessor {
                 }
             }
 
+            // Detect missing sequence numbers from uploaded DocumentNumbers
+            const docNums = groups
+                .map(([docNum]) => docNum.replace(/[^0-9]/g, ''))
+                .filter(Boolean)
+                .map((numStr) => parseInt(numStr, 10))
+                .filter((n) => !isNaN(n));
+
+            if (docNums.length > 1) {
+                const minDoc = Math.min(...docNums);
+                const maxDoc = Math.max(...docNums);
+                const uploadedSet = new Set(docNums);
+                const missingDocs: number[] = [];
+
+                for (let i = minDoc; i <= maxDoc; i++) {
+                    if (!uploadedSet.has(i)) {
+                        missingDocs.push(i);
+                    }
+                }
+
+                if (missingDocs.length > 0) {
+                    this.logger.warn(
+                        `[SEQUENCE GAP DETECTED] Missing ${missingDocs.length} sequence numbers between #${minDoc} and #${maxDoc}: ${missingDocs.slice(0, 20).join(', ')}${missingDocs.length > 20 ? '...' : ''}`,
+                    );
+                    for (const missing of missingDocs) {
+                        progress.errors.push({
+                            row: 0,
+                            reason: `[SEQUENCE GAP] DocumentNumber #${missing} is missing between #${minDoc} and #${maxDoc} in uploaded file sequence.`,
+                            data: { documentNumber: String(missing), value: 'MISSING_IN_SEQUENCE' },
+                        });
+                    }
+                }
+            }
+
             await prisma.bulkUpload.update({
                 where: { id: uploadId },
                 data: {
@@ -320,6 +389,7 @@ export class SalesHistoryUploadProcessor {
                     processedRecords: progress.processedRecords,
                     successRecords: progress.successRecords,
                     failedRecords: progress.failedRecords,
+                    errors: progress.errors as any,
                     message: `Sales history import completed: ${progress.successRecords} orders created.`,
                     completedAt: new Date(),
                 },
@@ -453,26 +523,31 @@ export class SalesHistoryUploadProcessor {
 
         // 3. Pre-fetch existing orders for Override / Upsert support
         const docNumbers = batch.map(([docNum]) => docNum);
+        const orConditions: any[] = [];
+        for (const d of docNumbers) {
+            const dPadded = d.padStart(5, '0');
+            orConditions.push({ orderNumber: { equals: d, mode: 'insensitive' } });
+            orConditions.push({ orderNumber: { endsWith: `-${dPadded}`, mode: 'insensitive' } });
+            orConditions.push({ orderNumber: { endsWith: `-${d}`, mode: 'insensitive' } });
+            orConditions.push({ notes: { contains: `Ref: ${d}`, mode: 'insensitive' } });
+        }
+
         const existingOrders = await prisma.salesOrder.findMany({
-            where: {
-                OR: [
-                    { orderNumber: { in: docNumbers } },
-                    ...docNumbers.map((d) => ({ notes: { contains: `Ref: ${d}` } })),
-                ],
-            },
+            where: { OR: orConditions },
             select: { id: true, orderNumber: true, notes: true },
         });
 
         const existingOrderByDocNum = new Map<string, { id: string; orderNumber: string }>();
         for (const order of existingOrders) {
-            if (docNumbers.includes(order.orderNumber)) {
-                existingOrderByDocNum.set(order.orderNumber, { id: order.id, orderNumber: order.orderNumber });
-            }
-            if (order.notes) {
-                for (const docNum of docNumbers) {
-                    if (order.notes.includes(`Ref: ${docNum}`)) {
-                        existingOrderByDocNum.set(docNum, { id: order.id, orderNumber: order.orderNumber });
-                    }
+            for (const docNum of docNumbers) {
+                const docPadded = docNum.padStart(5, '0');
+                if (
+                    order.orderNumber.toUpperCase() === docNum.toUpperCase() ||
+                    order.orderNumber.endsWith(`-${docPadded}`) ||
+                    order.orderNumber.endsWith(`-${docNum}`) ||
+                    (order.notes && order.notes.includes(`Ref: ${docNum}`))
+                ) {
+                    existingOrderByDocNum.set(docNum, { id: order.id, orderNumber: order.orderNumber });
                 }
             }
         }
@@ -544,11 +619,7 @@ export class SalesHistoryUploadProcessor {
                     orderNumber = generateOrderNumberInMem(targetLocationId, documentNumber);
                 }
 
-                let createdAt: Date | undefined;
-                if (firstRow.documentDate) {
-                    const d = new Date(firstRow.documentDate);
-                    if (!isNaN(d.getTime())) createdAt = d;
-                }
+                const createdAt = parseDocumentDate(firstRow.documentDate);
 
                 const cashSale = firstRow.cashSale || 0;
                 const cardSale = firstRow.cardSale || 0;
@@ -702,42 +773,90 @@ export class SalesHistoryUploadProcessor {
                     });
                     this.logger.log(`Overrode existing order "${documentNumber}" (ID: ${salesOrderId})`);
                 } else {
-                    const salesOrder = await prisma.salesOrder.create({
-                        data: {
-                            orderNumber,
-                            posId: firstRow.posId || terminalCtx.posId || undefined,
-                            terminalId: terminalCtx.terminalId || undefined,
-                            locationId: targetLocationId || undefined,
-                            paymentMethod,
-                            paymentStatus,
-                            status: 'completed',
-                            subtotal,
-                            discountAmount: totalDiscount,
-                            taxAmount: totalTax,
-                            grandTotal,
-                            cashAmount: cashSale || undefined,
-                            cardAmount: cardSale || undefined,
-                            voucherAmount: voucherAmount || undefined,
-                            tenderType: paymentMethod,
-                            fbrInvoiceNumber: fbrInvoiceNumber || undefined,
-                            fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
-                            notes: notesParts.join(' | ') || undefined,
-                            createdAt: createdAt || undefined,
-                            items: {
-                                create: lineItems.map((i) => ({
-                                    itemId: i.itemId,
-                                    quantity: i.quantity,
-                                    unitPrice: i.unitPrice,
-                                    discountPercent: i.discountPercent,
-                                    discountAmount: i.discountAmount,
-                                    taxPercent: i.taxPercent,
-                                    taxAmount: i.taxAmount,
-                                    lineTotal: i.lineTotal,
-                                })),
-                            },
+                    const conflictOrder = await prisma.salesOrder.findFirst({
+                        where: {
+                            OR: [
+                                { orderNumber: orderNumber },
+                                { notes: { contains: `Ref: ${documentNumber}` } },
+                            ],
                         },
+                        select: { id: true, orderNumber: true },
                     });
-                    salesOrderId = salesOrder.id;
+
+                    if (conflictOrder) {
+                        salesOrderId = conflictOrder.id;
+                        await prisma.salesOrderItem.deleteMany({ where: { salesOrderId } });
+                        await prisma.salesOrder.update({
+                            where: { id: salesOrderId },
+                            data: {
+                                paymentMethod,
+                                paymentStatus,
+                                status: 'completed',
+                                subtotal,
+                                discountAmount: totalDiscount,
+                                taxAmount: totalTax,
+                                grandTotal,
+                                cashAmount: cashSale || undefined,
+                                cardAmount: cardSale || undefined,
+                                voucherAmount: voucherAmount || undefined,
+                                tenderType: paymentMethod,
+                                fbrInvoiceNumber: fbrInvoiceNumber || undefined,
+                                fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
+                                notes: notesParts.join(' | ') || undefined,
+                                createdAt: createdAt || undefined,
+                                items: {
+                                    create: lineItems.map((i) => ({
+                                        itemId: i.itemId,
+                                        quantity: i.quantity,
+                                        unitPrice: i.unitPrice,
+                                        discountPercent: i.discountPercent,
+                                        discountAmount: i.discountAmount,
+                                        taxPercent: i.taxPercent,
+                                        taxAmount: i.taxAmount,
+                                        lineTotal: i.lineTotal,
+                                    })),
+                                },
+                            },
+                        });
+                        this.logger.log(`Overrode existing order "${documentNumber}" via fallback resolution (ID: ${salesOrderId})`);
+                    } else {
+                        const salesOrder = await prisma.salesOrder.create({
+                            data: {
+                                orderNumber,
+                                posId: firstRow.posId || terminalCtx.posId || undefined,
+                                terminalId: terminalCtx.terminalId || undefined,
+                                locationId: targetLocationId || undefined,
+                                paymentMethod,
+                                paymentStatus,
+                                status: 'completed',
+                                subtotal,
+                                discountAmount: totalDiscount,
+                                taxAmount: totalTax,
+                                grandTotal,
+                                cashAmount: cashSale || undefined,
+                                cardAmount: cardSale || undefined,
+                                voucherAmount: voucherAmount || undefined,
+                                tenderType: paymentMethod,
+                                fbrInvoiceNumber: fbrInvoiceNumber || undefined,
+                                fbrStatus: fbrInvoiceNumber ? 'SYNCED' : 'PENDING',
+                                notes: notesParts.join(' | ') || undefined,
+                                createdAt: createdAt || undefined,
+                                items: {
+                                    create: lineItems.map((i) => ({
+                                        itemId: i.itemId,
+                                        quantity: i.quantity,
+                                        unitPrice: i.unitPrice,
+                                        discountPercent: i.discountPercent,
+                                        discountAmount: i.discountAmount,
+                                        taxPercent: i.taxPercent,
+                                        taxAmount: i.taxAmount,
+                                        lineTotal: i.lineTotal,
+                                    })),
+                                },
+                            },
+                        });
+                        salesOrderId = salesOrder.id;
+                    }
                 }
 
                 if (firstRow.fkExchangeVoucherNumber || voucherAmount > 0) {

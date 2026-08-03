@@ -216,6 +216,58 @@ export class SalesHistoryBulkUploadService {
         return this.getUploadStatus(active.id);
     }
 
+    async generateExcelErrorReport(errors: any[]): Promise<Buffer> {
+        const Workbook = (await import('exceljs')).Workbook;
+        const workbook = new Workbook();
+        const sheet = workbook.addWorksheet('Upload Errors & Gaps');
+
+        sheet.columns = [
+            { header: 'Row #', key: 'row', width: 10 },
+            { header: 'Category', key: 'category', width: 22 },
+            { header: 'Document Number', key: 'docNum', width: 20 },
+            { header: 'BarCode / Value', key: 'barCode', width: 22 },
+            { header: 'Error Description', key: 'reason', width: 65 },
+        ];
+
+        const headerRow = sheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' }, size: 11 };
+        headerRow.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: '1E293B' },
+        };
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        if (errors && errors.length > 0) {
+            for (const err of errors) {
+                const isGap = err.reason?.includes('[SEQUENCE GAP]');
+                const category = isGap ? 'SEQUENCE GAP' : 'DATA VALIDATION';
+                const docNum = String(err.data?.documentNumber || err.data?.docNum || '');
+                const barCode = String(err.data?.barCode || err.data?.value || '');
+
+                const row = sheet.addRow({
+                    row: err.row || 'N/A',
+                    category,
+                    docNum,
+                    barCode,
+                    reason: err.reason || 'Unknown error',
+                });
+
+                if (isGap) {
+                    row.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: 'FEF2F2' },
+                    };
+                    row.getCell(2).font = { bold: true, color: { argb: 'DC2626' } };
+                }
+            }
+        }
+
+        sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+        return (await workbook.xlsx.writeBuffer()) as Buffer;
+    }
+
     generateErrorReport(errors: any[]): string {
         if (!errors || errors.length === 0) return 'No errors found';
         let csv = 'Row,DocumentNumber,BarCode,Reason\n';
