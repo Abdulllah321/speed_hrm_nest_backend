@@ -1,0 +1,326 @@
+[
+  {
+    "id": "56e85f17-b7e7-4ad0-9da9-d0f3435b6fc4",
+    "name": "ADIDAS-JINNAH ICON MALL",
+    "code": "A10002",
+    "shortCode": "Adi JI"
+  },
+  {
+    "id": "bf4aab95-5b0e-4724-9f78-b543cefb4a7c",
+    "name": "ADIDAS-LUCKY ONE MALL",
+    "code": "A10001",
+    "shortCode": "Adi LOM"
+  },
+  {
+    "id": "37a87527-a35f-4d09-a1cd-9c65595243a2",
+    "name": "ADIDAS-MADISON SQUARE MALL",
+    "code": "A10003",
+    "shortCode": "Adi MS"
+  },
+  {
+    "id": "300905bc-774a-4adb-bb97-1a4125ba69bc",
+    "name": "AFTER SALES SERVICE",
+    "code": "C30002",
+    "shortCode": "A. S. S."
+  },
+  {
+    "id": "41da7b52-6bbd-44b7-bdcc-297c5d2114f4",
+    "name": "C&K-CENTAURUS MALL",
+    "code": "CK1006",
+    "shortCode": "C&K CM"
+  },
+  {
+    "id": "50223573-c024-4eea-a615-534b2bf311b2",
+    "name": "C&K-DOLMEN CLIFTON",
+    "code": "CK1001",
+    "shortCode": "C&K DMC"
+  },
+  {
+    "id": "2498af89-4907-411c-b9bb-835f9bb7aa70",
+    "name": "C&K-DOLMEN LAHORE",
+    "code": "CK1005",
+    "shortCode": "C&K DML"
+  },
+  {
+    "id": "96b4dc3f-a3e2-4db6-9193-d9aa84356514",
+    "name": "C&K-EMPORIUM MALL",
+    "code": "CK1003",
+    "shortCode": "C&K EMP"
+  },
+  {
+    "id": "576825b2-24ec-4758-9a8a-a85de127c33e",
+    "name": "C&K-LUCKY ONE MALL",
+    "code": "CK1002",
+    "shortCode": "C&K LM"
+  },
+  {
+    "id": "af3762e4-0b1f-47ef-b0fa-498e85f1961e",
+    "name": "C&K-PACKAGES MALL",
+    "code": "CK1004",
+    "shortCode": "C&K PM"
+  },
+  {
+    "id": "48359a47-c236-45c4-ac53-8a531bd56016",
+    "name": "COMPANY",
+    "code": "C00001",
+    "shortCode": "Company"
+  },
+  {
+    "id": "289dc18b-e24b-4e66-ab91-a68c238e4fab",
+    "name": "CORPORATE OFFICE-FASHION BRANDS",
+    "code": "C10004",
+    "shortCode": "C.O. Fashion Brand"
+  },
+  {
+    "id": "84bdcf9f-afc6-4c43-b853-59bdafd67c74",
+    "name": "CORPORATE OFFICE-PEDRO ONLINE",
+    "code": "C10005",
+    "shortCode": "C.O. Pedro Online"
+  },
+  {
+    "id": "647539e2-0812-4279-87a1-d954b7df7e4d",
+    "name": "CORPORATE OFFICE-SALES ADMINISTRATION",
+    "code": "C10001",
+    "shortCode": "C.O.-Sales Administration"
+  },
+  {
+    "id": "21cc2d32-e51d-4798-8b33-5f100cbb2ccb",
+    "name": "CORPORATE OFFICE-SPEED SPORTS ONLINE",
+    "code": "C10003",
+    "shortCode": "C.O.-Speed Sports Online"
+  },
+  {
+    "id": "00ae63f3-dc2c-41b5-a4c7-79c9ab21617f",
+    "name": "CORPORATE OFFICE-SPORTS BRANDS",
+    "code": "C10002",
+    "shortCode": "C.O.-Sports Brands"
+  },
+  {
+    "id": "cf0f560d-71bc-4c69-a74a-d19b024df741",
+    "name": "LOGISTIC AREA",
+    "code": "C40001",
+    "shortCode": "WH"
+  },
+  {
+    "id": "aee99a49-bd5d-4ae5-ae93-56c9342bcb0b",
+    "name": "NIKE-CENTAURUS MALL",
+    "code": "N10004",
+    "shortCode": "NCM"
+  },
+  {
+    "id": "d9a7a02d-7aab-4c3b-86a2-79698b4be074",
+    "name": "NIKE-DOLMEN CLIFTON",
+    "code": "N10001",
+    "shortCode": "NDC"
+  },
+  {
+    "id": "12d7213e-a5db-428e-9c61-07f296696c06",
+    "name": "NIKE-PACKAGES MALL",
+    "code": "N10003",
+    "shortCode": "NPM"
+  },
+  {
+    "id": "51452f5e-7d03-42fa-8a7c-77aea685018e",
+    "name": "NIKE-SAFA GOLD MALL",
+    "code": "N10005",
+    "shortCode": "NSGM"
+  },
+  {
+    "id": "7c5aca58-0ac9-4a7a-973e-8fab7dbc5f2e",
+    "name": "NIKE-XINHUA MALL",
+    "code": "N10002",
+    "shortCode": "NXM"
+  },
+  {
+    "id": "e34e055b-bd9e-4842-823e-5df307ff65be",
+    "name": "PEDRO-DOLMEN CLIFTON",
+    "code": "P10001",
+    "shortCode": "P DMC"
+  },
+  {
+    "id": "dc6a9c38-4a17-45cd-8f6f-2c46b9c94b9b",
+    "name": "PEDRO-DOLMEN LAHORE",
+    "code": "P10003",
+    "shortCode": "P DML"
+  },
+  {
+    "id": "1c29a9ce-bb15-46e2-a3bc-04a2474122f3",
+    "name": "PEDRO-ONLINE",
+    "code": "P10004",
+    "shortCode": "P ONLINE"
+  },
+  {
+    "id": "1ca03382-87cb-4ea1-a4f2-0b29d3f501cf",
+    "name": "PEDRO-PACKAGES MALL",
+    "code": "P10002",
+    "shortCode": "P PM"
+  },
+  {
+    "id": "4beac3a2-4914-428b-a60c-e45a56166e08",
+    "name": "POINT OF SALES - CORPORATE",
+    "code": "W10012",
+    "shortCode": "POS CO"
+  },
+  {
+    "id": "4825cd19-a27c-4a68-8b33-6c1dac3596a4",
+    "name": "PRODUCT LINE MANAGEMENT",
+    "code": "C20001",
+    "shortCode": "C.O.-PLM"
+  },
+  {
+    "id": "74ba00c9-7eb4-4226-bab4-b542ddb949fb",
+    "name": "PUMA-DOLMEN LAHORE",
+    "code": "PU1001",
+    "shortCode": "Puma DML"
+  },
+  {
+    "id": "392bcc52-9104-45f1-8ed7-fe3563aea162",
+    "name": "PUMA-UNITED MALL MULTAN",
+    "code": "PU1002",
+    "shortCode": "Puma UMM"
+  },
+  {
+    "id": "3844808a-b3d9-47a5-bb52-80f01bfd7e03",
+    "name": "SPEED SPORTS-DOLMEN CLIFTON",
+    "code": "SS1002",
+    "shortCode": "SS-DMC"
+  },
+  {
+    "id": "1eb4fd45-5db9-4906-89fb-aaabfc278837",
+    "name": "SPEED SPORTS-DOLMEN LAHORE",
+    "code": "SS1006",
+    "shortCode": "SS-DML"
+  },
+  {
+    "id": "6300a54b-4f87-4478-8724-dde62e4d04cb",
+    "name": "SPEED SPORTS-EMPORIUM MALL",
+    "code": "SS1005",
+    "shortCode": "SS-EM"
+  },
+  {
+    "id": "3c74ae47-8e35-40d7-8ecb-0bb490e7d0bb",
+    "name": "SPEED SPORTS-FOUNTAIN AVENUE",
+    "code": "SS1004",
+    "shortCode": "SS-FA"
+  },
+  {
+    "id": "d48b8b9f-da30-4601-b118-2f84e2d59ba4",
+    "name": "SPEED SPORTS-GIGA MALL",
+    "code": "SS1008",
+    "shortCode": "SS WTC"
+  },
+  {
+    "id": "47df0684-4ef2-4000-bea5-10359575952b",
+    "name": "SPEED SPORTS-LUCKY ONE MALL",
+    "code": "SS1001",
+    "shortCode": "SS-LM"
+  },
+  {
+    "id": "fa69f96c-dafe-49f5-91bb-a1ccd9e1bf4b",
+    "name": "SPEED SPORTS-LYALLPUR GALLERIA",
+    "code": "SS1010",
+    "shortCode": "SS-LG"
+  },
+  {
+    "id": "6142d71e-d5b8-4223-a388-42057a461b27",
+    "name": "SPEED SPORTS-MALL OF MULTAN",
+    "code": "SS1009",
+    "shortCode": "SS-MM"
+  },
+  {
+    "id": "723e9d56-a43f-4037-a59f-c847563b2b43",
+    "name": "SPEED SPORTS-ONLINE",
+    "code": "SS1011",
+    "shortCode": "SS-ONLINE"
+  },
+  {
+    "id": "e05e7527-6e25-427d-a40a-77b51a5eefc9",
+    "name": "SPEED SPORTS-SAFA GOLD MALL",
+    "code": "SS1007",
+    "shortCode": "SS SGM"
+  },
+  {
+    "id": "9c1fdb9f-3a7f-41e4-92a2-0d9b48849473",
+    "name": "SPEED SPORTS-THE FORUM",
+    "code": "SS1012",
+    "shortCode": "SS-TF"
+  },
+  {
+    "id": "56425fb2-b621-4ad2-9cf1-87d9f7505600",
+    "name": "SPEED SPORTS-ZAMZAM ARCADE",
+    "code": "SS1003",
+    "shortCode": "SS-ZZA"
+  },
+  {
+    "id": "b5d16c5f-f7d6-475e-bd48-b20a25d57b7e",
+    "name": "SPL POS-IWC DOLMEN LAHORE",
+    "code": "W10009",
+    "shortCode": "IWC DML"
+  },
+  {
+    "id": "fbf053e1-8f06-4ea6-9165-462868c3f341",
+    "name": "SPL POS-IWC DOLMEN TARIQ ROAD",
+    "code": "W10007",
+    "shortCode": "IWC DMTR"
+  },
+  {
+    "id": "b99902fb-1baa-4b29-b111-b35fd529bc27",
+    "name": "SPL POS-IWC KINGSONG MALL",
+    "code": "W10008",
+    "shortCode": "Kingson"
+  },
+  {
+    "id": "b2157e18-627f-4f8b-a29c-51083695f74e",
+    "name": "SPL POS-IWC LUCKY ONE",
+    "code": "W10006",
+    "shortCode": "IWC LM"
+  },
+  {
+    "id": "48816861-2c68-4e69-8ed8-b3c28c212842",
+    "name": "SPL POS-IWC RAWALPINDI",
+    "code": "W10010",
+    "shortCode": "IWC RWP"
+  },
+  {
+    "id": "d111a967-9ea2-478c-a624-441897b9a580",
+    "name": "SPL POS-IWC SIALKOT",
+    "code": "W10011",
+    "shortCode": "IWC SIALKOT"
+  },
+  {
+    "id": "56acda2e-1cc2-4de3-8b77-7a33fdacbb1a",
+    "name": "WATCH DIVISION",
+    "code": "C30001",
+    "shortCode": "C.O.-Watches"
+  },
+  {
+    "id": "b5c57442-52a4-41cf-b2e5-4be14bb8cff2",
+    "name": "WATCH OUTLET-DOLMEN CLIFTON",
+    "code": "W10001",
+    "shortCode": "DMC BTQ"
+  },
+  {
+    "id": "a4f94670-2962-489a-b15a-6faa21072faf",
+    "name": "WATCH OUTLET-EMPORIUM MALL",
+    "code": "W10002",
+    "shortCode": "EM BTQ"
+  },
+  {
+    "id": "adca880f-85c6-4877-ad7b-5453065f5e1e",
+    "name": "WATCH OUTLET-GIGA MALL",
+    "code": "W10005",
+    "shortCode": "WTC BTQ"
+  },
+  {
+    "id": "ac3d928d-a0e6-445a-b0bd-04bbe7f29729",
+    "name": "WATCH OUTLET-PACKAGES MALL",
+    "code": "W10003",
+    "shortCode": "PM BTQ"
+  },
+  {
+    "id": "8e5c9542-fb38-4905-afc7-a0b2199abc8f",
+    "name": "WATCH OUTLET-SAFA GOLD MALL",
+    "code": "W10004",
+    "shortCode": "SGM BTQ"
+  }
+]

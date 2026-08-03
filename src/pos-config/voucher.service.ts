@@ -366,13 +366,61 @@ export class VoucherService {
         customerId?: string,
     ) {
         try {
-            const voucher = await this.prisma.voucher.findFirst({
-                where: { code: code.toUpperCase(), isDeleted: false },
+            const cleanCode = code.trim().toUpperCase();
+            let voucher = await this.prisma.voucher.findFirst({
+                where: { code: cleanCode, isDeleted: false },
                 include: {
                     locations: true,
                     redemptions: { select: { amountUsed: true } },
                 },
             });
+
+            // Smart fallback for legacy document numbers (e.g., cashier typing "1", "2", "0001" at POS)
+            if (!voucher && locationId) {
+                const loc = await this.prisma.location.findUnique({
+                    where: { id: locationId },
+                    select: { code: true, shortCode: true, name: true },
+                });
+                const prefixes = [loc?.shortCode, loc?.code].filter((p): p is string => !!p);
+                const candidates: string[] = [];
+                for (const p of prefixes) {
+                    const upperP = p.toUpperCase();
+                    candidates.push(
+                        `GFT-${upperP}-${cleanCode.padStart(4, '0')}`,
+                        `GFT-${upperP}-${cleanCode}`,
+                        `CRD-${upperP}-${cleanCode.padStart(4, '0')}`,
+                        `CRD-${upperP}-${cleanCode}`,
+                        `EXC-${upperP}-${cleanCode.padStart(4, '0')}`,
+                        `EXC-${upperP}-${cleanCode}`,
+                        `${upperP}-${cleanCode.padStart(4, '0')}`,
+                        `${upperP}-${cleanCode}`,
+                        `GFT-${cleanCode.padStart(4, '0')}`,
+                        `CRD-${cleanCode.padStart(4, '0')}`,
+                        `GFT-${cleanCode}`,
+                        `CRD-${cleanCode}`,
+                    );
+                }
+                candidates.push(cleanCode);
+
+                voucher = await this.prisma.voucher.findFirst({
+                    where: {
+                        isDeleted: false,
+                        OR: [
+                            { code: { in: candidates, mode: 'insensitive' } },
+                            {
+                                AND: [
+                                    { issuedByLocationId: locationId },
+                                    { description: { contains: `Doc #${cleanCode}`, mode: 'insensitive' } },
+                                ],
+                            },
+                        ],
+                    },
+                    include: {
+                        locations: true,
+                        redemptions: { select: { amountUsed: true } },
+                    },
+                });
+            }
 
             if (!voucher) return { status: false, message: 'Voucher not found' };
             if (voucher.isRedeemed) return { status: false, message: 'Voucher has already been redeemed' };
