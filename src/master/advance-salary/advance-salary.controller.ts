@@ -16,6 +16,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import {
   CreateAdvanceSalaryDto,
+  BulkCreateAdvanceSalaryDto,
   UpdateAdvanceSalaryDto,
   ApproveAdvanceSalaryDto,
 } from './dto/create-advance-salary.dto';
@@ -79,6 +80,19 @@ export class AdvanceSalaryController {
   @ApiOperation({ summary: 'Create advance salary request' })
   async create(@Body() body: CreateAdvanceSalaryDto, @Req() req) {
     return this.service.create(body, {
+      userId: req.user?.userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('advance-salaries/bulk')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.advance-salary.create')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk create advance salary requests (auto-approved)' })
+  async bulkCreate(@Body() body: BulkCreateAdvanceSalaryDto, @Req() req) {
+    return this.service.bulkCreate(body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
