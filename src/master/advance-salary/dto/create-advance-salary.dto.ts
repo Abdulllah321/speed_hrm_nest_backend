@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsDateString,
   IsArray,
+  IsBoolean,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -125,3 +126,60 @@ export class ApproveAdvanceSalaryDto {
   @IsString()
   rejectionReason?: string;
 }
+
+export class BulkCreateAdvanceSalaryItemDto {
+  @ApiProperty({ example: 'emp-uuid' })
+  @IsNotEmpty()
+  @IsString()
+  employeeId: string;
+
+  @ApiProperty({ example: 5000 })
+  @IsNotEmpty()
+  @IsNumber()
+  amount: number;
+
+  @ApiProperty({ example: '2026-08-15' })
+  @IsNotEmpty()
+  @IsDateString()
+  neededOn: string;
+
+  @ApiPropertyOptional({ example: '08' })
+  @IsOptional()
+  @IsString()
+  deductionMonth?: string;
+
+  @ApiPropertyOptional({ example: '2026' })
+  @IsOptional()
+  @IsString()
+  deductionYear?: string;
+
+  @ApiProperty({ example: '2026-08' })
+  @IsNotEmpty()
+  @IsString()
+  deductionMonthYear: string;
+
+  @ApiProperty({ example: 'Medical emergency' })
+  @IsNotEmpty()
+  @IsString()
+  reason: string;
+
+  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @IsOptional()
+  @IsString()
+  disbursementType?: string;
+}
+
+export class BulkCreateAdvanceSalaryDto {
+  @ApiProperty({ type: [BulkCreateAdvanceSalaryItemDto] })
+  @IsNotEmpty()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkCreateAdvanceSalaryItemDto)
+  advanceSalaries: BulkCreateAdvanceSalaryItemDto[];
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isApproved?: boolean;
+}
+
