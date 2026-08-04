@@ -532,4 +532,84 @@ export class EOBIService {
       };
     }
   }
+
+  async recalculateEOBIContributions(month?: string, year?: string) {
+    try {
+      this.logger.log(`Recalculating EOBI contributions by employee region...`);
+      const where: any = {};
+      if (month) where.month = month;
+      if (year) where.year = year;
+
+      const contributions = await this.prisma.eOBIContribution.findMany({
+        where,
+        include: {
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+              eobiRegion: true,
+            },
+          },
+        },
+      });
+
+      let updatedCount = 0;
+
+      for (const contrib of contributions) {
+        if (!contrib.employee) continue;
+
+        const region = contrib.employee.eobiRegion || 'Punjab';
+
+        let eobiRecord = await this.prisma.eOBI.findFirst({
+          where: {
+            region: { equals: region, mode: 'insensitive' },
+            status: 'active',
+            isDeleted: false,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!eobiRecord) {
+          eobiRecord = await this.prisma.eOBI.findFirst({
+            where: {
+              region: region,
+              status: 'active',
+              isDeleted: false,
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
+
+        if (eobiRecord) {
+          const empContrib = new Decimal(eobiRecord.employeeContribution);
+          const emprContrib = new Decimal(eobiRecord.employerContribution);
+          const totContrib = empContrib.add(emprContrib);
+
+          await this.prisma.eOBIContribution.update({
+            where: { id: contrib.id },
+            data: {
+              employeeContribution: empContrib,
+              employerContribution: emprContrib,
+              totalContribution: totContrib,
+            },
+          });
+          updatedCount++;
+        }
+      }
+
+      return {
+        status: true,
+        message: `Successfully recalculated EOBI rates according to employee regions for ${updatedCount} contribution record(s).`,
+        updatedCount,
+      };
+    } catch (error) {
+      this.logger.error('Error recalculating EOBI contributions:', error);
+      return {
+        status: false,
+        message: error instanceof Error ? error.message : 'Failed to recalculate EOBI contributions',
+      };
+    }
+  }
 }
+
