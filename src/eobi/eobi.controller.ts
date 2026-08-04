@@ -98,4 +98,18 @@ export class EOBIController {
   ) {
     return this.eobiService.approveEOBIWithdrawal(id, approvedById);
   }
+
+  @Post('recalculate-contributions')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('hr.eobi.update')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Recalculate EOBI contributions based on employee profiles' })
+  @ApiResponse({ status: 200, description: 'EOBI contributions recalculated' })
+  async recalculateEOBIContributions(
+    @Body('month') month?: string,
+    @Body('year') year?: string,
+  ) {
+    return this.eobiService.recalculateEOBIContributions(month, year);
+  }
 }
+
