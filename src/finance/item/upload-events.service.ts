@@ -23,9 +23,9 @@ export class UploadEventsService {
             map((event: UploadEvent) => ({ data: event }) as MessageEvent)
         );
 
-        // Heartbeat every 20s — prevents Nginx/proxy from closing idle SSE connections
-        // during long silent phases (e.g. master data warm-up, large file parsing)
-        const heartbeat$ = timer(15000, 20000).pipe(
+        // Heartbeat every 10s — keeps SSE connections 100% alive through Nginx, Next.js proxy,
+        // and browser tab throttling during long parsing/validation phases (e.g. 23k row files)
+        const heartbeat$ = timer(5000, 10000).pipe(
             map(() => ({ data: { type: 'heartbeat', uploadId } }) as MessageEvent)
         );
 
