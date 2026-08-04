@@ -530,6 +530,8 @@ export class SalesHistoryUploadProcessor {
         };
 
         // 3. Pre-fetch existing orders for Override / Upsert support
+        // IMPORTANT: scope by defaultLocationId so DocumentNumber collisions across stores
+        // (e.g. LG doc#1329 vs LOM doc#1329) never override each other.
         const docNumbers = batch.map(([docNum]) => docNum);
         const orConditions: any[] = [];
         for (const d of docNumbers) {
@@ -539,7 +541,11 @@ export class SalesHistoryUploadProcessor {
         }
 
         const existingOrders = await prisma.salesOrder.findMany({
-            where: { OR: orConditions },
+            where: {
+                // Only match orders belonging to THIS upload's location
+                locationId: defaultLocationId || undefined,
+                OR: orConditions,
+            },
             select: { id: true, orderNumber: true, notes: true },
         });
 
@@ -785,6 +791,8 @@ export class SalesHistoryUploadProcessor {
                 } else {
                     const conflictOrder = await prisma.salesOrder.findFirst({
                         where: {
+                            // Scope to THIS store's location to avoid cross-store DocumentNumber collisions
+                            locationId: targetLocationId || undefined,
                             OR: [
                                 { orderNumber: orderNumber },
                                 { notes: { equals: `Ref: ${documentNumber}` } },
