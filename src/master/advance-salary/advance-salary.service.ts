@@ -5,6 +5,7 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import {
   CreateAdvanceSalaryDto,
+  BulkCreateAdvanceSalaryDto,
   UpdateAdvanceSalaryDto,
   ApproveAdvanceSalaryDto,
 } from './dto/create-advance-salary.dto';
@@ -561,6 +562,104 @@ export class AdvanceSalaryService {
           error instanceof Error
             ? error.message
             : 'Failed to create advance salary',
+      };
+    }
+  }
+
+  async bulkCreate(
+    body: BulkCreateAdvanceSalaryDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      if (!body.advanceSalaries || body.advanceSalaries.length === 0) {
+        return {
+          status: false,
+          message: 'At least one advance salary item is required',
+        };
+      }
+
+      const employeeIds = Array.from(new Set(body.advanceSalaries.map((a) => a.employeeId)));
+      const employees = await this.prisma.employee.findMany({
+        where: { id: { in: employeeIds }, status: 'active' },
+        select: { id: true, employeeId: true, employeeName: true, userId: true },
+      });
+
+      if (employees.length !== employeeIds.length) {
+        return { status: false, message: 'One or more employees were not found' };
+      }
+
+      const now = new Date();
+      const shouldApprove = body.isApproved !== false;
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const createdList: any[] = [];
+
+        for (const item of body.advanceSalaries) {
+          const neededOnDate = new Date(item.neededOn);
+          let deductionMonth = item.deductionMonth;
+          let deductionYear = item.deductionYear;
+
+          if ((!deductionMonth || !deductionYear) && item.deductionMonthYear) {
+            const parts = item.deductionMonthYear.split('-');
+            if (parts.length === 2) {
+              deductionYear = parts[0];
+              deductionMonth = parts[1];
+            }
+          }
+
+          const created = await tx.advanceSalary.create({
+            data: {
+              employeeId: item.employeeId,
+              amount: item.amount,
+              neededOn: neededOnDate,
+              deductionMonth: deductionMonth || '',
+              deductionYear: deductionYear || '',
+              deductionMonthYear: item.deductionMonthYear,
+              reason: item.reason,
+              disbursementType: item.disbursementType || 'with_payroll',
+              approvalStatus: shouldApprove ? 'approved' : 'pending',
+              status: shouldApprove ? 'active' : 'pending',
+              approval1Status: shouldApprove ? 'auto-approved' : null,
+              approval1Date: shouldApprove ? now : null,
+              approval1: shouldApprove ? ctx.userId : null,
+              approvedById: shouldApprove ? ctx.userId : null,
+              approvedAt: shouldApprove ? now : null,
+              createdById: ctx.userId,
+            },
+          });
+          createdList.push(created);
+        }
+
+        return createdList;
+      });
+
+      if (result.length > 0 && ctx.userId) {
+        await this.activityLogs.log({
+          userId: ctx.userId,
+          action: 'create',
+          module: 'advance-salary',
+          entity: 'AdvanceSalary',
+          entityId: result[0].id,
+          description: `Bulk uploaded ${result.length} advance salary request(s) with approved status`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        });
+      }
+
+      return {
+        status: true,
+        data: result,
+        message: `Successfully uploaded and approved ${result.length} advance salary request(s)`,
+      };
+    } catch (error) {
+      console.error('Error in bulk create advance salary:', error);
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to bulk create advance salary',
       };
     }
   }
