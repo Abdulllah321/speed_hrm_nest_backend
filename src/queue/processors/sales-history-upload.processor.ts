@@ -187,16 +187,21 @@ export class SalesHistoryUploadProcessor {
                         validationBatch = [];
 
                         const now = Date.now();
-                        if (now - lastEmitTime > 2000) {
+                        if (now - lastEmitTime > 1000) {
                             lastEmitTime = now;
-                            await job.progress(10);
+                            const estProgress = Math.min(99, Math.round((totalRecordsCount / (totalRecordsCount + 3000)) * 100));
+                            await job.progress(estProgress);
                             this.eventsService.emit({
                                 uploadId,
                                 type: 'progress',
                                 data: {
-                                    progress: 10,
+                                    progress: estProgress,
                                     status: 'validating',
-                                    message: `Validating: ${totalRecordsCount} rows scanned...`,
+                                    totalRecords: totalRecordsCount,
+                                    processedRecords: totalRecordsCount,
+                                    successRecords: successRecordsCount,
+                                    failedRecords: allValidationErrors.length,
+                                    message: `Validating: ${totalRecordsCount.toLocaleString()} rows scanned (${allValidationErrors.length} invalid)...`,
                                 },
                             });
                         }
@@ -235,6 +240,23 @@ export class SalesHistoryUploadProcessor {
                 });
 
                 await job.progress(100);
+
+                // Broadcast final validation progress update to UI
+                this.eventsService.emit({
+                    uploadId,
+                    type: 'progress',
+                    data: {
+                        status: 'validated',
+                        progress: 100,
+                        totalRecords: totalRecordsCount,
+                        processedRecords: totalRecordsCount,
+                        successRecords: successRecordsCount,
+                        failedRecords: allValidationErrors.length,
+                        errors: allValidationErrors,
+                        message: `Validation complete: ${successRecordsCount} valid, ${allValidationErrors.length} invalid.`,
+                    },
+                });
+
                 this.eventsService.emit({
                     uploadId,
                     type: 'completed',
