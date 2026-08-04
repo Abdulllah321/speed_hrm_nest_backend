@@ -68,6 +68,7 @@ export class PayrollService {
           socialSecurityInstitutionId: true,
           providentFund: true,
           eobi: true,
+          eobiRegion: true,
           status: true,
           joiningDate: true,
           lastExitDate: true,
@@ -2055,14 +2056,25 @@ export class PayrollService {
         const employeeRegion = (employee as any).eobiRegion || 'Punjab';
 
         // Fetch EOBI record for the region (continuous)
-        const eobiRecord = await this.prisma.eOBI.findFirst({
+        let eobiRecord = await this.prisma.eOBI.findFirst({
           where: {
-            region: employeeRegion,
+            region: { equals: employeeRegion, mode: 'insensitive' },
             status: 'active',
             isDeleted: false,
           },
           orderBy: { createdAt: 'desc' },
         });
+
+        if (!eobiRecord) {
+          eobiRecord = await this.prisma.eOBI.findFirst({
+            where: {
+              region: employeeRegion,
+              status: 'active',
+              isDeleted: false,
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
 
         if (eobiRecord) {
           // Use employeeContribution for calculation (NOT deducted from salary)
@@ -4105,6 +4117,7 @@ export class PayrollService {
           id: true,
           employeeId: true,
           employeeName: true,
+          eobiRegion: true,
         },
       });
 
@@ -4123,29 +4136,20 @@ export class PayrollService {
           continue;
         }
 
-        // Get EOBI deduction from payroll detail (employee contribution)
-        const employeeContribution = new Decimal(
-          payrollDetail.eobiDeduction || 0,
-        );
+        const employeeRegion = (employee as any).eobiRegion || 'Punjab';
 
-        // Fetch employer contribution from Master EOBI table
-        let employerContribution = new Decimal(0);
-        
-        try {
-          // Format yearMonth to match Master EOBI table
-          const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December',
-          ];
-          const monthIndex = parseInt(month, 10) - 1;
-          const monthName = monthNames[monthIndex];
-          const yearMonth = `${monthName} ${year}`;
-          const yearMonthAlt = `${year}-${month.padStart(2, '0')}`;
+        // Fetch EOBI record for employer & employee contribution based on region
+        let eobiRecord = await this.prisma.eOBI.findFirst({
+          where: {
+            region: { equals: employeeRegion, mode: 'insensitive' },
+            status: 'active',
+            isDeleted: false,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
 
-          const employeeRegion = (employee as any).eobiRegion || 'Punjab';
-
-          // Fetch EOBI record for employer contribution and region (continuous)
-          const eobiRecord = await this.prisma.eOBI.findFirst({
+        if (!eobiRecord) {
+          eobiRecord = await this.prisma.eOBI.findFirst({
             where: {
               region: employeeRegion,
               status: 'active',
@@ -4153,18 +4157,14 @@ export class PayrollService {
             },
             orderBy: { createdAt: 'desc' },
           });
+        }
 
-          if (eobiRecord) {
-            employerContribution = new Decimal(eobiRecord.employerContribution);
-          } else {
-            this.logger.warn(
-              `No EOBI record found for ${yearMonth}, using 0 for employer contribution`,
-            );
-          }
-        } catch (error) {
-          this.logger.error(
-            `Error fetching employer contribution for EOBI: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          );
+        let employeeContribution = new Decimal(payrollDetail.eobiDeduction || 0);
+        let employerContribution = new Decimal(0);
+
+        if (eobiRecord) {
+          employeeContribution = new Decimal(eobiRecord.employeeContribution);
+          employerContribution = new Decimal(eobiRecord.employerContribution);
         }
 
         // Only add contribution if there's an amount
