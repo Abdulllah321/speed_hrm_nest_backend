@@ -5176,6 +5176,8 @@ export class PayrollService {
         apEmployeesCommission: '12030002',
         eobiOffice: '70010005',
         eobiStore: '80010005',
+        pfOffice: '70010009',
+        pfStore: '80010009',
         apSalary: '12030003',
         whTaxSalary: '12060001',
         apProvidentFund: '12030004',
@@ -5220,6 +5222,7 @@ export class PayrollService {
 
       const locationGrossSalaries = new Map<string, { location: any; totalGross: number; incentiveAmount: number }>();
       const locationEobiContributions = new Map<string, { location: any; totalEobi: number }>();
+      const locationPfContributions = new Map<string, { location: any; totalPf: number }>();
 
       let bankTransferNetSum = 0;
       let cashChequeNetSum = 0;
@@ -5230,6 +5233,19 @@ export class PayrollService {
       const employeeAdvanceDeductions = new Map<string, { employee: any; amount: number }>();
       const employeeLoanDeductions = new Map<string, { employee: any; amount: number }>();
       const eobiRegionPayables = new Map<string, number>();
+
+      // Fetch active EOBI region rates for dynamic region rate calculation (e.g. Islamabad = 1850, Punjab = 2400)
+      const activeEobiRecords = await this.prisma.eOBI.findMany({
+        where: { status: 'active', isDeleted: false },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const getEmployerEobiRate = (emp: any): number => {
+        if (!emp?.eobi) return 0;
+        const region = emp?.eobiRegion || 'Punjab';
+        const rec = activeEobiRecords.find((r) => r.region.toLowerCase() === region.toLowerCase());
+        return rec ? Number(rec.employerContribution || 0) : 2400;
+      };
 
       for (const d of details) {
         const emp = d.employee;
@@ -5256,7 +5272,7 @@ export class PayrollService {
         const loanDed = Number(d.loanDeduction || 0);
 
         const pfCo = emp?.providentFund ? pfEmp : 0;
-        const eobiCo = emp?.eobi ? 2400 : 0;
+        const eobiCo = getEmployerEobiRate(emp);
 
         if (!locationGrossSalaries.has(locId)) {
           locationGrossSalaries.set(locId, { location: loc, totalGross: 0, incentiveAmount: 0 });
@@ -5265,17 +5281,27 @@ export class PayrollService {
         locGroup.totalGross += (gross - itemIncentive);
         locGroup.incentiveAmount += itemIncentive;
 
-        if (eobiCo > 0) {
+        const totalEobiForEmp = eobiCo > 0 ? (eobiCo + eobiEmp) : 0;
+
+        if (totalEobiForEmp > 0) {
           if (!locationEobiContributions.has(locId)) {
             locationEobiContributions.set(locId, { location: loc, totalEobi: 0 });
           }
-          locationEobiContributions.get(locId)!.totalEobi += eobiCo;
+          locationEobiContributions.get(locId)!.totalEobi += totalEobiForEmp;
         }
 
-        if (d.paymentMode === 'Cash' || d.paymentMode === 'Cheque') {
-          cashChequeNetSum += net;
-        } else {
+        if (pfCo > 0) {
+          if (!locationPfContributions.has(locId)) {
+            locationPfContributions.set(locId, { location: loc, totalPf: 0 });
+          }
+          locationPfContributions.get(locId)!.totalPf += pfCo;
+        }
+
+        const accNo = (d.accountNumber || emp?.accountNumber || '').trim();
+        if (accNo.length > 0) {
           bankTransferNetSum += net;
+        } else {
+          cashChequeNetSum += net;
         }
 
         taxDeductionSum += tax;
@@ -5283,7 +5309,7 @@ export class PayrollService {
         employeePfSum += pfEmp;
 
         const region = emp?.eobiRegion || 'KHI';
-        eobiRegionPayables.set(region, (eobiRegionPayables.get(region) || 0) + eobiCo + eobiEmp);
+        eobiRegionPayables.set(region, (eobiRegionPayables.get(region) || 0) + totalEobiForEmp);
 
         if (advDed > 0) {
           const empKey = emp?.employeeId || d.employeeId;
@@ -5359,6 +5385,30 @@ export class PayrollService {
             debit: roundToTwo(totalEobi),
             credit: 0,
             narration: `REC EOBI CONTR. FOR ${monthAbbr}'${yearShort}, ${locShort}`,
+          });
+        }
+      }
+
+      const accOfficePf = parentAccountsMap.get('pfOffice');
+      const accStorePf = parentAccountsMap.get('pfStore');
+
+      for (const [locId, data] of locationPfContributions.entries()) {
+        const { location: loc, totalPf } = data;
+        const locCode = loc?.code || 'C00001';
+        const locName = loc?.name || 'COMPANY';
+        const locShort = loc?.shortCode || locCode;
+
+        const isOffice = locCode.startsWith('C') || locName.toUpperCase().includes('CORPORATE') || locName.toUpperCase().includes('OFFICE');
+        const targetParent = isOffice ? accOfficePf : accStorePf;
+
+        if (targetParent && roundToTwo(totalPf) > 0) {
+          const tagAccount = await findTagAccount(targetParent, locCode, locName);
+          jvLines.push({
+            accountId: targetParent.id,
+            tagAccountId: tagAccount?.id || null,
+            debit: roundToTwo(totalPf),
+            credit: 0,
+            narration: `REC P.F. CO'S CONT. FOR ${monthAbbr}'${yearShort}, ${locShort}`,
           });
         }
       }
