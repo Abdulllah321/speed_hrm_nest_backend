@@ -14,6 +14,7 @@ import { BullModule } from '@nestjs/bull';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ExportHistoryModule } from '../warehouse/export-history/export-history.module';
 import { UploadModule } from '../upload/upload.module';
+import { JournalVoucherModule } from '../finance/journal-voucher/journal-voucher.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UploadModule } from '../upload/upload.module';
     NotificationsModule,
     ExportHistoryModule,
     UploadModule,
+    JournalVoucherModule,
     BullModule.registerQueue({
       name: 'cpr-tax-export',
     }),
