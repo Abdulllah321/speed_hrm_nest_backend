@@ -16,6 +16,7 @@ import { runInBackground } from '../common/utils/run-in-background.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Decimal } from '@prisma/client/runtime/client';
 import { EOBIService } from '../eobi/eobi.service';
+import { JournalVoucherService } from '../finance/journal-voucher/journal-voucher.service';
 import * as ExcelJS from 'exceljs';
 
 @Injectable()
@@ -31,6 +32,7 @@ export class PayrollService {
     private activityLogs: ActivityLogsService,
     @Inject(forwardRef(() => EOBIService))
     private readonly eobiService: EOBIService,
+    private readonly journalVoucherService: JournalVoucherService,
   ) { }
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
@@ -1065,6 +1067,13 @@ export class PayrollService {
 
       // Add Social Security contributions for employees with Social Security
       await this.addSocialSecurityContributionsForPayroll(payroll.id, month, year, details);
+
+      // Auto-generate / Upsert consolidated monthly draft Journal Voucher
+      try {
+        await this.upsertMonthlySalaryJournalVoucher(month, year, generatedBy);
+      } catch (jvErr) {
+        this.logger.error(`Failed to auto-generate draft Journal Voucher for payroll: ${jvErr.message}`, jvErr.stack);
+      }
 
       // Log Component
       runInBackground(
@@ -5106,6 +5115,446 @@ export class PayrollService {
       `attachment; filename="PAYROLL_RECONCILIATION_${data.month}_${data.year}.xlsx"`,
     );
     res.send(buffer);
+  }
+
+  async upsertMonthlySalaryJournalVoucher(month: string, year: string, userId?: string) {
+    try {
+      const normalizedMonthNum = Number(month);
+      const normalizedMonthStr = String(normalizedMonthNum);
+      const normalizedMonthPad = String(normalizedMonthNum).padStart(2, '0');
+      const yearStr = String(year);
+      const yearShort = yearStr.length === 4 ? yearStr.substring(2) : yearStr;
+
+      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthAbbr = monthNames[normalizedMonthNum - 1] || 'JUL';
+
+      // 1. Fetch all confirmed payroll headers for this month/year
+      const confirmedPayrolls = await this.prisma.payroll.findMany({
+        where: {
+          year: yearStr,
+          OR: [
+            { month: normalizedMonthStr },
+            { month: normalizedMonthPad },
+            { month },
+          ],
+          status: 'confirmed',
+        },
+        select: { id: true },
+      });
+
+      if (confirmedPayrolls.length === 0) {
+        this.logger.log(`No confirmed payrolls found for ${month}/${year}. Skipping JV creation.`);
+        return;
+      }
+
+      const payrollIds = confirmedPayrolls.map((p) => p.id);
+
+      // 2. Fetch all PayrollDetail records under confirmed payrolls
+      const details = await this.prisma.payrollDetail.findMany({
+        where: { payrollId: { in: payrollIds } },
+        include: {
+          employee: {
+            include: {
+              location: true,
+              department: true,
+            },
+          },
+        },
+      });
+
+      if (details.length === 0) {
+        return;
+      }
+
+      // 3. Helper to round to 2 decimals
+      const roundToTwo = (num: number): number => Math.round((num + Number.EPSILON) * 100) / 100;
+
+      // 4. Resolve Parent Chart of Accounts by Code
+      const parentCodes = {
+        salariesOffice: '70010001',
+        salariesStore: '80010001',
+        apEmployeesCommission: '12030002',
+        eobiOffice: '70010005',
+        eobiStore: '80010005',
+        apSalary: '12030003',
+        whTaxSalary: '12060001',
+        apProvidentFund: '12030004',
+        advanceSalary: '31030001',
+        apEobi: '12030005',
+        loanToEmployees: '31030002',
+      };
+
+      const parentAccountsMap = new Map<string, any>();
+      for (const [key, code] of Object.entries(parentCodes)) {
+        const acc = await this.prisma.chartOfAccount.findFirst({ where: { code } });
+        if (acc) {
+          parentAccountsMap.set(key, acc);
+        }
+      }
+
+      const findTagAccount = async (parentAccount: any, code?: string, name?: string) => {
+        if (!parentAccount) return null;
+        const OR: any[] = [];
+        if (code) OR.push({ code: { equals: code, mode: 'insensitive' } });
+        if (name) OR.push({ name: { equals: name, mode: 'insensitive' } });
+        if (OR.length === 0) return null;
+
+        return this.prisma.chartOfAccount.findFirst({
+          where: {
+            parentId: parentAccount.id,
+            OR,
+          },
+        });
+      };
+
+      // Data structures for grouping lines
+      interface JVLineItem {
+        accountId: string;
+        tagAccountId?: string | null;
+        debit: number;
+        credit: number;
+        narration: string;
+      }
+
+      const jvLines: JVLineItem[] = [];
+
+      const locationGrossSalaries = new Map<string, { location: any; totalGross: number; incentiveAmount: number }>();
+      const locationEobiContributions = new Map<string, { location: any; totalEobi: number }>();
+
+      let bankTransferNetSum = 0;
+      let cashChequeNetSum = 0;
+      let taxDeductionSum = 0;
+      let employerPfSum = 0;
+      let employeePfSum = 0;
+
+      const employeeAdvanceDeductions = new Map<string, { employee: any; amount: number }>();
+      const employeeLoanDeductions = new Map<string, { employee: any; amount: number }>();
+      const eobiRegionPayables = new Map<string, number>();
+
+      for (const d of details) {
+        const emp = d.employee;
+        const loc = emp?.location;
+        const locId = loc?.id || 'NO_LOC';
+
+        let itemIncentive = 0;
+        if (Array.isArray(d.allowanceBreakup)) {
+          for (const ab of d.allowanceBreakup as any[]) {
+            const nameLower = String(ab.name || ab.allowanceTypeName || '').toLowerCase();
+            const categoryLower = String(ab.allowanceTypeCategory || '').toLowerCase();
+            if (nameLower.includes('incentive') || categoryLower.includes('incentive') || nameLower.includes('commission')) {
+              itemIncentive += Number(ab.amount || 0);
+            }
+          }
+        }
+
+        const gross = Number(d.grossSalary || 0);
+        const net = Number(d.netSalary || 0);
+        const tax = Number(d.taxDeduction || 0);
+        const pfEmp = Number(d.providentFundDeduction || 0);
+        const eobiEmp = Number(d.eobiDeduction || 0);
+        const advDed = Number(d.advanceSalaryDeduction || 0);
+        const loanDed = Number(d.loanDeduction || 0);
+
+        const pfCo = emp?.providentFund ? pfEmp : 0;
+        const eobiCo = emp?.eobi ? 2400 : 0;
+
+        if (!locationGrossSalaries.has(locId)) {
+          locationGrossSalaries.set(locId, { location: loc, totalGross: 0, incentiveAmount: 0 });
+        }
+        const locGroup = locationGrossSalaries.get(locId)!;
+        locGroup.totalGross += (gross - itemIncentive);
+        locGroup.incentiveAmount += itemIncentive;
+
+        if (eobiCo > 0) {
+          if (!locationEobiContributions.has(locId)) {
+            locationEobiContributions.set(locId, { location: loc, totalEobi: 0 });
+          }
+          locationEobiContributions.get(locId)!.totalEobi += eobiCo;
+        }
+
+        if (d.paymentMode === 'Cash' || d.paymentMode === 'Cheque') {
+          cashChequeNetSum += net;
+        } else {
+          bankTransferNetSum += net;
+        }
+
+        taxDeductionSum += tax;
+        employerPfSum += pfCo;
+        employeePfSum += pfEmp;
+
+        const region = emp?.eobiRegion || 'KHI';
+        eobiRegionPayables.set(region, (eobiRegionPayables.get(region) || 0) + eobiCo + eobiEmp);
+
+        if (advDed > 0) {
+          const empKey = emp?.employeeId || d.employeeId;
+          if (!employeeAdvanceDeductions.has(empKey)) {
+            employeeAdvanceDeductions.set(empKey, { employee: emp, amount: 0 });
+          }
+          employeeAdvanceDeductions.get(empKey)!.amount += advDed;
+        }
+
+        if (loanDed > 0) {
+          const empKey = emp?.employeeId || d.employeeId;
+          if (!employeeLoanDeductions.has(empKey)) {
+            employeeLoanDeductions.set(empKey, { employee: emp, amount: 0 });
+          }
+          employeeLoanDeductions.get(empKey)!.amount += loanDed;
+        }
+      }
+
+      // --- DEBIT LINES ---
+      const accOfficeSal = parentAccountsMap.get('salariesOffice');
+      const accStoreSal = parentAccountsMap.get('salariesStore');
+
+      for (const [locId, data] of locationGrossSalaries.entries()) {
+        const { location: loc, totalGross, incentiveAmount } = data;
+        const locCode = loc?.code || 'C00001';
+        const locName = loc?.name || 'COMPANY';
+        const locShort = loc?.shortCode || locCode;
+
+        const isOffice = locCode.startsWith('C') || locName.toUpperCase().includes('CORPORATE') || locName.toUpperCase().includes('OFFICE');
+        const targetParent = isOffice ? accOfficeSal : accStoreSal;
+
+        if (targetParent && roundToTwo(totalGross) > 0) {
+          const tagAccount = await findTagAccount(targetParent, locCode, locName);
+          jvLines.push({
+            accountId: targetParent.id,
+            tagAccountId: tagAccount?.id || null,
+            debit: roundToTwo(totalGross),
+            credit: 0,
+            narration: `REC SALARY FOR ${monthAbbr}'${yearShort}, ${locShort}`,
+          });
+        }
+
+        const accCommission = parentAccountsMap.get('apEmployeesCommission');
+        if (accCommission && roundToTwo(incentiveAmount) > 0) {
+          const tagAccount = await findTagAccount(accCommission, locCode, locName);
+          jvLines.push({
+            accountId: accCommission.id,
+            tagAccountId: tagAccount?.id || null,
+            debit: roundToTwo(incentiveAmount),
+            credit: 0,
+            narration: `REC PMT OF COMMISSION FOR ${monthAbbr}'${yearShort}, ${locShort}`,
+          });
+        }
+      }
+
+      const accOfficeEobi = parentAccountsMap.get('eobiOffice');
+      const accStoreEobi = parentAccountsMap.get('eobiStore');
+
+      for (const [locId, data] of locationEobiContributions.entries()) {
+        const { location: loc, totalEobi } = data;
+        const locCode = loc?.code || 'C00001';
+        const locName = loc?.name || 'COMPANY';
+        const locShort = loc?.shortCode || locCode;
+
+        const isOffice = locCode.startsWith('C') || locName.toUpperCase().includes('CORPORATE') || locName.toUpperCase().includes('OFFICE');
+        const targetParent = isOffice ? accOfficeEobi : accStoreEobi;
+
+        if (targetParent && roundToTwo(totalEobi) > 0) {
+          const tagAccount = await findTagAccount(targetParent, locCode, locName);
+          jvLines.push({
+            accountId: targetParent.id,
+            tagAccountId: tagAccount?.id || null,
+            debit: roundToTwo(totalEobi),
+            credit: 0,
+            narration: `REC EOBI CONTR. FOR ${monthAbbr}'${yearShort}, ${locShort}`,
+          });
+        }
+      }
+
+      // --- CREDIT LINES ---
+      const accApSalary = parentAccountsMap.get('apSalary');
+      if (accApSalary) {
+        if (roundToTwo(bankTransferNetSum) > 0) {
+          const tagBank = await findTagAccount(accApSalary, 'SP0001', 'SALARY P/A - A/C TRF');
+          jvLines.push({
+            accountId: accApSalary.id,
+            tagAccountId: tagBank?.id || null,
+            debit: 0,
+            credit: roundToTwo(bankTransferNetSum),
+            narration: `REC SALARY P/A TO EMPLOYEES A/C TRANSFER FOR ${monthAbbr}'${yearShort}`,
+          });
+        }
+
+        if (roundToTwo(cashChequeNetSum) > 0) {
+          const tagCash = await findTagAccount(accApSalary, 'SP0002', 'SALARY P/A - CHQ/CSH');
+          jvLines.push({
+            accountId: accApSalary.id,
+            tagAccountId: tagCash?.id || null,
+            debit: 0,
+            credit: roundToTwo(cashChequeNetSum),
+            narration: `REC SALARY P/A TO EMPLOYEES TRHU CHQ FOR ${monthAbbr}'${yearShort}`,
+          });
+        }
+      }
+
+      const accWhTax = parentAccountsMap.get('whTaxSalary');
+      if (accWhTax && roundToTwo(taxDeductionSum) > 0) {
+        const tagTax = await findTagAccount(accWhTax, 'T00001', 'SALARY');
+        jvLines.push({
+          accountId: accWhTax.id,
+          tagAccountId: tagTax?.id || null,
+          debit: 0,
+          credit: roundToTwo(taxDeductionSum),
+          narration: `REC DEDUCTION OF WHTAX FROM SALARY FOR ${monthAbbr}'${yearShort}`,
+        });
+      }
+
+      const accPf = parentAccountsMap.get('apProvidentFund');
+      if (accPf) {
+        const tagCo = await findTagAccount(accPf, 'C00001', 'COMPANY');
+
+        if (roundToTwo(employerPfSum) > 0) {
+          jvLines.push({
+            accountId: accPf.id,
+            tagAccountId: tagCo?.id || null,
+            debit: 0,
+            credit: roundToTwo(employerPfSum),
+            narration: `REC P.F. CO'S CONT. FOR ${monthAbbr}'${yearShort}`,
+          });
+        }
+
+        if (roundToTwo(employeePfSum) > 0) {
+          jvLines.push({
+            accountId: accPf.id,
+            tagAccountId: tagCo?.id || null,
+            debit: 0,
+            credit: roundToTwo(employeePfSum),
+            narration: `REC P.F. EMPLOYEES CONT. FOR ${monthAbbr}'${yearShort}`,
+          });
+        }
+      }
+
+      const accAdvance = parentAccountsMap.get('advanceSalary');
+      if (accAdvance) {
+        for (const [empKey, data] of employeeAdvanceDeductions.entries()) {
+          const { employee: emp, amount } = data;
+          if (roundToTwo(amount) > 0) {
+            const empCode = emp?.employeeId || empKey;
+            const empName = emp?.employeeName || empKey;
+            const tagEmp = await findTagAccount(accAdvance, empCode, empName);
+            jvLines.push({
+              accountId: accAdvance.id,
+              tagAccountId: tagEmp?.id || null,
+              debit: 0,
+              credit: roundToTwo(amount),
+              narration: `REC DEDUCTION AG. ADVANCE FROM SALARY FOR ${monthAbbr}'${yearShort}`,
+            });
+          }
+        }
+      }
+
+      const accApEobi = parentAccountsMap.get('apEobi');
+      if (accApEobi) {
+        const tagCo = await findTagAccount(accApEobi, 'C00001', 'COMPANY');
+        for (const [region, totalAmount] of eobiRegionPayables.entries()) {
+          if (roundToTwo(totalAmount) > 0) {
+            jvLines.push({
+              accountId: accApEobi.id,
+              tagAccountId: tagCo?.id || null,
+              debit: 0,
+              credit: roundToTwo(totalAmount),
+              narration: `REC EOBI CONT. FOR ${monthAbbr}'${yearShort} ${region}`,
+            });
+          }
+        }
+      }
+
+      const accLoan = parentAccountsMap.get('loanToEmployees');
+      if (accLoan) {
+        for (const [empKey, data] of employeeLoanDeductions.entries()) {
+          const { employee: emp, amount } = data;
+          if (roundToTwo(amount) > 0) {
+            const empCode = emp?.employeeId || empKey;
+            const empName = emp?.employeeName || empKey;
+            const tagEmp = await findTagAccount(accLoan, empCode, empName);
+            jvLines.push({
+              accountId: accLoan.id,
+              tagAccountId: tagEmp?.id || null,
+              debit: 0,
+              credit: roundToTwo(amount),
+              narration: `REC REPAYMENT OF LOAN FROM SALARY FOR ${monthAbbr}'${yearShort}`,
+            });
+          }
+        }
+      }
+
+      if (jvLines.length === 0) {
+        return;
+      }
+
+      // Balance check
+      const totalDebit = jvLines.reduce((s, l) => s + l.debit, 0);
+      const totalCredit = jvLines.reduce((s, l) => s + l.credit, 0);
+      const diff = roundToTwo(totalDebit - totalCredit);
+
+      if (Math.abs(diff) > 0.001) {
+        if (diff > 0) {
+          const firstCredit = jvLines.find((l) => l.credit > 0);
+          if (firstCredit) {
+            firstCredit.credit = roundToTwo(firstCredit.credit + diff);
+          }
+        } else {
+          const firstDebit = jvLines.find((l) => l.debit > 0);
+          if (firstDebit) {
+            firstDebit.debit = roundToTwo(firstDebit.debit + Math.abs(diff));
+          }
+        }
+      }
+
+      const jvDescription = `Auto-generated Salary JV for ${monthAbbr} ${yearStr}`;
+
+      const existingJV = await this.prisma.journalVoucher.findFirst({
+        where: { description: jvDescription },
+      });
+
+      if (existingJV) {
+        await this.prisma.journalVoucherDetail.deleteMany({
+          where: { journalVoucherId: existingJV.id },
+        });
+
+        await this.prisma.journalVoucher.update({
+          where: { id: existingJV.id },
+          data: {
+            jvDate: new Date(),
+            status: 'pending',
+            details: {
+              create: jvLines.map((l) => ({
+                accountId: l.accountId,
+                tagAccountId: l.tagAccountId || null,
+                debit: l.debit,
+                credit: l.credit,
+                narration: l.narration,
+                taxType: 'Taxable',
+              })),
+            },
+          },
+        });
+        this.logger.log(`Updated consolidated draft Journal Voucher for ${monthAbbr} ${yearStr}`);
+      } else {
+        await this.journalVoucherService.create(
+          {
+            jvNo: `TEMP-JV-SALARY-${Date.now()}`,
+            jvDate: new Date(),
+            description: jvDescription,
+            status: 'pending',
+            details: jvLines.map((l) => ({
+              accountId: l.accountId,
+              tagAccountId: l.tagAccountId || undefined,
+              debit: l.debit,
+              credit: l.credit,
+              narration: l.narration,
+              taxType: 'Taxable',
+            })),
+          },
+          { userId },
+        );
+        this.logger.log(`Created new consolidated draft Journal Voucher for ${monthAbbr} ${yearStr}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to upsert monthly salary Journal Voucher: ${error.message}`, error.stack);
+    }
   }
 }
 
