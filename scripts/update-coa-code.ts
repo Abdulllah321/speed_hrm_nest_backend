@@ -191,10 +191,10 @@ async function main() {
   const targetName =
     nameArgIdx !== -1
       ? args[nameArgIdx + 1]
-      : 'CORPORATE OFFICE-FASHION BRANDS';
+      : 'CORPORATE OFFICE-SPEED SPORTS ONLINE';
 
   const codeArgIdx = args.indexOf('--code');
-  const targetCode = codeArgIdx !== -1 ? args[codeArgIdx + 1] : 'C10004';
+  const targetCode = codeArgIdx !== -1 ? args[codeArgIdx + 1] : 'C10003';
 
   let mapping: AccountCodeMapping = {};
 
