@@ -39,7 +39,10 @@ interface BarcodeCostMap {
 /**
  * Reads Excel / CSV file and extracts a mapping of barcode -> unitCost
  */
-function loadBarcodeCostMap(filePath: string): { costMap: BarcodeCostMap; totalRows: number } {
+function loadBarcodeCostMap(filePath: string): {
+  costMap: BarcodeCostMap;
+  totalRows: number;
+} {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found at path: ${filePath}`);
   }
@@ -53,7 +56,10 @@ function loadBarcodeCostMap(filePath: string): { costMap: BarcodeCostMap; totalR
     throw new Error(`No sheets found in file: ${filePath}`);
   }
 
-  const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: '' });
+  const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, {
+    raw: false,
+    defval: '',
+  });
   if (rawRows.length === 0) {
     throw new Error(`Spreadsheet is empty.`);
   }
@@ -62,17 +68,33 @@ function loadBarcodeCostMap(filePath: string): { costMap: BarcodeCostMap; totalR
   const sampleRow = rawRows[0];
   const keys = Object.keys(sampleRow);
 
-  const barcodeKey = keys.find((k) => /barcode/i.test(k.replace(/[\s_]/g, '')) || /itembarcode/i.test(k.replace(/[\s_]/g, '')) || /code/i.test(k));
-  const costKey = keys.find((k) => /unitcost/i.test(k.replace(/[\s_]/g, '')) || /cost/i.test(k.replace(/[\s_]/g, '')) || /price/i.test(k));
+  const barcodeKey = keys.find(
+    (k) =>
+      /barcode/i.test(k.replace(/[\s_]/g, '')) ||
+      /itembarcode/i.test(k.replace(/[\s_]/g, '')) ||
+      /code/i.test(k),
+  );
+  const costKey = keys.find(
+    (k) =>
+      /unitcost/i.test(k.replace(/[\s_]/g, '')) ||
+      /cost/i.test(k.replace(/[\s_]/g, '')) ||
+      /price/i.test(k),
+  );
 
   if (!barcodeKey) {
-    throw new Error(`Could not find a 'Barcode' column in file. Found columns: ${keys.join(', ')}`);
+    throw new Error(
+      `Could not find a 'Barcode' column in file. Found columns: ${keys.join(', ')}`,
+    );
   }
   if (!costKey) {
-    throw new Error(`Could not find a 'Unit Cost' column in file. Found columns: ${keys.join(', ')}`);
+    throw new Error(
+      `Could not find a 'Unit Cost' column in file. Found columns: ${keys.join(', ')}`,
+    );
   }
 
-  console.log(`🎯 Using Columns -> Barcode: "${barcodeKey}", Unit Cost: "${costKey}"`);
+  console.log(
+    `🎯 Using Columns -> Barcode: "${barcodeKey}", Unit Cost: "${costKey}"`,
+  );
 
   const costMap: BarcodeCostMap = {};
   let totalRows = 0;
@@ -82,7 +104,8 @@ function loadBarcodeCostMap(filePath: string): { costMap: BarcodeCostMap; totalR
     const rawBarcode = row[barcodeKey];
     const rawCost = row[costKey];
 
-    if (rawBarcode === undefined || rawBarcode === null || rawBarcode === '') continue;
+    if (rawBarcode === undefined || rawBarcode === null || rawBarcode === '')
+      continue;
 
     const barcode = String(rawBarcode).trim();
     if (!barcode) continue;
@@ -114,14 +137,18 @@ async function updateUnitCostByBarcodes(
   prisma: PrismaClient,
   costMap: BarcodeCostMap,
   batchSize: number = 500,
-  isDryRun: boolean = false
+  isDryRun: boolean = false,
 ) {
   const allBarcodes = Object.keys(costMap);
   const totalUniqueBarcodes = allBarcodes.length;
 
-  console.log(`\n📋 Processing ${totalUniqueBarcodes.toLocaleString()} unique barcodes from file...`);
+  console.log(
+    `\n📋 Processing ${totalUniqueBarcodes.toLocaleString()} unique barcodes from file...`,
+  );
   if (isDryRun) {
-    console.log('🔍 [DRY RUN MODE] Calculating updates without modifying database.');
+    console.log(
+      '🔍 [DRY RUN MODE] Calculating updates without modifying database.',
+    );
   }
 
   const batches = chunkArray(allBarcodes, batchSize);
@@ -150,7 +177,9 @@ async function updateUnitCostByBarcodes(
       },
     });
 
-    const foundBarcodesInBatch = new Set(matchingItems.map((item) => item.barCode));
+    const foundBarcodesInBatch = new Set(
+      matchingItems.map((item) => item.barCode),
+    );
 
     // Track missing barcodes
     for (const bc of batchBarcodes) {
@@ -162,24 +191,24 @@ async function updateUnitCostByBarcodes(
     totalMatched += matchingItems.length;
 
     // 2. Identify items that need updates
-    const updatesToApply: { id: string; barCode: string; newCost: number; oldCost: number }[] = [];
+    const updatesToApply: {
+      id: string;
+      barCode: string;
+      newCost: number;
+      oldCost: number;
+    }[] = [];
 
     for (const item of matchingItems) {
       if (!item.barCode) continue;
       const targetCost = costMap[item.barCode];
       if (targetCost === undefined) continue;
 
-      // Allow small tolerance float equality comparison
-      if (Math.abs(item.unitCost - targetCost) > 0.0001) {
-        updatesToApply.push({
-          id: item.id,
-          barCode: item.barCode,
-          newCost: targetCost,
-          oldCost: item.unitCost,
-        });
-      } else {
-        totalUnchanged++;
-      }
+      updatesToApply.push({
+        id: item.id,
+        barCode: item.barCode,
+        newCost: targetCost,
+        oldCost: item.unitCost,
+      });
     }
 
     // 3. Perform database updates
@@ -192,8 +221,8 @@ async function updateUnitCostByBarcodes(
             prisma.item.update({
               where: { id: u.id },
               data: { unitCost: u.newCost },
-            })
-          )
+            }),
+          ),
         );
       }
       totalUpdated += updatesToApply.length;
@@ -202,7 +231,7 @@ async function updateUnitCostByBarcodes(
     }
 
     process.stdout.write(
-      `\r⏳ Batch ${batchNum}/${batches.length} (${progressPct}%): Matched: ${totalMatched.toLocaleString()} | Updated: ${totalUpdated.toLocaleString()} | Unchanged: ${totalUnchanged.toLocaleString()}`
+      `\r⏳ Batch ${batchNum}/${batches.length} (${progressPct}%): Matched: ${totalMatched.toLocaleString()} | Updated: ${totalUpdated.toLocaleString()} | Unchanged: ${totalUnchanged.toLocaleString()}`,
     );
   }
 
@@ -211,15 +240,25 @@ async function updateUnitCostByBarcodes(
   console.log(`\n\n==================================================`);
   console.log(`✨ Process Completed in ${durationSec}s`);
   console.log(`==================================================`);
-  console.log(`📊 Unique Barcodes in File : ${totalUniqueBarcodes.toLocaleString()}`);
+  console.log(
+    `📊 Unique Barcodes in File : ${totalUniqueBarcodes.toLocaleString()}`,
+  );
   console.log(`🔍 DB Items Matched       : ${totalMatched.toLocaleString()}`);
   if (isDryRun) {
-    console.log(`📝 Items Requiring Update : ${totalUpdated.toLocaleString()} (Dry Run)`);
+    console.log(
+      `📝 Items Requiring Update : ${totalUpdated.toLocaleString()} (Dry Run)`,
+    );
   } else {
-    console.log(`✅ Items Successfully Updated: ${totalUpdated.toLocaleString()}`);
+    console.log(
+      `✅ Items Successfully Updated: ${totalUpdated.toLocaleString()}`,
+    );
   }
-  console.log(`ℹ️ Items Already Up-to-Date : ${totalUnchanged.toLocaleString()}`);
-  console.log(`⚠️ Barcodes Not Found in DB : ${missingBarcodes.length.toLocaleString()}`);
+  console.log(
+    `ℹ️ Items Already Up-to-Date : ${totalUnchanged.toLocaleString()}`,
+  );
+  console.log(
+    `⚠️ Barcodes Not Found in DB : ${missingBarcodes.length.toLocaleString()}`,
+  );
   console.log(`==================================================\n`);
 }
 
@@ -232,9 +271,18 @@ async function main() {
 
   if (!filePath) {
     const candidates = [
-      path.resolve(__dirname, '../Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx'),
-      path.resolve(process.cwd(), 'Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx'),
-      path.resolve(__dirname, 'Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx'),
+      path.resolve(
+        __dirname,
+        '../Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx',
+      ),
+      path.resolve(
+        process.cwd(),
+        'Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx',
+      ),
+      path.resolve(
+        __dirname,
+        'Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx',
+      ),
     ];
 
     for (const cand of candidates) {
@@ -246,16 +294,21 @@ async function main() {
   }
 
   if (!filePath || !fs.existsSync(filePath)) {
-    console.error(`❌ Excel file not found. Pass file via --file <path> or place 'Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx' in backend folder.`);
+    console.error(
+      `❌ Excel file not found. Pass file via --file <path> or place 'Overall Opening Stock Unit Cost 1st  july 2026 for INPL.xlsx' in backend folder.`,
+    );
     process.exit(1);
   }
 
   const batchArgIdx = args.indexOf('--batch-size');
-  const batchSize = batchArgIdx !== -1 ? parseInt(args[batchArgIdx + 1], 10) : 500;
+  const batchSize =
+    batchArgIdx !== -1 ? parseInt(args[batchArgIdx + 1], 10) : 500;
 
   console.log(`📁 Target Excel file: ${filePath}`);
   const { costMap, totalRows } = loadBarcodeCostMap(filePath);
-  console.log(`✔ Read ${totalRows.toLocaleString()} rows, found ${Object.keys(costMap).length.toLocaleString()} valid barcode cost mappings.`);
+  console.log(
+    `✔ Read ${totalRows.toLocaleString()} rows, found ${Object.keys(costMap).length.toLocaleString()} valid barcode cost mappings.`,
+  );
 
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
@@ -279,12 +332,16 @@ async function main() {
   }
 
   if (!managementUrl || !masterKey) {
-    console.error('❌ Neither DATABASE_URL nor DATABASE_URL_MANAGEMENT + MASTER_ENCRYPTION_KEY found in .env');
+    console.error(
+      '❌ Neither DATABASE_URL nor DATABASE_URL_MANAGEMENT + MASTER_ENCRYPTION_KEY found in .env',
+    );
     process.exit(1);
   }
 
   // Option 2: Iterate over active company tenant databases
-  console.log(`🏢 Connecting via Management DB to process company tenant databases...`);
+  console.log(
+    `🏢 Connecting via Management DB to process company tenant databases...`,
+  );
   const pool = new Pool({ connectionString: managementUrl });
   const adapter = new PrismaPg(pool);
   const management = new ManagementClient({ adapter } as any);
@@ -306,11 +363,15 @@ async function main() {
     }
 
     for (const company of companies) {
-      console.log(`\n👉 Company: ${company.name} (${company.code}) [DB: ${company.dbName}]`);
+      console.log(
+        `\n👉 Company: ${company.name} (${company.code}) [DB: ${company.dbName}]`,
+      );
       let connectionString = company.dbUrl;
       if (company.dbPassword) {
         try {
-          const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+          const decPassword = encodeURIComponent(
+            decrypt(company.dbPassword, masterKey),
+          );
           connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
         } catch {
           console.warn(`  ⚠️ Decryption failed, using stored dbUrl`);
@@ -328,9 +389,16 @@ async function main() {
 
       try {
         await tenantPrisma.$connect();
-        await updateUnitCostByBarcodes(tenantPrisma, costMap, batchSize, isDryRun);
+        await updateUnitCostByBarcodes(
+          tenantPrisma,
+          costMap,
+          batchSize,
+          isDryRun,
+        );
       } catch (err: any) {
-        console.error(`  ❌ Failed for company ${company.name}: ${err.message}`);
+        console.error(
+          `  ❌ Failed for company ${company.name}: ${err.message}`,
+        );
       } finally {
         await tenantPrisma.$disconnect();
         await tenantPool.end();
