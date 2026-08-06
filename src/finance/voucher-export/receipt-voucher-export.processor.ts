@@ -16,6 +16,9 @@ export interface RvExportJobData {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  accountId?: string;
+  search?: string;
+  ids?: string[];
 }
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -39,24 +42,28 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Voucher
-  { header: 'RV No',          key: 'rvNo',              width: 18, group: 'Voucher', align: 'center' },
-  { header: 'RV Date',        key: 'rvDate',            width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Type',           key: 'type',              width: 8,  group: 'Voucher', align: 'center' },
-  { header: 'Status',         key: 'status',            width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Ref Bill No',    key: 'refBillNo',         width: 18, group: 'Voucher' },
-  { header: 'Debit Account',  key: 'debitAccountName',  width: 28, group: 'Voucher' },
-  { header: 'Debit Amount',   key: 'debitAmount',       width: 16, group: 'Voucher', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Is Advance',     key: 'isAdvance',         width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Cheque No',      key: 'chequeNo',          width: 16, group: 'Voucher', align: 'center' },
-  { header: 'Description',    key: 'description',       width: 34, group: 'Voucher' },
+  { header: 'RV No',               key: 'rvNo',             width: 18, group: 'Voucher', align: 'center' },
+  { header: 'RV Date',             key: 'rvDate',           width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
+  { header: 'Type',                key: 'type',             width: 8,  group: 'Voucher', align: 'center' },
+  { header: 'Status',              key: 'status',           width: 11, group: 'Voucher', align: 'center' },
+  { header: 'Ref Bill No',         key: 'refBillNo',        width: 18, group: 'Voucher' },
+  { header: 'Payee / Account Code',key: 'debitAccountCode', width: 18, group: 'Voucher', align: 'center' },
+  { header: 'Payee / Account Name',key: 'debitAccountName', width: 28, group: 'Voucher' },
+  { header: 'Customer Code',       key: 'customerCode',     width: 16, group: 'Voucher', align: 'center' },
+  { header: 'Debit Amount',        key: 'debitAmount',      width: 16, group: 'Voucher', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Is Advance',          key: 'isAdvance',        width: 11, group: 'Voucher', align: 'center' },
+  { header: 'Cheque No',           key: 'chequeNo',         width: 16, group: 'Voucher', align: 'center' },
+  { header: 'Description',         key: 'description',      width: 34, group: 'Voucher' },
   // Detail
-  { header: 'Line #',         key: 'lineNo',            width: 8,  group: 'Detail',  align: 'center' },
-  { header: 'Account Code',   key: 'accountCode',       width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Account Name',   key: 'accountName',       width: 30, group: 'Detail' },
-  { header: 'Narration',      key: 'narration',         width: 34, group: 'Detail' },
+  { header: 'Line #',              key: 'lineNo',           width: 8,  group: 'Detail',  align: 'center' },
+  { header: 'Account Code',        key: 'accountCode',      width: 16, group: 'Detail',  align: 'center' },
+  { header: 'Account Name',        key: 'accountName',      width: 30, group: 'Detail' },
+  { header: 'Tag Account Code',    key: 'tagAccountCode',   width: 16, group: 'Detail',  align: 'center' },
+  { header: 'Tag Account Name',    key: 'tagAccountName',   width: 24, group: 'Detail' },
+  { header: 'Narration',           key: 'narration',        width: 34, group: 'Detail' },
   // Amounts
-  { header: 'Debit',          key: 'debit',             width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Credit',         key: 'credit',            width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Debit',               key: 'debit',            width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Credit',              key: 'credit',           width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
 ];
 
 @Processor('receipt-voucher-export')
@@ -67,7 +74,7 @@ export class ReceiptVoucherExportProcessor {
 
   @Process()
   async handleExport(job: Job<RvExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, type, status, dateFrom, dateTo } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, type, status, dateFrom, dateTo, accountId, search, ids } = job.data;
 
     this.logger.log(`[RvExport ${jobId}] Starting for user ${userId}`);
 
@@ -80,6 +87,7 @@ export class ReceiptVoucherExportProcessor {
     try {
       // ── Build WHERE ────────────────────────────────────────────────────────
       const andClauses: any[] = [];
+      if (ids && ids.length > 0)       andClauses.push({ id: { in: ids } });
       if (type && type !== 'all')     andClauses.push({ type });
       if (status && status !== 'all') andClauses.push({ status });
       if (dateFrom || dateTo) {
@@ -87,6 +95,32 @@ export class ReceiptVoucherExportProcessor {
         if (dateFrom) dateFilter.gte = new Date(dateFrom);
         if (dateTo)   dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
         andClauses.push({ rvDate: dateFilter });
+      }
+      if (accountId && accountId !== 'all') {
+        andClauses.push({
+          OR: [
+            { debitAccountId: accountId },
+            { details: { some: { OR: [{ accountId }, { tagAccountId: accountId }] } } },
+          ],
+        });
+      }
+      if (search && search.trim() !== '') {
+        const term = search.trim();
+        andClauses.push({
+          OR: [
+            { rvNo: { contains: term, mode: 'insensitive' } },
+            { description: { contains: term, mode: 'insensitive' } },
+            { refBillNo: { contains: term, mode: 'insensitive' } },
+            { chequeNo: { contains: term, mode: 'insensitive' } },
+            { debitAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            { customer: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            { details: { some: { OR: [
+              { narration: { contains: term, mode: 'insensitive' } },
+              { account: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+              { tagAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            ] } } },
+          ],
+        });
       }
       const where: any = andClauses.length ? { AND: andClauses } : {};
 
@@ -151,23 +185,24 @@ export class ReceiptVoucherExportProcessor {
       headerRow.height = 20;
       headerRow.commit();
 
-      // ── Data rows — cursor-paginated ───────────────────────────────────────
+      // ── Data rows — offset-paginated ───────────────────────────────────────
       const CHUNK = 500;
-      let cursor: string | undefined;
       let rowIdx = 0;
       let processedVouchers = 0;
 
-      while (true) {
+      while (processedVouchers < total) {
         const chunk = await (prisma as any).receiptVoucher.findMany({
           where,
           orderBy: { rvDate: 'desc' },
+          skip: processedVouchers,
           take: CHUNK,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           include: {
             debitAccount: { select: { code: true, name: true } },
+            customer:     { select: { code: true, name: true } },
             details: {
               include: {
-                account: { select: { code: true, name: true } },
+                account:    { select: { code: true, name: true } },
+                tagAccount: { select: { code: true, name: true } },
               },
             },
           },
@@ -188,7 +223,9 @@ export class ReceiptVoucherExportProcessor {
               type:             dIdx === 0 ? rv.type.toUpperCase() : '',
               status:           dIdx === 0 ? rv.status.toUpperCase() : '',
               refBillNo:        dIdx === 0 ? (rv.refBillNo ?? '') : '',
+              debitAccountCode: dIdx === 0 ? (rv.debitAccount?.code ?? '') : '',
               debitAccountName: dIdx === 0 ? (rv.debitAccount?.name ?? '') : '',
+              customerCode:     dIdx === 0 ? (rv.customer?.code ?? '') : '',
               debitAmount:      dIdx === 0 ? Number(rv.debitAmount) : null,
               isAdvance:        dIdx === 0 ? (rv.isAdvance ? 'Yes' : 'No') : '',
               chequeNo:         dIdx === 0 ? (rv.chequeNo ?? '') : '',
@@ -196,6 +233,8 @@ export class ReceiptVoucherExportProcessor {
               lineNo:           detail ? dIdx + 1 : '',
               accountCode:      detail?.account?.code ?? '',
               accountName:      detail?.account?.name ?? '',
+              tagAccountCode:   detail?.tagAccount?.code ?? '',
+              tagAccountName:   detail?.tagAccount?.name ?? '',
               narration:        detail?.narration      ?? '',
               debit:            detail ? Number(detail.debit)  : null,
               credit:           detail ? Number(detail.credit) : null,
@@ -235,13 +274,10 @@ export class ReceiptVoucherExportProcessor {
         }
 
         processedVouchers += chunk.length;
-        cursor = chunk[chunk.length - 1].id;
 
         const pct = total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
         await job.progress(pct);
         await new Promise((r) => setImmediate(r));
-
-        if (chunk.length < CHUNK) break;
       }
 
       // ── Summary sheet ──────────────────────────────────────────────────────

@@ -12,6 +12,9 @@ export interface QueueJvExportOptions {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  accountId?: string;
+  search?: string;
+  ids?: string[];
 }
 
 // ── Payment Voucher ──────────────────────────────────────────────────────────
@@ -21,6 +24,9 @@ export interface QueuePvExportOptions {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  accountId?: string;
+  search?: string;
+  ids?: string[];
 }
 
 // ── Receipt Voucher ──────────────────────────────────────────────────────────
@@ -30,6 +36,9 @@ export interface QueueRvExportOptions {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  accountId?: string;
+  search?: string;
+  ids?: string[];
 }
 
 @Injectable()
