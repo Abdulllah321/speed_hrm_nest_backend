@@ -285,7 +285,7 @@ async function main() {
          WHERE table_schema = 'public' AND table_name = 'sales_orders' LIMIT 1;`,
       );
       if (tableCheck.rows.length === 0) {
-        await tPool.end();
+        // tPool.end() will be called in finally — don't call it here too
         continue;
       }
 
@@ -295,12 +295,15 @@ async function main() {
 
       await migrateReturnsToDb(prisma, dbName, docs);
 
-      await prisma.$disconnect();
+      // Do NOT call prisma.$disconnect() — PrismaPg internally calls pool.end(),
+      // which would cause "Called end on pool more than once" when finally runs.
     } catch (err: any) {
       console.error(`\u274C Error on DB [${dbName}]: ${err.message}`);
     } finally {
-      await tPool.end();
+      // Single authoritative cleanup for this DB's pool
+      try { await tPool.end(); } catch { /* already ended or never opened */ }
     }
+
   }
 
   console.log(`\n\u{1F389}  Migration complete.`);
