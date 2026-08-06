@@ -15,6 +15,9 @@ export interface JvExportJobData {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  accountId?: string;
+  search?: string;
+  ids?: string[];
 }
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -38,22 +41,23 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Voucher
-  { header: 'JV No',        key: 'jvNo',           width: 18, group: 'Voucher', align: 'center' },
-  { header: 'JV Date',      key: 'jvDate',         width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Folio',        key: 'folio',          width: 10, group: 'Voucher', align: 'center' },
-  { header: 'Status',       key: 'status',         width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Description',  key: 'description',    width: 36, group: 'Voucher' },
+  { header: 'JV No',            key: 'jvNo',           width: 18, group: 'Voucher', align: 'center' },
+  { header: 'JV Date',          key: 'jvDate',         width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
+  { header: 'Folio',            key: 'folio',          width: 10, group: 'Voucher', align: 'center' },
+  { header: 'Status',           key: 'status',         width: 11, group: 'Voucher', align: 'center' },
+  { header: 'Description',      key: 'description',    width: 36, group: 'Voucher' },
   // Detail
-  { header: 'Line #',       key: 'lineNo',         width: 8,  group: 'Detail',  align: 'center' },
-  { header: 'Account Code', key: 'accountCode',    width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Account Name', key: 'accountName',    width: 30, group: 'Detail' },
-  { header: 'Tag Account',  key: 'tagAccountName', width: 24, group: 'Detail' },
-  { header: 'Narration',    key: 'narration',      width: 34, group: 'Detail' },
-  { header: 'Ref Bill No',  key: 'refBillNo',      width: 18, group: 'Detail' },
-  { header: 'Tax Type',     key: 'taxType',        width: 12, group: 'Detail',  align: 'center' },
+  { header: 'Line #',           key: 'lineNo',         width: 8,  group: 'Detail',  align: 'center' },
+  { header: 'Account Code',     key: 'accountCode',    width: 16, group: 'Detail',  align: 'center' },
+  { header: 'Account Name',     key: 'accountName',    width: 30, group: 'Detail' },
+  { header: 'Tag Account Code', key: 'tagAccountCode', width: 16, group: 'Detail',  align: 'center' },
+  { header: 'Tag Account Name', key: 'tagAccountName', width: 24, group: 'Detail' },
+  { header: 'Narration',        key: 'narration',      width: 34, group: 'Detail' },
+  { header: 'Ref Bill No',      key: 'refBillNo',      width: 18, group: 'Detail' },
+  { header: 'Tax Type',         key: 'taxType',        width: 12, group: 'Detail',  align: 'center' },
   // Amounts
-  { header: 'Debit',        key: 'debit',          width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Credit',       key: 'credit',         width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Debit',            key: 'debit',          width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Credit',           key: 'credit',         width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
 ];
 
 @Processor('journal-voucher-export')
@@ -64,7 +68,7 @@ export class JournalVoucherExportProcessor {
 
   @Process()
   async handleExport(job: Job<JvExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, status, dateFrom, dateTo } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, status, dateFrom, dateTo, accountId, search, ids } = job.data;
 
     this.logger.log(`[JvExport ${jobId}] Starting for user ${userId}`);
 
@@ -77,12 +81,34 @@ export class JournalVoucherExportProcessor {
     try {
       // ── Build WHERE ────────────────────────────────────────────────────────
       const andClauses: any[] = [];
+      if (ids && ids.length > 0)       andClauses.push({ id: { in: ids } });
       if (status && status !== 'all') andClauses.push({ status });
       if (dateFrom || dateTo) {
         const dateFilter: any = {};
         if (dateFrom) dateFilter.gte = new Date(dateFrom);
         if (dateTo)   dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
         andClauses.push({ jvDate: dateFilter });
+      }
+      if (accountId && accountId !== 'all') {
+        andClauses.push({
+          details: { some: { OR: [{ accountId }, { tagAccountId: accountId }] } },
+        });
+      }
+      if (search && search.trim() !== '') {
+        const term = search.trim();
+        andClauses.push({
+          OR: [
+            { jvNo: { contains: term, mode: 'insensitive' } },
+            { description: { contains: term, mode: 'insensitive' } },
+            { folio: { contains: term, mode: 'insensitive' } },
+            { details: { some: { OR: [
+              { narration: { contains: term, mode: 'insensitive' } },
+              { refBillNo: { contains: term, mode: 'insensitive' } },
+              { account: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+              { tagAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            ] } } },
+          ],
+        });
       }
       const where: any = andClauses.length ? { AND: andClauses } : {};
 
@@ -147,18 +173,17 @@ export class JournalVoucherExportProcessor {
       headerRow.height = 20;
       headerRow.commit();
 
-      // ── Data rows — cursor-paginated in chunks of 500 ──────────────────────
+      // ── Data rows — offset-paginated in chunks of 500 ──────────────────────
       const CHUNK = 500;
-      let cursor: string | undefined;
       let rowIdx = 0;
       let processedVouchers = 0;
 
-      while (true) {
+      while (processedVouchers < total) {
         const chunk = await prisma.journalVoucher.findMany({
           where,
           orderBy: { jvDate: 'desc' },
+          skip: processedVouchers,
           take: CHUNK,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           include: {
             details: {
               include: {
@@ -187,6 +212,7 @@ export class JournalVoucherExportProcessor {
               lineNo:         detail ? dIdx + 1 : '',
               accountCode:    detail?.account?.code    ?? '',
               accountName:    detail?.account?.name    ?? '',
+              tagAccountCode: detail?.tagAccount?.code ?? '',
               tagAccountName: detail?.tagAccount?.name ?? '',
               narration:      detail?.narration        ?? '',
               refBillNo:      detail?.refBillNo        ?? '',
@@ -229,13 +255,10 @@ export class JournalVoucherExportProcessor {
         }
 
         processedVouchers += chunk.length;
-        cursor = chunk[chunk.length - 1].id;
 
         const pct = total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
         await job.progress(pct);
         await new Promise((r) => setImmediate(r));
-
-        if (chunk.length < CHUNK) break;
       }
 
       // ── Summary sheet ──────────────────────────────────────────────────────

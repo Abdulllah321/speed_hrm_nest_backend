@@ -29,15 +29,22 @@ export class JournalVoucherExportController {
   @ApiOperation({ summary: 'Queue a journal voucher export job (returns immediately, notifies when done)' })
   async queueExport(
     @Req() req: any,
-    @Query('status')   status?: string,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo')   dateTo?: string,
+    @Query('status')    status?: string,
+    @Query('dateFrom')  dateFrom?: string,
+    @Query('dateTo')    dateTo?: string,
+    @Query('accountId') accountId?: string,
+    @Query('search')    search?: string,
+    @Query('ids')       ids?: string,
   ) {
+    const parsedIds = ids ? ids.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
     const result = await this.exportService.queueJvExport({
       userId: req.user?.userId,
       status,
       dateFrom,
       dateTo,
+      accountId,
+      search,
+      ids: parsedIds,
     });
     return {
       status: true,
@@ -87,17 +94,24 @@ export class PaymentVoucherExportController {
   @ApiOperation({ summary: 'Queue a payment voucher export job (returns immediately, notifies when done)' })
   async queueExport(
     @Req() req: any,
-    @Query('type')     type?: string,
-    @Query('status')   status?: string,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo')   dateTo?: string,
+    @Query('type')      type?: string,
+    @Query('status')    status?: string,
+    @Query('dateFrom')  dateFrom?: string,
+    @Query('dateTo')    dateTo?: string,
+    @Query('accountId') accountId?: string,
+    @Query('search')    search?: string,
+    @Query('ids')       ids?: string,
   ) {
+    const parsedIds = ids ? ids.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
     const result = await this.exportService.queuePvExport({
       userId: req.user?.userId,
       type,
       status,
       dateFrom,
       dateTo,
+      accountId,
+      search,
+      ids: parsedIds,
     });
     return {
       status: true,
@@ -147,17 +161,24 @@ export class ReceiptVoucherExportController {
   @ApiOperation({ summary: 'Queue a receipt voucher export job (returns immediately, notifies when done)' })
   async queueExport(
     @Req() req: any,
-    @Query('type')     type?: string,
-    @Query('status')   status?: string,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo')   dateTo?: string,
+    @Query('type')      type?: string,
+    @Query('status')    status?: string,
+    @Query('dateFrom')  dateFrom?: string,
+    @Query('dateTo')    dateTo?: string,
+    @Query('accountId') accountId?: string,
+    @Query('search')    search?: string,
+    @Query('ids')       ids?: string,
   ) {
+    const parsedIds = ids ? ids.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
     const result = await this.exportService.queueRvExport({
       userId: req.user?.userId,
       type,
       status,
       dateFrom,
       dateTo,
+      accountId,
+      search,
+      ids: parsedIds,
     });
     return {
       status: true,

@@ -16,6 +16,9 @@ export interface PvExportJobData {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  accountId?: string;
+  search?: string;
+  ids?: string[];
 }
 
 // ── Colour palette ────────────────────────────────────────────────────────────
@@ -39,24 +42,28 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Voucher
-  { header: 'PV No',           key: 'pvNo',               width: 18, group: 'Voucher', align: 'center' },
-  { header: 'PV Date',         key: 'pvDate',             width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Type',            key: 'type',               width: 8,  group: 'Voucher', align: 'center' },
-  { header: 'Status',          key: 'status',             width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Ref Bill No',     key: 'refBillNo',          width: 18, group: 'Voucher' },
-  { header: 'Credit Account',  key: 'creditAccountName',  width: 28, group: 'Voucher' },
-  { header: 'Credit Amount',   key: 'creditAmount',       width: 16, group: 'Voucher', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Is Advance',      key: 'isAdvance',          width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Cheque No',       key: 'chequeNo',           width: 16, group: 'Voucher', align: 'center' },
-  { header: 'Description',     key: 'description',        width: 34, group: 'Voucher' },
+  { header: 'PV No',               key: 'pvNo',               width: 18, group: 'Voucher', align: 'center' },
+  { header: 'PV Date',             key: 'pvDate',             width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
+  { header: 'Type',                key: 'type',               width: 8,  group: 'Voucher', align: 'center' },
+  { header: 'Status',              key: 'status',             width: 11, group: 'Voucher', align: 'center' },
+  { header: 'Ref Bill No',         key: 'refBillNo',          width: 18, group: 'Voucher' },
+  { header: 'Payee / Account Code',key: 'creditAccountCode',  width: 18, group: 'Voucher', align: 'center' },
+  { header: 'Payee / Account Name',key: 'creditAccountName',  width: 28, group: 'Voucher' },
+  { header: 'Supplier Code',       key: 'supplierCode',       width: 16, group: 'Voucher', align: 'center' },
+  { header: 'Credit Amount',       key: 'creditAmount',       width: 16, group: 'Voucher', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Is Advance',          key: 'isAdvance',          width: 11, group: 'Voucher', align: 'center' },
+  { header: 'Cheque No',           key: 'chequeNo',           width: 16, group: 'Voucher', align: 'center' },
+  { header: 'Description',         key: 'description',        width: 34, group: 'Voucher' },
   // Detail
-  { header: 'Line #',          key: 'lineNo',             width: 8,  group: 'Detail',  align: 'center' },
-  { header: 'Account Code',    key: 'accountCode',        width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Account Name',    key: 'accountName',        width: 30, group: 'Detail' },
-  { header: 'Narration',       key: 'narration',          width: 34, group: 'Detail' },
+  { header: 'Line #',              key: 'lineNo',             width: 8,  group: 'Detail',  align: 'center' },
+  { header: 'Account Code',        key: 'accountCode',        width: 16, group: 'Detail',  align: 'center' },
+  { header: 'Account Name',        key: 'accountName',        width: 30, group: 'Detail' },
+  { header: 'Tag Account Code',    key: 'tagAccountCode',     width: 16, group: 'Detail',  align: 'center' },
+  { header: 'Tag Account Name',    key: 'tagAccountName',     width: 24, group: 'Detail' },
+  { header: 'Narration',           key: 'narration',          width: 34, group: 'Detail' },
   // Amounts
-  { header: 'Debit',           key: 'debit',              width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Credit',          key: 'credit',             width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Debit',               key: 'debit',              width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Credit',              key: 'credit',             width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
 ];
 
 @Processor('payment-voucher-export')
@@ -67,7 +74,7 @@ export class PaymentVoucherExportProcessor {
 
   @Process()
   async handleExport(job: Job<PvExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, type, status, dateFrom, dateTo } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, type, status, dateFrom, dateTo, accountId, search, ids } = job.data;
 
     this.logger.log(`[PvExport ${jobId}] Starting for user ${userId}`);
 
@@ -80,6 +87,7 @@ export class PaymentVoucherExportProcessor {
     try {
       // ── Build WHERE ────────────────────────────────────────────────────────
       const andClauses: any[] = [];
+      if (ids && ids.length > 0)       andClauses.push({ id: { in: ids } });
       if (type && type !== 'all')     andClauses.push({ type });
       if (status && status !== 'all') andClauses.push({ status });
       if (dateFrom || dateTo) {
@@ -87,6 +95,32 @@ export class PaymentVoucherExportProcessor {
         if (dateFrom) dateFilter.gte = new Date(dateFrom);
         if (dateTo)   dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
         andClauses.push({ pvDate: dateFilter });
+      }
+      if (accountId && accountId !== 'all') {
+        andClauses.push({
+          OR: [
+            { creditAccountId: accountId },
+            { details: { some: { OR: [{ accountId }, { tagAccountId: accountId }] } } },
+          ],
+        });
+      }
+      if (search && search.trim() !== '') {
+        const term = search.trim();
+        andClauses.push({
+          OR: [
+            { pvNo: { contains: term, mode: 'insensitive' } },
+            { description: { contains: term, mode: 'insensitive' } },
+            { refBillNo: { contains: term, mode: 'insensitive' } },
+            { chequeNo: { contains: term, mode: 'insensitive' } },
+            { creditAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            { supplier: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            { details: { some: { OR: [
+              { narration: { contains: term, mode: 'insensitive' } },
+              { account: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+              { tagAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
+            ] } } },
+          ],
+        });
       }
       const where: any = andClauses.length ? { AND: andClauses } : {};
 
@@ -151,23 +185,24 @@ export class PaymentVoucherExportProcessor {
       headerRow.height = 20;
       headerRow.commit();
 
-      // ── Data rows — cursor-paginated ───────────────────────────────────────
+      // ── Data rows — offset-paginated ───────────────────────────────────────
       const CHUNK = 500;
-      let cursor: string | undefined;
       let rowIdx = 0;
       let processedVouchers = 0;
 
-      while (true) {
+      while (processedVouchers < total) {
         const chunk = await (prisma as any).paymentVoucher.findMany({
           where,
           orderBy: { pvDate: 'desc' },
+          skip: processedVouchers,
           take: CHUNK,
-          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           include: {
             creditAccount: { select: { code: true, name: true } },
+            supplier:      { select: { code: true, name: true } },
             details: {
               include: {
                 account:    { select: { code: true, name: true } },
+                tagAccount: { select: { code: true, name: true } },
               },
             },
           },
@@ -188,7 +223,9 @@ export class PaymentVoucherExportProcessor {
               type:              dIdx === 0 ? pv.type.toUpperCase() : '',
               status:            dIdx === 0 ? pv.status.toUpperCase() : '',
               refBillNo:         dIdx === 0 ? (pv.refBillNo ?? '') : '',
+              creditAccountCode: dIdx === 0 ? (pv.creditAccount?.code ?? '') : '',
               creditAccountName: dIdx === 0 ? (pv.creditAccount?.name ?? '') : '',
+              supplierCode:      dIdx === 0 ? (pv.supplier?.code ?? '') : '',
               creditAmount:      dIdx === 0 ? Number(pv.creditAmount) : null,
               isAdvance:         dIdx === 0 ? (pv.isAdvance ? 'Yes' : 'No') : '',
               chequeNo:          dIdx === 0 ? (pv.chequeNo ?? '') : '',
@@ -196,6 +233,8 @@ export class PaymentVoucherExportProcessor {
               lineNo:            detail ? dIdx + 1 : '',
               accountCode:       detail?.account?.code ?? '',
               accountName:       detail?.account?.name ?? '',
+              tagAccountCode:    detail?.tagAccount?.code ?? '',
+              tagAccountName:    detail?.tagAccount?.name ?? '',
               narration:         detail?.narration      ?? '',
               debit:             detail ? Number(detail.debit)  : null,
               credit:            detail ? Number(detail.credit) : null,
@@ -235,13 +274,10 @@ export class PaymentVoucherExportProcessor {
         }
 
         processedVouchers += chunk.length;
-        cursor = chunk[chunk.length - 1].id;
 
         const pct = total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
         await job.progress(pct);
         await new Promise((r) => setImmediate(r));
-
-        if (chunk.length < CHUNK) break;
       }
 
       // ── Summary sheet ──────────────────────────────────────────────────────
