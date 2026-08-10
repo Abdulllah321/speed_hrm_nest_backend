@@ -222,6 +222,13 @@ export class StockLedgerController {
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
+      exportType?: 'hierarchical' | 'flat';
+      filterBrands?: string[];
+      filterDivisions?: string[];
+      filterCategories?: string[];
+      filterGenders?: string[];
+      filterSilhouettes?: string[];
+      searchText?: string;
       summaryOnly?: boolean;
       showBrand?: boolean;
       showDivision?: boolean;
@@ -239,6 +246,13 @@ export class StockLedgerController {
       startDate: body.startDate,
       endDate: body.endDate,
       format: body.format,
+      exportType: body.exportType,
+      filterBrands: body.filterBrands,
+      filterDivisions: body.filterDivisions,
+      filterCategories: body.filterCategories,
+      filterGenders: body.filterGenders,
+      filterSilhouettes: body.filterSilhouettes,
+      searchText: body.searchText,
       summaryOnly: body.summaryOnly,
       showBrand: body.showBrand,
       showDivision: body.showDivision,

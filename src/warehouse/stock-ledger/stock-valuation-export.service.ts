@@ -21,6 +21,13 @@ export interface QueueStockValuationExportOptions {
   showSilhouette?: boolean;
   showArticle?: boolean;
   showVariant?: boolean;
+  exportType?: 'hierarchical' | 'flat';
+  filterBrands?: string[];
+  filterDivisions?: string[];
+  filterCategories?: string[];
+  filterGenders?: string[];
+  filterSilhouettes?: string[];
+  searchText?: string;
 }
 
 @Injectable()
@@ -69,6 +76,13 @@ export class StockValuationExportService {
         showSilhouette: opts.showSilhouette,
         showArticle: opts.showArticle,
         showVariant: opts.showVariant,
+        exportType: opts.exportType || 'hierarchical',
+        filterBrands: opts.filterBrands,
+        filterDivisions: opts.filterDivisions,
+        filterCategories: opts.filterCategories,
+        filterGenders: opts.filterGenders,
+        filterSilhouettes: opts.filterSilhouettes,
+        searchText: opts.searchText,
       },
       {
         jobId,
@@ -182,6 +196,13 @@ export class StockValuationExportService {
       showSilhouette?: boolean;
       showArticle?: boolean;
       showVariant?: boolean;
+      exportType?: 'hierarchical' | 'flat';
+      filterBrands?: string[];
+      filterDivisions?: string[];
+      filterCategories?: string[];
+      filterGenders?: string[];
+      filterSilhouettes?: string[];
+      searchText?: string;
     },
   ) {
     const {
@@ -214,7 +235,12 @@ export class StockValuationExportService {
     const uniqueItemIds = [...new Set(ledgerItems.map(l => l.itemId))];
 
     if (uniqueItemIds.length === 0) {
-      return { root: [], grandTotals: this.createEmptyValuationTotals() };
+      return {
+        root: [],
+        grandTotals: this.createEmptyValuationTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+      };
     }
 
     const [items, tenantSettings] = await Promise.all([
@@ -236,7 +262,52 @@ export class StockValuationExportService {
     ]);
 
     const settingMap = new Map(tenantSettings.map(s => [s.itemId, s]));
-    const matchedItemIds = items.map(i => i.id);
+
+    // Apply active filter parameters (Brand, Division, Category, Gender, Silhouette, SearchText)
+    let activeItems = items;
+    if (
+      (opts.filterBrands && opts.filterBrands.length > 0) ||
+      (opts.filterDivisions && opts.filterDivisions.length > 0) ||
+      (opts.filterCategories && opts.filterCategories.length > 0) ||
+      (opts.filterGenders && opts.filterGenders.length > 0) ||
+      (opts.filterSilhouettes && opts.filterSilhouettes.length > 0) ||
+      (opts.searchText && opts.searchText.trim() !== '')
+    ) {
+      const q = (opts.searchText || '').trim().toLowerCase();
+      const fb = new Set(opts.filterBrands || []);
+      const fd = new Set(opts.filterDivisions || []);
+      const fc = new Set(opts.filterCategories || []);
+      const fg = new Set(opts.filterGenders || []);
+      const fs = new Set(opts.filterSilhouettes || []);
+
+      activeItems = items.filter((item) => {
+        const brandName = item.brand?.name || '';
+        const divName = item.division?.name || '';
+        const catName = item.category?.name || '';
+        const genderName = item.gender?.name || '';
+        const silName = item.silhouette?.name || '';
+
+        if (fb.size > 0 && !fb.has(brandName)) return false;
+        if (fd.size > 0 && !fd.has(divName)) return false;
+        if (fc.size > 0 && !fc.has(catName)) return false;
+        if (fg.size > 0 && !fg.has(genderName)) return false;
+        if (fs.size > 0 && !fs.has(silName)) return false;
+
+        if (q) {
+          const matchBar = (item.barCode || '').toLowerCase().includes(q);
+          const matchSku = (item.sku || '').toLowerCase().includes(q);
+          const matchDesc = (item.description || '').toLowerCase().includes(q);
+          const matchBrand = brandName.toLowerCase().includes(q);
+          const matchDiv = divName.toLowerCase().includes(q);
+          const matchCat = catName.toLowerCase().includes(q);
+          if (!matchBar && !matchSku && !matchDesc && !matchBrand && !matchDiv && !matchCat) return false;
+        }
+
+        return true;
+      });
+    }
+
+    const matchedItemIds = activeItems.map(i => i.id);
 
     // Fetch ALL stock ledger entries for the matched items up to the endDate to compute historical WAC
     const allLedgerEntries = await prisma.stockLedger.findMany({
@@ -549,7 +620,7 @@ export class StockValuationExportService {
       addValuationTotals(grandTotals, node.totals);
     }
 
-    return { root, grandTotals };
+    return { root, grandTotals, items: activeItems, itemMetricsMap };
   }
 
   private createEmptyValuationTotals() {
