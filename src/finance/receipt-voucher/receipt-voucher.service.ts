@@ -370,6 +370,17 @@ export class ReceiptVoucherService {
 
     // ── Post journal lines ───────────────────────────────────────────────
     if (totalDebit > 0) {
+      const existingTx = await prisma.accountTransaction.findFirst({
+        where: {
+          sourceId: voucher.id,
+          sourceType: 'RECEIPT_VOUCHER',
+        },
+        select: { id: true },
+      });
+      if (existingTx) {
+        return;
+      }
+
       const allLines = details
         .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
         .map(d => ({

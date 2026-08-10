@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentVoucherDto } from './dto/create-payment-voucher.dto';
 import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
@@ -12,6 +12,8 @@ import { runInBackground } from '../../common/utils/run-in-background.util';
 import { generateNextPvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 @Injectable()
 export class PaymentVoucherService {
+  private readonly logger = new Logger(PaymentVoucherService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
@@ -376,6 +378,19 @@ export class PaymentVoucherService {
       },
     });
     if (!voucher) return;
+
+    // ── Idempotency Check: Prevent duplicate GL postings ──────────────────
+    const existingTx = await prisma.accountTransaction.findFirst({
+      where: {
+        sourceId: voucherId,
+        sourceType: { in: ['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'] },
+      },
+      select: { id: true },
+    });
+    if (existingTx) {
+      this.logger.warn(`Payment Voucher ${voucher.pvNo} (${voucherId}) already has posted GL entries. Skipping duplicate posting.`);
+      return;
+    }
 
     const details = voucher.details;
     const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
