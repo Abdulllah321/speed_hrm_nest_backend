@@ -322,7 +322,8 @@ export class StockValuationExportProcessor {
             skuVal = node.sku;
             itemNameVal = node.articleName;
           } else if (node.level === 'variant') {
-            itemNameVal = ' '.repeat(style.indent) + 'Variant Details';
+            skuVal = node.barCode || node.sku;
+            itemNameVal = ' '.repeat(style.indent) + `Variant: ${node.color || 'Default'}`;
             sizeVal = node.size;
           } else {
             conceptVal = displayLabel;
@@ -551,7 +552,8 @@ export class StockValuationExportProcessor {
         skuVal = node.sku;
         itemNameVal = node.articleName;
       } else if (node.level === 'variant') {
-        itemNameVal = 'Variant Details';
+        skuVal = node.barCode || node.sku;
+        itemNameVal = `Variant: ${node.color || 'Default'}`;
         sizeVal = node.size;
       } else {
         conceptVal = label;
