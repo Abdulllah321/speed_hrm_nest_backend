@@ -213,8 +213,8 @@ async function updateUnitCostByBarcodes(
 
     // 3. Perform database updates
     if (!isDryRun && updatesToApply.length > 0) {
-      // Execute in transactions of 250 updates for maximum speed
-      const updateChunks = chunkArray(updatesToApply, 250);
+      // Execute in transactions of 50 items for stability and high speed
+      const updateChunks = chunkArray(updatesToApply, 50);
       for (const uChunk of updateChunks) {
         await prisma.$transaction(
           uChunk.flatMap((u) => [
@@ -241,6 +241,7 @@ async function updateUnitCostByBarcodes(
               data: { averageCost: u.newCost },
             }),
           ]),
+          { timeout: 30000 },
         );
       }
       totalUpdated += updatesToApply.length;
