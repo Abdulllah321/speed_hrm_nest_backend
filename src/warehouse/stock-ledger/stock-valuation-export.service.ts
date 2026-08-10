@@ -512,7 +512,10 @@ export class StockValuationExportService {
           extraFields.sku = item.sku;
           extraFields.articleName = item.description || 'Unknown Article';
         } else if (levelName === 'variant') {
-          nodeVal = `${item.color?.name || 'Default'}-${item.size?.name || 'Default'}`;
+          const bc = (item.barCode || '').trim();
+          nodeVal = bc ? `${item.sku}_${bc}` : `${item.sku}_${item.id}`;
+          extraFields.barCode = bc || item.barCode || '';
+          extraFields.sku = item.sku;
           extraFields.color = item.color?.name || 'Default';
           extraFields.size = item.size?.name || 'Default';
         }
