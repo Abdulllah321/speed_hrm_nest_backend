@@ -28,6 +28,7 @@ model Warehouse {
   erpSalesOrders   ERPSalesOrder[]
   deliveryChallans DeliveryChallan[]
   erpSalesInvoices ERPSalesInvoice[]
+  salesReturns     SalesReturn[]
   purchaseInvoices PurchaseInvoice[]
 
   @@index([companyId])

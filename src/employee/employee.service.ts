@@ -202,7 +202,12 @@ export class EmployeeService {
     }
 
     if (query?.locationId) {
-      where.locationId = query.locationId;
+      const locIds = query.locationId.split(',').map((s) => s.trim()).filter(Boolean);
+      if (locIds.length === 1) {
+        where.locationId = locIds[0];
+      } else if (locIds.length > 1) {
+        where.locationId = { in: locIds };
+      }
     }
 
     if (query?.providentFund === 'true') {

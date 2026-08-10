@@ -9,8 +9,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StockLedgerModule } from '../warehouse/stock-ledger/stock-ledger.module';
 import { FinanceAccountConfigModule } from '../finance/finance-account-config/finance-account-config.module';
 
+import { SalesReturnModule } from './sales-return/sales-return.module';
+
 @Module({
-  imports: [FinanceAccountConfigModule, StockLedgerModule],
+  imports: [FinanceAccountConfigModule, StockLedgerModule, SalesReturnModule],
   controllers: [
     SalesOrderController,
     SalesInvoiceController,
