@@ -316,6 +316,16 @@ export class StockValuationExportService {
         itemId: { in: matchedItemIds },
         createdAt: { lte: endDate },
       },
+      select: {
+        id: true,
+        itemId: true,
+        qty: true,
+        unitCost: true,
+        rate: true,
+        movementType: true,
+        referenceType: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: 'asc' },
     });
 
