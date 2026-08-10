@@ -525,8 +525,8 @@ export class StockValuationExportProcessor {
         totalRow.commit();
 
         await workbook.commit();
-        }
       }
+    }
 
       await job.progress(95);
 
