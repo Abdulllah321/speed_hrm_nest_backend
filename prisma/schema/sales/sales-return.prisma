@@ -1,0 +1,54 @@
+model SalesReturn {
+  id                 String           @id @default(uuid())
+  returnNumber       String           @unique @map("return_number")
+  sourceType         String           @map("source_type") // DELIVERY_CHALLAN, INVOICE
+  deliveryChallanId  String?          @map("delivery_challan_id")
+  salesInvoiceId     String?          @map("sales_invoice_id")
+  customerId         String           @map("customer_id")
+  warehouseId        String           @map("warehouse_id")
+  returnDate         DateTime         @default(now()) @map("return_date")
+  returnType         String           @default("DEFECTIVE") // DEFECTIVE, EXCESS, WRONG_ITEM, DAMAGED, SHORTAGE
+  reason             String?
+  status             String           @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
+  subtotal           Decimal          @default(0) @db.Decimal(15, 2)
+  taxAmount          Decimal          @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  totalAmount        Decimal          @default(0) @map("total_amount") @db.Decimal(15, 2)
+  notes              String?
+  staxEInvoiceNumber String?          @map("stax_e_invoice_number")
+  approvedBy         String?          @map("approved_by")
+  approvedAt         DateTime?        @map("approved_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  items           SalesReturnItem[]
+  salesInvoice    ERPSalesInvoice? @relation(fields: [salesInvoiceId], references: [id])
+  deliveryChallan DeliveryChallan? @relation(fields: [deliveryChallanId], references: [id])
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  warehouse       Warehouse        @relation(fields: [warehouseId], references: [id])
+  creditNote      CreditNote?
+
+  @@map("sales_returns")
+}
+
+model SalesReturnItem {
+  id                    String               @id @default(uuid())
+  salesReturnId         String               @map("sales_return_id")
+  sourceItemType        String               @map("source_item_type") // DELIVERY_CHALLAN_ITEM, INVOICE_ITEM
+  deliveryChallanItemId String?              @map("delivery_challan_item_id")
+  salesInvoiceItemId    String?              @map("sales_invoice_item_id")
+  itemId                String               @map("item_id")
+  description           String?
+  returnQty             Decimal              @map("return_qty") @db.Decimal(15, 4)
+  unitPrice             Decimal              @map("unit_price") @db.Decimal(15, 2)
+  lineTotal             Decimal              @map("line_total") @db.Decimal(15, 2)
+  reason                String?
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  salesReturn         SalesReturn          @relation(fields: [salesReturnId], references: [id], onDelete: Cascade)
+  deliveryChallanItem DeliveryChallanItem? @relation(fields: [deliveryChallanItemId], references: [id])
+  salesInvoiceItem    ERPSalesInvoiceItem? @relation(fields: [salesInvoiceItemId], references: [id])
+  item                Item                 @relation(fields: [itemId], references: [id])
+
+  @@map("sales_return_items")
+}

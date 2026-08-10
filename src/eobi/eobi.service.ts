@@ -490,12 +490,18 @@ export class EOBIService {
         });
 
       if (existingContribution) {
-        this.logger.warn(
-          `EOBI contribution already exists for employee ${data.employeeId} for ${monthYear}`,
-        );
+        const updated = await this.prisma.eOBIContribution.update({
+          where: { id: existingContribution.id },
+          data: {
+            employeeContribution: data.employeeContribution,
+            employerContribution: data.employerContribution,
+            totalContribution: totalContribution,
+            payrollId: data.payrollId,
+          },
+        });
         return {
-          status: false,
-          message: 'EOBI contribution already exists for this month',
+          status: true,
+          data: updated,
         };
       }
 
@@ -544,11 +550,8 @@ export class EOBIService {
         where,
         include: {
           employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              employeeName: true,
-              eobiRegion: true,
+            include: {
+              location: true,
             },
           },
         },
@@ -559,43 +562,41 @@ export class EOBIService {
       for (const contrib of contributions) {
         if (!contrib.employee) continue;
 
-        const region = contrib.employee.eobiRegion || 'Punjab';
+        const emp = contrib.employee;
+        const loc = emp.location;
+        const locCode = (loc?.code || '').toUpperCase();
+        const locName = (loc?.name || '').toUpperCase();
+        const region = (emp.eobiRegion || '').toLowerCase();
 
-        let eobiRecord = await this.prisma.eOBI.findFirst({
-          where: {
-            region: { equals: region, mode: 'insensitive' },
-            status: 'active',
-            isDeleted: false,
+        const isIslamabad =
+          locCode === 'N10004' ||
+          locCode === 'N10005' ||
+          locCode === 'SS1007' ||
+          locCode === 'SS1008' ||
+          locCode === 'CK1006' ||
+          locCode === 'W10004' ||
+          locCode === 'W10005' ||
+          locCode === 'W10010' ||
+          locName.includes('ISLAMABAD') ||
+          locName.includes('RAWALPINDI') ||
+          locName.includes('SAFA') ||
+          locName.includes('GIGA') ||
+          locName.includes('CENTAURUS') ||
+          region.includes('islamabad');
+
+        const empContrib = new Decimal(isIslamabad ? 370 : 400);
+        const emprContrib = new Decimal(isIslamabad ? 1850 : 2000);
+        const totContrib = empContrib.add(emprContrib);
+
+        await this.prisma.eOBIContribution.update({
+          where: { id: contrib.id },
+          data: {
+            employeeContribution: empContrib,
+            employerContribution: emprContrib,
+            totalContribution: totContrib,
           },
-          orderBy: { createdAt: 'desc' },
         });
-
-        if (!eobiRecord) {
-          eobiRecord = await this.prisma.eOBI.findFirst({
-            where: {
-              region: region,
-              status: 'active',
-              isDeleted: false,
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-        }
-
-        if (eobiRecord) {
-          const empContrib = new Decimal(eobiRecord.employeeContribution);
-          const emprContrib = new Decimal(eobiRecord.employerContribution);
-          const totContrib = empContrib.add(emprContrib);
-
-          await this.prisma.eOBIContribution.update({
-            where: { id: contrib.id },
-            data: {
-              employeeContribution: empContrib,
-              employerContribution: emprContrib,
-              totalContribution: totContrib,
-            },
-          });
-          updatedCount++;
-        }
+        updatedCount++;
       }
 
       return {

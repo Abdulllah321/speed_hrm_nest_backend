@@ -5194,19 +5194,43 @@ export class PayrollService {
         }
       }
 
-      const findTagAccount = async (parentAccount: any, code?: string, name?: string) => {
-        if (!parentAccount) return null;
+      const isOfficeLoc = (code?: string, name?: string) => {
+        const locCode = (code || '').toUpperCase();
+        const locName = (name || '').toUpperCase();
+        if (locName.includes('CORPORATE') || locName.includes('OFFICE')) return true;
+        if (/^C[0-3]\d{4}$/.test(locCode) && !locCode.startsWith('CK')) return true;
+        return false;
+      };
+
+      const findTagAccount = async (primaryParent: any, secondaryParent: any, code?: string, name?: string) => {
         const OR: any[] = [];
         if (code) OR.push({ code: { equals: code, mode: 'insensitive' } });
         if (name) OR.push({ name: { equals: name, mode: 'insensitive' } });
-        if (OR.length === 0) return null;
+        if (OR.length === 0) return { tagAccount: null, parentAccount: primaryParent };
 
-        return this.prisma.chartOfAccount.findFirst({
-          where: {
-            parentId: parentAccount.id,
-            OR,
-          },
+        if (primaryParent) {
+          const tagAcc = await this.prisma.chartOfAccount.findFirst({
+            where: { parentId: primaryParent.id, OR },
+          });
+          if (tagAcc) return { tagAccount: tagAcc, parentAccount: primaryParent };
+        }
+
+        if (secondaryParent) {
+          const tagAcc = await this.prisma.chartOfAccount.findFirst({
+            where: { parentId: secondaryParent.id, OR },
+          });
+          if (tagAcc) return { tagAccount: tagAcc, parentAccount: secondaryParent };
+        }
+
+        const globalTag = await this.prisma.chartOfAccount.findFirst({
+          where: { OR },
+          include: { parent: true },
         });
+        if (globalTag) {
+          return { tagAccount: globalTag, parentAccount: (globalTag as any).parent || primaryParent };
+        }
+
+        return { tagAccount: null, parentAccount: primaryParent };
       };
 
       // Data structures for grouping lines
@@ -5240,11 +5264,88 @@ export class PayrollService {
         orderBy: { createdAt: 'desc' },
       });
 
-      const getEmployerEobiRate = (emp: any): number => {
+      const getEobiTotalRate = (emp: any): number => {
         if (!emp?.eobi) return 0;
-        const region = emp?.eobiRegion || 'Punjab';
-        const rec = activeEobiRecords.find((r) => r.region.toLowerCase() === region.toLowerCase());
-        return rec ? Number(rec.employerContribution || 0) : 2400;
+        const loc = emp?.location;
+        const locCode = (loc?.code || '').toUpperCase();
+        const locName = (loc?.name || '').toUpperCase();
+        const region = (emp?.eobiRegion || '').toLowerCase();
+
+        if (
+          locCode === 'N10004' ||
+          locCode === 'N10005' ||
+          locCode === 'SS1007' ||
+          locCode === 'SS1008' ||
+          locCode === 'CK1006' ||
+          locCode === 'W10004' ||
+          locCode === 'W10005' ||
+          locCode === 'W10010' ||
+          locName.includes('ISLAMABAD') ||
+          locName.includes('RAWALPINDI') ||
+          locName.includes('SAFA') ||
+          locName.includes('GIGA') ||
+          locName.includes('CENTAURUS') ||
+          region.includes('islamabad')
+        ) {
+          return 2220;
+        }
+
+        const rec = activeEobiRecords.find((r) => r.region.toLowerCase() === region);
+        if (rec) {
+          return Number(rec.employerContribution || 0) + Number(rec.employeeContribution || 0);
+        }
+        return 2400;
+      };
+
+      const getEobiGroupCode = (emp: any): string => {
+        const loc = emp?.location;
+        const locCode = (loc?.code || '').toUpperCase();
+        const locName = (loc?.name || '').toUpperCase();
+        const region = (emp?.eobiRegion || '').toLowerCase();
+
+        if (locCode === 'C40001' || locName.includes('LOGISTIC') || locName.includes('WAREHOUSE')) return 'WH';
+        if (locCode === 'SS1010' || locName.includes('LYALLPUR') || locName.includes('FAISALABAD') || locName.includes('FSD')) return 'FSD';
+        if (
+          locCode === 'N10004' ||
+          locCode === 'N10005' ||
+          locCode === 'SS1007' ||
+          locCode === 'SS1008' ||
+          locCode === 'CK1006' ||
+          locCode === 'W10004' ||
+          locCode === 'W10005' ||
+          locCode === 'W10010' ||
+          locName.includes('ISLAMABAD') ||
+          locName.includes('RAWALPINDI') ||
+          locName.includes('SAFA') ||
+          locName.includes('GIGA') ||
+          locName.includes('CENTAURUS') ||
+          region.includes('islamabad')
+        ) return 'ISB';
+        if (
+          locCode === 'N10002' ||
+          locCode === 'N10003' ||
+          locCode === 'PU1001' ||
+          locCode === 'SS1004' ||
+          locCode === 'SS1005' ||
+          locCode === 'SS1006' ||
+          locCode === 'A10003' ||
+          locCode === 'CK1004' ||
+          locCode === 'CK1005' ||
+          locCode === 'P10002' ||
+          locCode === 'P10003' ||
+          locCode === 'W10002' ||
+          locCode === 'W10003' ||
+          locCode === 'W10008' ||
+          locCode === 'W10009' ||
+          locName.includes('LAHORE') ||
+          locName.includes('EMPORIUM') ||
+          locName.includes('PACKAGES') ||
+          locName.includes('XINHUA') ||
+          locName.includes('MADISON') ||
+          (locCode.startsWith('C') && locCode !== 'C40001' && (region.includes('punjab') || region.includes('lahore')))
+        ) return 'LHR';
+
+        return 'KHI';
       };
 
       for (const d of details) {
@@ -5267,27 +5368,24 @@ export class PayrollService {
         const net = Number(d.netSalary || 0);
         const tax = Number(d.taxDeduction || 0);
         const pfEmp = Number(d.providentFundDeduction || 0);
-        const eobiEmp = Number(d.eobiDeduction || 0);
         const advDed = Number(d.advanceSalaryDeduction || 0);
         const loanDed = Number(d.loanDeduction || 0);
 
         const pfCo = emp?.providentFund ? pfEmp : 0;
-        const eobiCo = getEmployerEobiRate(emp);
+        const eobiTotal = getEobiTotalRate(emp);
 
         if (!locationGrossSalaries.has(locId)) {
           locationGrossSalaries.set(locId, { location: loc, totalGross: 0, incentiveAmount: 0 });
         }
         const locGroup = locationGrossSalaries.get(locId)!;
-        locGroup.totalGross += (gross - itemIncentive);
+        locGroup.totalGross += gross;
         locGroup.incentiveAmount += itemIncentive;
 
-        const totalEobiForEmp = eobiCo > 0 ? (eobiCo + eobiEmp) : 0;
-
-        if (totalEobiForEmp > 0) {
+        if (eobiTotal > 0) {
           if (!locationEobiContributions.has(locId)) {
             locationEobiContributions.set(locId, { location: loc, totalEobi: 0 });
           }
-          locationEobiContributions.get(locId)!.totalEobi += totalEobiForEmp;
+          locationEobiContributions.get(locId)!.totalEobi += eobiTotal;
         }
 
         if (pfCo > 0) {
@@ -5308,8 +5406,9 @@ export class PayrollService {
         employerPfSum += pfCo;
         employeePfSum += pfEmp;
 
-        const region = emp?.eobiRegion || 'KHI';
-        eobiRegionPayables.set(region, (eobiRegionPayables.get(region) || 0) + totalEobiForEmp);
+        const eobiGroup = getEobiGroupCode(emp);
+        const totalEobiForEmp = eobiTotal;
+        eobiRegionPayables.set(eobiGroup, (eobiRegionPayables.get(eobiGroup) || 0) + totalEobiForEmp);
 
         if (advDed > 0) {
           const empKey = emp?.employeeId || d.employeeId;
@@ -5338,15 +5437,18 @@ export class PayrollService {
         const locName = loc?.name || 'COMPANY';
         const locShort = loc?.shortCode || locCode;
 
-        const isOffice = locCode.startsWith('C') || locName.toUpperCase().includes('CORPORATE') || locName.toUpperCase().includes('OFFICE');
-        const targetParent = isOffice ? accOfficeSal : accStoreSal;
+        const isOffice = isOfficeLoc(locCode, locName);
+        const primaryParent = isOffice ? accOfficeSal : accStoreSal;
+        const secondaryParent = isOffice ? accStoreSal : accOfficeSal;
 
-        if (targetParent && roundToTwo(totalGross) > 0) {
-          const tagAccount = await findTagAccount(targetParent, locCode, locName);
+        const baseSalaryAmount = totalGross - incentiveAmount;
+
+        if (primaryParent && roundToTwo(baseSalaryAmount) > 0) {
+          const { tagAccount, parentAccount } = await findTagAccount(primaryParent, secondaryParent, locCode, locName);
           jvLines.push({
-            accountId: targetParent.id,
+            accountId: (parentAccount || primaryParent).id,
             tagAccountId: tagAccount?.id || null,
-            debit: roundToTwo(totalGross),
+            debit: roundToTwo(baseSalaryAmount),
             credit: 0,
             narration: `REC SALARY FOR ${monthAbbr}'${yearShort}, ${locShort}`,
           });
@@ -5354,9 +5456,9 @@ export class PayrollService {
 
         const accCommission = parentAccountsMap.get('apEmployeesCommission');
         if (accCommission && roundToTwo(incentiveAmount) > 0) {
-          const tagAccount = await findTagAccount(accCommission, locCode, locName);
+          const { tagAccount, parentAccount } = await findTagAccount(accCommission, null, locCode, locName);
           jvLines.push({
-            accountId: accCommission.id,
+            accountId: (parentAccount || accCommission).id,
             tagAccountId: tagAccount?.id || null,
             debit: roundToTwo(incentiveAmount),
             credit: 0,
@@ -5374,13 +5476,14 @@ export class PayrollService {
         const locName = loc?.name || 'COMPANY';
         const locShort = loc?.shortCode || locCode;
 
-        const isOffice = locCode.startsWith('C') || locName.toUpperCase().includes('CORPORATE') || locName.toUpperCase().includes('OFFICE');
-        const targetParent = isOffice ? accOfficeEobi : accStoreEobi;
+        const isOffice = isOfficeLoc(locCode, locName);
+        const primaryParent = isOffice ? accOfficeEobi : accStoreEobi;
+        const secondaryParent = isOffice ? accStoreEobi : accOfficeEobi;
 
-        if (targetParent && roundToTwo(totalEobi) > 0) {
-          const tagAccount = await findTagAccount(targetParent, locCode, locName);
+        if (primaryParent && roundToTwo(totalEobi) > 0) {
+          const { tagAccount, parentAccount } = await findTagAccount(primaryParent, secondaryParent, locCode, locName);
           jvLines.push({
-            accountId: targetParent.id,
+            accountId: (parentAccount || primaryParent).id,
             tagAccountId: tagAccount?.id || null,
             debit: roundToTwo(totalEobi),
             credit: 0,
@@ -5398,13 +5501,14 @@ export class PayrollService {
         const locName = loc?.name || 'COMPANY';
         const locShort = loc?.shortCode || locCode;
 
-        const isOffice = locCode.startsWith('C') || locName.toUpperCase().includes('CORPORATE') || locName.toUpperCase().includes('OFFICE');
-        const targetParent = isOffice ? accOfficePf : accStorePf;
+        const isOffice = isOfficeLoc(locCode, locName);
+        const primaryParent = isOffice ? accOfficePf : accStorePf;
+        const secondaryParent = isOffice ? accStorePf : accOfficePf;
 
-        if (targetParent && roundToTwo(totalPf) > 0) {
-          const tagAccount = await findTagAccount(targetParent, locCode, locName);
+        if (primaryParent && roundToTwo(totalPf) > 0) {
+          const { tagAccount, parentAccount } = await findTagAccount(primaryParent, secondaryParent, locCode, locName);
           jvLines.push({
-            accountId: targetParent.id,
+            accountId: (parentAccount || primaryParent).id,
             tagAccountId: tagAccount?.id || null,
             debit: roundToTwo(totalPf),
             credit: 0,
@@ -5417,7 +5521,7 @@ export class PayrollService {
       const accApSalary = parentAccountsMap.get('apSalary');
       if (accApSalary) {
         if (roundToTwo(bankTransferNetSum) > 0) {
-          const tagBank = await findTagAccount(accApSalary, 'SP0001', 'SALARY P/A - A/C TRF');
+          const { tagAccount: tagBank } = await findTagAccount(accApSalary, null, 'SP0001', 'SALARY P/A - A/C TRF');
           jvLines.push({
             accountId: accApSalary.id,
             tagAccountId: tagBank?.id || null,
@@ -5428,7 +5532,7 @@ export class PayrollService {
         }
 
         if (roundToTwo(cashChequeNetSum) > 0) {
-          const tagCash = await findTagAccount(accApSalary, 'SP0002', 'SALARY P/A - CHQ/CSH');
+          const { tagAccount: tagCash } = await findTagAccount(accApSalary, null, 'SP0002', 'SALARY P/A - CHQ/CSH');
           jvLines.push({
             accountId: accApSalary.id,
             tagAccountId: tagCash?.id || null,
@@ -5441,7 +5545,7 @@ export class PayrollService {
 
       const accWhTax = parentAccountsMap.get('whTaxSalary');
       if (accWhTax && roundToTwo(taxDeductionSum) > 0) {
-        const tagTax = await findTagAccount(accWhTax, 'T00001', 'SALARY');
+        const { tagAccount: tagTax } = await findTagAccount(accWhTax, null, 'T00001', 'SALARY');
         jvLines.push({
           accountId: accWhTax.id,
           tagAccountId: tagTax?.id || null,
@@ -5453,7 +5557,7 @@ export class PayrollService {
 
       const accPf = parentAccountsMap.get('apProvidentFund');
       if (accPf) {
-        const tagCo = await findTagAccount(accPf, 'C00001', 'COMPANY');
+        const { tagAccount: tagCo } = await findTagAccount(accPf, null, 'C00001', 'COMPANY');
 
         if (roundToTwo(employerPfSum) > 0) {
           jvLines.push({
@@ -5483,7 +5587,7 @@ export class PayrollService {
           if (roundToTwo(amount) > 0) {
             const empCode = emp?.employeeId || empKey;
             const empName = emp?.employeeName || empKey;
-            const tagEmp = await findTagAccount(accAdvance, empCode, empName);
+            const { tagAccount: tagEmp } = await findTagAccount(accAdvance, null, empCode, empName);
             jvLines.push({
               accountId: accAdvance.id,
               tagAccountId: tagEmp?.id || null,
@@ -5497,7 +5601,7 @@ export class PayrollService {
 
       const accApEobi = parentAccountsMap.get('apEobi');
       if (accApEobi) {
-        const tagCo = await findTagAccount(accApEobi, 'C00001', 'COMPANY');
+        const { tagAccount: tagCo } = await findTagAccount(accApEobi, null, 'C00001', 'COMPANY');
         for (const [region, totalAmount] of eobiRegionPayables.entries()) {
           if (roundToTwo(totalAmount) > 0) {
             jvLines.push({
@@ -5518,7 +5622,7 @@ export class PayrollService {
           if (roundToTwo(amount) > 0) {
             const empCode = emp?.employeeId || empKey;
             const empName = emp?.employeeName || empKey;
-            const tagEmp = await findTagAccount(accLoan, empCode, empName);
+            const { tagAccount: tagEmp } = await findTagAccount(accLoan, null, empCode, empName);
             jvLines.push({
               accountId: accLoan.id,
               tagAccountId: tagEmp?.id || null,
@@ -5533,6 +5637,38 @@ export class PayrollService {
       if (jvLines.length === 0) {
         return;
       }
+
+      // Sort jvLines according to exact Excel sequence
+      const seqMap: Record<string, number> = {
+        '70010001': 1,
+        '80010001': 2,
+        '12030002': 3,
+        '70010009': 4,
+        '80010009': 5,
+        '70010005': 6,
+        '80010005': 7,
+        '12030003': 8,
+        '12060001': 9,
+        '12030004': 10,
+        '31030001': 11,
+        '12030005': 12,
+        '31030002': 13,
+      };
+
+      const accountIdToCode = new Map<string, string>();
+      for (const acc of parentAccountsMap.values()) {
+        if (acc?.id && acc?.code) {
+          accountIdToCode.set(acc.id, acc.code);
+        }
+      }
+
+      jvLines.sort((a, b) => {
+        const codeA = accountIdToCode.get(a.accountId) || '';
+        const codeB = accountIdToCode.get(b.accountId) || '';
+        const seqA = seqMap[codeA] ?? 99;
+        const seqB = seqMap[codeB] ?? 99;
+        return seqA - seqB;
+      });
 
       // Balance check
       const totalDebit = jvLines.reduce((s, l) => s + l.debit, 0);

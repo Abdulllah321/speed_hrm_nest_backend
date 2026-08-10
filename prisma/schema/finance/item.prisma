@@ -75,6 +75,7 @@ model Item {
   erpSalesOrderItems   ERPSalesOrderItem[]
   deliveryChallanItems DeliveryChallanItem[]
   erpSalesInvoiceItems ERPSalesInvoiceItem[]
+  salesReturnItems     SalesReturnItem[]
   posClaimItems        PosClaimItem[]
 
   // Discount Campaigns
