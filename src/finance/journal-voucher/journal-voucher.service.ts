@@ -60,28 +60,34 @@ export class JournalVoucherService {
           },
         });
 
-        // 2. Post to AccountTransaction ledger ONLY IF approved
+        // 2. Post to AccountTransaction ledger ONLY IF approved and not already posted
         if (created.status === 'approved') {
-          await this.accounting.postLines(
-            details.map(d => ({
-              accountId:       d.accountId,
-              tagAccountId:    d.tagAccountId?.trim() || undefined,
-              debit:           Number(d.debit),
-              credit:          Number(d.credit),
-              narration:       d.narration       || data.description || undefined,
-              refBillNo:       d.refBillNo       || undefined,
-              refBillNo2:      d.refBillNo2      || undefined,
-              taxType:         d.taxType ?? 'Taxable',
-            })),
-            {
-              sourceType:      'JOURNAL_VOUCHER',
-              sourceId:        created.id,
-              sourceRef:       created.jvNo,
-              description:     data.description ?? undefined,
-              transactionDate: new Date(data.jvDate),
-            },
-            prisma,
-          );
+          const existingTx = await prisma.accountTransaction.findFirst({
+            where: { sourceType: 'JOURNAL_VOUCHER', sourceId: created.id },
+            select: { id: true },
+          });
+          if (!existingTx) {
+            await this.accounting.postLines(
+              details.map(d => ({
+                accountId:       d.accountId,
+                tagAccountId:    d.tagAccountId?.trim() || undefined,
+                debit:           Number(d.debit),
+                credit:          Number(d.credit),
+                narration:       d.narration       || data.description || undefined,
+                refBillNo:       d.refBillNo       || undefined,
+                refBillNo2:      d.refBillNo2      || undefined,
+                taxType:         d.taxType ?? 'Taxable',
+              })),
+              {
+                sourceType:      'JOURNAL_VOUCHER',
+                sourceId:        created.id,
+                sourceRef:       created.jvNo,
+                description:     data.description ?? undefined,
+                transactionDate: new Date(data.jvDate),
+              },
+              prisma,
+            );
+          }
         }
 
         return created;

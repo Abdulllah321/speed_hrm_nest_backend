@@ -217,12 +217,30 @@ async function updateUnitCostByBarcodes(
       const updateChunks = chunkArray(updatesToApply, 250);
       for (const uChunk of updateChunks) {
         await prisma.$transaction(
-          uChunk.map((u) =>
+          uChunk.flatMap((u) => [
             prisma.item.update({
               where: { id: u.id },
               data: { unitCost: u.newCost },
             }),
-          ),
+            prisma.stockLedger.updateMany({
+              where: {
+                itemId: u.id,
+                OR: [
+                  { movementType: 'OPENING_BALANCE' },
+                  { referenceType: 'OPENING_BALANCE' },
+                  { referenceType: 'BULK_STOCK_UPLOAD' },
+                ],
+              },
+              data: {
+                rate: u.newCost,
+                unitCost: u.newCost,
+              },
+            }),
+            prisma.tenantItemSetting.updateMany({
+              where: { itemId: u.id },
+              data: { averageCost: u.newCost },
+            }),
+          ]),
         );
       }
       totalUpdated += updatesToApply.length;
