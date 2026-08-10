@@ -264,13 +264,13 @@ export class StockValuationExportService {
     for (const item of items) {
       const setting = settingMap.get(item.id);
       const valuationMethod = setting?.valuationMethod || 'WEIGHTED_AVG';
-      let defaultCost = Number(
-        valuationMethod === 'STANDARD'
-          ? (setting?.standardCost || 0)
-          : (setting?.averageCost || 0)
-      );
+      let defaultCost = Number(item.unitCost || 0);
       if (defaultCost === 0) {
-        defaultCost = Number(item.unitCost || item.fob || 0);
+        defaultCost = Number(
+          valuationMethod === 'STANDARD'
+            ? (setting?.standardCost || 0)
+            : (setting?.averageCost || item.fob || 0)
+        );
       }
 
       const entries = ledgerMap.get(item.id) || [];
@@ -298,7 +298,10 @@ export class StockValuationExportService {
 
       for (const entry of entries) {
         const entryQty = Number(entry.qty);
-        const entryCost = Number(entry.unitCost ?? entry.rate ?? runningWac);
+        let entryCost = Number(entry.unitCost ?? entry.rate ?? 0);
+        if (entryCost === 0) {
+          entryCost = runningWac;
+        }
         const isBeforePeriod = entry.createdAt < startDate;
 
         if (
