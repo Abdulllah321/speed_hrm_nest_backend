@@ -23,6 +23,8 @@ model Customer {
   salesOrders      ERPSalesOrder[]
   deliveryChallans DeliveryChallan[]
   salesInvoices    ERPSalesInvoice[]
+  salesReturns     SalesReturn[]
+  creditNotes      CreditNote[]
   posSalesOrders   SalesOrder[]
   receiptVouchers  ReceiptVoucher[]
   vouchers         Voucher[]

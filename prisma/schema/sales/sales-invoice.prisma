@@ -27,11 +27,14 @@ model ERPSalesInvoice {
   discount         Decimal @default(0)
   grandTotal       Decimal
   paidAmount       Decimal @default(0)
+  returnAmount     Decimal @default(0) @map("return_amount")
   balanceAmount    Decimal @default(0)
   paymentStatus    String  @default("UNPAID") // UNPAID | PARTIALLY_PAID | FULLY_PAID
 
   // Relations
-  items ERPSalesInvoiceItem[]
+  items        ERPSalesInvoiceItem[]
+  salesReturns SalesReturn[]
+  creditNotes  CreditNote[]
   // stockLedgers      StockLedger[]  // Commented out - using referenceId instead of foreign key
 
   // Audit
@@ -57,6 +60,8 @@ model ERPSalesInvoiceItem {
   quantity  Int
   discount  Decimal @default(0)
   total     Decimal // (salePrice * quantity) - discount
+
+  salesReturnItems SalesReturnItem[]
 
   // Audit
   createdAt DateTime @default(now())

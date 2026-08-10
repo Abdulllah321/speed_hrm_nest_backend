@@ -1,0 +1,20 @@
+model CreditNote {
+  id           String   @id @default(uuid())
+  creditNoteNo String   @unique @map("credit_note_no")
+  date         DateTime @default(now())
+  amount       Decimal  @db.Decimal(15, 2)
+  status       String   @default("APPROVED") // DRAFT, APPROVED, CANCELLED
+
+  salesReturnId  String?          @unique @map("sales_return_id")
+  salesInvoiceId String?          @map("sales_invoice_id")
+  customerId     String           @map("customer_id")
+
+  salesReturn  SalesReturn?     @relation(fields: [salesReturnId], references: [id])
+  salesInvoice ERPSalesInvoice? @relation(fields: [salesInvoiceId], references: [id])
+  customer     Customer         @relation(fields: [customerId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("credit_notes")
+}

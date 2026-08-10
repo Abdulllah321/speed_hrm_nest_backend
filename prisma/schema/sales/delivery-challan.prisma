@@ -24,8 +24,9 @@ model DeliveryChallan {
   totalAmount Decimal
 
   // Relations
-  items    DeliveryChallanItem[]
-  invoices ERPSalesInvoice[]
+  items        DeliveryChallanItem[]
+  invoices     ERPSalesInvoice[]
+  salesReturns SalesReturn[]
 
   // Audit
   createdAt DateTime @default(now())
@@ -51,6 +52,8 @@ model DeliveryChallanItem {
   // Pricing (for reference)
   salePrice Decimal
   total     Decimal // deliveredQty * salePrice
+
+  salesReturnItems SalesReturnItem[]
 
   // Audit
   createdAt DateTime @default(now())
