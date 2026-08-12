@@ -56,8 +56,10 @@ export class TransferRequestController {
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
         @Query('dispatchType') dispatchType?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
     ) {
-        const data = await this.transferRequestService.getRequests(
+        const result = await this.transferRequestService.getRequests(
             warehouseId,
             status,
             id,
@@ -65,9 +67,11 @@ export class TransferRequestController {
             search,
             dateFrom,
             dateTo,
-            dispatchType
+            dispatchType,
+            page ? parseInt(page, 10) : undefined,
+            limit ? parseInt(limit, 10) : undefined,
         );
-        return { status: true, data };
+        return { status: true, data: result.data, meta: result.meta };
     }
 
 
