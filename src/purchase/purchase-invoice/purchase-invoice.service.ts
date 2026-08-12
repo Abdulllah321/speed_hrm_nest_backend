@@ -222,6 +222,7 @@ export class PurchaseInvoiceService {
               include: {
                 size: true,
                 color: true,
+                brand: true,
               },
             },
           },
