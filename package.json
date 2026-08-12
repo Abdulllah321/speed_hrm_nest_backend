@@ -40,6 +40,8 @@
     "seed:pos-terminals": "bun scripts/create-stock-location-pos.ts",
     "wipe:location-data": "bun scripts/wipe-location-data.ts",
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
+    "import:transfers": "bun scripts/import-transfers.ts",
+    "import:transfers:dry": "bun scripts/import-transfers.ts --dry-run",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
