@@ -32,12 +32,35 @@ export class PurchaseReturnService {
       // Calculate totals
       const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
 
+      // Resolve grnId and landedCostId from source invoice/landedCost if missing
+      let resolvedGrnId = createDto.grnId;
+      let resolvedLandedCostId = createDto.landedCostId;
+
+      if (createDto.purchaseInvoiceId) {
+        const inv = await this.prisma.purchaseInvoice.findUnique({
+          where: { id: createDto.purchaseInvoiceId },
+          select: { grnId: true, landedCostId: true },
+        });
+        if (inv) {
+          if (!resolvedGrnId) resolvedGrnId = inv.grnId || undefined;
+          if (!resolvedLandedCostId) resolvedLandedCostId = inv.landedCostId || undefined;
+        }
+      }
+
+      if (resolvedLandedCostId && !resolvedGrnId) {
+        const lc = await this.prisma.landedCost.findUnique({
+          where: { id: resolvedLandedCostId },
+          select: { grnId: true },
+        });
+        if (lc?.grnId) resolvedGrnId = lc.grnId;
+      }
+
       const created = await this.prisma.purchaseReturn.create({
         data: {
           returnNumber,
           sourceType: createDto.sourceType,
-          grnId: createDto.grnId,
-          landedCostId: createDto.landedCostId,
+          grnId: resolvedGrnId,
+          landedCostId: resolvedLandedCostId,
           purchaseInvoiceId: createDto.purchaseInvoiceId,
           supplierId: createDto.supplierId,
           warehouseId: createDto.warehouseId,
@@ -67,7 +90,16 @@ export class PurchaseReturnService {
           items: true,
           grn: true,
           landedCost: true,
-          purchaseInvoice: true,
+          purchaseInvoice: {
+            include: {
+              grn: true,
+              landedCost: {
+                include: {
+                  grn: true,
+                },
+              },
+            },
+          },
           supplier: true,
           warehouse: true,
         },
@@ -132,6 +164,11 @@ export class PurchaseReturnService {
         purchaseInvoice: {
           include: {
             grn: true,
+            landedCost: {
+              include: {
+                grn: true,
+              },
+            },
           },
         },
         supplier: true,
