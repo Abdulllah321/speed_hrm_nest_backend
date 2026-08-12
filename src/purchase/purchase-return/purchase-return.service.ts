@@ -478,11 +478,15 @@ export class PurchaseReturnService {
     for (const returnItem of purchaseReturn.items) {
       const brandName = returnItem.item?.brand?.name || 'Generic';
       const qty = Number(returnItem.returnQty || 0);
-      const lineTotal = Number(returnItem.lineTotal || 0);
+      const unitPrice = Number(returnItem.unitPrice || 0);
+
+      const discRate = Number(returnItem.purchaseInvoiceItem?.discountRate || 0);
+      const discAmt = (qty * unitPrice * discRate) / 100;
+      const valExcl = qty * unitPrice - discAmt;
 
       // Determine sales tax rate from the associated PurchaseInvoiceItem
       const taxRate = Number(returnItem.purchaseInvoiceItem?.taxRate || 0);
-      const salesTax = (lineTotal * taxRate) / 100;
+      const salesTax = (valExcl * taxRate) / 100;
 
       if (!brandGroupsMap.has(brandName)) {
         brandGroupsMap.set(brandName, {
@@ -495,7 +499,7 @@ export class PurchaseReturnService {
 
       const group = brandGroupsMap.get(brandName)!;
       group.quantity += qty;
-      group.subtotal += lineTotal;
+      group.subtotal += valExcl;
       group.salesTaxAmount += salesTax;
     }
 
