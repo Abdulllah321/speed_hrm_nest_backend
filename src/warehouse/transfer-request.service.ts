@@ -265,6 +265,8 @@ export class TransferRequestService {
         dateFrom?: string,
         dateTo?: string,
         dispatchType?: string,
+        page?: number,
+        limit?: number,
     ) {
         const andClauses: any[] = [];
         
@@ -302,7 +304,10 @@ export class TransferRequestService {
         
         const where = andClauses.length ? { AND: andClauses } : {};
 
-        const requests = await this.prisma.transferRequest.findMany({
+        const pageNum = page ? Math.max(1, Number(page)) : 1;
+        const limitNum = limit !== undefined ? Math.max(0, Number(limit)) : 10;
+
+        const findOptions: Prisma.TransferRequestFindManyArgs = {
             where,
             include: {
                 items: {
@@ -325,9 +330,29 @@ export class TransferRequestService {
                 stockRequisition: { select: { id: true, requisitionNo: true } },
             },
             orderBy: { createdAt: 'desc' },
-        });
+        };
 
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
+        if (limitNum > 0) {
+            findOptions.skip = (pageNum - 1) * limitNum;
+            findOptions.take = limitNum;
+        }
+
+        const [total, requests] = await Promise.all([
+            this.prisma.transferRequest.count({ where }),
+            this.prisma.transferRequest.findMany(findOptions),
+        ]);
+
+        const enriched = await Promise.all(requests.map(req => this.enrichRequest(req)));
+
+        return {
+            data: enriched,
+            meta: {
+                total,
+                page: pageNum,
+                limit: limitNum > 0 ? limitNum : total,
+                totalPages: limitNum > 0 ? Math.ceil(total / limitNum) : 1,
+            },
+        };
     }
 
     async updateDispatchDetails(
