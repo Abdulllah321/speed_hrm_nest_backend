@@ -58,9 +58,12 @@ export interface EntityRef {
   name: string;
 }
 
+const KNOWN_WAREHOUSE_CODES = new Set(['C-TSDMC', 'C30001', 'C20001', 'C40001']);
+
 const isWarehouseCode = (code: string) => {
   const c = code.trim().toUpperCase();
-  return c === 'C40001' || c.startsWith('WH') || c.includes('WAREHOUSE');
+  if (KNOWN_WAREHOUSE_CODES.has(c)) return true;
+  return c.startsWith('WH') || c.includes('WAREHOUSE');
 };
 
 export function parseCustomDate(dateStr: string): Date {
@@ -297,10 +300,10 @@ async function processTransfersForTenant(
     }
   }
 
-  const warehouseCount = Array.from(entityCache.values()).filter((e) => e.type === 'WAREHOUSE').length;
-  const locationCount = Array.from(entityCache.values()).filter((e) => e.type === 'LOCATION').length;
+  const warehousesList = Array.from(entityCache.values()).filter((e) => e.type === 'WAREHOUSE');
+  const locationsList = Array.from(entityCache.values()).filter((e) => e.type === 'LOCATION');
 
-  console.log(`✅ Cached ${warehouseCount} Warehouses, ${locationCount} Outlet Locations, and ${itemCache.size} unique Items.`);
+  console.log(`✅ Cached ${warehousesList.length} Warehouses [${warehousesList.map(w => w.code).join(', ')}], ${locationsList.length} Outlet Locations, and ${itemCache.size} unique Items.`);
 
   // Group rows into Transfer Requests maintaining date/time chronological order
   const transferGroups = new Map<string, ParsedTransferRow[]>();
@@ -314,7 +317,7 @@ async function processTransfersForTenant(
 
   console.log(`\n📋 Grouped ${rows.length} total rows into ${transferGroups.size} unique Transfer Requests in Date & Time order.`);
 
-  // Per-outlet sequential counters starting at 1 for the oldest document up to N for the newest
+  // Per-outlet/warehouse sequential counters starting at 1 for the oldest document up to N for the newest
   const trOutCounters = new Map<string, number>();
   const trInCounters = new Map<string, number>();
 
@@ -340,7 +343,7 @@ async function processTransfersForTenant(
     const inNo = `TRIN-${String(currentInSeq).padStart(3, '0')}`;
 
     if (isDryRun && (stnCounter <= 12 || stnCounter % 1000 === 0)) {
-      console.log(`🔍 [DRY-RUN #${stnNumber}] Date: ${sample.documentDateOut || sample.receivingDocDate} | ${fromEntity.name} (${outNo}) -> ${toEntity.name} (${inNo}) [${groupRows.length} items]`);
+      console.log(`🔍 [DRY-RUN #${stnNumber}] Date: ${sample.documentDateOut || sample.receivingDocDate} | ${fromEntity.name} (${fromEntity.code} - ${fromEntity.type}) [${outNo}] -> ${toEntity.name} (${toEntity.code} - ${toEntity.type}) [${inNo}]`);
     } else if (!isDryRun && stnCounter % 500 === 0) {
       console.log(`🚀 [LIVE Progress] Processed ${stnCounter} / ${transferGroups.size} STNs (${processedCount} line items)...`);
     }
@@ -570,12 +573,11 @@ async function processTransfersForTenant(
 
   console.log(`\n==================================================`);
   console.log(`✨ ${isDryRun ? '[DRY RUN SUMMARY]' : '[IMPORT SUMMARY]'}`);
-  console.log(`   - Numbering Rule    : System-generated sequential starting at 1 (Oldest -> Newest)`);
   console.log(`   - Total Rows Parsed : ${rows.length}`);
   console.log(`   - Total Rows Created: ${processedCount}`);
   console.log(`   - STNs Generated    : ${transferGroups.size} (Format: STN-00001 to STN-${String(transferGroups.size).padStart(5, '0')})`);
-  console.log(`   - Warehouses        : ${warehouseCount} (including C40001)`);
-  console.log(`   - Outlet Locations  : ${locationCount}`);
+  console.log(`   - Warehouses        : ${warehousesList.length} [${warehousesList.map(w => w.code).join(', ')}]`);
+  console.log(`   - Outlet Locations  : ${locationsList.length}`);
   console.log(`   - TR OUT Format     : Sequential per Outlet starting from TROUT-001`);
   console.log(`   - TR IN Format      : Sequential per Outlet starting from TRIN-001`);
   console.log(`==================================================\n`);
