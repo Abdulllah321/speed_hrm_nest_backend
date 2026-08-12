@@ -52,7 +52,19 @@ export interface ParsedTransferRow {
   generatedTrInNo: string;
 }
 
-export function readAndParseMdTransfers(filePath: string, maxRows: number = 100): ParsedTransferRow[] {
+export interface EntityRef {
+  type: 'WAREHOUSE' | 'LOCATION';
+  id: string;
+  code: string;
+  name: string;
+}
+
+const isWarehouseCode = (code: string) => {
+  const c = code.trim().toUpperCase();
+  return c === 'C40001' || c.startsWith('WH') || c.includes('WAREHOUSE');
+};
+
+export function readAndParseMdTransfers(filePath: string, maxRows?: number): ParsedTransferRow[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found at path: ${filePath}`);
   }
@@ -120,7 +132,7 @@ export function readAndParseMdTransfers(filePath: string, maxRows: number = 100)
       generatedTrInNo,
     });
 
-    if (parsedRows.length >= maxRows) {
+    if (maxRows && parsedRows.length >= maxRows) {
       break;
     }
   }
@@ -134,7 +146,7 @@ async function processTransfersForTenant(
   isDryRun: boolean = false
 ) {
   console.log(`\n==================================================`);
-  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} rows into database...`);
+  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ALL ${rows.length} rows into database...`);
   console.log(`==================================================\n`);
 
   let defaultWarehouse: any = null;
@@ -159,58 +171,76 @@ async function processTransfersForTenant(
     console.log(`🏭 [DRY-RUN] Using Warehouse (MAIN-WH)`);
   }
 
-  const locationCache = new Map<string, any>();
+  const entityCache = new Map<string, EntityRef>();
   const itemCache = new Map<string, any>();
 
-  // 1. Locations & Items Setup
-  for (const row of rows) {
-    // FROM Location
-    if (!locationCache.has(row.codeTrOut)) {
-      if (!isDryRun) {
-        let loc = await prisma.location.findFirst({
-          where: { code: row.codeTrOut, isDeleted: false },
-        });
-        if (!loc) {
-          console.log(`📍 Creating Location OUT: ${row.stockOutLocationName} (${row.codeTrOut})`);
-          loc = await prisma.location.create({
-            data: {
-              code: row.codeTrOut,
-              name: row.stockOutLocationName,
-              warehouseId: defaultWarehouse.id,
-              status: 'active',
-            },
-          });
-        }
-        locationCache.set(row.codeTrOut, loc);
-      } else {
-        console.log(`📍 [DRY-RUN] Location OUT verified/created: ${row.stockOutLocationName} (${row.codeTrOut})`);
-        locationCache.set(row.codeTrOut, { id: `loc-${row.codeTrOut}`, code: row.codeTrOut, name: row.stockOutLocationName });
-      }
+  // Function to ensure entity (Warehouse or Location) exists
+  async function resolveEntity(code: string, name: string): Promise<EntityRef> {
+    if (entityCache.has(code)) {
+      return entityCache.get(code)!;
     }
 
-    // TO Location
-    if (!locationCache.has(row.codeTrIn)) {
+    if (isWarehouseCode(code)) {
+      // Find or create Warehouse
+      if (!isDryRun) {
+        let wh = await prisma.warehouse.findFirst({
+          where: { code, isDeleted: false },
+        });
+        if (!wh) {
+          console.log(`🏭 Creating Warehouse [${code}]: ${name}`);
+          wh = await prisma.warehouse.create({
+            data: {
+              code,
+              name: name || 'Central Warehouse',
+              type: 'GENERAL',
+              isActive: true,
+            },
+          });
+        }
+        const ref: EntityRef = { type: 'WAREHOUSE', id: wh.id, code: wh.code, name: wh.name };
+        entityCache.set(code, ref);
+        return ref;
+      } else {
+        const ref: EntityRef = { type: 'WAREHOUSE', id: `wh-${code}`, code, name: name || 'Warehouse' };
+        console.log(`🏭 [DRY-RUN] Warehouse verified/created [${code}]: ${name}`);
+        entityCache.set(code, ref);
+        return ref;
+      }
+    } else {
+      // Find or create Location
       if (!isDryRun) {
         let loc = await prisma.location.findFirst({
-          where: { code: row.codeTrIn, isDeleted: false },
+          where: { code, isDeleted: false },
         });
         if (!loc) {
-          console.log(`📍 Creating Location IN: ${row.stockInLocationName} (${row.codeTrIn})`);
+          console.log(`📍 Creating Location [${code}]: ${name}`);
           loc = await prisma.location.create({
             data: {
-              code: row.codeTrIn,
-              name: row.stockInLocationName,
+              code,
+              name,
               warehouseId: defaultWarehouse.id,
               status: 'active',
             },
           });
         }
-        locationCache.set(row.codeTrIn, loc);
+        const ref: EntityRef = { type: 'LOCATION', id: loc.id, code: loc.code, name: loc.name };
+        entityCache.set(code, ref);
+        return ref;
       } else {
-        console.log(`📍 [DRY-RUN] Location IN verified/created: ${row.stockInLocationName} (${row.codeTrIn})`);
-        locationCache.set(row.codeTrIn, { id: `loc-${row.codeTrIn}`, code: row.codeTrIn, name: row.stockInLocationName });
+        const ref: EntityRef = { type: 'LOCATION', id: `loc-${code}`, code, name };
+        console.log(`📍 [DRY-RUN] Location verified/created [${code}]: ${name}`);
+        entityCache.set(code, ref);
+        return ref;
       }
     }
+  }
+
+  // Pre-cache Warehouses, Locations, and Items
+  console.log(`⚙️ Pre-caching and initializing Warehouses (C40001), Locations, and Items...`);
+  
+  for (const row of rows) {
+    await resolveEntity(row.codeTrOut, row.stockOutLocationName);
+    await resolveEntity(row.codeTrIn, row.stockInLocationName);
 
     // ITEM / Barcode
     if (!itemCache.has(row.barCode)) {
@@ -219,7 +249,6 @@ async function processTransfersForTenant(
           where: { barCode: row.barCode },
         });
         if (!item) {
-          console.log(`🏷️ Creating Item for Barcode: ${row.barCode}`);
           item = await prisma.item.create({
             data: {
               itemId: `ITEM-${row.barCode}`,
@@ -235,13 +264,17 @@ async function processTransfersForTenant(
         }
         itemCache.set(row.barCode, item);
       } else {
-        console.log(`🏷️ [DRY-RUN] Item verified/created for Barcode: ${row.barCode}`);
         itemCache.set(row.barCode, { id: `item-${row.barCode}`, barCode: row.barCode });
       }
     }
   }
 
-  // 2. Group rows into Transfer Requests by unique (codeTrOut, docNoOut, codeTrIn, receivingDocNoTrIn)
+  const warehouseCount = Array.from(entityCache.values()).filter((e) => e.type === 'WAREHOUSE').length;
+  const locationCount = Array.from(entityCache.values()).filter((e) => e.type === 'LOCATION').length;
+
+  console.log(`✅ Cached ${warehouseCount} Warehouses (including C40001), ${locationCount} Outlet Locations, and ${itemCache.size} unique Items.`);
+
+  // Group rows into Transfer Requests by unique (codeTrOut, docNoOut, codeTrIn, receivingDocNoTrIn)
   const transferGroups = new Map<string, ParsedTransferRow[]>();
   for (const row of rows) {
     const groupKey = `${row.codeTrOut}_${row.docNoOut}_${row.codeTrIn}_${row.receivingDocNoTrIn}`;
@@ -251,27 +284,41 @@ async function processTransfersForTenant(
     transferGroups.get(groupKey)!.push(row);
   }
 
-  console.log(`\n📋 Grouped ${rows.length} rows into ${transferGroups.size} unique Transfer Requests.`);
+  console.log(`\n📋 Grouped ${rows.length} total rows into ${transferGroups.size} unique Transfer Requests.`);
 
   let stnCounter = 1;
   let processedCount = 0;
 
   for (const [groupKey, groupRows] of transferGroups.entries()) {
     const sample = groupRows[0];
-    const fromLoc = locationCache.get(sample.codeTrOut);
-    const toLoc = locationCache.get(sample.codeTrIn);
+    const fromEntity = entityCache.get(sample.codeTrOut)!;
+    const toEntity = entityCache.get(sample.codeTrIn)!;
 
     // Sequential STN number format e.g. STN-00001
     const stnNumber = `STN-${String(stnCounter++).padStart(5, '0')}`;
     const outNo = sample.generatedTrOutNo; // e.g. TROUT-001
     const inNo = sample.generatedTrInNo;   // e.g. TRIN-001
 
-    console.log(`\n--------------------------------------------------`);
-    console.log(`${isDryRun ? '🔍 [DRY-RUN]' : '🚀 [CREATE]'} STN Number: ${stnNumber}`);
-    console.log(`   - TR OUT No : ${outNo} (Outlet: ${sample.stockOutLocationName} [${sample.codeTrOut}])`);
-    console.log(`   - TR IN No  : ${inNo} (Outlet: ${sample.stockInLocationName} [${sample.codeTrIn}])`);
-    console.log(`   - Items Count: ${groupRows.length}`);
-    console.log(`--------------------------------------------------`);
+    if (isDryRun && stnCounter % 1000 === 0) {
+      console.log(`🔍 [DRY-RUN Progress] Processed ${stnCounter} / ${transferGroups.size} STNs (${processedCount} line items)...`);
+    } else if (!isDryRun && stnCounter % 500 === 0) {
+      console.log(`🚀 [LIVE Progress] Processed ${stnCounter} / ${transferGroups.size} STNs (${processedCount} line items)...`);
+    }
+
+    const fromWarehouseId = fromEntity.type === 'WAREHOUSE' ? fromEntity.id : defaultWarehouse.id;
+    const fromLocationId = fromEntity.type === 'LOCATION' ? fromEntity.id : null;
+
+    const toWarehouseId = toEntity.type === 'WAREHOUSE' ? toEntity.id : defaultWarehouse.id;
+    const toLocationId = toEntity.type === 'LOCATION' ? toEntity.id : null;
+
+    let transferType = 'OUTLET_TO_OUTLET';
+    if (fromEntity.type === 'WAREHOUSE' && toEntity.type === 'LOCATION') {
+      transferType = 'WAREHOUSE_TO_OUTLET';
+    } else if (fromEntity.type === 'LOCATION' && toEntity.type === 'WAREHOUSE') {
+      transferType = 'OUTLET_TO_WAREHOUSE';
+    } else if (fromEntity.type === 'WAREHOUSE' && toEntity.type === 'WAREHOUSE') {
+      transferType = 'WAREHOUSE_TO_WAREHOUSE';
+    }
 
     let transferRequest: any = null;
 
@@ -285,12 +332,12 @@ async function processTransfersForTenant(
         transferRequest = await prisma.transferRequest.create({
           data: {
             requestNo: stnNumber,
-            fromLocationId: fromLoc.id,
-            toLocationId: toLoc.id,
-            fromWarehouseId: defaultWarehouse.id,
-            toWarehouseId: defaultWarehouse.id,
+            fromLocationId,
+            toLocationId,
+            fromWarehouseId,
+            toWarehouseId,
             status: sample.documentStatus === 'Approved / Closed' ? 'APPROVED' : 'COMPLETED',
-            transferType: sample.codeTrOut.startsWith('C') ? 'WAREHOUSE_TO_OUTLET' : 'OUTLET_TO_OUTLET',
+            transferType,
             notes: `TR OUT No: ${outNo} | TR IN No: ${inNo} | TextLine: ${sample.textLine} | Remarks: ${sample.remarks}`,
           },
         });
@@ -305,7 +352,6 @@ async function processTransfersForTenant(
       const qty = row.quantity;
 
       if (isDryRun) {
-        console.log(`   🔸 [DRY-RUN Line #${row.rowNum}] Barcode: ${row.barCode} | Qty: ${qty} | STN: ${stnNumber} | OUT: ${outNo} | IN: ${inNo}`);
         processedCount++;
         continue;
       }
@@ -329,54 +375,108 @@ async function processTransfersForTenant(
         });
       }
 
-      // 2. Adjust Stock at Source Location (Deduct Qty)
-      const sourceInv = await prisma.inventoryItem.findFirst({
-        where: {
-          locationId: fromLoc.id,
-          itemId: item.id,
-        },
-      });
-
-      if (sourceInv) {
-        await prisma.inventoryItem.update({
-          where: { id: sourceInv.id },
-          data: { quantity: { decrement: qty } },
-        });
-      } else {
-        await prisma.inventoryItem.create({
-          data: {
-            warehouseId: defaultWarehouse.id,
-            locationId: fromLoc.id,
+      // 2. Adjust Stock at Source (Deduct Qty)
+      if (fromEntity.type === 'WAREHOUSE') {
+        const sourceInv = await prisma.inventoryItem.findFirst({
+          where: {
+            warehouseId: fromEntity.id,
+            locationId: null,
             itemId: item.id,
-            quantity: -qty,
-            status: 'AVAILABLE',
           },
         });
+
+        if (sourceInv) {
+          await prisma.inventoryItem.update({
+            where: { id: sourceInv.id },
+            data: { quantity: { decrement: qty } },
+          });
+        } else {
+          await prisma.inventoryItem.create({
+            data: {
+              warehouseId: fromEntity.id,
+              locationId: null,
+              itemId: item.id,
+              quantity: -qty,
+              status: 'AVAILABLE',
+            },
+          });
+        }
+      } else {
+        const sourceInv = await prisma.inventoryItem.findFirst({
+          where: {
+            locationId: fromLocationId,
+            itemId: item.id,
+          },
+        });
+
+        if (sourceInv) {
+          await prisma.inventoryItem.update({
+            where: { id: sourceInv.id },
+            data: { quantity: { decrement: qty } },
+          });
+        } else {
+          await prisma.inventoryItem.create({
+            data: {
+              warehouseId: defaultWarehouse.id,
+              locationId: fromLocationId,
+              itemId: item.id,
+              quantity: -qty,
+              status: 'AVAILABLE',
+            },
+          });
+        }
       }
 
-      // 3. Adjust Stock at Destination Location (Add Qty)
-      const destInv = await prisma.inventoryItem.findFirst({
-        where: {
-          locationId: toLoc.id,
-          itemId: item.id,
-        },
-      });
-
-      if (destInv) {
-        await prisma.inventoryItem.update({
-          where: { id: destInv.id },
-          data: { quantity: { increment: qty } },
-        });
-      } else {
-        await prisma.inventoryItem.create({
-          data: {
-            warehouseId: defaultWarehouse.id,
-            locationId: toLoc.id,
+      // 3. Adjust Stock at Destination (Add Qty)
+      if (toEntity.type === 'WAREHOUSE') {
+        const destInv = await prisma.inventoryItem.findFirst({
+          where: {
+            warehouseId: toEntity.id,
+            locationId: null,
             itemId: item.id,
-            quantity: qty,
-            status: 'AVAILABLE',
           },
         });
+
+        if (destInv) {
+          await prisma.inventoryItem.update({
+            where: { id: destInv.id },
+            data: { quantity: { increment: qty } },
+          });
+        } else {
+          await prisma.inventoryItem.create({
+            data: {
+              warehouseId: toEntity.id,
+              locationId: null,
+              itemId: item.id,
+              quantity: qty,
+              status: 'AVAILABLE',
+            },
+          });
+        }
+      } else {
+        const destInv = await prisma.inventoryItem.findFirst({
+          where: {
+            locationId: toLocationId,
+            itemId: item.id,
+          },
+        });
+
+        if (destInv) {
+          await prisma.inventoryItem.update({
+            where: { id: destInv.id },
+            data: { quantity: { increment: qty } },
+          });
+        } else {
+          await prisma.inventoryItem.create({
+            data: {
+              warehouseId: defaultWarehouse.id,
+              locationId: toLocationId,
+              itemId: item.id,
+              quantity: qty,
+              status: 'AVAILABLE',
+            },
+          });
+        }
       }
 
       // 4. Create StockMovement entry
@@ -385,8 +485,8 @@ async function processTransfersForTenant(
         data: {
           movementNo,
           itemId: item.id,
-          fromLocationId: fromLoc.id,
-          toLocationId: toLoc.id,
+          fromLocationId,
+          toLocationId,
           quantity: qty,
           type: 'TRANSFER',
           referenceType: 'TRANSFER_REQUEST',
@@ -399,8 +499,8 @@ async function processTransfersForTenant(
       await prisma.stockLedger.create({
         data: {
           itemId: item.id,
-          warehouseId: defaultWarehouse.id,
-          locationId: fromLoc.id,
+          warehouseId: fromWarehouseId,
+          locationId: fromLocationId,
           qty: -qty,
           referenceType: 'TRANSFER_OUT',
           referenceId: transferRequest.id,
@@ -411,8 +511,8 @@ async function processTransfersForTenant(
       await prisma.stockLedger.create({
         data: {
           itemId: item.id,
-          warehouseId: defaultWarehouse.id,
-          locationId: toLoc.id,
+          warehouseId: toWarehouseId,
+          locationId: toLocationId,
           qty: qty,
           referenceType: 'TRANSFER_IN',
           referenceId: transferRequest.id,
@@ -429,6 +529,8 @@ async function processTransfersForTenant(
   console.log(`   - Total Rows Parsed : ${rows.length}`);
   console.log(`   - Total Rows Created: ${processedCount}`);
   console.log(`   - STNs Generated    : ${transferGroups.size} (Format: STN-00001 to STN-${String(transferGroups.size).padStart(5, '0')})`);
+  console.log(`   - Warehouses (C40001): ${warehouseCount}`);
+  console.log(`   - Outlet Locations  : ${locationCount}`);
   console.log(`   - TR OUT Format     : TROUT-001, TROUT-002, etc.`);
   console.log(`   - TR IN Format      : TRIN-001, TRIN-003, TRIN-049, etc.`);
   console.log(`==================================================\n`);
@@ -436,21 +538,28 @@ async function processTransfersForTenant(
 
 async function main() {
   const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('-d');
+  
+  // Optional --limit=<N> parameter
+  let limit: number | undefined = undefined;
+  const limitArg = process.argv.find((arg) => arg.startsWith('--limit='));
+  if (limitArg) {
+    limit = parseInt(limitArg.split('=')[1], 10);
+  }
 
-  console.log(`🚀 Starting Transfer Import Script (First 100 Rows)...`);
+  console.log(`🚀 Starting Transfer Import Script (Processing ${limit ? `first ${limit}` : 'ALL available'} Rows)...`);
   if (isDryRun) {
     console.log(`⚠️ DRY RUN ACTIVATED: No database changes will be committed.`);
   }
 
   const mdFilePath = path.join(__dirname, '..', 'tableConvert.com_7s3gov.md');
-  const rows = readAndParseMdTransfers(mdFilePath, 100);
+  const rows = readAndParseMdTransfers(mdFilePath, limit);
 
   console.log(`📄 Successfully parsed ${rows.length} rows from markdown file.`);
   if (rows.length > 0) {
     console.log('\n🔍 Sample parsed row (#1):');
-    console.log(`   - OUT Location: ${rows[0].stockOutLocationName} (${rows[0].codeTrOut})`);
+    console.log(`   - OUT Entity  : ${rows[0].stockOutLocationName} (${rows[0].codeTrOut}) [${isWarehouseCode(rows[0].codeTrOut) ? 'WAREHOUSE' : 'LOCATION'}]`);
     console.log(`   - OUT TR No   : ${rows[0].generatedTrOutNo}`);
-    console.log(`   - IN Location : ${rows[0].stockInLocationName} (${rows[0].codeTrIn})`);
+    console.log(`   - IN Entity   : ${rows[0].stockInLocationName} (${rows[0].codeTrIn}) [${isWarehouseCode(rows[0].codeTrIn) ? 'WAREHOUSE' : 'LOCATION'}]`);
     console.log(`   - IN TR No    : ${rows[0].generatedTrInNo}`);
     console.log(`   - Barcode     : ${rows[0].barCode}`);
     console.log(`   - Quantity    : ${rows[0].quantity}`);
