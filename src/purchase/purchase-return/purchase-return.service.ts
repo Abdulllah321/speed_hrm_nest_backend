@@ -920,7 +920,7 @@ export class PurchaseReturnService {
           },
         },
         warehouse: true,
-        items: { include: { item: { include: { size: true } } } },
+        items: { include: { item: { include: { size: true, color: true, brand: true } } } },
       },
       orderBy: { receivedDate: 'desc' },
     });
@@ -940,6 +940,8 @@ export class PurchaseReturnService {
           description: (grnItem as any).item?.description || poItem?.description || grnItem.description,
           displayCode: (grnItem as any).item?.itemId || grnItem.itemId,
           size: (grnItem as any).item?.size?.name || null,
+          color: (grnItem as any).item?.color?.name || null,
+          brand: (grnItem as any).item?.brand?.name || null,
         };
       }),
     }));
@@ -962,7 +964,7 @@ export class PurchaseReturnService {
           },
         },
         supplier: true,
-        items: { include: { item: { include: { size: true } } } },
+        items: { include: { item: { include: { size: true, color: true, brand: true } } } },
       },
       orderBy: { date: 'desc' },
     });
@@ -978,6 +980,8 @@ export class PurchaseReturnService {
         description: (lcItem as any).item?.description || lcItem.description,
         displayCode: (lcItem as any).item?.itemId || lcItem.itemId,
         size: (lcItem as any).item?.size?.name || null,
+        color: (lcItem as any).item?.color?.name || null,
+        brand: (lcItem as any).item?.brand?.name || null,
       })),
     }));
   }
@@ -1005,6 +1009,7 @@ export class PurchaseReturnService {
               include: {
                 size: true,
                 color: true,
+                brand: true,
               },
             },
           },
@@ -1036,6 +1041,7 @@ export class PurchaseReturnService {
         lineTotal: Number(item.lineTotal),
         size: item.item?.size?.name || null,
         color: item.item?.color?.name || null,
+        brand: item.item?.brand?.name || null,
       })),
     }));
   }
