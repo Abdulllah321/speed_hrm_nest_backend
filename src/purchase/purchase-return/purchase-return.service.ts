@@ -471,7 +471,6 @@ export class PurchaseReturnService {
       quantity: number;
       subtotal: number;
       salesTaxAmount: number;
-      advanceTaxAmount: number;
     }
 
     const brandGroupsMap = new Map<string, BrandGroup>();
@@ -485,17 +484,12 @@ export class PurchaseReturnService {
       const taxRate = Number(returnItem.purchaseInvoiceItem?.taxRate || 0);
       const salesTax = (lineTotal * taxRate) / 100;
 
-      // Determine advance tax rate from the associated PurchaseInvoice
-      const advanceTaxRate = Number(purchaseReturn.purchaseInvoice?.advanceTaxRate || 0.50);
-      const advanceTax = ((lineTotal + salesTax) * advanceTaxRate) / 100;
-
       if (!brandGroupsMap.has(brandName)) {
         brandGroupsMap.set(brandName, {
           brandName,
           quantity: 0,
           subtotal: 0,
           salesTaxAmount: 0,
-          advanceTaxAmount: 0,
         });
       }
 
@@ -503,7 +497,6 @@ export class PurchaseReturnService {
       group.quantity += qty;
       group.subtotal += lineTotal;
       group.salesTaxAmount += salesTax;
-      group.advanceTaxAmount += advanceTax;
     }
 
     const roundToTwo = (num: number): number => {
@@ -527,13 +520,6 @@ export class PurchaseReturnService {
       throw new BadRequestException('Sales Tax account (31070003) not found in Chart of Accounts.');
     }
 
-    const advanceTaxParent = await this.prisma.chartOfAccount.findFirst({
-      where: { code: '31080002' }
-    });
-    if (!advanceTaxParent) {
-      throw new BadRequestException('Advance Tax account (31080002) not found in Chart of Accounts.');
-    }
-
     const billsPayableParent = await this.prisma.chartOfAccount.findFirst({
       where: { code: '12010004' }
     });
@@ -549,13 +535,6 @@ export class PurchaseReturnService {
       throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Sales Tax account (31070003).`);
     }
 
-    const advanceTaxTag = await this.prisma.chartOfAccount.findFirst({
-      where: { parentId: advanceTaxParent.id, code: supplier.code }
-    });
-    if (!advanceTaxTag) {
-      throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Advance Tax account (31080002).`);
-    }
-
     const billsPayableTag = await this.prisma.chartOfAccount.findFirst({
       where: { parentId: billsPayableParent.id, code: supplier.code }
     });
@@ -569,7 +548,6 @@ export class PurchaseReturnService {
       const quantity = group.quantity;
       const subtotal = roundToTwo(group.subtotal);
       const salesTaxAmount = roundToTwo(group.salesTaxAmount);
-      const advanceTaxAmount = roundToTwo(group.advanceTaxAmount);
 
       const valueInclSalesTax = roundToTwo(subtotal + salesTaxAmount);
 
@@ -581,47 +559,7 @@ export class PurchaseReturnService {
         throw new BadRequestException(`Tag account for brand "${brandName}" not found under Purchases Return Local account (60020004).`);
       }
 
-      // Line 1: Purchases Return (60020004) - Credit
-      details.push({
-        accountId: parentReturnAccount.id,
-        tagAccountId: brandTag.id,
-        debit: 0,
-        credit: subtotal,
-        narration: `RET ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
-        refBillNo: invoiceNumber,
-        refBillNo2: grnNumber,
-        taxType: 'Taxable',
-      });
-
-      // Line 2: Sales Tax (31070003) - Credit
-      if (salesTaxAmount > 0) {
-        details.push({
-          accountId: salesTaxParent.id,
-          tagAccountId: salesTaxTag.id,
-          debit: 0,
-          credit: salesTaxAmount,
-          narration: `RET Sales Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
-          refBillNo: invoiceNumber,
-          refBillNo2: grnNumber,
-          taxType: 'Taxable',
-        });
-      }
-
-      // Line 3: Advance Tax (31080002) - Credit
-      if (advanceTaxAmount > 0) {
-        details.push({
-          accountId: advanceTaxParent.id,
-          tagAccountId: advanceTaxTag.id,
-          debit: 0,
-          credit: advanceTaxAmount,
-          narration: `RET Advance Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
-          refBillNo: invoiceNumber,
-          refBillNo2: grnNumber,
-          taxType: 'Taxable',
-        });
-      }
-
-      // Line 4: Bills Payable (12010004) - Debit (Value Incl. Sales Tax)
+      // Line 1: Bills Payable (12010004) - Debit (Value Incl. Sales Tax)
       details.push({
         accountId: billsPayableParent.id,
         tagAccountId: billsPayableTag.id,
@@ -633,14 +571,26 @@ export class PurchaseReturnService {
         taxType: 'Taxable',
       });
 
-      // Line 5: Bills Payable (12010004) - Debit (Advance Tax Amount)
-      if (advanceTaxAmount > 0) {
+      // Line 2: Purchases Return (60020004) - Credit
+      details.push({
+        accountId: parentReturnAccount.id,
+        tagAccountId: brandTag.id,
+        debit: 0,
+        credit: subtotal,
+        narration: `RET ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+        refBillNo: invoiceNumber,
+        refBillNo2: grnNumber,
+        taxType: 'Taxable',
+      });
+
+      // Line 3: Sales Tax (31070003) - Credit
+      if (salesTaxAmount > 0) {
         details.push({
-          accountId: billsPayableParent.id,
-          tagAccountId: billsPayableTag.id,
-          debit: advanceTaxAmount,
-          credit: 0,
-          narration: `RET Advance Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
+          accountId: salesTaxParent.id,
+          tagAccountId: salesTaxTag.id,
+          debit: 0,
+          credit: salesTaxAmount,
+          narration: `RET Sales Tax for ${quantity} Pcs. of ${brandName} Shipment. ref 1 is ${invoiceNumber} ref 2 is ${grnNumber}`,
           refBillNo: invoiceNumber,
           refBillNo2: grnNumber,
           taxType: 'Taxable',
