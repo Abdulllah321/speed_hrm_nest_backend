@@ -48,8 +48,7 @@ export interface ParsedTransferRow {
   receivingDocDate: string;
   remarks: string;
   documentStatus: string;
-  generatedTrOutNo: string;
-  generatedTrInNo: string;
+  parsedDate: Date;
 }
 
 export interface EntityRef {
@@ -64,6 +63,33 @@ const isWarehouseCode = (code: string) => {
   return c === 'C40001' || c.startsWith('WH') || c.includes('WAREHOUSE');
 };
 
+export function parseCustomDate(dateStr: string): Date {
+  if (!dateStr || !dateStr.trim()) return new Date(0);
+
+  const trimmed = dateStr.trim();
+  const spaceParts = trimmed.split(/\s+/);
+  const datePart = spaceParts[0];
+  const timePart = spaceParts[1] || '0:0';
+
+  const dParts = datePart.split('/');
+  if (dParts.length !== 3) return new Date(0);
+
+  const month = parseInt(dParts[0], 10);
+  const day = parseInt(dParts[1], 10);
+  let year = parseInt(dParts[2], 10);
+
+  if (year < 100) {
+    year += 2000;
+  }
+
+  const tParts = timePart.split(':');
+  const hours = parseInt(tParts[0] || '0', 10);
+  const minutes = parseInt(tParts[1] || '0', 10);
+  const seconds = parseInt(tParts[2] || '0', 10);
+
+  return new Date(year, month - 1, day, hours, minutes, seconds);
+}
+
 export function readAndParseMdTransfers(filePath: string, maxRows?: number): ParsedTransferRow[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found at path: ${filePath}`);
@@ -72,7 +98,7 @@ export function readAndParseMdTransfers(filePath: string, maxRows?: number): Par
   const content = fs.readFileSync(filePath, 'utf-8');
   const lines = content.split(/\r?\n/);
 
-  const parsedRows: ParsedTransferRow[] = [];
+  const rawParsed: ParsedTransferRow[] = [];
 
   // Line 0 is header, Line 1 is separator, data starts from Line 2 (index 2)
   for (let i = 2; i < lines.length; i++) {
@@ -90,7 +116,7 @@ export function readAndParseMdTransfers(filePath: string, maxRows?: number): Par
     const textLine = parts[5] || '';
     const stockInLocationName = parts[6] || '';
     const codeTrIn = parts[7] || '';
-    
+
     // Column index 9 is BarCode value, 10 is Quantity, 11 is ReceivingDocumentNo TR IN
     const rawBarCode = parts[9] || parts[8] || '';
     const barCode = rawBarCode.replace(/"/g, '').trim();
@@ -105,15 +131,14 @@ export function readAndParseMdTransfers(filePath: string, maxRows?: number): Par
 
     if (!codeTrOut || !codeTrIn || !barCode) continue;
 
-    // Generate formatted Outlet TR OUT and TR IN Numbers (e.g. TROUT-001, TRIN-001)
-    const numOutStr = docNoOut.replace(/\D/g, '') || '1';
-    const numInStr = receivingDocNoTrIn.replace(/\D/g, '') || '1';
+    // Parse date & time for sorting (prefer documentDateOut, fallback to receivingDocDate)
+    let parsedDate = parseCustomDate(documentDateOut);
+    if (parsedDate.getTime() === 0) {
+      parsedDate = parseCustomDate(receivingDocDate);
+    }
 
-    const generatedTrOutNo = `TROUT-${numOutStr.padStart(3, '0')}`;
-    const generatedTrInNo = `TRIN-${numInStr.padStart(3, '0')}`;
-
-    parsedRows.push({
-      rowNum: parsedRows.length + 1,
+    rawParsed.push({
+      rowNum: 0,
       stockOutLocationName,
       codeTrOut,
       docNoOutInpl,
@@ -128,16 +153,21 @@ export function readAndParseMdTransfers(filePath: string, maxRows?: number): Par
       receivingDocDate,
       remarks,
       documentStatus,
-      generatedTrOutNo,
-      generatedTrInNo,
+      parsedDate,
     });
-
-    if (maxRows && parsedRows.length >= maxRows) {
-      break;
-    }
   }
 
-  return parsedRows;
+  // Sort ALL parsed rows chronologically by date and time ascending (oldest first)
+  rawParsed.sort((a, b) => a.parsedDate.getTime() - b.parsedDate.getTime());
+
+  // Assign sequential row numbers after sorting
+  rawParsed.forEach((row, index) => {
+    row.rowNum = index + 1;
+  });
+
+  // Apply maxRows limit if provided
+  const finalRows = maxRows ? rawParsed.slice(0, maxRows) : rawParsed;
+  return finalRows;
 }
 
 async function processTransfersForTenant(
@@ -146,7 +176,7 @@ async function processTransfersForTenant(
   isDryRun: boolean = false
 ) {
   console.log(`\n==================================================`);
-  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ALL ${rows.length} rows into database...`);
+  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} rows (Chronological Date & Time Order)...`);
   console.log(`==================================================\n`);
 
   let defaultWarehouse: any = null;
@@ -181,7 +211,6 @@ async function processTransfersForTenant(
     }
 
     if (isWarehouseCode(code)) {
-      // Find or create Warehouse
       if (!isDryRun) {
         let wh = await prisma.warehouse.findFirst({
           where: { code, isDeleted: false },
@@ -207,7 +236,6 @@ async function processTransfersForTenant(
         return ref;
       }
     } else {
-      // Find or create Location
       if (!isDryRun) {
         let loc = await prisma.location.findFirst({
           where: { code, isDeleted: false },
@@ -236,7 +264,7 @@ async function processTransfersForTenant(
   }
 
   // Pre-cache Warehouses, Locations, and Items
-  console.log(`⚙️ Pre-caching and initializing Warehouses (C40001), Locations, and Items...`);
+  console.log(`⚙️ Pre-caching Warehouses, Locations, and Items...`);
   
   for (const row of rows) {
     await resolveEntity(row.codeTrOut, row.stockOutLocationName);
@@ -272,19 +300,23 @@ async function processTransfersForTenant(
   const warehouseCount = Array.from(entityCache.values()).filter((e) => e.type === 'WAREHOUSE').length;
   const locationCount = Array.from(entityCache.values()).filter((e) => e.type === 'LOCATION').length;
 
-  console.log(`✅ Cached ${warehouseCount} Warehouses (including C40001), ${locationCount} Outlet Locations, and ${itemCache.size} unique Items.`);
+  console.log(`✅ Cached ${warehouseCount} Warehouses, ${locationCount} Outlet Locations, and ${itemCache.size} unique Items.`);
 
-  // Group rows into Transfer Requests by unique (codeTrOut, docNoOut, codeTrIn, receivingDocNoTrIn)
+  // Group rows into Transfer Requests maintaining date/time chronological order
   const transferGroups = new Map<string, ParsedTransferRow[]>();
   for (const row of rows) {
-    const groupKey = `${row.codeTrOut}_${row.docNoOut}_${row.codeTrIn}_${row.receivingDocNoTrIn}`;
+    const groupKey = `${row.codeTrOut}_${row.docNoOut}_${row.codeTrIn}_${row.receivingDocNoTrIn}_${row.documentDateOut}`;
     if (!transferGroups.has(groupKey)) {
       transferGroups.set(groupKey, []);
     }
     transferGroups.get(groupKey)!.push(row);
   }
 
-  console.log(`\n📋 Grouped ${rows.length} total rows into ${transferGroups.size} unique Transfer Requests.`);
+  console.log(`\n📋 Grouped ${rows.length} total rows into ${transferGroups.size} unique Transfer Requests in Date & Time order.`);
+
+  // Per-outlet sequential counters starting at 1 for the oldest document up to N for the newest
+  const trOutCounters = new Map<string, number>();
+  const trInCounters = new Map<string, number>();
 
   let stnCounter = 1;
   let processedCount = 0;
@@ -294,13 +326,21 @@ async function processTransfersForTenant(
     const fromEntity = entityCache.get(sample.codeTrOut)!;
     const toEntity = entityCache.get(sample.codeTrIn)!;
 
-    // Sequential STN number format e.g. STN-00001
+    // 1. Sequential STN number (global system counter, 1-indexed from oldest to newest)
     const stnNumber = `STN-${String(stnCounter++).padStart(5, '0')}`;
-    const outNo = sample.generatedTrOutNo; // e.g. TROUT-001
-    const inNo = sample.generatedTrInNo;   // e.g. TRIN-001
 
-    if (isDryRun && stnCounter % 1000 === 0) {
-      console.log(`🔍 [DRY-RUN Progress] Processed ${stnCounter} / ${transferGroups.size} STNs (${processedCount} line items)...`);
+    // 2. Sequential TR OUT per outlet/warehouse (1-indexed from oldest to newest: TROUT-001, TROUT-002...)
+    const currentOutSeq = (trOutCounters.get(fromEntity.code) || 0) + 1;
+    trOutCounters.set(fromEntity.code, currentOutSeq);
+    const outNo = `TROUT-${String(currentOutSeq).padStart(3, '0')}`;
+
+    // 3. Sequential TR IN per outlet/warehouse (1-indexed from oldest to newest: TRIN-001, TRIN-002...)
+    const currentInSeq = (trInCounters.get(toEntity.code) || 0) + 1;
+    trInCounters.set(toEntity.code, currentInSeq);
+    const inNo = `TRIN-${String(currentInSeq).padStart(3, '0')}`;
+
+    if (isDryRun && (stnCounter <= 12 || stnCounter % 1000 === 0)) {
+      console.log(`🔍 [DRY-RUN #${stnNumber}] Date: ${sample.documentDateOut || sample.receivingDocDate} | ${fromEntity.name} (${outNo}) -> ${toEntity.name} (${inNo}) [${groupRows.length} items]`);
     } else if (!isDryRun && stnCounter % 500 === 0) {
       console.log(`🚀 [LIVE Progress] Processed ${stnCounter} / ${transferGroups.size} STNs (${processedCount} line items)...`);
     }
@@ -336,9 +376,10 @@ async function processTransfersForTenant(
             toLocationId,
             fromWarehouseId,
             toWarehouseId,
+            requestDate: sample.parsedDate,
             status: sample.documentStatus === 'Approved / Closed' ? 'APPROVED' : 'COMPLETED',
             transferType,
-            notes: `TR OUT No: ${outNo} | TR IN No: ${inNo} | TextLine: ${sample.textLine} | Remarks: ${sample.remarks}`,
+            notes: `TR OUT No: ${outNo} | TR IN No: ${inNo} | Date: ${sample.documentDateOut} | TextLine: ${sample.textLine} | Remarks: ${sample.remarks}`,
           },
         });
       }
@@ -491,6 +532,7 @@ async function processTransfersForTenant(
           type: 'TRANSFER',
           referenceType: 'TRANSFER_REQUEST',
           referenceId: transferRequest.id,
+          movementDate: sample.parsedDate,
           notes: `STN: ${stnNumber} | TR OUT: ${outNo} | TR IN: ${inNo}`,
         },
       });
@@ -505,6 +547,7 @@ async function processTransfersForTenant(
           referenceType: 'TRANSFER_OUT',
           referenceId: transferRequest.id,
           movementType: 'TRANSFER',
+          createdAt: sample.parsedDate,
         },
       });
 
@@ -517,6 +560,7 @@ async function processTransfersForTenant(
           referenceType: 'TRANSFER_IN',
           referenceId: transferRequest.id,
           movementType: 'TRANSFER',
+          createdAt: sample.parsedDate,
         },
       });
 
@@ -526,19 +570,20 @@ async function processTransfersForTenant(
 
   console.log(`\n==================================================`);
   console.log(`✨ ${isDryRun ? '[DRY RUN SUMMARY]' : '[IMPORT SUMMARY]'}`);
+  console.log(`   - Numbering Rule    : System-generated sequential starting at 1 (Oldest -> Newest)`);
   console.log(`   - Total Rows Parsed : ${rows.length}`);
   console.log(`   - Total Rows Created: ${processedCount}`);
   console.log(`   - STNs Generated    : ${transferGroups.size} (Format: STN-00001 to STN-${String(transferGroups.size).padStart(5, '0')})`);
-  console.log(`   - Warehouses (C40001): ${warehouseCount}`);
+  console.log(`   - Warehouses        : ${warehouseCount} (including C40001)`);
   console.log(`   - Outlet Locations  : ${locationCount}`);
-  console.log(`   - TR OUT Format     : TROUT-001, TROUT-002, etc.`);
-  console.log(`   - TR IN Format      : TRIN-001, TRIN-003, TRIN-049, etc.`);
+  console.log(`   - TR OUT Format     : Sequential per Outlet starting from TROUT-001`);
+  console.log(`   - TR IN Format      : Sequential per Outlet starting from TRIN-001`);
   console.log(`==================================================\n`);
 }
 
 async function main() {
   const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('-d');
-  
+
   // Optional --limit=<N> parameter
   let limit: number | undefined = undefined;
   const limitArg = process.argv.find((arg) => arg.startsWith('--limit='));
@@ -546,7 +591,7 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  console.log(`🚀 Starting Transfer Import Script (Processing ${limit ? `first ${limit}` : 'ALL available'} Rows)...`);
+  console.log(`🚀 Starting Transfer Import Script (Processing ${limit ? `first ${limit}` : 'ALL available'} Rows sorted by Date & Time)...`);
   if (isDryRun) {
     console.log(`⚠️ DRY RUN ACTIVATED: No database changes will be committed.`);
   }
@@ -554,13 +599,12 @@ async function main() {
   const mdFilePath = path.join(__dirname, '..', 'tableConvert.com_7s3gov.md');
   const rows = readAndParseMdTransfers(mdFilePath, limit);
 
-  console.log(`📄 Successfully parsed ${rows.length} rows from markdown file.`);
+  console.log(`📄 Successfully parsed and sorted ${rows.length} rows by Date & Time.`);
   if (rows.length > 0) {
-    console.log('\n🔍 Sample parsed row (#1):');
+    console.log('\n🔍 First Chronological Transfer Row (#1 - Oldest Record):');
+    console.log(`   - Date & Time : ${rows[0].documentDateOut || rows[0].receivingDocDate}`);
     console.log(`   - OUT Entity  : ${rows[0].stockOutLocationName} (${rows[0].codeTrOut}) [${isWarehouseCode(rows[0].codeTrOut) ? 'WAREHOUSE' : 'LOCATION'}]`);
-    console.log(`   - OUT TR No   : ${rows[0].generatedTrOutNo}`);
     console.log(`   - IN Entity   : ${rows[0].stockInLocationName} (${rows[0].codeTrIn}) [${isWarehouseCode(rows[0].codeTrIn) ? 'WAREHOUSE' : 'LOCATION'}]`);
-    console.log(`   - IN TR No    : ${rows[0].generatedTrInNo}`);
     console.log(`   - Barcode     : ${rows[0].barCode}`);
     console.log(`   - Quantity    : ${rows[0].quantity}`);
   }
