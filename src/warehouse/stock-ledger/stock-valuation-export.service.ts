@@ -172,14 +172,16 @@ export class StockValuationExportService {
     showSilhouette?: boolean;
     showArticle?: boolean;
     showVariant?: boolean;
+    page?: number;
+    limit?: number;
   }) {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
 
     // Reuse the exact same core logic function that the processor uses
-    const { root, grandTotals } = await this.generateValuationReportDataInternal(prisma, opts);
-    return { root, grandTotals };
+    const { root, grandTotals, meta } = await this.generateValuationReportDataInternal(prisma, opts);
+    return { data: root, grandTotals, meta };
   }
 
   // Core valuation logic shared between the controller preview and background processor
@@ -204,6 +206,8 @@ export class StockValuationExportService {
       filterGenders?: string[];
       filterSilhouettes?: string[];
       searchText?: string;
+      page?: number;
+      limit?: number;
     },
   ) {
     const {
@@ -318,7 +322,14 @@ export class StockValuationExportService {
       });
     }
 
-    const matchedItemIds = activeItems.map(i => i.id);
+    const totalItems = activeItems.length;
+    let pageItems = activeItems;
+    if (opts.page && opts.limit) {
+      const skip = (opts.page - 1) * opts.limit;
+      pageItems = activeItems.slice(skip, skip + opts.limit);
+    }
+
+    const matchedItemIds = pageItems.map(i => i.id);
 
     // Fetch stock ledger entries in 1,000 item chunks to compute historical WAC safely
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
@@ -644,7 +655,14 @@ export class StockValuationExportService {
       addValuationTotals(grandTotals, node.totals);
     }
 
-    return { root, grandTotals, items: activeItems, itemMetricsMap };
+    const meta = {
+      total: totalItems,
+      page: opts.page || 1,
+      limit: opts.limit || totalItems,
+      totalPages: opts.limit ? Math.ceil(totalItems / opts.limit) : 1,
+    };
+
+    return { root, grandTotals, items: activeItems, itemMetricsMap, meta };
   }
 
   private createEmptyValuationTotals() {
