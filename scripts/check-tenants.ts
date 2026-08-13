@@ -11,7 +11,7 @@ const password = urlObj.password;
 const host = urlObj.hostname;
 const port = urlObj.port || '5432';
 
-const dbNames = ['tenant_speed_main_mox1gfsi', 'tenant_ivar_msojjrqs', 'speedlimit'];
+const dbNames = ['tenant_speed_main_mox1gfsi', 'speedlimit'];
 
 async function testDbs() {
   for (const dbName of dbNames) {
@@ -19,11 +19,17 @@ async function testDbs() {
     console.log(`\n--- Checking DB: ${dbName} ---`);
     const p = new Pool({ connectionString: connStr });
     try {
-      const tables = await p.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`);
+      const tables = await p.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`,
+      );
       console.log(`Tables count: ${tables.rows.length}`);
-      const salesOrders = await p.query(`SELECT COUNT(*) FROM sales_orders`).catch(() => null);
+      const salesOrders = await p
+        .query(`SELECT COUNT(*) FROM sales_orders`)
+        .catch(() => null);
       if (salesOrders) {
-        console.log(`SalesOrders count in ${dbName}: ${salesOrders.rows[0].count}`);
+        console.log(
+          `SalesOrders count in ${dbName}: ${salesOrders.rows[0].count}`,
+        );
       } else {
         console.log(`sales_orders table not in ${dbName}`);
       }

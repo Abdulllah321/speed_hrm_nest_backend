@@ -20,13 +20,17 @@ const port = urlObj.port || '5432';
 
 const targetDbs = process.argv[2]
   ? [process.argv[2]]
-  : ['tenant_speed_main_mox1gfsi', 'tenant_ivar_msojjrqs'];
+  : ['tenant_speed_main_mox1gfsi'];
 
 async function syncTenantDb(dbName: string) {
   const dbUrl = `postgresql://${user}:${password}@${host}:${port}/${dbName}?schema=public`;
   console.log(`\n======================================================`);
-  console.log(`🚀 Starting Full Stock Ledger & Inventory Backfill for DB: ${dbName}`);
-  console.log(`Connecting to: postgresql://${user}:****@${host}:${port}/${dbName}`);
+  console.log(
+    `🚀 Starting Full Stock Ledger & Inventory Backfill for DB: ${dbName}`,
+  );
+  console.log(
+    `Connecting to: postgresql://${user}:****@${host}:${port}/${dbName}`,
+  );
   console.log(`======================================================\n`);
 
   const pool = new Pool({ connectionString: dbUrl });
@@ -46,7 +50,9 @@ async function syncTenantDb(dbName: string) {
       orderBy: { createdAt: 'asc' },
     });
 
-    console.log(`Found ${locations.length} locations. Default warehouse: ${defaultWarehouse?.name || 'None'} (${defaultWarehouse?.id})`);
+    console.log(
+      `Found ${locations.length} locations. Default warehouse: ${defaultWarehouse?.name || 'None'} (${defaultWarehouse?.id})`,
+    );
 
     const locationWarehouseMap = new Map<string, string>();
     for (const loc of locations) {
@@ -76,7 +82,9 @@ async function syncTenantDb(dbName: string) {
       orderBy: { createdAt: 'asc' },
     });
 
-    console.log(`Found ${allSalesOrders.length} SalesOrders in database "${dbName}".`);
+    console.log(
+      `Found ${allSalesOrders.length} SalesOrders in database "${dbName}".`,
+    );
     if (allSalesOrders.length === 0) {
       console.log(`No sales orders found in "${dbName}", skipping...`);
       return;
@@ -85,7 +93,15 @@ async function syncTenantDb(dbName: string) {
     // 3. Batch check existing StockLedger entries
     const existingLedgers = await prisma.stockLedger.findMany({
       where: {
-        referenceType: { in: ['POS_SALE', 'POS_RETURN', 'POS_VOID', 'OPENING_BALANCE', 'BULK_STOCK_UPLOAD'] },
+        referenceType: {
+          in: [
+            'POS_SALE',
+            'POS_RETURN',
+            'POS_VOID',
+            'OPENING_BALANCE',
+            'BULK_STOCK_UPLOAD',
+          ],
+        },
       },
       select: {
         id: true,
@@ -98,22 +114,30 @@ async function syncTenantDb(dbName: string) {
     });
 
     const existingSalesLedgerSet = new Set<string>(); // `${orderId}_${itemId}`
-    const existingOpeningSet = new Set<string>();     // `${itemId}_${locationId}`
-    const existingReturnSet = new Set<string>();      // `${orderId}_${itemId}`
+    const existingOpeningSet = new Set<string>(); // `${itemId}_${locationId}`
+    const existingReturnSet = new Set<string>(); // `${orderId}_${itemId}`
 
     for (const entry of existingLedgers) {
       if (entry.referenceType === 'POS_SALE') {
         existingSalesLedgerSet.add(`${entry.referenceId}_${entry.itemId}`);
-      } else if (entry.referenceType === 'OPENING_BALANCE' || entry.referenceType === 'BULK_STOCK_UPLOAD') {
+      } else if (
+        entry.referenceType === 'OPENING_BALANCE' ||
+        entry.referenceType === 'BULK_STOCK_UPLOAD'
+      ) {
         if (entry.locationId) {
           existingOpeningSet.add(`${entry.itemId}_${entry.locationId}`);
         }
-      } else if (entry.referenceType === 'POS_RETURN' || entry.referenceType === 'POS_VOID') {
+      } else if (
+        entry.referenceType === 'POS_RETURN' ||
+        entry.referenceType === 'POS_VOID'
+      ) {
         existingReturnSet.add(`${entry.referenceId}_${entry.itemId}`);
       }
     }
 
-    console.log(`Existing ledgers found: ${existingSalesLedgerSet.size} POS_SALE, ${existingOpeningSet.size} OPENING_BALANCE, ${existingReturnSet.size} POS_RETURN/VOID.`);
+    console.log(
+      `Existing ledgers found: ${existingSalesLedgerSet.size} POS_SALE, ${existingOpeningSet.size} OPENING_BALANCE, ${existingReturnSet.size} POS_RETURN/VOID.`,
+    );
 
     // 4. Calculate required OPENING_BALANCE per (itemId, locationId)
     const salesQtyMap = new Map<string, number>();
@@ -133,22 +157,36 @@ async function syncTenantDb(dbName: string) {
         }
 
         if (order.status === 'voided') {
-          returnQtyMap.set(key, (returnQtyMap.get(key) || 0) + Number(item.quantity));
+          returnQtyMap.set(
+            key,
+            (returnQtyMap.get(key) || 0) + Number(item.quantity),
+          );
         } else {
-          salesQtyMap.set(key, (salesQtyMap.get(key) || 0) + Number(item.quantity));
+          salesQtyMap.set(
+            key,
+            (salesQtyMap.get(key) || 0) + Number(item.quantity),
+          );
         }
       }
     }
 
     const allInventoryItems = await prisma.inventoryItem.findMany({
-      select: { itemId: true, locationId: true, warehouseId: true, quantity: true },
+      select: {
+        itemId: true,
+        locationId: true,
+        warehouseId: true,
+        quantity: true,
+      },
     });
 
     const inventoryQtyMap = new Map<string, number>();
     for (const inv of allInventoryItems) {
       if (inv.locationId) {
         const key = `${inv.itemId}_${inv.locationId}`;
-        inventoryQtyMap.set(key, (inventoryQtyMap.get(key) || 0) + Number(inv.quantity));
+        inventoryQtyMap.set(
+          key,
+          (inventoryQtyMap.get(key) || 0) + Number(inv.quantity),
+        );
       }
     }
 
@@ -157,53 +195,8 @@ async function syncTenantDb(dbName: string) {
       ...inventoryQtyMap.keys(),
     ]);
 
-    const openingLedgerBatch: any[] = [];
-
-    for (const key of allItemLocKeys) {
-      if (existingOpeningSet.has(key)) continue;
-
-      const [itemId, locId] = key.split('_');
-      const whId = locationWarehouseMap.get(locId) || defaultWarehouse?.id;
-      if (!whId) continue;
-
-      const totalSales = salesQtyMap.get(key) || 0;
-      const totalReturns = returnQtyMap.get(key) || 0;
-      const currentInv = inventoryQtyMap.get(key) || 0;
-
-      let estimatedOpening = Math.max(0, currentInv + totalSales - totalReturns);
-      if (estimatedOpening === 0 && totalSales > 0) {
-        estimatedOpening = totalSales - totalReturns;
-      }
-
-      if (estimatedOpening > 0) {
-        const earliestOrderDate = earliestDateMap.get(key) || new Date();
-        const openingDate = new Date(earliestOrderDate.getTime() - 60000);
-
-        openingLedgerBatch.push({
-          itemId,
-          warehouseId: whId,
-          locationId: locId,
-          qty: new Prisma.Decimal(estimatedOpening),
-          movementType: MovementType.OPENING_BALANCE,
-          referenceType: 'OPENING_BALANCE',
-          referenceId: 'AUTO_OPENING_BAL',
-          createdAt: openingDate,
-        });
-
-        existingOpeningSet.add(key);
-      }
-    }
-
+    // 4. OPENING_BALANCE generation disabled to prevent stock ledger date corruption
     let openingEntriesCreated = 0;
-    if (openingLedgerBatch.length > 0) {
-      console.log(`Inserting ${openingLedgerBatch.length} OPENING_BALANCE entries...`);
-      const CHUNK = 1000;
-      for (let i = 0; i < openingLedgerBatch.length; i += CHUNK) {
-        const chunk = openingLedgerBatch.slice(i, i + CHUNK);
-        await prisma.stockLedger.createMany({ data: chunk });
-      }
-      openingEntriesCreated = openingLedgerBatch.length;
-    }
 
     // 5. Backfill Sales Orders (OUTBOUND POS_SALE)
     const salesLedgerBatch: any[] = [];
@@ -236,7 +229,9 @@ async function syncTenantDb(dbName: string) {
 
     let salesLedgerEntriesCreated = 0;
     if (salesLedgerBatch.length > 0) {
-      console.log(`Inserting ${salesLedgerBatch.length} POS_SALE OUTBOUND ledger entries...`);
+      console.log(
+        `Inserting ${salesLedgerBatch.length} POS_SALE OUTBOUND ledger entries...`,
+      );
       const CHUNK = 1000;
       for (let i = 0; i < salesLedgerBatch.length; i += CHUNK) {
         const chunk = salesLedgerBatch.slice(i, i + CHUNK);
@@ -276,59 +271,46 @@ async function syncTenantDb(dbName: string) {
 
     let returnEntriesCreated = 0;
     if (returnLedgerBatch.length > 0) {
-      console.log(`Inserting ${returnLedgerBatch.length} POS_VOID INBOUND ledger entries...`);
+      console.log(
+        `Inserting ${returnLedgerBatch.length} POS_VOID INBOUND ledger entries...`,
+      );
       await prisma.stockLedger.createMany({ data: returnLedgerBatch });
       returnEntriesCreated = returnLedgerBatch.length;
     }
 
-    // 7. Sync & Rebalance InventoryItem table to match Stock Ledger total sums
+    // 7. Sync & Rebalance InventoryItem table to match Stock Ledger total sums instantly
     console.log('Rebalancing InventoryItem table from Stock Ledger sums...');
-    const ledgerSums = await prisma.stockLedger.groupBy({
-      by: ['itemId', 'warehouseId', 'locationId'],
-      _sum: { qty: true },
-    });
-
-    let inventoryItemsSynced = 0;
-    for (const group of ledgerSums) {
-      const totalQty = Number(group._sum.qty || 0);
-
-      const existingInv = await prisma.inventoryItem.findFirst({
-        where: {
-          itemId: group.itemId,
-          warehouseId: group.warehouseId,
-          locationId: group.locationId,
-          batchNumber: null,
-          serialNumber: null,
-          status: 'AVAILABLE',
-        },
-        select: { id: true },
-      });
-
-      if (existingInv) {
-        await prisma.inventoryItem.update({
-          where: { id: existingInv.id },
-          data: { quantity: new Prisma.Decimal(totalQty) },
-        });
-      } else {
-        await prisma.inventoryItem.create({
-          data: {
-            itemId: group.itemId,
-            warehouseId: group.warehouseId,
-            locationId: group.locationId,
-            quantity: new Prisma.Decimal(totalQty),
-            status: 'AVAILABLE',
-          },
-        });
-      }
-      inventoryItemsSynced++;
-    }
+    const rebalanceRes: any = await prisma.$executeRawUnsafe(`
+      UPDATE "InventoryItem" inv
+      SET quantity = COALESCE(sl.sum_qty, 0),
+          "updatedAt" = NOW()
+      FROM (
+        SELECT item_id, warehouse_id, location_id, SUM(qty) AS sum_qty
+        FROM stock_ledgers
+        GROUP BY item_id, warehouse_id, location_id
+      ) sl
+      WHERE inv."itemId" = sl.item_id
+        AND inv."warehouseId" = sl.warehouse_id
+        AND inv."locationId" = sl.location_id
+    `);
+    const inventoryItemsSynced = Number(rebalanceRes || 0);
 
     console.log('\n======================================================');
-    console.log(`✅ Stock Ledger & Inventory Sync Completed for DB "${dbName}"!`);
-    console.log(`  - OPENING_BALANCE Entries Created: ${openingEntriesCreated}`);
-    console.log(`  - POS_SALE Outbound Entries Created: ${salesLedgerEntriesCreated}`);
-    console.log(`  - POS_VOID/RETURN Inbound Entries Created: ${returnEntriesCreated}`);
-    console.log(`  - InventoryItem Records Rebalanced: ${inventoryItemsSynced}`);
+    console.log(
+      `✅ Stock Ledger & Inventory Sync Completed for DB "${dbName}"!`,
+    );
+    console.log(
+      `  - OPENING_BALANCE Entries Created: ${openingEntriesCreated}`,
+    );
+    console.log(
+      `  - POS_SALE Outbound Entries Created: ${salesLedgerEntriesCreated}`,
+    );
+    console.log(
+      `  - POS_VOID/RETURN Inbound Entries Created: ${returnEntriesCreated}`,
+    );
+    console.log(
+      `  - InventoryItem Records Rebalanced: ${inventoryItemsSynced}`,
+    );
     console.log('======================================================\n');
   } finally {
     await prisma.$disconnect();
