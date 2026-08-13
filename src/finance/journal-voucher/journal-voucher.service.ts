@@ -134,19 +134,19 @@ export class JournalVoucherService {
     if (!status || status === 'all') return undefined;
     const s = status.toLowerCase().trim();
     if (s === 'pending_check' || s === 'pending') {
-      return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'], mode: 'insensitive' };
+      return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'] };
     }
     if (s === 'pending_approval' || s === 'pending_approve') {
-      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'], mode: 'insensitive' };
+      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'] };
     }
     if (s === 'approved') {
-      return { in: ['approved', 'APPROVED'], mode: 'insensitive' };
+      return { in: ['approved', 'APPROVED'] };
     }
     if (s === 'rejected') {
-      return { in: ['rejected', 'REJECTED'], mode: 'insensitive' };
+      return { in: ['rejected', 'REJECTED'] };
     }
     if (s === 'draft') {
-      return { in: ['draft', 'DRAFT'], mode: 'insensitive' };
+      return { in: ['draft', 'DRAFT'] };
     }
     return { equals: status, mode: 'insensitive' };
   }
@@ -178,11 +178,41 @@ export class JournalVoucherService {
     }
 
     if (search) {
-      where.OR = [
-        { jvNo: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { refBillNo: { contains: search, mode: 'insensitive' } },
+      const cleanSearch = search.trim();
+      const searchConditions: any[] = [
+        { jvNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { folio: { contains: cleanSearch, mode: 'insensitive' } },
+        { description: { contains: cleanSearch, mode: 'insensitive' } },
+        { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } },
+        { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
+        { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
+        { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
+        { details: { some: { account: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        { details: { some: { account: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        { details: { some: { tagAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        { details: { some: { tagAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
       ];
+
+      // Match numbers or formatted amounts e.g., "17,938.76" -> 17938.76
+      const numericStr = cleanSearch.replace(/,/g, '');
+      if (numericStr !== '' && !isNaN(Number(numericStr))) {
+        const num = Number(numericStr);
+        searchConditions.push(
+          { details: { some: { debit: num } } },
+          { details: { some: { credit: num } } },
+        );
+      }
+
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: searchConditions },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     const queryOptions: any = {

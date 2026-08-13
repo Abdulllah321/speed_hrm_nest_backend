@@ -32,16 +32,34 @@ async function bootstrap() {
 
   const fastifyCors = await import('@fastify/cors');
   await adapter.register(fastifyCors.default as any, {
-    origin: (origin: string, cb: (err: Error | null, allow: boolean) => void) => {
+    origin: (
+      origin: string,
+      cb: (err: Error | null, allow: boolean) => void,
+    ) => {
       // Allow requests with no origin: Electron renderer (null), server-to-server, curl
-      if (!origin || origin === 'null') { cb(null, true); return; }
+      if (!origin || origin === 'null') {
+        cb(null, true);
+        return;
+      }
       // Exact match against configured origins
-      if (allowedOrigins.has(origin)) { cb(null, true); return; }
+      if (allowedOrigins.has(origin)) {
+        cb(null, true);
+        return;
+      }
       // Allow any subdomain of localtest.me (dev) or configured base domain (prod)
-      if (/^https?:\/\/([a-z0-9-]+\.)*localtest\.me(:\d+)?$/.test(origin)) { cb(null, true); return; }
-      if (/^https?:\/\/([a-z0-9-]+\.)*localhost(:\d+)?$/.test(origin)) { cb(null, true); return; }
+      if (/^https?:\/\/([a-z0-9-]+\.)*localtest\.me(:\d+)?$/.test(origin)) {
+        cb(null, true);
+        return;
+      }
+      if (/^https?:\/\/([a-z0-9-]+\.)*localhost(:\d+)?$/.test(origin)) {
+        cb(null, true);
+        return;
+      }
       const baseDomain = process.env.BASE_DOMAIN;
-      if (baseDomain && origin.endsWith(`.${baseDomain}`)) { cb(null, true); return; }
+      if (baseDomain && origin.endsWith(`.${baseDomain}`)) {
+        cb(null, true);
+        return;
+      }
       cb(new Error(`CORS: origin ${origin} not allowed`), false);
     },
     credentials: true,
@@ -117,8 +135,8 @@ async function bootstrap() {
   /* Swagger Setup */
   const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
   const config = new DocumentBuilder()
-    .setTitle('Speed Limit API')
-    .setDescription('The Speed Limit API description')
+    .setTitle('Speed (pvt.) Limited API')
+    .setDescription('The Speed (pvt.) Limited API description')
     .setVersion('1.0')
     .addBearerAuth()
     .build();

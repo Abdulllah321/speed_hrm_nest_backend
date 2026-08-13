@@ -50,6 +50,14 @@ export class ChartOfAccountController {
     });
   }
 
+  @Get('dropdown')
+  @ApiBearerAuth()
+  @Permissions('erp.finance.chart-of-account.read')
+  @ApiOperation({ summary: 'Get lightweight chart of accounts for dropdowns' })
+  findDropdown() {
+    return this.chartOfAccountService.findDropdown();
+  }
+
   @Get()
   @ApiBearerAuth()
   @Permissions('erp.finance.chart-of-account.read')
