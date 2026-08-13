@@ -11,6 +11,7 @@ import { MovementType, Prisma } from '@prisma/client';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { chunkArray } from '../../common/utils/chunk.util';
 @Injectable()
 export class StockLedgerService {
   private readonly logger = new Logger(StockLedgerService.name);
@@ -179,41 +180,55 @@ export class StockLedgerService {
       },
     });
 
-    // Fetch related entities in parallel
+    // Fetch related entities in parallel (with chunking for large item ID lists)
     const itemIds = [...new Set(groupBy.map((r) => r.itemId))];
     const warehouseIds = [...new Set(groupBy.map((r) => r.warehouseId))];
     const locationIds = [...new Set(groupBy.map((r) => r.locationId).filter(Boolean))] as string[];
 
-    const [items, warehouses, locations, reservations] = await Promise.all([
-      this.prisma.item.findMany({
-        where: { id: { in: itemIds } },
-        select: { id: true, itemId: true, sku: true, description: true },
-      }),
-      this.prisma.warehouse.findMany({
-        where: { id: { in: warehouseIds }, isDeleted: false },
-        select: { id: true, name: true, code: true },
-      }),
-      locationIds.length > 0
-        ? this.prisma.location.findMany({
-            where: { id: { in: locationIds } },
-            select: { id: true, name: true, code: true },
-          })
-        : Promise.resolve([] as { id: string; name: string; code: string }[]),
-      this.prisma.stockReserve.groupBy({
-        by: ['itemId', 'warehouseId'],
-        where: {
-          itemId: { in: itemIds },
-          warehouseId: { in: warehouseIds },
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gte: new Date() } }
-          ]
-        },
-        _sum: {
-          quantity: true,
-        }
-      })
-    ]);
+    const itemChunks = chunkArray(itemIds, 1000);
+    const itemsNested = await Promise.all(
+      itemChunks.map((chunk) =>
+        this.prisma.item.findMany({
+          where: { id: { in: chunk } },
+          select: { id: true, itemId: true, sku: true, description: true },
+        }),
+      ),
+    );
+    const items = itemsNested.flat();
+
+    const warehouses = warehouseIds.length > 0
+      ? await this.prisma.warehouse.findMany({
+          where: { id: { in: warehouseIds }, isDeleted: false },
+          select: { id: true, name: true, code: true },
+        })
+      : [];
+
+    const locations = locationIds.length > 0
+      ? await this.prisma.location.findMany({
+          where: { id: { in: locationIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : [];
+
+    const reservationsNested = await Promise.all(
+      itemChunks.map((chunk) =>
+        this.prisma.stockReserve.groupBy({
+          by: ['itemId', 'warehouseId'],
+          where: {
+            itemId: { in: chunk },
+            warehouseId: { in: warehouseIds },
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gte: new Date() } }
+            ]
+          },
+          _sum: {
+            quantity: true,
+          }
+        }),
+      ),
+    );
+    const reservations = reservationsNested.flat();
 
     const itemMap = new Map(items.map((i) => [i.id, i]));
     const warehouseMap = new Map(warehouses.map((w) => [w.id, w]));
@@ -557,86 +572,99 @@ export class StockLedgerService {
       return [];
     }
 
-    const items = await this.prisma.item.findMany({
-      where: {
-        OR: [
-          { id: { in: uniqueItemIds } },
-          { itemId: { in: uniqueItemIds } },
-        ],
-      },
-      include: {
-        color: true,
-        size: true,
-        gender: true,
-        category: true,
-        division: true,
-        brand: true,
-        silhouette: true,
-      },
-    });
+    const uniqueItemChunks = chunkArray(uniqueItemIds, 1000);
+    const itemsNested = await Promise.all(
+      uniqueItemChunks.map((chunk) =>
+        this.prisma.item.findMany({
+          where: {
+            OR: [
+              { id: { in: chunk } },
+              { itemId: { in: chunk } },
+            ],
+          },
+          include: {
+            color: true,
+            size: true,
+            gender: true,
+            category: true,
+            division: true,
+            brand: true,
+            silhouette: true,
+          },
+        }),
+      ),
+    );
+    const items = itemsNested.flat();
 
     if (items.length === 0) {
       return [];
     }
 
     const matchedItemIds = items.map(i => i.id);
-
-    const bfGroup = await this.prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { lt: startDate },
-      },
-      _sum: {
-        qty: true,
-      },
-    });
+    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
 
     const bfMap = new Map<string, number>();
-    for (const row of bfGroup) {
-      bfMap.set(row.itemId, Number(row._sum.qty || 0));
+    for (const chunk of matchedItemChunks) {
+      const bfGroup = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { lt: startDate },
+        },
+        _sum: {
+          qty: true,
+        },
+      });
+
+      for (const row of bfGroup) {
+        bfMap.set(row.itemId, Number(row._sum.qty || 0));
+      }
+
+      // Query and add any OPENING_BALANCE entries that were created within the date range
+      const inRangeOpeningGroup = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' }
+          ]
+        },
+        _sum: { qty: true },
+      });
+
+      for (const row of inRangeOpeningGroup) {
+        const currentBf = bfMap.get(row.itemId) || 0;
+        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      }
     }
 
-    // Query and add any OPENING_BALANCE entries that were created within the date range
-    const inRangeOpeningGroup = await this.prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        OR: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' }
-        ]
-      },
-      _sum: { qty: true },
-    });
-
-    for (const row of inRangeOpeningGroup) {
-      const currentBf = bfMap.get(row.itemId) || 0;
-      bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+    const ledgerEntries: any[] = [];
+    for (const chunk of matchedItemChunks) {
+      const chunkEntries = await this.prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          NOT: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' }
+          ]
+        },
+        select: {
+          itemId: true,
+          qty: true,
+          referenceType: true,
+          movementType: true,
+        },
+      });
+      ledgerEntries.push(...chunkEntries);
     }
-
-    const ledgerEntries = await this.prisma.stockLedger.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        NOT: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' }
-        ]
-      },
-      select: {
-        itemId: true,
-        qty: true,
-        referenceType: true,
-        movementType: true,
-      },
-    });
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
@@ -646,20 +674,24 @@ export class StockLedgerService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    const transitItems = await this.prisma.transferRequestItem.findMany({
-      where: {
-        itemId: { in: matchedItemIds },
-        transferRequest: {
-          ...toLocOrWhWhere,
-          status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+    const transitItems: any[] = [];
+    for (const chunk of matchedItemChunks) {
+      const chunkTransit = await this.prisma.transferRequestItem.findMany({
+        where: {
+          itemId: { in: chunk },
+          transferRequest: {
+            ...toLocOrWhWhere,
+            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+          },
         },
-      },
-      select: {
-        itemId: true,
-        quantity: true,
-      },
-    });
+        select: {
+          itemId: true,
+          quantity: true,
+        },
+      });
+      transitItems.push(...chunkTransit);
+    }
 
     const transitMap = new Map<string, number>();
     for (const row of transitItems) {
@@ -926,90 +958,104 @@ export class StockLedgerService {
       return { root: [], grandTotals: { openingBalance: 0, closingBalance: 0, inTransitQty: 0 } };
     }
 
-    const items = await prisma.item.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
-              { id: { in: uniqueItemIds } },
-              { itemId: { in: uniqueItemIds } },
+    const uniqueItemChunks = chunkArray(uniqueItemIds, 1000);
+    const itemsNested = await Promise.all(
+      uniqueItemChunks.map((chunk) =>
+        prisma.item.findMany({
+          where: {
+            AND: [
+              {
+                OR: [
+                  { id: { in: chunk } },
+                  { itemId: { in: chunk } },
+                ],
+              },
+              search ? {
+                OR: [
+                  { sku: { contains: search, mode: 'insensitive' } },
+                  { description: { contains: search, mode: 'insensitive' } },
+                ],
+              } : {},
             ],
           },
-          search ? {
-            OR: [
-              { sku: { contains: search, mode: 'insensitive' } },
-              { description: { contains: search, mode: 'insensitive' } },
-            ],
-          } : {},
-        ],
-      },
-      include: {
-        color: true,
-        size: true,
-        gender: true,
-        category: true,
-        division: true,
-        brand: true,
-        silhouette: true,
-      },
-    });
+          include: {
+            color: true,
+            size: true,
+            gender: true,
+            category: true,
+            division: true,
+            brand: true,
+            silhouette: true,
+          },
+        }),
+      ),
+    );
+    const items = itemsNested.flat();
 
     const matchedItemIds = items.map(i => i.id);
     if (matchedItemIds.length === 0) {
       return { root: [], grandTotals: { openingBalance: 0, closingBalance: 0, inTransitQty: 0 } };
     }
 
+    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
+
     // 3. Fetch Opening Balances (B/F) before startDate
-    const bfGroup = await prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { lt: startDate },
-      },
-      _sum: { qty: true },
-    });
-
     const bfMap = new Map<string, number>();
-    for (const row of bfGroup) {
-      bfMap.set(row.itemId, Number(row._sum.qty || 0));
-    }
+    for (const chunk of matchedItemChunks) {
+      const bfGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { lt: startDate },
+        },
+        _sum: { qty: true },
+      });
 
-    // Include opening balances posted within date range (e.g. bulk uploads or opening balance type)
-    const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        OR: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' },
-        ],
-      },
-      _sum: { qty: true },
-    });
+      for (const row of bfGroup) {
+        bfMap.set(row.itemId, Number(row._sum.qty || 0));
+      }
 
-    for (const row of inRangeOpeningGroup) {
-      const currentBf = bfMap.get(row.itemId) || 0;
-      bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      // Include opening balances posted within date range (e.g. bulk uploads or opening balance type)
+      const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        _sum: { qty: true },
+      });
+
+      for (const row of inRangeOpeningGroup) {
+        const currentBf = bfMap.get(row.itemId) || 0;
+        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      }
     }
 
     // 4. Fetch Ledger Entries within date range (excluding opening entries)
-    const ledgerEntries = await prisma.stockLedger.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        NOT: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' },
-        ],
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const ledgerEntries: any[] = [];
+    for (const chunk of matchedItemChunks) {
+      const chunkEntries = await prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          NOT: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      ledgerEntries.push(...chunkEntries);
+    }
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
@@ -1020,23 +1066,27 @@ export class StockLedgerService {
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
     // 5. Fetch In-Transit Requests
-    const transitRequests = await prisma.transferRequestItem.findMany({
-      where: {
-        itemId: { in: matchedItemIds },
-        transferRequest: {
-          status: { in: ['PENDING', 'PENDING_CHECKER', 'PENDING_AUTHORIZER', 'PENDING_APPROVER', 'APPROVED', 'SOURCE_APPROVED'] },
-          ...toLocOrWhWhere,
-        },
-      },
-      include: {
-        transferRequest: {
-          include: {
-            fromWarehouse: { select: { name: true } },
-            fromLocation: { select: { name: true } },
+    const transitRequests: any[] = [];
+    for (const chunk of matchedItemChunks) {
+      const chunkRequests = await prisma.transferRequestItem.findMany({
+        where: {
+          itemId: { in: chunk },
+          transferRequest: {
+            status: { in: ['PENDING', 'PENDING_CHECKER', 'PENDING_AUTHORIZER', 'PENDING_APPROVER', 'APPROVED', 'SOURCE_APPROVED'] },
+            ...toLocOrWhWhere,
           },
         },
-      },
-    });
+        include: {
+          transferRequest: {
+            include: {
+              fromWarehouse: { select: { name: true } },
+              fromLocation: { select: { name: true } },
+            },
+          },
+        },
+      });
+      transitRequests.push(...chunkRequests);
+    }
 
     // 6. Enrich reference documents to avoid N+1 queries
     const grnIds = new Set<string>();
@@ -1063,17 +1113,23 @@ export class StockLedgerService {
       }
     }
 
+    const fetchInChunks = async <T>(ids: string[], fetchFn: (chunk: string[]) => Promise<T[]>): Promise<T[]> => {
+      const chunks = chunkArray(ids, 1000);
+      const results = await Promise.all(chunks.map(c => fetchFn(c)));
+      return results.flat();
+    };
+
     const [grns, salesOrders, transfers, claims, adjustments] = await Promise.all([
-      grnIds.size > 0 ? prisma.goodsReceiptNote.findMany({
-        where: { id: { in: [...grnIds] } },
+      grnIds.size > 0 ? fetchInChunks([...grnIds], (c) => prisma.goodsReceiptNote.findMany({
+        where: { id: { in: c } },
         select: { id: true, grnNumber: true },
-      }) : Promise.resolve([]),
-      salesOrderIds.size > 0 ? prisma.salesOrder.findMany({
-        where: { id: { in: [...salesOrderIds] } },
+      })) : Promise.resolve([]),
+      salesOrderIds.size > 0 ? fetchInChunks([...salesOrderIds], (c) => prisma.salesOrder.findMany({
+        where: { id: { in: c } },
         select: { id: true, orderNumber: true, returnNumber: true, refundNumber: true },
-      }) : Promise.resolve([]),
-      transferIds.size > 0 ? prisma.transferRequest.findMany({
-        where: { id: { in: [...transferIds] } },
+      })) : Promise.resolve([]),
+      transferIds.size > 0 ? fetchInChunks([...transferIds], (c) => prisma.transferRequest.findMany({
+        where: { id: { in: c } },
         select: {
           id: true,
           requestNo: true,
@@ -1082,15 +1138,15 @@ export class StockLedgerService {
           toWarehouse: { select: { name: true } },
           toLocation: { select: { name: true } },
         },
-      }) : Promise.resolve([]),
-      claimIds.size > 0 ? prisma.posClaim.findMany({
-        where: { id: { in: [...claimIds] } },
+      })) : Promise.resolve([]),
+      claimIds.size > 0 ? fetchInChunks([...claimIds], (c) => prisma.posClaim.findMany({
+        where: { id: { in: c } },
         select: { id: true, claimNumber: true },
-      }) : Promise.resolve([]),
-      adjustmentIds.size > 0 ? prisma.stockAdjustment.findMany({
-        where: { id: { in: [...adjustmentIds] } },
+      })) : Promise.resolve([]),
+      adjustmentIds.size > 0 ? fetchInChunks([...adjustmentIds], (c) => prisma.stockAdjustment.findMany({
+        where: { id: { in: c } },
         select: { id: true, adjustmentNo: true },
-      }) : Promise.resolve([]),
+      })) : Promise.resolve([]),
     ]);
 
     const grnsTyped = grns as any[];
