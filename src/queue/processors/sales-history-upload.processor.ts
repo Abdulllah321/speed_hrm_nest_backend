@@ -10,6 +10,7 @@ import { SalesHistoryValidatorService } from '../../common/services/sales-histor
 import { UploadEventsService } from '../../finance/item/upload-events.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { PosSalesService } from '../../pos-sales/pos-sales.service';
+import { MovementType } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -910,6 +911,62 @@ export class SalesHistoryUploadProcessor {
                         targetLocationId,
                         prisma,
                     );
+                }
+
+                // Create StockLedger entries & sync InventoryItem for this imported sales order
+                if (salesOrderId && targetLocationId) {
+                    const defaultWh = await prisma.warehouse.findFirst({
+                        where: { isActive: true },
+                        select: { id: true },
+                    });
+
+                    for (const item of lineItems) {
+                        await prisma.stockLedger.deleteMany({
+                            where: {
+                                referenceId: salesOrderId,
+                                itemId: item.itemId,
+                                referenceType: 'POS_SALE',
+                            },
+                        });
+
+                        await prisma.stockLedger.create({
+                            data: {
+                                itemId: item.itemId,
+                                warehouseId: defaultWh?.id || '',
+                                locationId: targetLocationId,
+                                qty: -item.quantity,
+                                movementType: MovementType.OUTBOUND,
+                                referenceType: 'POS_SALE',
+                                referenceId: salesOrderId,
+                                createdAt: createdAt || undefined,
+                            },
+                        });
+
+                        const existingInv = await prisma.inventoryItem.findFirst({
+                            where: {
+                                itemId: item.itemId,
+                                locationId: targetLocationId,
+                                status: 'AVAILABLE',
+                            },
+                        });
+
+                        if (existingInv) {
+                            await prisma.inventoryItem.update({
+                                where: { id: existingInv.id },
+                                data: { quantity: { decrement: item.quantity } },
+                            });
+                        } else {
+                            await prisma.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    locationId: targetLocationId,
+                                    warehouseId: defaultWh?.id || '',
+                                    quantity: -item.quantity,
+                                    status: 'AVAILABLE',
+                                },
+                            });
+                        }
+                    }
                 }
 
                 progress.successRecords += lineItems.length;
