@@ -6,6 +6,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
+import { chunkArray } from '../../common/utils/chunk.util';
 
 export interface QueueStockValuationExportOptions {
   userId: string;
@@ -243,23 +244,33 @@ export class StockValuationExportService {
       };
     }
 
-    const [items, tenantSettings] = await Promise.all([
-      prisma.item.findMany({
-        where: { id: { in: uniqueItemIds } },
-        include: {
-          color: true,
-          size: true,
-          gender: true,
-          category: true,
-          division: true,
-          brand: true,
-          silhouette: true,
-        },
-      }),
-      prisma.tenantItemSetting.findMany({
-        where: { itemId: { in: uniqueItemIds } },
-      }),
-    ]);
+    const itemChunks = chunkArray(uniqueItemIds, 1000);
+    const itemsNested = await Promise.all(
+      itemChunks.map((chunk) =>
+        prisma.item.findMany({
+          where: { id: { in: chunk } },
+          include: {
+            color: true,
+            size: true,
+            gender: true,
+            category: true,
+            division: true,
+            brand: true,
+            silhouette: true,
+          },
+        }),
+      ),
+    );
+    const items = itemsNested.flat();
+
+    const settingsNested = await Promise.all(
+      itemChunks.map((chunk) =>
+        prisma.tenantItemSetting.findMany({
+          where: { itemId: { in: chunk } },
+        }),
+      ),
+    );
+    const tenantSettings = settingsNested.flat();
 
     const settingMap = new Map(tenantSettings.map(s => [s.itemId, s]));
 
@@ -309,35 +320,38 @@ export class StockValuationExportService {
 
     const matchedItemIds = activeItems.map(i => i.id);
 
-    // Fetch ALL stock ledger entries for the matched items up to the endDate to compute historical WAC
-    const allLedgerEntries = await prisma.stockLedger.findMany({
-      where: {
-        ...(locationId ? { locationId } : {}),
-        itemId: { in: matchedItemIds },
-        createdAt: { lte: endDate },
-      },
-      select: {
-        id: true,
-        itemId: true,
-        qty: true,
-        unitCost: true,
-        rate: true,
-        movementType: true,
-        referenceType: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Fetch stock ledger entries in 1,000 item chunks to compute historical WAC safely
+    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
+    const ledgerMap = new Map<string, any[]>();
 
-    // Group ledger entries by itemId for chronological processing
-    const ledgerMap = new Map<string, typeof allLedgerEntries>();
-    for (const entry of allLedgerEntries) {
-      let list = ledgerMap.get(entry.itemId);
-      if (!list) {
-        list = [];
-        ledgerMap.set(entry.itemId, list);
+    for (const chunk of matchedItemChunks) {
+      const chunkLedgerEntries = await prisma.stockLedger.findMany({
+        where: {
+          ...(locationId ? { locationId } : {}),
+          itemId: { in: chunk },
+          createdAt: { lte: endDate },
+        },
+        select: {
+          id: true,
+          itemId: true,
+          qty: true,
+          unitCost: true,
+          rate: true,
+          movementType: true,
+          referenceType: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      for (const entry of chunkLedgerEntries) {
+        let list = ledgerMap.get(entry.itemId);
+        if (!list) {
+          list = [];
+          ledgerMap.set(entry.itemId, list);
+        }
+        list.push(entry);
       }
-      list.push(entry);
     }
 
     const itemMetricsMap = new Map<string, ReturnType<typeof this.createEmptyValuationTotals>>();

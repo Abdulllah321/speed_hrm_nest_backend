@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { MovementType } from '@prisma/client';
 import { ExportHistoryService } from '../export-history/export-history.service';
+import { chunkArray } from '../../common/utils/chunk.util';
 
 
 export interface StockActivityExportJobData {
@@ -170,82 +171,94 @@ export class StockActivityExportProcessor {
 
       await job.progress(20);
 
-      const items = await prisma.item.findMany({
-        where: {
-          OR: [
-            { id: { in: uniqueItemIds } },
-            { itemId: { in: uniqueItemIds } },
-          ],
-        },
-        include: {
-          color: true,
-          size: true,
-          gender: true,
-          category: true,
-          division: true,
-          brand: true,
-          silhouette: true,
-        },
-      });
+      const uniqueItemChunks = chunkArray(uniqueItemIds, 1000);
+      const itemsNested = await Promise.all(
+        uniqueItemChunks.map((chunk) =>
+          prisma.item.findMany({
+            where: {
+              OR: [
+                { id: { in: chunk } },
+                { itemId: { in: chunk } },
+              ],
+            },
+            include: {
+              color: true,
+              size: true,
+              gender: true,
+              category: true,
+              division: true,
+              brand: true,
+              silhouette: true,
+            },
+          }),
+        ),
+      );
+      const items = itemsNested.flat();
 
       await job.progress(45);
 
       const matchedItemIds = items.map(i => i.id);
-
-      const bfGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
-        where: {
-          ...locationOrWarehouseWhere,
-          itemId: { in: matchedItemIds },
-          createdAt: { lt: startDate },
-        },
-        _sum: { qty: true },
-      });
+      const matchedItemChunks = chunkArray(matchedItemIds, 1000);
 
       const bfMap = new Map<string, number>();
-      for (const row of bfGroup) {
-        bfMap.set(row.itemId, Number(row._sum.qty || 0));
+      for (const chunk of matchedItemChunks) {
+        const bfGroup = await prisma.stockLedger.groupBy({
+          by: ['itemId'],
+          where: {
+            ...locationOrWarehouseWhere,
+            itemId: { in: chunk },
+            createdAt: { lt: startDate },
+          },
+          _sum: { qty: true },
+        });
+
+        for (const row of bfGroup) {
+          bfMap.set(row.itemId, Number(row._sum.qty || 0));
+        }
+
+        const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
+          by: ['itemId'],
+          where: {
+            ...locationOrWarehouseWhere,
+            itemId: { in: chunk },
+            createdAt: { gte: startDate, lte: endDate },
+            OR: [
+              { movementType: MovementType.OPENING_BALANCE },
+              { referenceType: 'OPENING_BALANCE' },
+              { referenceType: 'BULK_STOCK_UPLOAD' }
+            ]
+          },
+          _sum: { qty: true },
+        });
+
+        for (const row of inRangeOpeningGroup) {
+          const currentBf = bfMap.get(row.itemId) || 0;
+          bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+        }
       }
 
-      // Query and add any OPENING_BALANCE entries that were created within the date range
-      const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
-        where: {
-          ...locationOrWarehouseWhere,
-          itemId: { in: matchedItemIds },
-          createdAt: { gte: startDate, lte: endDate },
-          OR: [
-            { movementType: MovementType.OPENING_BALANCE },
-            { referenceType: 'OPENING_BALANCE' },
-            { referenceType: 'BULK_STOCK_UPLOAD' }
-          ]
-        },
-        _sum: { qty: true },
-      });
-
-      for (const row of inRangeOpeningGroup) {
-        const currentBf = bfMap.get(row.itemId) || 0;
-        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      const ledgerEntries: any[] = [];
+      for (const chunk of matchedItemChunks) {
+        const chunkEntries = await prisma.stockLedger.findMany({
+          where: {
+            ...locationOrWarehouseWhere,
+            itemId: { in: chunk },
+            createdAt: { gte: startDate, lte: endDate },
+            NOT: [
+              { movementType: MovementType.OPENING_BALANCE },
+              { referenceType: 'OPENING_BALANCE' },
+              { referenceType: 'BULK_STOCK_UPLOAD' }
+            ]
+          },
+          select: {
+            itemId: true,
+            qty: true,
+            referenceType: true,
+            movementType: true,
+          },
+        });
+        ledgerEntries.push(...chunkEntries);
       }
-
-      const ledgerEntries = await prisma.stockLedger.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
-          itemId: { in: matchedItemIds },
-          createdAt: { gte: startDate, lte: endDate },
-          NOT: [
-            { movementType: MovementType.OPENING_BALANCE },
-            { referenceType: 'OPENING_BALANCE' },
-            { referenceType: 'BULK_STOCK_UPLOAD' }
-          ]
-        },
-        select: {
-          itemId: true,
-          qty: true,
-          referenceType: true,
-          movementType: true,
-        },
-      });
 
       const toLocOrWhFilters: any[] = [];
       if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
@@ -255,20 +268,24 @@ export class StockActivityExportProcessor {
         ? { OR: toLocOrWhFilters }
         : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-      const transitItems = await prisma.transferRequestItem.findMany({
-        where: {
-          itemId: { in: matchedItemIds },
-          transferRequest: {
-            ...toLocOrWhWhere,
-            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+      const transitItems: any[] = [];
+      for (const chunk of matchedItemChunks) {
+        const chunkTransit = await prisma.transferRequestItem.findMany({
+          where: {
+            itemId: { in: chunk },
+            transferRequest: {
+              ...toLocOrWhWhere,
+              status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+              transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+            },
           },
-        },
-        select: {
-          itemId: true,
-          quantity: true,
-        },
-      });
+          select: {
+            itemId: true,
+            quantity: true,
+          },
+        });
+        transitItems.push(...chunkTransit);
+      }
 
       const transitMap = new Map<string, number>();
       for (const row of transitItems) {
