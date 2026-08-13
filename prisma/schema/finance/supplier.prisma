@@ -15,6 +15,7 @@ model Supplier {
   cnicNo           String?
   ntnNo            String?
   strnNo           String?
+  gstNumber        String?
   srbNo            String?
   praNo            String?
   ictNo            String?
