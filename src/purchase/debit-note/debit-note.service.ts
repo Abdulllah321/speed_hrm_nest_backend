@@ -33,6 +33,7 @@ export class DebitNoteService {
                   include: {
                     size: true,
                     color: true,
+                    brand: true,
                   },
                 },
                 purchaseInvoiceItem: true,
