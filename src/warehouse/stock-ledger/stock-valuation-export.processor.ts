@@ -560,6 +560,8 @@ export class StockValuationExportProcessor {
       this.logger.error(`[StockValuationExport ${jobId}] Failed: ${err.message}`, err.stack);
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
+    } finally {
+      await prisma.$disconnect().catch(() => {});
     }
   }
 

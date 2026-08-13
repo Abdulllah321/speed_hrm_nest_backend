@@ -237,6 +237,8 @@ export class PaymentVoucherService {
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
         { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
         { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
+        { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
+        { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { account: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
         { details: { some: { account: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
         { details: { some: { tagAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
@@ -247,8 +249,6 @@ export class PaymentVoucherService {
       if (numericStr !== '' && !isNaN(Number(numericStr))) {
         const num = Number(numericStr);
         searchConditions.push(
-          { totalAmount: num },
-          { debitAmount: num },
           { creditAmount: num },
           { details: { some: { debit: num } } },
           { details: { some: { credit: num } } },
