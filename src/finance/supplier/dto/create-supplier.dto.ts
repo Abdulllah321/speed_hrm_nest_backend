@@ -88,6 +88,11 @@ export class CreateSupplierDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
+  gstNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
   srbNo?: string;
 
   @ApiPropertyOptional()
