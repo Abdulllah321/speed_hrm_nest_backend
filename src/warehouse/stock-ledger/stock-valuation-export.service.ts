@@ -175,12 +175,8 @@ export class StockValuationExportService {
     page?: number;
     limit?: number;
   }) {
-    const tenantId = this.prisma.getTenantId() ?? '';
-    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
-
-    // Reuse the exact same core logic function that the processor uses
-    const { root, grandTotals, meta } = await this.generateValuationReportDataInternal(prisma, opts);
+    // Use injected singleton prisma instance to prevent creating orphan pg-pool connections
+    const { root, grandTotals, meta } = await this.generateValuationReportDataInternal(this.prisma, opts);
     return { data: root, grandTotals, meta };
   }
 
