@@ -1433,5 +1433,334 @@ export class StockLedgerService {
 
     return { root, grandTotals };
   }
+
+  /**
+   * Retroactively syncs all SalesOrders (uploaded history + live orders),
+   * returns/voids, and generates initial OPENING_BALANCE ledger entries so that
+   * stock ledgers and inventory levels reflect accurate history without negative stock gaps.
+   */
+  async syncAllSalesAndReturnsToStockLedger(options?: {
+    locationId?: string;
+  }): Promise<{
+    openingEntriesCreated: number;
+    salesLedgerEntriesCreated: number;
+    returnEntriesCreated: number;
+    inventoryItemsSynced: number;
+  }> {
+    this.logger.log(
+      `[StockLedgerSync] Starting full stock ledger & inventory backfill... (locationId: ${options?.locationId || 'ALL'})`,
+    );
+
+    // 1. Resolve active locations & default warehouses
+    const locationWhere: any = { isDeleted: false };
+    if (options?.locationId) {
+      locationWhere.id = options.locationId;
+    }
+    const locations = await this.prisma.location.findMany({
+      where: locationWhere,
+      select: { id: true, name: true, warehouseId: true },
+    });
+
+    const defaultWarehouse = await this.prisma.warehouse.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const locationWarehouseMap = new Map<string, string>();
+    for (const loc of locations) {
+      const whId = loc.warehouseId || defaultWarehouse?.id;
+      if (whId) {
+        locationWarehouseMap.set(loc.id, whId);
+      }
+    }
+
+    // 2. Fetch all sales orders with items
+    const salesOrderWhere: any = {};
+    if (options?.locationId) {
+      salesOrderWhere.locationId = options.locationId;
+    }
+
+    const allSalesOrders = await this.prisma.salesOrder.findMany({
+      where: salesOrderWhere,
+      select: {
+        id: true,
+        orderNumber: true,
+        locationId: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        items: {
+          select: {
+            id: true,
+            itemId: true,
+            quantity: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    this.logger.log(
+      `[StockLedgerSync] Found ${allSalesOrders.length} sales orders to inspect.`,
+    );
+
+    // 3. Batch check existing StockLedger entries for POS_SALE, POS_RETURN, POS_VOID
+    const existingLedgers = await this.prisma.stockLedger.findMany({
+      where: {
+        referenceType: { in: ['POS_SALE', 'POS_RETURN', 'POS_VOID', 'OPENING_BALANCE', 'BULK_STOCK_UPLOAD'] },
+        ...(options?.locationId ? { locationId: options.locationId } : {}),
+      },
+      select: {
+        id: true,
+        itemId: true,
+        locationId: true,
+        referenceType: true,
+        referenceId: true,
+        movementType: true,
+      },
+    });
+
+    const existingSalesLedgerSet = new Set<string>(); // key: `${orderId}_${itemId}`
+    const existingOpeningSet = new Set<string>();     // key: `${itemId}_${locationId}`
+    const existingReturnSet = new Set<string>();      // key: `${orderId}_${itemId}`
+
+    for (const entry of existingLedgers) {
+      if (entry.referenceType === 'POS_SALE') {
+        existingSalesLedgerSet.add(`${entry.referenceId}_${entry.itemId}`);
+      } else if (entry.referenceType === 'OPENING_BALANCE' || entry.referenceType === 'BULK_STOCK_UPLOAD') {
+        if (entry.locationId) {
+          existingOpeningSet.add(`${entry.itemId}_${entry.locationId}`);
+        }
+      } else if (entry.referenceType === 'POS_RETURN' || entry.referenceType === 'POS_VOID') {
+        existingReturnSet.add(`${entry.referenceId}_${entry.itemId}`);
+      }
+    }
+
+    // 4. Calculate required OPENING_BALANCE per (itemId, locationId) where opening entry is missing
+    let openingEntriesCreated = 0;
+    const openingLedgerBatch: any[] = [];
+
+    // Group item sales and returns by locationId & itemId
+    const salesQtyMap = new Map<string, number>();  // key: `${itemId}_${locationId}` → sum qty
+    const returnQtyMap = new Map<string, number>(); // key: `${itemId}_${locationId}` → sum qty
+    const earliestDateMap = new Map<string, Date>(); // key: `${itemId}_${locationId}` → earliest Date
+
+    for (const order of allSalesOrders) {
+      const locId = order.locationId;
+      if (!locId) continue;
+
+      for (const item of order.items) {
+        const key = `${item.itemId}_${locId}`;
+
+        // Track earliest transaction date
+        const existingEarliest = earliestDateMap.get(key);
+        if (!existingEarliest || order.createdAt < existingEarliest) {
+          earliestDateMap.set(key, order.createdAt);
+        }
+
+        if (order.status === 'voided') {
+          returnQtyMap.set(key, (returnQtyMap.get(key) || 0) + Number(item.quantity));
+        } else {
+          salesQtyMap.set(key, (salesQtyMap.get(key) || 0) + Number(item.quantity));
+        }
+      }
+    }
+
+    // Also collect all distinct items from InventoryItem
+    const allInventoryItems = await this.prisma.inventoryItem.findMany({
+      where: options?.locationId ? { locationId: options.locationId } : {},
+      select: { itemId: true, locationId: true, warehouseId: true, quantity: true },
+    });
+
+    const inventoryQtyMap = new Map<string, number>(); // key: `${itemId}_${locationId}`
+    for (const inv of allInventoryItems) {
+      if (inv.locationId) {
+        const key = `${inv.itemId}_${inv.locationId}`;
+        inventoryQtyMap.set(key, (inventoryQtyMap.get(key) || 0) + Number(inv.quantity));
+      }
+    }
+
+    // Combine all unique (itemId, locationId) pairs
+    const allItemLocKeys = new Set<string>([
+      ...salesQtyMap.keys(),
+      ...inventoryQtyMap.keys(),
+    ]);
+
+    for (const key of allItemLocKeys) {
+      if (existingOpeningSet.has(key)) continue; // Already has opening balance entry
+
+      const [itemId, locId] = key.split('_');
+      const whId = locationWarehouseMap.get(locId) || defaultWarehouse?.id;
+      if (!whId) continue;
+
+      const totalSales = salesQtyMap.get(key) || 0;
+      const totalReturns = returnQtyMap.get(key) || 0;
+      const currentInv = inventoryQtyMap.get(key) || 0;
+
+      // Estimated Opening Stock = current inventory + total sold - total returned
+      let estimatedOpening = Math.max(0, currentInv + totalSales - totalReturns);
+      if (estimatedOpening === 0 && totalSales > 0) {
+        estimatedOpening = totalSales - totalReturns;
+      }
+
+      if (estimatedOpening > 0) {
+        const earliestOrderDate = earliestDateMap.get(key) || new Date();
+        const openingDate = new Date(earliestOrderDate.getTime() - 60000); // 1 minute before first sale
+
+        openingLedgerBatch.push({
+          itemId,
+          warehouseId: whId,
+          locationId: locId,
+          qty: new Prisma.Decimal(estimatedOpening),
+          movementType: MovementType.OPENING_BALANCE,
+          referenceType: 'OPENING_BALANCE',
+          referenceId: 'AUTO_OPENING_BAL',
+          createdAt: openingDate,
+        });
+
+        existingOpeningSet.add(key);
+      }
+    }
+
+    if (openingLedgerBatch.length > 0) {
+      await this.prisma.stockLedger.createMany({
+        data: openingLedgerBatch,
+      });
+      openingEntriesCreated = openingLedgerBatch.length;
+      this.logger.log(`[StockLedgerSync] Created ${openingEntriesCreated} OPENING_BALANCE entries.`);
+    }
+
+    // 5. Backfill Sales Orders (OUTBOUND POS_SALE)
+    let salesLedgerEntriesCreated = 0;
+    const salesLedgerBatch: any[] = [];
+
+    for (const order of allSalesOrders) {
+      if (order.status === 'voided') continue;
+      const locId = order.locationId;
+      if (!locId) continue;
+      const whId = locationWarehouseMap.get(locId) || defaultWarehouse?.id;
+      if (!whId) continue;
+
+      for (const item of order.items) {
+        const key = `${order.id}_${item.itemId}`;
+        if (existingSalesLedgerSet.has(key)) continue;
+
+        salesLedgerBatch.push({
+          itemId: item.itemId,
+          warehouseId: whId,
+          locationId: locId,
+          qty: new Prisma.Decimal(-item.quantity), // Negative for OUTBOUND
+          movementType: MovementType.OUTBOUND,
+          referenceType: 'POS_SALE',
+          referenceId: order.id,
+          createdAt: order.createdAt,
+        });
+
+        existingSalesLedgerSet.add(key);
+      }
+    }
+
+    if (salesLedgerBatch.length > 0) {
+      const CHUNK = 1000;
+      for (let i = 0; i < salesLedgerBatch.length; i += CHUNK) {
+        const chunk = salesLedgerBatch.slice(i, i + CHUNK);
+        await this.prisma.stockLedger.createMany({ data: chunk });
+      }
+      salesLedgerEntriesCreated = salesLedgerBatch.length;
+      this.logger.log(`[StockLedgerSync] Created ${salesLedgerEntriesCreated} POS_SALE OUTBOUND ledger entries.`);
+    }
+
+    // 6. Backfill Voided / Returned Orders (INBOUND POS_VOID / POS_RETURN)
+    let returnEntriesCreated = 0;
+    const returnLedgerBatch: any[] = [];
+
+    for (const order of allSalesOrders) {
+      if (order.status !== 'voided') continue;
+      const locId = order.locationId;
+      if (!locId) continue;
+      const whId = locationWarehouseMap.get(locId) || defaultWarehouse?.id;
+      if (!whId) continue;
+
+      for (const item of order.items) {
+        const key = `${order.id}_${item.itemId}`;
+        if (existingReturnSet.has(key)) continue;
+
+        returnLedgerBatch.push({
+          itemId: item.itemId,
+          warehouseId: whId,
+          locationId: locId,
+          qty: new Prisma.Decimal(item.quantity), // Positive for INBOUND
+          movementType: MovementType.INBOUND,
+          referenceType: 'POS_VOID',
+          referenceId: order.id,
+          createdAt: order.updatedAt || order.createdAt,
+        });
+
+        existingReturnSet.add(key);
+      }
+    }
+
+    if (returnLedgerBatch.length > 0) {
+      await this.prisma.stockLedger.createMany({ data: returnLedgerBatch });
+      returnEntriesCreated = returnLedgerBatch.length;
+      this.logger.log(`[StockLedgerSync] Created ${returnEntriesCreated} POS_VOID INBOUND ledger entries.`);
+    }
+
+    // 7. Sync & Rebalance InventoryItem table to match Stock Ledger total sums
+    this.logger.log('[StockLedgerSync] Rebalancing InventoryItem table from Stock Ledger sums...');
+    const ledgerSums = await this.prisma.stockLedger.groupBy({
+      by: ['itemId', 'warehouseId', 'locationId'],
+      where: options?.locationId ? { locationId: options.locationId } : {},
+      _sum: { qty: true },
+    });
+
+    let inventoryItemsSynced = 0;
+    for (const group of ledgerSums) {
+      const totalQty = Number(group._sum.qty || 0);
+
+      const existingInv = await this.prisma.inventoryItem.findFirst({
+        where: {
+          itemId: group.itemId,
+          warehouseId: group.warehouseId,
+          locationId: group.locationId,
+          batchNumber: null,
+          serialNumber: null,
+          status: 'AVAILABLE',
+        },
+        select: { id: true },
+      });
+
+      if (existingInv) {
+        await this.prisma.inventoryItem.update({
+          where: { id: existingInv.id },
+          data: { quantity: new Prisma.Decimal(totalQty) },
+        });
+      } else {
+        await this.prisma.inventoryItem.create({
+          data: {
+            itemId: group.itemId,
+            warehouseId: group.warehouseId,
+            locationId: group.locationId,
+            quantity: new Prisma.Decimal(totalQty),
+            status: 'AVAILABLE',
+          },
+        });
+      }
+      inventoryItemsSynced++;
+    }
+
+    this.logger.log(
+      `[StockLedgerSync] Completed! Created: ${openingEntriesCreated} opening entries, ${salesLedgerEntriesCreated} sales entries, ${returnEntriesCreated} return entries. Rebalanced ${inventoryItemsSynced} inventory items.`,
+    );
+
+    return {
+      openingEntriesCreated,
+      salesLedgerEntriesCreated,
+      returnEntriesCreated,
+      inventoryItemsSynced,
+    };
+  }
 }
+
 

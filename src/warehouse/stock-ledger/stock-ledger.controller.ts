@@ -24,6 +24,19 @@ export class StockLedgerController {
     return this.stockLedgerService.getStockLevels({ warehouseId, locationId });
   }
 
+  @Post('sync-sales-history')
+  @UseGuards(JwtAuthGuard)
+  async syncSalesHistory(
+    @Query('locationId') locationId?: string,
+  ) {
+    const result = await this.stockLedgerService.syncAllSalesAndReturnsToStockLedger({ locationId });
+    return {
+      status: true,
+      message: 'Stock ledger and inventory sync completed successfully',
+      data: result,
+    };
+  }
+
   @Get()
   async findAll(
     @Query('warehouseId') warehouseId?: string,

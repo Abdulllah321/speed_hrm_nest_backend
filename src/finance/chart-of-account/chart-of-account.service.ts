@@ -437,12 +437,6 @@ export class ChartOfAccountService {
             type: parent.type,
           };
 
-          if (item.type === 'SUPPLIER' || item.type === 'MERCHANDISE') {
-            updateData.suppliers = {
-              connect: [{ id: item.referenceId }],
-            };
-          }
-
           const account = await this.prisma.chartOfAccount.update({
             where: { id: existing.id },
             data: updateData,
@@ -460,12 +454,6 @@ export class ChartOfAccountService {
           isActive: true,
           ...(ctx?.userId ? { createdById: ctx.userId } : {}),
         };
-
-        if (item.type === 'SUPPLIER' || item.type === 'MERCHANDISE') {
-          data.suppliers = {
-            connect: [{ id: item.referenceId }],
-          };
-        }
 
         const account = await this.prisma.chartOfAccount.create({
           data,
