@@ -23,6 +23,7 @@ model ReceiptVoucher {
   approvedAt      DateTime?
   rejectionReason String?
   remarks         String?
+  lastPrintedAt   DateTime?
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
   createdBy       String?

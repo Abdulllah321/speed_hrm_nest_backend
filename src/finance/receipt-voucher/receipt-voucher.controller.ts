@@ -37,8 +37,19 @@ export class ReceiptVoucherController {
   @Permissions('erp.finance.receipt-voucher.read')
   @ApiOperation({ summary: 'Get all receipt vouchers' })
   @ApiQuery({ name: 'type', required: false, enum: ['bank', 'cash'] })
-  findAll(@Query('type') type?: string) {
-    return this.receiptVoucherService.findAll(type);
+  findAll(
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('accountId') accountId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    return this.receiptVoucherService.findAll({ type, status, fromDate, toDate, accountId, page: pageNum, limit: limitNum, search });
   }
 
   @Get('missing-tag-accounts')
@@ -86,6 +97,13 @@ export class ReceiptVoucherController {
     @Req() req: any,
   ) {
     return this.receiptVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
+  }
+
+  @Patch(':id/print')
+  @Permissions('erp.finance.receipt-voucher.read')
+  @ApiOperation({ summary: 'Mark receipt voucher as printed' })
+  markAsPrinted(@Param('id') id: string, @Req() req: any) {
+    return this.receiptVoucherService.markAsPrinted(id, { userId: req.user?.id });
   }
 
   @Delete(':id')

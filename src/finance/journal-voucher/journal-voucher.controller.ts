@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Req,
+  Query,
 } from '@nestjs/common';
 import { JournalVoucherService } from './journal-voucher.service';
 import { CreateJournalVoucherDto } from './dto/create-journal-voucher.dto';
@@ -36,8 +37,18 @@ export class JournalVoucherController {
 
   @Get()
   @Permissions('erp.finance.journal-voucher.read')
-  findAll() {
-    return this.journalVoucherService.findAll();
+  findAll(
+    @Query('status') status?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('accountId') accountId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    return this.journalVoucherService.findAll({ status, fromDate, toDate, accountId, page: pageNum, limit: limitNum, search });
   }
 
   @Get(':id')
@@ -68,6 +79,12 @@ export class JournalVoucherController {
     @Req() req: any,
   ) {
     return this.journalVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
+  }
+
+  @Patch(':id/print')
+  @Permissions('erp.finance.journal-voucher.read')
+  markAsPrinted(@Param('id') id: string, @Req() req: any) {
+    return this.journalVoucherService.markAsPrinted(id, { userId: req.user?.id });
   }
 
   @Delete(':id')

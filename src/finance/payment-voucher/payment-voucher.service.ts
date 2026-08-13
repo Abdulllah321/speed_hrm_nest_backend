@@ -14,6 +14,27 @@ import { generateNextPvNumber, generateNextFolioNumber } from '../../common/util
 export class PaymentVoucherService {
   private readonly logger = new Logger(PaymentVoucherService.name);
 
+  private buildStatusWhere(status?: string) {
+    if (!status || status === 'all') return undefined;
+    const s = status.toLowerCase().trim();
+    if (s === 'pending_check' || s === 'pending') {
+      return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'], mode: 'insensitive' };
+    }
+    if (s === 'pending_approval' || s === 'pending_approve') {
+      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'], mode: 'insensitive' };
+    }
+    if (s === 'approved') {
+      return { in: ['approved', 'APPROVED'], mode: 'insensitive' };
+    }
+    if (s === 'rejected') {
+      return { in: ['rejected', 'REJECTED'], mode: 'insensitive' };
+    }
+    if (s === 'draft') {
+      return { in: ['draft', 'DRAFT'], mode: 'insensitive' };
+    }
+    return { equals: status, mode: 'insensitive' };
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
@@ -179,23 +200,50 @@ export class PaymentVoucherService {
   async findAll(filters?: {
     type?: string;
     status?: string;
+    fromDate?: string;
+    toDate?: string;
+    accountId?: string;
     page?: number;
     limit?: number;
     search?: string;
   }) {
-    const { type, status, page, limit, search } = filters || {};
+    const { type, status, fromDate, toDate, accountId, page, limit, search } = filters || {};
 
     const where: any = {};
 
-    if (type) where.type = type;
-    if (status) where.status = status;
+    if (type && type !== 'all') where.type = { equals: type, mode: 'insensitive' };
+    const statusWhere = this.buildStatusWhere(status);
+    if (statusWhere) where.status = statusWhere;
+
+    if (fromDate || toDate) {
+      where.pvDate = {};
+      if (fromDate) where.pvDate.gte = new Date(fromDate);
+      if (toDate) where.pvDate.lte = new Date(toDate);
+    }
+
+    if (accountId && accountId !== 'all') {
+      where.OR = [
+        { creditAccountId: accountId },
+        { details: { some: { accountId } } },
+      ];
+    }
 
     if (search) {
-      where.OR = [
+      const searchConditions = [
         { pvNo: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
         { refBillNo: { contains: search, mode: 'insensitive' } },
+        { chequeNo: { contains: search, mode: 'insensitive' } },
       ];
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: searchConditions },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     const queryOptions: any = {
@@ -1010,5 +1058,32 @@ export class PaymentVoucherService {
 
       return updated;
     });
+  }
+
+  async markAsPrinted(id: string, ctx?: { userId?: string }) {
+    const existing = await this.prisma.paymentVoucher.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Payment Voucher with ID ${id} not found`);
+    }
+
+    const updated = await this.prisma.paymentVoucher.update({
+      where: { id },
+      data: { lastPrintedAt: new Date() },
+    });
+
+    runInBackground(
+      'Log Payment Voucher Printed',
+      this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'print',
+        module: 'payment-voucher',
+        entity: 'PaymentVoucher',
+        entityId: id,
+        description: `Printed payment voucher ${updated.pvNo}`,
+        status: 'success',
+      }),
+    );
+
+    return updated;
   }
 }

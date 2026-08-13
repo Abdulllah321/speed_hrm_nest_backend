@@ -130,13 +130,92 @@ export class JournalVoucherService {
     }
   }
 
-  async findAll() {
-    return this.prisma.journalVoucher.findMany({
+  private buildStatusWhere(status?: string) {
+    if (!status || status === 'all') return undefined;
+    const s = status.toLowerCase().trim();
+    if (s === 'pending_check' || s === 'pending') {
+      return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'], mode: 'insensitive' };
+    }
+    if (s === 'pending_approval' || s === 'pending_approve') {
+      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'], mode: 'insensitive' };
+    }
+    if (s === 'approved') {
+      return { in: ['approved', 'APPROVED'], mode: 'insensitive' };
+    }
+    if (s === 'rejected') {
+      return { in: ['rejected', 'REJECTED'], mode: 'insensitive' };
+    }
+    if (s === 'draft') {
+      return { in: ['draft', 'DRAFT'], mode: 'insensitive' };
+    }
+    return { equals: status, mode: 'insensitive' };
+  }
+
+  async findAll(filters?: {
+    status?: string;
+    fromDate?: string;
+    toDate?: string;
+    accountId?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+  }) {
+    const { status, fromDate, toDate, accountId, page, limit, search } = filters || {};
+
+    const where: any = {};
+
+    const statusWhere = this.buildStatusWhere(status);
+    if (statusWhere) where.status = statusWhere;
+
+    if (fromDate || toDate) {
+      where.jvDate = {};
+      if (fromDate) where.jvDate.gte = new Date(fromDate);
+      if (toDate) where.jvDate.lte = new Date(toDate);
+    }
+
+    if (accountId && accountId !== 'all') {
+      where.details = { some: { accountId } };
+    }
+
+    if (search) {
+      where.OR = [
+        { jvNo: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+        { refBillNo: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const queryOptions: any = {
+      where,
       include: {
         details: { include: { account: true, tagAccount: true } },
       },
       orderBy: { jvDate: 'desc' },
-    });
+    };
+
+    if (page !== undefined && limit !== undefined) {
+      queryOptions.skip = (page - 1) * limit;
+      queryOptions.take = limit;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.journalVoucher.findMany(queryOptions),
+      this.prisma.journalVoucher.count({ where }),
+    ]);
+
+    if (page !== undefined && limit !== undefined) {
+      return {
+        data,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      } as any;
+    }
+
+    return data as any;
   }
 
   async findOne(id: string) {
@@ -469,5 +548,32 @@ export class JournalVoucherService {
 
       return updated;
     });
+  }
+
+  async markAsPrinted(id: string, ctx?: { userId?: string }) {
+    const existing = await this.prisma.journalVoucher.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Journal Voucher with ID ${id} not found`);
+    }
+
+    const updated = await this.prisma.journalVoucher.update({
+      where: { id },
+      data: { lastPrintedAt: new Date() },
+    });
+
+    runInBackground(
+      'Log Journal Voucher Printed',
+      this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'print',
+        module: 'journal-voucher',
+        entity: 'JournalVoucher',
+        entityId: id,
+        description: `Printed journal voucher ${updated.jvNo}`,
+        status: 'success',
+      }),
+    );
+
+    return updated;
   }
 }

@@ -48,13 +48,16 @@ export class PaymentVoucherController {
   findAll(
     @Query('type') type?: string,
     @Query('status') status?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('accountId') accountId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
-    return this.paymentVoucherService.findAll({ type, status, page: pageNum, limit: limitNum, search });
+    return this.paymentVoucherService.findAll({ type, status, fromDate, toDate, accountId, page: pageNum, limit: limitNum, search });
   }
 
   @Get('next-pv-number')
@@ -184,6 +187,13 @@ export class PaymentVoucherController {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
+  }
+
+  @Patch(':id/print')
+  @Permissions('erp.finance.payment-voucher.read')
+  @ApiOperation({ summary: 'Mark payment voucher as printed' })
+  markAsPrinted(@Param('id') id: string, @Req() req: any) {
+    return this.paymentVoucherService.markAsPrinted(id, { userId: req.user?.id });
   }
 
   @Delete(':id')
