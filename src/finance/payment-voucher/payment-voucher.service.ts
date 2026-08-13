@@ -18,19 +18,19 @@ export class PaymentVoucherService {
     if (!status || status === 'all') return undefined;
     const s = status.toLowerCase().trim();
     if (s === 'pending_check' || s === 'pending') {
-      return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'], mode: 'insensitive' };
+      return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'] };
     }
     if (s === 'pending_approval' || s === 'pending_approve') {
-      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'], mode: 'insensitive' };
+      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'] };
     }
     if (s === 'approved') {
-      return { in: ['approved', 'APPROVED'], mode: 'insensitive' };
+      return { in: ['approved', 'APPROVED'] };
     }
     if (s === 'rejected') {
-      return { in: ['rejected', 'REJECTED'], mode: 'insensitive' };
+      return { in: ['rejected', 'REJECTED'] };
     }
     if (s === 'draft') {
-      return { in: ['draft', 'DRAFT'], mode: 'insensitive' };
+      return { in: ['draft', 'DRAFT'] };
     }
     return { equals: status, mode: 'insensitive' };
   }
@@ -229,12 +229,32 @@ export class PaymentVoucherService {
     }
 
     if (search) {
-      const searchConditions = [
-        { pvNo: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { refBillNo: { contains: search, mode: 'insensitive' } },
-        { chequeNo: { contains: search, mode: 'insensitive' } },
+      const cleanSearch = search.trim();
+      const searchConditions: any[] = [
+        { pvNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { folio: { contains: cleanSearch, mode: 'insensitive' } },
+        { description: { contains: cleanSearch, mode: 'insensitive' } },
+        { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
+        { details: { some: { account: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        { details: { some: { account: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        { details: { some: { tagAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        { details: { some: { tagAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
       ];
+
+      const numericStr = cleanSearch.replace(/,/g, '');
+      if (numericStr !== '' && !isNaN(Number(numericStr))) {
+        const num = Number(numericStr);
+        searchConditions.push(
+          { totalAmount: num },
+          { debitAmount: num },
+          { creditAmount: num },
+          { details: { some: { debit: num } } },
+          { details: { some: { credit: num } } },
+        );
+      }
+
       if (where.OR) {
         where.AND = [
           { OR: where.OR },

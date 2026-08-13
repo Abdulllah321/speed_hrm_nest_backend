@@ -88,6 +88,20 @@ export class ChartOfAccountService {
     }
   }
 
+  async findDropdown() {
+    return this.prisma.chartOfAccount.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        isGroup: true,
+      },
+      orderBy: { code: 'asc' },
+    });
+  }
+
   async findAll() {
     // Fetch all accounts in one query
     const accounts = await this.prisma.chartOfAccount.findMany({
