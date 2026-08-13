@@ -119,6 +119,26 @@ export class CreatePurchaseReturnDto {
   @IsString()
   staxEInvoiceNumber?: string;
 
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  returnDate?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  seasonId?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  companyGstNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  supplierGstNumber?: string;
+
   @ApiProperty({ type: [CreatePurchaseReturnItemDto] })
   @IsArray()
   @ValidateNested({ each: true })

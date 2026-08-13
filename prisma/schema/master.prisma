@@ -792,6 +792,7 @@ model Season {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   items       Item[]
+  purchaseReturns PurchaseReturn[]
 }
 
 model OldSeason {

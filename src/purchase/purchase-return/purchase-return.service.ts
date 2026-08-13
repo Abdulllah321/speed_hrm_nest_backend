@@ -65,9 +65,13 @@ export class PurchaseReturnService {
           supplierId: createDto.supplierId,
           warehouseId: createDto.warehouseId,
           returnType: createDto.returnType,
+          returnDate: createDto.returnDate ? new Date(createDto.returnDate) : undefined,
           reason: createDto.reason,
           notes: createDto.notes,
           staxEInvoiceNumber: createDto.staxEInvoiceNumber,
+          seasonId: createDto.seasonId || undefined,
+          companyGstNumber: createDto.companyGstNumber || '12-01-9999-663-46',
+          supplierGstNumber: createDto.supplierGstNumber || undefined,
           subtotal,
           taxAmount,
           totalAmount,
@@ -102,6 +106,7 @@ export class PurchaseReturnService {
           },
           supplier: true,
           warehouse: true,
+          season: true,
         },
       });
 
@@ -173,6 +178,7 @@ export class PurchaseReturnService {
         },
         supplier: true,
         warehouse: true,
+        season: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -256,6 +262,7 @@ export class PurchaseReturnService {
         debitNote: true,
         supplier: true,
         warehouse: true,
+        season: true,
       },
     });
 
@@ -285,7 +292,11 @@ export class PurchaseReturnService {
 
       // Add optional fields only if they exist in updateDto
       if (updateDto.returnType) updateData.returnType = updateDto.returnType;
+      if (updateDto.returnDate) updateData.returnDate = new Date(updateDto.returnDate);
       if (updateDto.warehouseId) updateData.warehouseId = updateDto.warehouseId;
+      if (updateDto.seasonId !== undefined) updateData.seasonId = updateDto.seasonId || null;
+      if (updateDto.companyGstNumber !== undefined) updateData.companyGstNumber = updateDto.companyGstNumber || null;
+      if (updateDto.supplierGstNumber !== undefined) updateData.supplierGstNumber = updateDto.supplierGstNumber || null;
       if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
       if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
       if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;

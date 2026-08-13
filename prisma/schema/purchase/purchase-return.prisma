@@ -15,6 +15,9 @@ model PurchaseReturn {
   totalAmount  Decimal   @default(0) @map("total_amount") @db.Decimal(15, 2)
   notes        String?
   staxEInvoiceNumber String? @map("stax_e_invoice_number")
+  seasonId           String? @map("season_id")
+  companyGstNumber   String? @map("company_gst_number")
+  supplierGstNumber  String? @map("supplier_gst_number")
   approvedBy   String?   @map("approved_by")
   approvedAt   DateTime? @map("approved_at")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -27,6 +30,7 @@ model PurchaseReturn {
   landedCost LandedCost?          @relation(fields: [landedCostId], references: [id])
   supplier   Supplier             @relation(fields: [supplierId], references: [id])
   warehouse  Warehouse            @relation(fields: [warehouseId], references: [id])
+  season     Season?              @relation(fields: [seasonId], references: [id])
   debitNote  DebitNote?
 
   @@map("purchase_returns")
