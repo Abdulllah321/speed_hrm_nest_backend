@@ -545,7 +545,14 @@ export class StockLedgerService {
     }
 
     const now = new Date();
-    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const getDefaultFiscalYearStart = (ref: Date) => {
+      const year = ref.getFullYear();
+      const month = ref.getMonth(); // 0 = Jan, 6 = July
+      const fyYear = month >= 6 ? year : year - 1;
+      return new Date(fyYear, 6, 1, 0, 0, 0, 0);
+    };
+
+    const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     const inventoryItems = await this.prisma.inventoryItem.findMany({
@@ -617,7 +624,7 @@ export class StockLedgerService {
       });
 
       for (const row of bfGroup) {
-        bfMap.set(row.itemId, Number(row._sum.qty || 0));
+        bfMap.set(row.itemId, Math.max(0, Number(row._sum.qty || 0)));
       }
 
       // Query and add any OPENING_BALANCE entries that were created within the date range
@@ -638,7 +645,7 @@ export class StockLedgerService {
 
       for (const row of inRangeOpeningGroup) {
         const currentBf = bfMap.get(row.itemId) || 0;
-        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+        bfMap.set(row.itemId, Math.max(0, currentBf + Number(row._sum.qty || 0)));
       }
     }
 
