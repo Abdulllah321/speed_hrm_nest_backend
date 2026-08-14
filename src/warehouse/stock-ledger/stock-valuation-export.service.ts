@@ -221,7 +221,15 @@ export class StockValuationExportService {
     } = opts;
 
     const now = new Date();
-    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    // Default to start of current fiscal year (July 1st in Pakistan) if not provided
+    const getDefaultFiscalYearStart = (ref: Date) => {
+      const year = ref.getFullYear();
+      const month = ref.getMonth(); // 0 = Jan, 6 = July
+      const fyYear = month >= 6 ? year : year - 1;
+      return new Date(fyYear, 6, 1, 0, 0, 0, 0);
+    };
+
+    const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     // Discover all distinct items from the StockLedger (location-agnostic when no locationId is provided)
@@ -495,8 +503,9 @@ export class StockValuationExportService {
       }
 
       // Calculations of final stage values
-      const openingValue = (openingQty * openingWac) + periodOpeningVal;
-      const finalOpeningQty = openingQty + periodOpeningQty;
+      const safeOpeningQty = Math.max(0, openingQty);
+      const openingValue = (safeOpeningQty * openingWac) + periodOpeningVal;
+      const finalOpeningQty = safeOpeningQty + periodOpeningQty;
       const finalOpeningWac = finalOpeningQty > 0 ? openingValue / finalOpeningQty : defaultCost;
       
       const purchaseCost = purchaseQty > 0 ? purchaseVal / purchaseQty : 0;
