@@ -28,12 +28,11 @@ export class StockLedgerService {
     movementType?: MovementType;
     itemId?: string;
     referenceType?: string;
-    page?: number;
+    cursor?: bigint;    // last seen id for cursor pagination
     limit?: number;
     search?: string;
   }) {
-    const { warehouseId, locationId, movementType, itemId, referenceType, page = 1, limit = 50, search } = options || {};
-    const skip = (page - 1) * limit;
+    const { warehouseId, locationId, movementType, itemId, referenceType, cursor, limit = 50, search } = options || {};
 
     const where: any = {
       ...(warehouseId && { warehouseId }),
@@ -108,11 +107,10 @@ export class StockLedgerService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.prisma.stockLedger.findMany({
+    const data = await this.prisma.stockLedger.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
-        skip,
+        orderBy: { id: 'desc' },
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         take: limit,
         select: {
           id: true,
@@ -129,9 +127,7 @@ export class StockLedgerService {
           item: { select: { itemId: true, sku: true, description: true } },
           warehouse: { select: { name: true } },
         },
-      }),
-      this.prisma.stockLedger.count({ where }),
-    ]);
+      });
 
     // Enrich entries with location name (locationId is a plain FK with no Prisma relation)
     const locationIds = [...new Set(data.map((d) => d.locationId).filter(Boolean))] as string[];
@@ -148,13 +144,16 @@ export class StockLedgerService {
 
     const enrichedData = data.map((entry) => ({
       ...entry,
+      id: entry.id.toString(), // serialize BigInt to string for JSON
       location: entry.locationId ? (locationMap.get(entry.locationId) ?? null) : null,
     }));
+
+    const nextCursor = data.length === limit ? data[data.length - 1].id.toString() : null;
 
     return {
       status: true,
       data: enrichedData,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      meta: { limit, nextCursor, hasMore: nextCursor !== null },
     };
   }
 

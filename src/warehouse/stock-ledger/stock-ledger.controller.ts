@@ -44,7 +44,7 @@ export class StockLedgerController {
     @Query('movementType') movementType?: MovementType,
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
-    @Query('page') page?: string,
+    @Query('cursor') cursor?: string,   // BigInt id of last seen record
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
@@ -54,7 +54,7 @@ export class StockLedgerController {
       movementType,
       itemId,
       referenceType,
-      page: page ? parseInt(page, 10) : undefined,
+      cursor: cursor ? BigInt(cursor) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       search,
     });

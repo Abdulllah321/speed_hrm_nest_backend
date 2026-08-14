@@ -1,5 +1,5 @@
 model StockLedger {
-  id            String       @id @default(uuid())
+  id            BigInt       @id @default(autoincrement())
   itemId        String       @map("item_id")
   warehouseId   String       @map("warehouse_id")
   qty           Decimal      @db.Decimal(15, 4)
@@ -13,10 +13,22 @@ model StockLedger {
   item          Item         @relation(fields: [itemId], references: [id])
   warehouse     Warehouse    @relation(fields: [warehouseId], references: [id])
 
-  @@index([itemId])
-  @@index([warehouseId])
+  // --- Stock level / balance checks ---
+  @@index([itemId, warehouseId])
+  @@index([itemId, locationId])
+  @@index([itemId, warehouseId, locationId])
+
+  // --- Date-range report indexes (THE critical missing ones) ---
+  @@index([itemId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@index([locationId, createdAt])
+  @@index([itemId, warehouseId, createdAt])
+  @@index([movementType, createdAt])
+
+  // --- Lookup indexes ---
   @@index([referenceId])
   @@index([movementType])
+
   @@map("stock_ledgers")
 }
 
