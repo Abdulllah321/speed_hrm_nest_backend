@@ -55,6 +55,28 @@ export class AvailableStockSummaryExportProcessor {
     private readonly availableStockSummaryService: AvailableStockSummaryExportService,
   ) {}
 
+  @Process('generate-report-preview')
+  async handleReportPreview(job: Job<any>): Promise<void> {
+    const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+    this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
+    try {
+      await job.progress(10);
+      const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+
+      await job.progress(30);
+      const data = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(prisma, opts);
+
+      await job.progress(85);
+      this.availableStockSummaryService.saveReportPreviewResult(jobId, data);
+
+      await job.progress(100);
+      this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
+
   @Process({ concurrency: 1 })
   async handleExport(job: Job<AvailableStockSummaryExportJobData>): Promise<void> {
     const {
@@ -103,25 +125,36 @@ export class AvailableStockSummaryExportProcessor {
 
       await job.progress(25);
 
-      // Generate structured data using our service core method
-      const { root, grandTotals, items, itemMetricsMap, flatItemsList } = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
-        prisma,
-        {
-          locationId,
-          warehouseId,
-          startDate: startStr,
-          endDate: endStr,
-          reportType,
-          summaryOnly,
-          showBrand,
-          showDivision,
-          showCategory,
-          showGender,
-          showSilhouette,
-          showArticle,
-          showVariant,
+      let reportData: any = null;
+      if ((job.data as any).previewJobId) {
+        reportData = this.availableStockSummaryService.getReportPreviewResult((job.data as any).previewJobId);
+        if (reportData) {
+          this.logger.log(`[AvailableStockSummaryExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`);
         }
-      );
+      }
+
+      if (!reportData) {
+        reportData = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
+          prisma,
+          {
+            locationId,
+            warehouseId,
+            startDate: startStr,
+            endDate: endStr,
+            reportType,
+            summaryOnly,
+            showBrand,
+            showDivision,
+            showCategory,
+            showGender,
+            showSilhouette,
+            showArticle,
+            showVariant,
+          }
+        );
+      }
+
+      const { root, grandTotals, items, itemMetricsMap, flatItemsList } = reportData;
 
       await job.progress(60);
 

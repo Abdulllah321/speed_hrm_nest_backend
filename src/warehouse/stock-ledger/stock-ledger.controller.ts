@@ -1,4 +1,6 @@
-import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body, Sse, MessageEvent } from '@nestjs/common';
+import { Observable, interval } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { StockLedgerService } from './stock-ledger.service';
 import { StockActivityExportService } from './stock-activity-export.service';
 import { StockValuationExportService } from './stock-valuation-export.service';
@@ -425,6 +427,63 @@ export class StockLedgerController {
     return { status: true, data };
   }
 
+  @Post('available-stock-summary/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueAvailableStockSummaryPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      reportType?: 'merged' | 'separate';
+      summaryOnly?: boolean;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.availableStockSummaryExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('available-stock-summary/stream/:jobId')
+  streamAvailableStockSummaryReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.availableStockSummaryExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('available-stock-summary/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getAvailableStockSummaryReportResult(@Param('jobId') jobId: string) {
+    const data = this.availableStockSummaryExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Report result not ready or expired' };
+    }
+    return { status: true, data };
+  }
+
   @Post('available-stock-summary/export/queue')
   @UseGuards(JwtAuthGuard)
   async queueAvailableStockSummaryExport(
@@ -446,29 +505,76 @@ export class StockLedgerController {
       showArticle?: boolean;
       showVariant?: boolean;
       includeCosting?: boolean;
+      previewJobId?: string;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
     const result = await this.availableStockSummaryExportService.queueExport({
       userId,
-      locationId: body.locationId,
-      warehouseId: body.warehouseId,
-      startDate: body.startDate,
-      endDate: body.endDate,
-      format: body.format,
-      exportType: body.exportType,
-      reportType: body.reportType,
-      summaryOnly: body.summaryOnly,
-      showBrand: body.showBrand,
-      showDivision: body.showDivision,
-      showCategory: body.showCategory,
-      showGender: body.showGender,
-      showSilhouette: body.showSilhouette,
-      showArticle: body.showArticle,
-      showVariant: body.showVariant,
-      includeCosting: body.includeCosting,
+      ...body,
     });
     return { status: true, data: result };
+  }
+
+  @Post('valuation-report/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueValuationReportPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      summaryOnly?: boolean;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
+      filterBrands?: string[];
+      filterDivisions?: string[];
+      filterCategories?: string[];
+      filterGenders?: string[];
+      filterSilhouettes?: string[];
+      searchText?: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockValuationExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('valuation-report/stream/:jobId')
+  streamValuationReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.stockValuationExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('valuation-report/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getValuationReportResult(@Param('jobId') jobId: string) {
+    const data = this.stockValuationExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Report result not ready or expired' };
+    }
+    return { status: true, data };
   }
 
   @Get('available-stock-summary/export/:jobId/status')

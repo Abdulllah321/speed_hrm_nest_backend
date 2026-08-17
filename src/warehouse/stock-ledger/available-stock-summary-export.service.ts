@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
@@ -26,6 +27,7 @@ export interface QueueAvailableStockSummaryExportOptions {
   showArticle?: boolean;
   showVariant?: boolean;
   includeCosting?: boolean;
+  previewJobId?: string;
 }
 
 @Injectable()
@@ -37,6 +39,131 @@ export class AvailableStockSummaryExportService {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
   ) {}
+
+  async queueReportPreview(opts: {
+    userId: string;
+    locationId?: string;
+    warehouseId?: string;
+    startDate?: string;
+    endDate?: string;
+    reportType?: 'merged' | 'separate';
+    summaryOnly?: boolean;
+    showBrand?: boolean;
+    showDivision?: boolean;
+    showCategory?: boolean;
+    showGender?: boolean;
+    showSilhouette?: boolean;
+    showArticle?: boolean;
+    showVariant?: boolean;
+  }): Promise<{ jobId: string; queuePosition: number; waitingCount: number }> {
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    await this.exportQueue.add(
+      'generate-report-preview',
+      {
+        jobId,
+        userId: opts.userId,
+        tenantId,
+        tenantDbUrl,
+        locationId: opts.locationId,
+        warehouseId: opts.warehouseId,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
+        reportType: opts.reportType || 'merged',
+        summaryOnly: !!opts.summaryOnly,
+        showBrand: opts.showBrand,
+        showDivision: opts.showDivision,
+        showCategory: opts.showCategory,
+        showGender: opts.showGender,
+        showSilhouette: opts.showSilhouette,
+        showArticle: opts.showArticle,
+        showVariant: opts.showVariant,
+      },
+      {
+        jobId,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+
+    const [waiting, active] = await Promise.all([
+      this.exportQueue.getWaiting(),
+      this.exportQueue.getActive(),
+    ]);
+
+    const allJobs = [...active, ...waiting];
+    const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
+    const queuePosition = idx >= 0 ? idx + 1 : 1;
+
+    return { jobId, queuePosition, waitingCount: waiting.length };
+  }
+
+  async getJobQueueStatus(jobId: string): Promise<{
+    state: string;
+    progress: number;
+    queuePosition: number;
+    waitingCount: number;
+    failedReason?: string;
+  }> {
+    const job = await this.exportQueue.getJob(jobId);
+    if (!job) {
+      return { state: 'unknown', progress: 0, queuePosition: 0, waitingCount: 0 };
+    }
+
+    const state = await job.getState();
+    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+
+    let queuePosition = 0;
+    let waitingCount = 0;
+
+    if (state === 'waiting' || state === 'delayed') {
+      const [waiting, active] = await Promise.all([
+        this.exportQueue.getWaiting(),
+        this.exportQueue.getActive(),
+      ]);
+      waitingCount = waiting.length;
+      const allJobs = [...active, ...waiting];
+      const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
+      queuePosition = idx >= 0 ? idx + 1 : 1;
+    }
+
+    return {
+      state,
+      progress,
+      queuePosition,
+      waitingCount,
+      failedReason: job.failedReason,
+    };
+  }
+
+  saveReportPreviewResult(jobId: string, data: any): void {
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    fs.mkdirSync(previewDir, { recursive: true });
+    const jsonStr = JSON.stringify(data);
+    const gzipped = zlib.gzipSync(jsonStr);
+    const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
+    fs.writeFileSync(filePath, gzipped);
+
+    // Auto cleanup temp file after 1 hour
+    setTimeout(() => {
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+      }
+    }, 60 * 60 * 1000);
+  }
+
+  getReportPreviewResult(jobId: string): any {
+    const filePath = path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const gzipped = fs.readFileSync(filePath);
+    const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
+    return JSON.parse(jsonStr);
+  }
 
   async queueExport(opts: QueueAvailableStockSummaryExportOptions): Promise<{ jobId: string }> {
     const jobId = uuidv4();
@@ -78,6 +205,7 @@ export class AvailableStockSummaryExportService {
         showArticle: opts.showArticle,
         showVariant: opts.showVariant,
         includeCosting: !!opts.includeCosting,
+        previewJobId: opts.previewJobId,
       },
       {
         jobId,
