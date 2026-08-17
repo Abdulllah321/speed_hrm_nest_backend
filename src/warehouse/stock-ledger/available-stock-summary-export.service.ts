@@ -15,6 +15,7 @@ export interface QueueAvailableStockSummaryExportOptions {
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'hierarchical' | 'flat';
   summaryOnly?: boolean;
   showBrand?: boolean;
   showDivision?: boolean;
@@ -65,6 +66,7 @@ export class AvailableStockSummaryExportService {
         startDate: opts.startDate,
         endDate: opts.endDate,
         format: opts.format,
+        exportType: opts.exportType,
         summaryOnly: !!opts.summaryOnly,
         showBrand: opts.showBrand,
         showDivision: opts.showDivision,
@@ -84,7 +86,7 @@ export class AvailableStockSummaryExportService {
       },
     );
 
-    this.logger.log(`[AvailableStockSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
+    this.logger.log(`[AvailableStockSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, type: ${opts.exportType || 'hierarchical'}, tenant: ${tenantId})`);
     return { jobId };
   }
 
@@ -149,7 +151,6 @@ export class AvailableStockSummaryExportService {
     res.send(stream);
   }
 
-  // Get report data in memory for inline UI rendering
   // Get report data in memory for inline UI rendering
   async getAvailableStockSummaryReportData(opts: {
     locationId?: string;
@@ -278,89 +279,107 @@ export class AvailableStockSummaryExportService {
     ])];
 
     if (uniqueItemIds.length === 0) {
-      return { root: [], grandTotals: this.createEmptyTotals() };
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map() };
     }
 
-    const items = await prisma.item.findMany({
-      where: {
-        OR: [
-          { id: { in: uniqueItemIds } },
-          { itemId: { in: uniqueItemIds } },
-        ],
-      },
-      include: {
-        color: true,
-        size: true,
-        gender: true,
-        category: true,
-        division: true,
-        brand: true,
-        silhouette: true,
-      },
-    });
+    // Safely chunk item fetching to prevent database query parameter limit errors
+    const CHUNK_SIZE = 1000;
+    const items: any[] = [];
+    for (let i = 0; i < uniqueItemIds.length; i += CHUNK_SIZE) {
+      const chunk = uniqueItemIds.slice(i, i + CHUNK_SIZE);
+      const chunkItems = await prisma.item.findMany({
+        where: {
+          OR: [
+            { id: { in: chunk } },
+            { itemId: { in: chunk } },
+          ],
+        },
+        include: {
+          color: true,
+          size: true,
+          gender: true,
+          category: true,
+          division: true,
+          brand: true,
+          silhouette: true,
+        },
+      });
+      items.push(...chunkItems);
+    }
 
     if (items.length === 0) {
-      return { root: [], grandTotals: this.createEmptyTotals() };
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map() };
     }
 
     const matchedItemIds = items.map(i => i.id);
 
-    // Compute BF (Opening balance before startDate)
-    const bfGroup = await prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { lt: startDate },
-      },
-      _sum: { qty: true },
-    });
-
+    // Compute BF (Opening balance before startDate) in safe chunks
     const bfMap = new Map<string, number>();
-    for (const row of bfGroup) {
-      bfMap.set(row.itemId, Number(row._sum.qty || 0));
+    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
+      const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const bfGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { lt: startDate },
+        },
+        _sum: { qty: true },
+      });
+
+      for (const row of bfGroup) {
+        bfMap.set(row.itemId, (bfMap.get(row.itemId) || 0) + Number(row._sum.qty || 0));
+      }
     }
 
-    // Query and add any OPENING_BALANCE entries within range
-    const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        OR: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' }
-        ]
-      },
-      _sum: { qty: true },
-    });
+    // Query and add OPENING_BALANCE entries within range in safe chunks
+    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
+      const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' }
+          ]
+        },
+        _sum: { qty: true },
+      });
 
-    for (const row of inRangeOpeningGroup) {
-      const currentBf = bfMap.get(row.itemId) || 0;
-      bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      for (const row of inRangeOpeningGroup) {
+        const currentBf = bfMap.get(row.itemId) || 0;
+        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      }
     }
 
-    // Query normal ledger entries within range
-    const ledgerEntries = await prisma.stockLedger.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        itemId: { in: matchedItemIds },
-        createdAt: { gte: startDate, lte: endDate },
-        NOT: [
-          { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: 'OPENING_BALANCE' },
-          { referenceType: 'BULK_STOCK_UPLOAD' }
-        ]
-      },
-      select: {
-        itemId: true,
-        qty: true,
-        referenceType: true,
-        movementType: true,
-      },
-    });
+    // Query normal ledger entries within range in safe chunks
+    const ledgerEntries: any[] = [];
+    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
+      const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const chunkEntries = await prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          NOT: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' }
+          ]
+        },
+        select: {
+          itemId: true,
+          qty: true,
+          referenceType: true,
+          movementType: true,
+        },
+      });
+      ledgerEntries.push(...chunkEntries);
+    }
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
@@ -370,48 +389,54 @@ export class AvailableStockSummaryExportService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    // Query transit items
-    const transitItems = await prisma.transferRequestItem.findMany({
-      where: {
-        itemId: { in: matchedItemIds },
-        transferRequest: {
-          ...toLocOrWhWhere,
-          status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
-        },
-      },
-      select: {
-        itemId: true,
-        quantity: true,
-      },
-    });
-
+    // Query transit items in safe chunks
     const transitMap = new Map<string, number>();
-    for (const row of transitItems) {
-      const qty = Number(row.quantity || 0);
-      transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
+      const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const transitItems = await prisma.transferRequestItem.findMany({
+        where: {
+          itemId: { in: chunk },
+          transferRequest: {
+            ...toLocOrWhWhere,
+            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+          },
+        },
+        select: {
+          itemId: true,
+          quantity: true,
+        },
+      });
+
+      for (const row of transitItems) {
+        const qty = Number(row.quantity || 0);
+        transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+      }
     }
 
-    // Query reserved stock for matched items (from StockReserve table)
-    const reserveGroup = await prisma.stockReserve.groupBy({
-      by: ['itemId'],
-      where: {
-        itemId: { in: matchedItemIds },
-        ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gte: new Date() } }
-        ]
-      },
-      _sum: { quantity: true },
-    });
-
+    // Query reserved stock for matched items in safe chunks
     const reserveMap = new Map<string, number>();
-    for (const row of reserveGroup) {
-      reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
+      const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const reserveGroup = await prisma.stockReserve.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: chunk },
+          ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } }
+          ]
+        },
+        _sum: { quantity: true },
+      });
+
+      for (const row of reserveGroup) {
+        reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+      }
     }
 
-    const itemMetricsMap = new Map<string, {
+    const movementMetricsMap = new Map<string, {
       fromWarehouse: number;
       fromOutlet: number;
       toWarehouse: number;
@@ -425,13 +450,13 @@ export class AvailableStockSummaryExportService {
 
     for (const entry of ledgerEntries) {
       const itemId = entry.itemId;
-      let m = itemMetricsMap.get(itemId);
+      let m = movementMetricsMap.get(itemId);
       if (!m) {
         m = {
           fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
           exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
         };
-        itemMetricsMap.set(itemId, m);
+        movementMetricsMap.set(itemId, m);
       }
 
       const qty = Number(entry.qty || 0);
@@ -469,6 +494,16 @@ export class AvailableStockSummaryExportService {
     }
 
     const root: any[] = [];
+    const itemMetricsMap = new Map<string, {
+      quantity: number;
+      transit: number;
+      reserved: number;
+      total: number;
+      unitPrice: number;
+      value: number;
+      unitCost: number;
+      costingValue: number;
+    }>();
 
     const addTotals = (target: any, source: any) => {
       target.quantity += source.quantity;
@@ -483,7 +518,7 @@ export class AvailableStockSummaryExportService {
       const bf = bfMap.get(item.id) || 0;
       const transit = transitMap.get(item.id) || 0;
       const reserved = reserveMap.get(item.id) || 0;
-      const m = itemMetricsMap.get(item.id) || {
+      const m = movementMetricsMap.get(item.id) || {
         fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
         exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
       };
@@ -507,6 +542,8 @@ export class AvailableStockSummaryExportService {
         unitCost,
         costingValue,
       };
+
+      itemMetricsMap.set(item.id, variantMetrics);
 
       let currentLevelNodes = root;
       for (let i = 0; i < levels.length; i++) {
@@ -567,7 +604,7 @@ export class AvailableStockSummaryExportService {
       addTotals(grandTotals, node.totals);
     }
 
-    return { root, grandTotals };
+    return { root, grandTotals, items, itemMetricsMap };
   }
 
   private createEmptyTotals() {
