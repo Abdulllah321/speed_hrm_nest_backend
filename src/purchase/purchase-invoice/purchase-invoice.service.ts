@@ -68,6 +68,7 @@ export class PurchaseInvoiceService {
           totalAmount,
           remainingAmount: totalAmount,
           notes: createDto.notes,
+          staxEInvoiceNumber: createDto.staxEInvoiceNumber,
           status: createDto.status || 'DRAFT',
           items: {
             create: resolvedItems.map((item: any) => {
@@ -199,21 +200,27 @@ export class PurchaseInvoiceService {
         supplier: true,
         grn: {
           include: {
+            purchaseOrder: true,
             items: {
-          include: {
-            item: true,
-          },
-        },
+              include: {
+                item: true,
+              },
+            },
           },
         },
         landedCost: {
           include: {
-            grn: true,
+            purchaseOrder: true,
+            grn: {
+              include: {
+                purchaseOrder: true,
+              },
+            },
             items: {
-          include: {
-            item: true,
-          },
-        },
+              include: {
+                item: true,
+              },
+            },
           },
         },
         items: {
