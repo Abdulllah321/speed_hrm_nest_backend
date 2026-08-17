@@ -424,27 +424,36 @@ export class StockValuationExportService {
           }
           qtyBalance += entryQty;
 
-          if (!isBeforePeriod) {
+            if (!isBeforePeriod) {
             // Check if it is a purchase vs. adjustment vs. opening
             const ref = entry.referenceType || '';
             const isOpening =
               entry.movementType === 'OPENING_BALANCE' ||
               entry.referenceType === 'OPENING_BALANCE' ||
               entry.referenceType === 'BULK_STOCK_UPLOAD';
-            const isPurchase = ref === 'GRN' || ref === 'PURCHASE' || entry.movementType === 'INBOUND';
-            const isAdjustment = entry.movementType === 'ADJUSTMENT' || ref === 'ADJUSTMENT' || ref === 'STOCK_ADJUSTMENT';
+            const isAdjustment =
+              entry.movementType === 'ADJUSTMENT' ||
+              ref === 'ADJUSTMENT' ||
+              ref === 'STOCK_ADJUSTMENT' ||
+              ref === 'SADJ' ||
+              ref.startsWith('SADJ') ||
+              ref.includes('ADJUSTMENT');
+            const isPurchase =
+              ref === 'GRN' ||
+              ref === 'PURCHASE' ||
+              ref === 'LANDED_COST' ||
+              (!isOpening && !isAdjustment && entry.movementType === 'INBOUND');
 
             if (isOpening) {
               periodOpeningQty += entryQty;
               periodOpeningVal += entryQty * entryCost;
-            } else if (isPurchase) {
-              purchaseQty += entryQty;
-              purchaseVal += entryQty * entryCost;
             } else if (isAdjustment) {
               adjQty += entryQty;
               adjVal += entryQty * entryCost;
+            } else if (isPurchase) {
+              purchaseQty += entryQty;
+              purchaseVal += entryQty * entryCost;
             } else {
-              // Fallback inbound adjustment
               purchaseQty += entryQty;
               purchaseVal += entryQty * entryCost;
             }
@@ -455,9 +464,20 @@ export class StockValuationExportService {
 
           if (!isBeforePeriod) {
             const ref = entry.referenceType || '';
-            const isPurchaseReturn = ['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC'].includes(ref);
-            const isSale = ['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID'].includes(ref) || entry.movementType === 'OUTBOUND';
-            const isAdjustment = entry.movementType === 'ADJUSTMENT' || ref === 'ADJUSTMENT' || ref === 'STOCK_ADJUSTMENT';
+            const isPurchaseReturn =
+              ['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV', 'PRN', 'PURCHASE_RETURN_NOTE'].includes(ref) ||
+              ref.startsWith('PURCHASE_RETURN') ||
+              ref.startsWith('PRN');
+            const isAdjustment =
+              entry.movementType === 'ADJUSTMENT' ||
+              ref === 'ADJUSTMENT' ||
+              ref === 'STOCK_ADJUSTMENT' ||
+              ref === 'SADJ' ||
+              ref.startsWith('SADJ') ||
+              ref.includes('ADJUSTMENT');
+            const isSale =
+              ['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID'].includes(ref) ||
+              entry.movementType === 'OUTBOUND';
 
             const absQty = Math.abs(entryQty);
 
@@ -465,6 +485,9 @@ export class StockValuationExportService {
               // Purchase return reduces purchase value at original return cost
               purchaseRetQty += absQty;
               purchaseRetVal += absQty * entryCost;
+            } else if (isAdjustment) {
+              adjQty += entryQty; // negative
+              adjVal += entryQty * runningWac; // negative value
             } else if (isSale) {
               // Note: for POS Returns, entryQty will be positive, meaning it reduces net sales qty
               if (entryQty > 0) {
@@ -476,9 +499,6 @@ export class StockValuationExportService {
                 salesQty += absQty;
                 salesVal += absQty * runningWac; // COGS
               }
-            } else if (isAdjustment) {
-              adjQty += entryQty; // negative
-              adjVal += entryQty * runningWac; // negative value
             } else {
               // Default sales/outbound
               salesQty += absQty;

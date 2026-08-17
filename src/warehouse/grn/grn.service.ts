@@ -541,7 +541,7 @@ export class GrnService {
                 movementType: MovementType.INBOUND,
                 referenceType: 'GRN',
                 referenceId: grn.id,
-                rate: weightedAvgRate,
+                rate: incomingRate,
               },
               tx,
             );

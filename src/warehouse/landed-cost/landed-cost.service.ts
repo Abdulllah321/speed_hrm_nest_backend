@@ -347,7 +347,7 @@ export class LandedCostService {
               movementType: MovementType.INBOUND,
               referenceType: 'LANDED_COST',
               referenceId: landedCost.id,
-              rate: weightedAvgRate,
+              rate: item.normalizedUnitCostPKR,
             },
             tx,
           );
