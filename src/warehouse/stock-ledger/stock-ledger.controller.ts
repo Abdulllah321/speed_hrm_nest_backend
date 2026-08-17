@@ -393,8 +393,6 @@ export class StockLedgerController {
   @Get('available-stock-summary')
   @UseGuards(JwtAuthGuard)
   async getAvailableStockSummaryReport(
-    @Req() req: any,
-    @Res() res: any,
     @Query('locationId') locationId?: string,
     @Query('warehouseId') warehouseId?: string,
     @Query('startDate') startDate?: string,
@@ -409,15 +407,6 @@ export class StockLedgerController {
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
   ) {
-    let clientAborted = false;
-    if (res) {
-      res.on?.('close', () => {
-        if (!res.writableEnded) {
-          clientAborted = true;
-        }
-      });
-    }
-
     const data = await this.availableStockSummaryExportService.getAvailableStockSummaryReportData({
       locationId,
       warehouseId,
@@ -432,14 +421,8 @@ export class StockLedgerController {
       showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
       showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
       showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
-      isAborted: () => clientAborted,
     });
-
-    if (clientAborted) {
-      return;
-    }
-
-    return res.status(200).json({ status: true, data });
+    return { status: true, data };
   }
 
   @Post('available-stock-summary/export/queue')

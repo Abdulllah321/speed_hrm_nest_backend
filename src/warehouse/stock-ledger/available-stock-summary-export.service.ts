@@ -219,20 +219,9 @@ export class AvailableStockSummaryExportService {
     }
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    let locationWhere: any;
-
-    if (locIds.length > 0) {
-      locationWhere = locIds.length > 1 ? { in: locIds } : locIds[0];
-    } else {
-      const stockLocations = await prisma.location.findMany({
-        where: { isStockLocation: true, isDeleted: false },
-        select: { id: true },
-      });
-      const stockLocIds = stockLocations.map(l => l.id);
-      locationWhere = { in: stockLocIds };
-    }
-
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
 
     const locOrWhFilters: any[] = [];
@@ -287,7 +276,6 @@ export class AvailableStockSummaryExportService {
       prisma.inventoryItem.findMany({
         where: {
           ...locationOrWarehouseWhere,
-          status: 'AVAILABLE',
         },
         select: { itemId: true, locationId: true, warehouseId: true },
       }),
@@ -304,10 +292,18 @@ export class AvailableStockSummaryExportService {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
 
-    const uniqueItemIds = [...new Set([
+    let uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
       ...ledgerItems.map(l => l.itemId),
     ])];
+
+    if (uniqueItemIds.length === 0) {
+      const allItemsFallback = await prisma.item.findMany({
+        select: { id: true },
+        take: 2000,
+      });
+      uniqueItemIds = allItemsFallback.map(i => i.id);
+    }
 
     if (uniqueItemIds.length === 0) {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
