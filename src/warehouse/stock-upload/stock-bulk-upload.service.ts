@@ -20,6 +20,7 @@ export class StockBulkUploadService {
         fileBuffer: Buffer,
         filename: string,
         userId: string,
+        effectiveDate?: string,
     ): Promise<{ uploadId: string; jobId: string }> {
         const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -30,6 +31,7 @@ export class StockBulkUploadService {
                 totalRecords: 0,
                 uploadedBy: userId,
                 status: 'validating',
+                message: effectiveDate ? `Effective Date: ${effectiveDate}` : null,
             },
         });
 
@@ -52,6 +54,7 @@ export class StockBulkUploadService {
                 tenantDbUrl: this.prisma.getTenantDbUrl() || '',
                 mode: 'validate',
                 uploadType: 'stock',
+                effectiveDate,
             } as any,
             { removeOnComplete: false, removeOnFail: false },
         );
@@ -67,7 +70,7 @@ export class StockBulkUploadService {
         return { uploadId: upload.id, jobId: uniqueJobId };
     }
 
-    async confirmUpload(uploadId: string, userId: string): Promise<{ uploadId: string; jobId: string }> {
+    async confirmUpload(uploadId: string, userId: string, effectiveDate?: string): Promise<{ uploadId: string; jobId: string }> {
         const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
 
         if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
@@ -100,6 +103,7 @@ export class StockBulkUploadService {
                 tenantDbUrl: this.prisma.getTenantDbUrl() || '',
                 mode: 'import',
                 uploadType: 'stock',
+                effectiveDate,
             } as any,
             { removeOnComplete: false, removeOnFail: false },
         );
