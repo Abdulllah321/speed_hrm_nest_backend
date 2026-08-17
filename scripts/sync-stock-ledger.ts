@@ -18,10 +18,13 @@ const password = urlObj.password;
 const host = urlObj.hostname;
 const port = urlObj.port || '5432';
 const dbFromEnv = urlObj.pathname.slice(1);
+const defaultTenantDb = (!dbFromEnv || dbFromEnv === 'spl_core_db')
+  ? 'tenant_speed_main_mox1gfsi'
+  : dbFromEnv;
 
 const targetDbs = process.argv[2]
   ? [process.argv[2]]
-  : [dbFromEnv || 'tenant_speed_main_mox1gfsi'];
+  : [defaultTenantDb];
 
 // Default Previous Fiscal Year Date Boundaries (1 July 2025 - 30 June 2026)
 const PREV_FY_START = process.env.PREV_FY_START
