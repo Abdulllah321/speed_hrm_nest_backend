@@ -385,8 +385,20 @@ export class AvailableStockSummaryExportService {
       }
     }
 
+    // Fetch tenant item settings for cost fallback in safe chunks
+    const tenantSettings: any[] = [];
+    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
+      const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const chunkSettings = await prisma.tenantItemSetting.findMany({
+        where: { itemId: { in: chunk } },
+      });
+      tenantSettings.push(...chunkSettings);
+    }
+    const settingMap = new Map(tenantSettings.map(s => [s.itemId, s]));
+
     // Query normal ledger entries within range in safe chunks
     const ledgerEntries: any[] = [];
+    const latestLedgerCostMap = new Map<string, number>();
     for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
       const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
       const chunkEntries = await prisma.stockLedger.findMany({
@@ -407,8 +419,16 @@ export class AvailableStockSummaryExportService {
           movementType: true,
           locationId: true,
           warehouseId: true,
+          unitCost: true,
+          rate: true,
         },
       });
+      for (const entry of chunkEntries) {
+        const cost = Number(entry.unitCost ?? entry.rate ?? 0);
+        if (cost > 0) {
+          latestLedgerCostMap.set(entry.itemId, cost);
+        }
+      }
       ledgerEntries.push(...chunkEntries);
     }
 
@@ -608,9 +628,24 @@ export class AvailableStockSummaryExportService {
           continue;
         }
 
-        const unitPrice = item.unitPrice || 0;
+        const setting = settingMap.get(item.id);
+        let unitPrice = Number(item.unitPrice || 0);
+        if (unitPrice === 0 && setting?.retailPrice) {
+          unitPrice = Number(setting.retailPrice);
+        }
+
+        let unitCost = Number(item.unitCost || 0);
+        if (unitCost === 0) {
+          unitCost = Number(
+            setting?.averageCost ||
+            setting?.standardCost ||
+            item.fob ||
+            latestLedgerCostMap.get(item.id) ||
+            0
+          );
+        }
+
         const value = balance * unitPrice;
-        const unitCost = item.unitCost || 0;
         const costingValue = balance * unitCost;
 
         const variantMetrics = {
