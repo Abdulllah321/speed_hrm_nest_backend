@@ -172,8 +172,6 @@ export class StockValuationExportService {
     showSilhouette?: boolean;
     showArticle?: boolean;
     showVariant?: boolean;
-    page?: number;
-    limit?: number;
   }) {
     // Use injected singleton prisma instance to prevent creating orphan pg-pool connections
     const { root, grandTotals, meta } = await this.generateValuationReportDataInternal(this.prisma, opts);
@@ -202,8 +200,6 @@ export class StockValuationExportService {
       filterGenders?: string[];
       filterSilhouettes?: string[];
       searchText?: string;
-      page?: number;
-      limit?: number;
     },
   ) {
     const {
@@ -327,11 +323,7 @@ export class StockValuationExportService {
     }
 
     const totalItems = activeItems.length;
-    let pageItems = activeItems;
-    if (opts.page && opts.limit) {
-      const skip = (opts.page - 1) * opts.limit;
-      pageItems = activeItems.slice(skip, skip + opts.limit);
-    }
+    const pageItems = activeItems;
 
     const matchedItemIds = pageItems.map(i => i.id);
 
@@ -662,9 +654,9 @@ export class StockValuationExportService {
 
     const meta = {
       total: totalItems,
-      page: opts.page || 1,
-      limit: opts.limit || totalItems,
-      totalPages: opts.limit ? Math.ceil(totalItems / opts.limit) : 1,
+      page: 1,
+      limit: totalItems,
+      totalPages: 1,
     };
 
     return { root, grandTotals, items: activeItems, itemMetricsMap, meta };
