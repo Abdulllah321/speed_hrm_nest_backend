@@ -378,7 +378,7 @@ export class StockLedgerService {
             action: 'create',
             module: 'stock-ledger',
             entity: 'StockLedger',
-            entityId: entry.id,
+            entityId: entry.id.toString(),
             description: `Created stock ledger entry for item ${itemId}`,
             newValues: JSON.stringify(data),
             ipAddress: ctx?.ipAddress,

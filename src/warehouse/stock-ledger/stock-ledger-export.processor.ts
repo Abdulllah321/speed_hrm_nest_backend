@@ -222,14 +222,14 @@ export class StockLedgerExportProcessor {
 
       // ── Data rows — cursor-paginated in chunks of 500 ────────────────────
       const CHUNK = 500;
-      let cursor: string | undefined;
+      let cursor: bigint | undefined;
       let rowIdx = 0;
       let processed = 0;
 
       while (true) {
         const chunk = await prisma.stockLedger.findMany({
           where,
-          orderBy: { createdAt: 'desc' },
+          orderBy: { id: 'desc' },
           take: CHUNK,
           ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
           select: {
