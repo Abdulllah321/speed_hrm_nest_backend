@@ -17,6 +17,7 @@ export interface QueuePiRegisterExportOptions {
   paymentStatus?: string;
   invoiceType?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'hierarchical' | 'flat';
   search?: string;
 }
 
@@ -144,16 +145,20 @@ export class PiRegisterExportService {
     private readonly uploadService: UploadService,
   ) {}
 
-  async getReportData(params: {
-    brandId?: string;
-    supplierId?: string;
-    startDate?: string;
-    endDate?: string;
-    status?: string;
-    paymentStatus?: string;
-    invoiceType?: string;
-    search?: string;
-  }): Promise<PiRegisterReportResult> {
+  async getReportData(
+    params: {
+      brandId?: string;
+      supplierId?: string;
+      startDate?: string;
+      endDate?: string;
+      status?: string;
+      paymentStatus?: string;
+      invoiceType?: string;
+      search?: string;
+    },
+    prismaParam?: PrismaService,
+  ): Promise<PiRegisterReportResult> {
+    const prisma = prismaParam || this.prisma;
     const {
       brandId,
       supplierId,
@@ -220,7 +225,7 @@ export class PiRegisterExportService {
       ];
     }
 
-    const invoices = await this.prisma.purchaseInvoice.findMany({
+    const invoices = await prisma.purchaseInvoice.findMany({
       where,
       include: {
         supplier: true,
@@ -533,6 +538,7 @@ export class PiRegisterExportService {
         paymentStatus: opts.paymentStatus,
         invoiceType: opts.invoiceType,
         format: opts.format,
+        exportType: opts.exportType,
         search: opts.search,
       },
       {
