@@ -16,6 +16,7 @@ export interface QueueAvailableStockSummaryExportOptions {
   endDate?: string;
   format: 'xlsx' | 'pdf';
   exportType?: 'hierarchical' | 'flat';
+  reportType?: 'merged' | 'separate';
   summaryOnly?: boolean;
   showBrand?: boolean;
   showDivision?: boolean;
@@ -67,6 +68,7 @@ export class AvailableStockSummaryExportService {
         endDate: opts.endDate,
         format: opts.format,
         exportType: opts.exportType,
+        reportType: opts.reportType || 'merged',
         summaryOnly: !!opts.summaryOnly,
         showBrand: opts.showBrand,
         showDivision: opts.showDivision,
@@ -86,7 +88,7 @@ export class AvailableStockSummaryExportService {
       },
     );
 
-    this.logger.log(`[AvailableStockSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, type: ${opts.exportType || 'hierarchical'}, tenant: ${tenantId})`);
+    this.logger.log(`[AvailableStockSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, type: ${opts.exportType || 'hierarchical'}, mode: ${opts.reportType || 'merged'}, tenant: ${tenantId})`);
     return { jobId };
   }
 
@@ -157,6 +159,7 @@ export class AvailableStockSummaryExportService {
     warehouseId?: string;
     startDate?: string;
     endDate?: string;
+    reportType?: 'merged' | 'separate';
     summaryOnly?: boolean;
     showBrand?: boolean;
     showDivision?: boolean;
@@ -181,6 +184,7 @@ export class AvailableStockSummaryExportService {
       warehouseId?: string;
       startDate?: string;
       endDate?: string;
+      reportType?: 'merged' | 'separate';
       summaryOnly?: boolean;
       showBrand?: boolean;
       showDivision?: boolean;
@@ -196,6 +200,7 @@ export class AvailableStockSummaryExportService {
       warehouseId,
       startDate: startStr,
       endDate: endStr,
+      reportType = 'merged',
       summaryOnly,
       showBrand,
       showDivision,
@@ -231,6 +236,8 @@ export class AvailableStockSummaryExportService {
       ? { OR: locOrWhFilters }
       : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
 
+    const isSeparate = reportType === 'separate';
+
     const sBrand = showBrand !== false;
     const sDivision = showDivision !== false;
     const sCategory = showCategory !== false;
@@ -240,6 +247,7 @@ export class AvailableStockSummaryExportService {
     const sVariant = showVariant !== undefined ? showVariant : !summaryOnly;
 
     const levels: string[] = [];
+    if (isSeparate) levels.push('location');
     if (sBrand) levels.push('brand');
     if (sDivision) levels.push('division');
     if (sCategory) levels.push('category');
@@ -249,12 +257,21 @@ export class AvailableStockSummaryExportService {
     if (sVariant) levels.push('variant');
 
     if (levels.length === 0) {
-      levels.push('brand');
+      levels.push(isSeparate ? 'location' : 'brand');
     }
 
     const now = new Date();
     const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = endStr ? new Date(endStr) : new Date(now);
+
+    // Location & Warehouse names lookup for Separate mode
+    const locationNameMap = new Map<string, string>();
+    if (isSeparate) {
+      const allLocations = await prisma.location.findMany({ select: { id: true, name: true } });
+      const allWarehouses = await prisma.warehouse.findMany({ select: { id: true, name: true } });
+      for (const l of allLocations) locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
+      for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
+    }
 
     // Fetch inventory item ids
     const inventoryItems = await prisma.inventoryItem.findMany({
@@ -262,7 +279,7 @@ export class AvailableStockSummaryExportService {
         ...locationOrWarehouseWhere,
         status: 'AVAILABLE',
       },
-      select: { itemId: true },
+      select: { itemId: true, locationId: true, warehouseId: true },
     });
 
     const ledgerItems = await prisma.stockLedger.findMany({
@@ -279,7 +296,7 @@ export class AvailableStockSummaryExportService {
     ])];
 
     if (uniqueItemIds.length === 0) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map() };
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
 
     // Safely chunk item fetching to prevent database query parameter limit errors
@@ -308,7 +325,7 @@ export class AvailableStockSummaryExportService {
     }
 
     if (items.length === 0) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map() };
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
 
     const matchedItemIds = items.map(i => i.id);
@@ -317,8 +334,10 @@ export class AvailableStockSummaryExportService {
     const bfMap = new Map<string, number>();
     for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
       const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = isSeparate ? ['itemId', 'locationId', 'warehouseId'] : ['itemId'];
+      
       const bfGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
+        by: groupByCols,
         where: {
           ...locationOrWarehouseWhere,
           itemId: { in: chunk },
@@ -328,15 +347,21 @@ export class AvailableStockSummaryExportService {
       });
 
       for (const row of bfGroup) {
-        bfMap.set(row.itemId, (bfMap.get(row.itemId) || 0) + Number(row._sum.qty || 0));
+        const locKey = isSeparate
+          ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
+          : 'all';
+        const key = `${locKey}_${row.itemId}`;
+        bfMap.set(key, (bfMap.get(key) || 0) + Number(row._sum.qty || 0));
       }
     }
 
     // Query and add OPENING_BALANCE entries within range in safe chunks
     for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
       const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
+      const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = isSeparate ? ['itemId', 'locationId', 'warehouseId'] : ['itemId'];
+
       const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
+        by: groupByCols,
         where: {
           ...locationOrWarehouseWhere,
           itemId: { in: chunk },
@@ -351,8 +376,12 @@ export class AvailableStockSummaryExportService {
       });
 
       for (const row of inRangeOpeningGroup) {
-        const currentBf = bfMap.get(row.itemId) || 0;
-        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+        const locKey = isSeparate
+          ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
+          : 'all';
+        const key = `${locKey}_${row.itemId}`;
+        const currentBf = bfMap.get(key) || 0;
+        bfMap.set(key, currentBf + Number(row._sum.qty || 0));
       }
     }
 
@@ -376,6 +405,8 @@ export class AvailableStockSummaryExportService {
           qty: true,
           referenceType: true,
           movementType: true,
+          locationId: true,
+          warehouseId: true,
         },
       });
       ledgerEntries.push(...chunkEntries);
@@ -405,12 +436,20 @@ export class AvailableStockSummaryExportService {
         select: {
           itemId: true,
           quantity: true,
+          transferRequest: {
+            select: { toLocationId: true, toWarehouseId: true },
+          },
         },
       });
 
       for (const row of transitItems) {
         const qty = Number(row.quantity || 0);
-        transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+        const tr = row.transferRequest;
+        const locKey = isSeparate
+          ? (tr.toLocationId ? `loc:${tr.toLocationId}` : (tr.toWarehouseId ? `wh:${tr.toWarehouseId}` : 'unknown'))
+          : 'all';
+        const key = `${locKey}_${row.itemId}`;
+        transitMap.set(key, (transitMap.get(key) || 0) + qty);
       }
     }
 
@@ -419,7 +458,7 @@ export class AvailableStockSummaryExportService {
     for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
       const chunk = matchedItemIds.slice(i, i + CHUNK_SIZE);
       const reserveGroup = await prisma.stockReserve.groupBy({
-        by: ['itemId'],
+        by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
         where: {
           itemId: { in: chunk },
           ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
@@ -432,7 +471,11 @@ export class AvailableStockSummaryExportService {
       });
 
       for (const row of reserveGroup) {
-        reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+        const locKey = isSeparate
+          ? (row.warehouseId ? `wh:${row.warehouseId}` : 'all')
+          : 'all';
+        const key = `${locKey}_${row.itemId}`;
+        reserveMap.set(key, (reserveMap.get(key) || 0) + Number(row._sum.quantity || 0));
       }
     }
 
@@ -449,14 +492,18 @@ export class AvailableStockSummaryExportService {
     }>();
 
     for (const entry of ledgerEntries) {
-      const itemId = entry.itemId;
-      let m = movementMetricsMap.get(itemId);
+      const locKey = isSeparate
+        ? (entry.locationId ? `loc:${entry.locationId}` : (entry.warehouseId ? `wh:${entry.warehouseId}` : 'unknown'))
+        : 'all';
+      const key = `${locKey}_${entry.itemId}`;
+
+      let m = movementMetricsMap.get(key);
       if (!m) {
         m = {
           fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
           exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
         };
-        movementMetricsMap.set(itemId, m);
+        movementMetricsMap.set(key, m);
       }
 
       const qty = Number(entry.qty || 0);
@@ -493,6 +540,26 @@ export class AvailableStockSummaryExportService {
       }
     }
 
+    // Determine list of active location keys
+    const locKeysSet = new Set<string>();
+    if (!isSeparate) {
+      locKeysSet.add('all');
+    } else {
+      for (const k of bfMap.keys()) locKeysSet.add(k.split('_')[0]);
+      for (const k of movementMetricsMap.keys()) locKeysSet.add(k.split('_')[0]);
+      for (const k of transitMap.keys()) locKeysSet.add(k.split('_')[0]);
+      for (const k of reserveMap.keys()) locKeysSet.add(k.split('_')[0]);
+      for (const inv of inventoryItems) {
+        if (inv.locationId) locKeysSet.add(`loc:${inv.locationId}`);
+        if (inv.warehouseId) locKeysSet.add(`wh:${inv.warehouseId}`);
+      }
+    }
+
+    const activeLocKeys = [...locKeysSet].filter(k => k !== 'unknown');
+    if (activeLocKeys.length === 0 && isSeparate) {
+      activeLocKeys.push('all');
+    }
+
     const root: any[] = [];
     const itemMetricsMap = new Map<string, {
       quantity: number;
@@ -505,6 +572,8 @@ export class AvailableStockSummaryExportService {
       costingValue: number;
     }>();
 
+    const flatItemsList: { locationName: string; item: any; metrics: any }[] = [];
+
     const addTotals = (target: any, source: any) => {
       target.quantity += source.quantity;
       target.transit += source.transit;
@@ -514,86 +583,102 @@ export class AvailableStockSummaryExportService {
       target.costingValue += source.costingValue;
     };
 
-    for (const item of items) {
-      const bf = bfMap.get(item.id) || 0;
-      const transit = transitMap.get(item.id) || 0;
-      const reserved = reserveMap.get(item.id) || 0;
-      const m = movementMetricsMap.get(item.id) || {
-        fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
-        exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
-      };
+    for (const locKey of activeLocKeys) {
+      const locationName = isSeparate
+        ? (locationNameMap.get(locKey) || (locKey.startsWith('loc:') ? 'Outlet Store' : 'Warehouse'))
+        : 'All Selected Outlets / Warehouses';
 
-      const totalTrfIn = m.fromWarehouse + m.fromOutlet;
-      const totalTrfOut = m.toWarehouse + m.toOutlet;
-      const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
-      const balance = availableStock + transit + reserved;
-      const unitPrice = item.unitPrice || 0;
-      const value = balance * unitPrice;
-      const unitCost = item.unitCost || 0;
-      const costingValue = balance * unitCost;
+      for (const item of items) {
+        const mapKey = `${locKey}_${item.id}`;
+        const bf = bfMap.get(mapKey) || 0;
+        const transit = transitMap.get(mapKey) || 0;
+        const reserved = reserveMap.get(mapKey) || 0;
+        const m = movementMetricsMap.get(mapKey) || {
+          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
+          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+        };
 
-      const variantMetrics = {
-        quantity: availableStock,
-        transit,
-        reserved,
-        total: balance,
-        unitPrice,
-        value,
-        unitCost,
-        costingValue,
-      };
+        const totalTrfIn = m.fromWarehouse + m.fromOutlet;
+        const totalTrfOut = m.toWarehouse + m.toOutlet;
+        const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+        const balance = availableStock + transit + reserved;
 
-      itemMetricsMap.set(item.id, variantMetrics);
-
-      let currentLevelNodes = root;
-      for (let i = 0; i < levels.length; i++) {
-        const levelName = levels[i];
-        let nodeVal = '';
-        let extraFields: any = {};
-
-        if (levelName === 'brand') {
-          nodeVal = item.brand?.name || 'No Brand';
-        } else if (levelName === 'division') {
-          nodeVal = item.division?.name || 'No Division';
-        } else if (levelName === 'category') {
-          nodeVal = item.category?.name || 'No Category';
-        } else if (levelName === 'gender') {
-          nodeVal = item.gender?.name || 'No Gender';
-        } else if (levelName === 'silhouette') {
-          nodeVal = item.silhouette?.name || 'No Silhouette';
-        } else if (levelName === 'article') {
-          nodeVal = item.sku;
-          extraFields.sku = item.sku;
-          extraFields.articleName = item.description || 'Unknown Article';
-        } else if (levelName === 'variant') {
-          nodeVal = `${item.color?.name || 'Default'}-${item.size?.name || 'Default'}`;
-          extraFields.color = item.color?.name || 'Default';
-          extraFields.size = item.size?.name || 'Default';
+        // In separate mode, skip item entries with 0 stock across all fields for this specific location
+        if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0) {
+          continue;
         }
 
-        let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
-        if (!existingNode) {
-          existingNode = {
-            level: levelName,
-            value: nodeVal,
-            totals: this.createEmptyTotals(),
-            ...extraFields,
-            children: [],
-          };
-          currentLevelNodes.push(existingNode);
-        }
+        const unitPrice = item.unitPrice || 0;
+        const value = balance * unitPrice;
+        const unitCost = item.unitCost || 0;
+        const costingValue = balance * unitCost;
 
-        // Add to the level node's totals
-        addTotals(existingNode.totals, variantMetrics);
+        const variantMetrics = {
+          quantity: availableStock,
+          transit,
+          reserved,
+          total: balance,
+          unitPrice,
+          value,
+          unitCost,
+          costingValue,
+        };
 
-        // At article level, explicitly save the item unit price (Selling Price) and cost price
-        if (levelName === 'article' || levelName === 'variant') {
-          existingNode.totals.unitPrice = unitPrice;
-          existingNode.totals.unitCost = unitCost;
-        }
+        itemMetricsMap.set(mapKey, variantMetrics);
+        flatItemsList.push({ locationName, item, metrics: variantMetrics });
 
-        if (i < levels.length - 1) {
-          currentLevelNodes = existingNode.children;
+        let currentLevelNodes = root;
+        for (let i = 0; i < levels.length; i++) {
+          const levelName = levels[i];
+          let nodeVal = '';
+          let extraFields: any = {};
+
+          if (levelName === 'location') {
+            nodeVal = locationName;
+          } else if (levelName === 'brand') {
+            nodeVal = item.brand?.name || 'No Brand';
+          } else if (levelName === 'division') {
+            nodeVal = item.division?.name || 'No Division';
+          } else if (levelName === 'category') {
+            nodeVal = item.category?.name || 'No Category';
+          } else if (levelName === 'gender') {
+            nodeVal = item.gender?.name || 'No Gender';
+          } else if (levelName === 'silhouette') {
+            nodeVal = item.silhouette?.name || 'No Silhouette';
+          } else if (levelName === 'article') {
+            nodeVal = item.sku;
+            extraFields.sku = item.sku;
+            extraFields.articleName = item.description || 'Unknown Article';
+          } else if (levelName === 'variant') {
+            nodeVal = `${item.color?.name || 'Default'}-${item.size?.name || 'Default'}`;
+            extraFields.color = item.color?.name || 'Default';
+            extraFields.size = item.size?.name || 'Default';
+          }
+
+          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          if (!existingNode) {
+            existingNode = {
+              level: levelName,
+              value: nodeVal,
+              totals: this.createEmptyTotals(),
+              ...extraFields,
+              children: [],
+            };
+            currentLevelNodes.push(existingNode);
+          }
+
+          // Add to the level node's totals
+          addTotals(existingNode.totals, variantMetrics);
+
+          // At article level, explicitly save the item unit price (Selling Price) and cost price
+          if (levelName === 'article' || levelName === 'variant') {
+            existingNode.totals.unitPrice = unitPrice;
+            existingNode.totals.unitCost = unitCost;
+          }
+
+          if (i < levels.length - 1) {
+            currentLevelNodes = existingNode.children;
+          }
         }
       }
     }
@@ -604,7 +689,7 @@ export class AvailableStockSummaryExportService {
       addTotals(grandTotals, node.totals);
     }
 
-    return { root, grandTotals, items, itemMetricsMap };
+    return { root, grandTotals, items, itemMetricsMap, flatItemsList };
   }
 
   private createEmptyTotals() {

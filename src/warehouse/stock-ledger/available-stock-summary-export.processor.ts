@@ -21,6 +21,7 @@ export interface AvailableStockSummaryExportJobData {
   endDate?: string;
   format: 'xlsx' | 'pdf';
   exportType?: 'hierarchical' | 'flat';
+  reportType?: 'merged' | 'separate';
   summaryOnly?: boolean;
   showBrand?: boolean;
   showDivision?: boolean;
@@ -58,10 +59,10 @@ export class AvailableStockSummaryExportProcessor {
   async handleExport(job: Job<AvailableStockSummaryExportJobData>): Promise<void> {
     const {
       jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format, exportType,
-      summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
+      reportType, summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
       includeCosting
     } = job.data;
-    this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export for user ${userId}`);
+    this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}, mode: ${reportType || 'merged'}) export for user ${userId}`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -103,13 +104,14 @@ export class AvailableStockSummaryExportProcessor {
       await job.progress(25);
 
       // Generate structured data using our service core method
-      const { root, grandTotals, items, itemMetricsMap } = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
+      const { root, grandTotals, items, itemMetricsMap, flatItemsList } = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
         prisma,
         {
           locationId,
           warehouseId,
           startDate: startStr,
           endDate: endStr,
+          reportType,
           summaryOnly,
           showBrand,
           showDivision,
@@ -178,7 +180,7 @@ export class AvailableStockSummaryExportProcessor {
           await browser.close();
         }
       } else if (format === 'xlsx' && exportType === 'flat') {
-        await this.writeFlatWorkbook(filePath, items || [], itemMetricsMap || new Map(), grandTotals, !!includeCosting);
+        await this.writeFlatWorkbook(filePath, items || [], itemMetricsMap || new Map(), grandTotals, !!includeCosting, flatItemsList || []);
       } else {
         // XLSX Export using ExcelJS stream WorkbookWriter (Hierarchical)
         const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -196,7 +198,7 @@ export class AvailableStockSummaryExportProcessor {
         }
 
         const ws = workbook.addWorksheet('Available Stock Summary', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true },
           views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
         });
 
@@ -232,97 +234,88 @@ export class AvailableStockSummaryExportProcessor {
         const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
 
         const LEVEL_EXCEL_STYLES: Record<string, {
-          bgHex: string;
-          fgHex: string;
+          fgColor: string;
+          fontColor: string;
           fontSize: number;
-          bold: boolean;
           indent: number;
           prefix: string;
         }> = {
-          brand: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
-          division: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
-          category: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'CATEGORY: ' },
-          gender: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'GENDER: ' },
-          silhouette: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'SILHOUETTE: ' },
-          article: { bgHex: 'F1F5F9', fgHex: '1E293B', fontSize: 9, bold: true, indent: 10, prefix: 'SKU: ' },
-          variant: { bgHex: 'FFFFFF', fgHex: '475569', fontSize: 9, bold: false, indent: 12, prefix: '' },
+          location: { fgColor: 'FF0F172A', fontColor: 'FFFFD700', fontSize: 11, indent: 0, prefix: '' },
+          brand: { fgColor: 'FF1E293B', fontColor: 'FF93C5FD', fontSize: 10, indent: 1, prefix: 'BRAND: ' },
+          division: { fgColor: 'FF334155', fontColor: 'FFCBD5E1', fontSize: 9.5, indent: 2, prefix: 'DIVISION: ' },
+          category: { fgColor: 'FF475569', fontColor: 'FFFFFFFF', fontSize: 9, indent: 3, prefix: 'CATEGORY: ' },
+          gender: { fgColor: 'FF64748B', fontColor: 'FFFFFFFF', fontSize: 9, indent: 4, prefix: 'GENDER: ' },
+          silhouette: { fgColor: 'FF94A3B8', fontColor: 'FFFFFFFF', fontSize: 9, indent: 5, prefix: 'SILHOUETTE: ' },
+          article: { fgColor: 'FFF1F5F9', fontColor: 'FF0F172A', fontSize: 9, indent: 6, prefix: 'SKU: ' },
+          variant: { fgColor: 'FFFFFFFF', fontColor: 'FF334155', fontSize: 8.5, indent: 7, prefix: '' },
         };
 
-        const writeNodeToExcel = (node: any) => {
+        const processNode = (node: any) => {
           const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
-          
-          let label = ' '.repeat(style.indent) + style.prefix;
-          let colorVal = '';
-          let sizeVal = '';
-          let unitPriceVal: any = '';
-          let unitCostVal: any = '';
-          let costingValueVal: any = node.totals.costingValue;
-          
+          const totals = node.totals;
+
+          let label = node.value || '';
           if (node.level === 'article') {
-            label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
-            unitPriceVal = node.totals.unitPrice;
-            unitCostVal = node.totals.unitCost;
+            label = `${node.sku} (${node.articleName})`;
           } else if (node.level === 'variant') {
-            label = ' '.repeat(style.indent) + 'Variant Item';
-            colorVal = node.color;
-            sizeVal = node.size;
-            unitPriceVal = '';
-            unitCostVal = '';
-          } else {
-            label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
+            label = `Variant: ${node.color} / ${node.size}`;
+          } else if (style.prefix) {
+            label = `${style.prefix}${label}`;
           }
 
           const rowData: any = {
-            sku: label,
-            size: sizeVal,
-            color: colorVal,
-            quantity: node.totals.quantity,
-            transit: node.totals.transit,
-            reserved: node.totals.reserved,
-            total: node.totals.total,
-            unitPrice: unitPriceVal,
-            value: node.totals.value,
+            sku: '  '.repeat(style.indent) + label,
+            size: node.level === 'variant' ? node.size : (node.level === 'article' ? 'ALL SIZES' : ''),
+            color: node.level === 'variant' ? node.color : (node.level === 'article' ? 'ALL COLORS' : ''),
+            quantity: totals.quantity,
+            transit: totals.transit,
+            reserved: totals.reserved,
+            total: totals.total,
+            unitPrice: (node.level === 'article' || node.level === 'variant') ? totals.unitPrice : '',
+            value: totals.value,
           };
           if (includeCosting) {
-            rowData.unitCost = unitCostVal;
-            rowData.costingValue = costingValueVal;
+            rowData.unitCost = (node.level === 'article' || node.level === 'variant') ? totals.unitCost : '';
+            rowData.costingValue = totals.costingValue;
           }
 
           const row = ws.addRow(rowData);
 
-          const numCols = colsToUse.length;
-          for (let colNum = 1; colNum <= numCols; colNum++) {
-            const cell = row.getCell(colNum);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
-            cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
+          row.eachCell((cell, colNum) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.fgColor } };
+            cell.font = {
+              bold: node.level !== 'variant',
+              color: { argb: style.fontColor },
+              size: style.fontSize,
+            };
             cell.border = borderThin;
-            cell.alignment = colNum === 2 || colNum === 3 
-              ? centerAlign 
-              : (colNum === 1 ? leftAlign : rightAlign);
 
-            if ((colNum === 8 || colNum === 9 || colNum === 10 || colNum === 11) && typeof cell.value === 'number') {
-              cell.numFmt = '#,##0';
-            } else if (colNum >= 4 && colNum <= 7 && typeof cell.value === 'number') {
+            if (colNum === 1) cell.alignment = leftAlign;
+            else if (colNum <= 3) cell.alignment = centerAlign;
+            else cell.alignment = rightAlign;
+
+            if (colNum >= 4 && typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
             }
-          }
-          row.height = node.level === 'variant' ? 18 : 20;
+          });
+
+          row.height = node.level === 'variant' ? 18 : 22;
           row.commit();
 
-          if (node.children && node.children.length > 0) {
+          if (Array.isArray(node.children) && node.children.length > 0) {
             for (const child of node.children) {
-              writeNodeToExcel(child);
+              processNode(child);
             }
           }
         };
 
         for (const rootNode of root) {
-          writeNodeToExcel(rootNode);
+          processNode(rootNode);
         }
 
-        // Grand totals row
+        // Grand Totals row
         const grandTotalsData: any = {
-          sku: 'GRAND TOTAL',
+          sku: 'GRAND TOTALS',
           size: '',
           color: '',
           quantity: grandTotals.quantity,
@@ -400,6 +393,7 @@ export class AvailableStockSummaryExportProcessor {
     itemMetricsMap: Map<string, any>,
     grandTotals: any,
     includeCosting: boolean,
+    flatItemsList?: any[],
   ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
@@ -408,6 +402,7 @@ export class AvailableStockSummaryExportProcessor {
     });
 
     const FLAT_COLUMNS = [
+      { header: 'Location / Warehouse', key: 'locationName', width: 28, align: 'left' as const },
       { header: 'Brand', key: 'brand', width: 16, align: 'left' as const },
       { header: 'Division', key: 'division', width: 14, align: 'left' as const },
       { header: 'Category', key: 'category', width: 18, align: 'left' as const },
@@ -469,13 +464,19 @@ export class AvailableStockSummaryExportProcessor {
     const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
     const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
 
-    for (const item of items) {
-      const metrics = itemMetricsMap?.get(item.id) || {
+    const rowsToExport = (flatItemsList && flatItemsList.length > 0)
+      ? flatItemsList
+      : items.map(item => ({ locationName: 'All Selected Outlets / Warehouses', item, metrics: itemMetricsMap?.get(item.id) }));
+
+    for (const entry of rowsToExport) {
+      const { locationName, item, metrics } = entry;
+      const m = metrics || {
         quantity: 0, transit: 0, reserved: 0, total: 0,
         unitPrice: 0, value: 0, unitCost: 0, costingValue: 0,
       };
 
       const rowData: any = {
+        locationName: locationName || 'All Selected Outlets / Warehouses',
         brand: item.brand?.name || 'No Brand',
         division: item.division?.name || 'No Division',
         category: item.category?.name || 'No Category',
@@ -487,16 +488,16 @@ export class AvailableStockSummaryExportProcessor {
         size: item.size?.name || 'Default',
         barCode: item.barCode || '',
 
-        quantity: metrics.quantity,
-        transit: metrics.transit,
-        reserved: metrics.reserved,
-        total: metrics.total,
-        unitPrice: metrics.unitPrice,
-        value: metrics.value,
+        quantity: m.quantity,
+        transit: m.transit,
+        reserved: m.reserved,
+        total: m.total,
+        unitPrice: m.unitPrice,
+        value: m.value,
       };
       if (includeCosting) {
-        rowData.unitCost = metrics.unitCost;
-        rowData.costingValue = metrics.costingValue;
+        rowData.unitCost = m.unitCost;
+        rowData.costingValue = m.costingValue;
       }
 
       const row = ws.addRow(rowData);
