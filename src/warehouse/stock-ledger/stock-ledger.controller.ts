@@ -397,6 +397,7 @@ export class StockLedgerController {
     @Query('warehouseId') warehouseId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('reportType') reportType?: 'merged' | 'separate',
     @Query('summaryOnly') summaryOnly?: string,
     @Query('showBrand') showBrand?: string,
     @Query('showDivision') showDivision?: string,
@@ -411,6 +412,7 @@ export class StockLedgerController {
       warehouseId,
       startDate,
       endDate,
+      reportType,
       summaryOnly: summaryOnly === 'true',
       showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
       showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
@@ -434,6 +436,7 @@ export class StockLedgerController {
       endDate?: string;
       format: 'xlsx' | 'pdf';
       exportType?: 'hierarchical' | 'flat';
+      reportType?: 'merged' | 'separate';
       summaryOnly?: boolean;
       showBrand?: boolean;
       showDivision?: boolean;
@@ -454,6 +457,7 @@ export class StockLedgerController {
       endDate: body.endDate,
       format: body.format,
       exportType: body.exportType,
+      reportType: body.reportType,
       summaryOnly: body.summaryOnly,
       showBrand: body.showBrand,
       showDivision: body.showDivision,
