@@ -209,8 +209,6 @@ export class StockLedgerController {
     @Query('showSilhouette') showSilhouette?: string,
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
   ) {
     const resData = await this.stockValuationExportService.getValuationReportData({
       locationId,
@@ -224,8 +222,6 @@ export class StockLedgerController {
       showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
       showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
       showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
     });
     return { status: true, ...resData };
   }
