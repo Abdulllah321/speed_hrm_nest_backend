@@ -20,6 +20,7 @@ export interface StockUploadJobData {
     tenantDbUrl: string;
     mode: 'validate' | 'import';
     uploadType: 'stock';
+    effectiveDate?: string;
 }
 
 export interface StockUploadProgress {
@@ -45,7 +46,7 @@ export class StockUploadProcessor {
 
     @Process()
     async handleUpload(job: Job<any>): Promise<void> {
-        let { uploadId, fileBuffer, filename, userId, tenantId, tenantDbUrl, mode } = job.data;
+        let { uploadId, fileBuffer, filename, userId, tenantId, tenantDbUrl, mode, effectiveDate } = job.data;
         mode = mode || 'import';
 
         this.logger.log(`[Job ${job.id}] Stock Upload ${mode.toUpperCase()} started for ${filename} (Upload ID: ${uploadId})`);
@@ -187,7 +188,7 @@ export class StockUploadProcessor {
                     importBatch.push(record);
 
                     if (importBatch.length >= 500) {
-                        await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode, allSuccessRecords);
+                        await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode, allSuccessRecords, effectiveDate);
                         importBatch = [];
 
                         await new Promise((resolve) => setImmediate(resolve));
@@ -234,7 +235,7 @@ export class StockUploadProcessor {
 
                 // Final batch
                 if (importBatch.length > 0) {
-                    await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode, allSuccessRecords);
+                    await this.processBatch(importBatch, progress, uploadId, prisma, locationByCode, allSuccessRecords, effectiveDate);
                 }
 
                 // ─────────────────────────────────────────────────────────
@@ -518,6 +519,7 @@ export class StockUploadProcessor {
             qty: number;
             movementType: string;
         }>,
+        effectiveDate?: string,
     ): Promise<void> {
         // Collect unique barcodes for bulk item lookup
         const barCodes = [...new Set(batch.map((r) => r.data.barCode))];
@@ -589,6 +591,9 @@ export class StockUploadProcessor {
             // Determine movement type based on qty sign
             const movementType: MovementType = qty >= 0 ? MovementType.OPENING_BALANCE : MovementType.OUTBOUND;
 
+            const rawDate = record.data.date || effectiveDate;
+            const entryDate = rawDate ? new Date(rawDate) : new Date();
+
             ledgerEntries.push({
                 itemId,
                 warehouseId: location.warehouseId,
@@ -599,6 +604,7 @@ export class StockUploadProcessor {
                 referenceId: uploadId,
                 rate: null,
                 unitCost: null,
+                createdAt: entryDate,
             });
 
             inventoryUpserts.push({

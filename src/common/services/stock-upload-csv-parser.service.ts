@@ -20,6 +20,7 @@ export interface StockUploadParsedRecord {
         barCode: string;
         locationCode: string;
         qty: number;
+        date?: string;
     };
 }
 
@@ -54,6 +55,14 @@ export class StockUploadCsvParserService {
         const barCode = barcodeKey ? this.normalizeValue(rawRow[barcodeKey]) : null;
         if (!barCode) return; // skip rows with no barcode
 
+        // Find optional per-row date column (e.g. Date, EffectiveDate, OpeningDate, TxnDate)
+        const dateKey = Object.keys(rawRow).find((k) =>
+            ['date', 'effectivedate', 'openingdate', 'txndate', 'createdat'].includes(
+                k.toLowerCase().replace(/[\s_\-\.]/g, ''),
+            ),
+        );
+        const date = dateKey ? (this.normalizeValue(rawRow[dateKey]) || undefined) : undefined;
+
         for (const locCode of locationHeaders) {
             const rawQty = this.normalizeValue(rawRow[locCode]);
             if (rawQty === null) continue; // '-' or empty → skip
@@ -63,7 +72,7 @@ export class StockUploadCsvParserService {
 
             onRecord({
                 row: fileRowNumber,
-                data: { barCode, locationCode: locCode, qty },
+                data: { barCode, locationCode: locCode, qty, date },
             });
         }
     }

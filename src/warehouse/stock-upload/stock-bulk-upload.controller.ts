@@ -11,6 +11,8 @@ import {
     Req,
     Sse,
     MessageEvent,
+    Query,
+    Body,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -34,14 +36,27 @@ export class StockBulkUploadController {
 
     /**
      * POST /api/warehouse/stock/bulk-upload
-     * Upload CSV/Excel and start validation
+     * Upload CSV/Excel and start validation (supports ?effectiveDate=YYYY-MM-DD or form field)
      */
     @Post()
     @ApiOperation({ summary: 'Upload stock file for validation' })
     @UseGuards(JwtAuthGuard, PermissionGuard('warehouse.stock.create'))
-    async uploadFile(@Req() req: any, @GetUser('id') userId: string) {
+    async uploadFile(
+        @Req() req: any,
+        @GetUser('id') userId: string,
+        @Query('effectiveDate') effectiveDateQuery?: string,
+        @Query('date') dateQuery?: string,
+    ) {
         const file = await req.file();
         if (!file) throw new BadRequestException('No file uploaded');
+
+        let effectiveDate = effectiveDateQuery || dateQuery;
+        if (!effectiveDate && file.fields?.effectiveDate) {
+            effectiveDate = (file.fields.effectiveDate as any).value;
+        }
+        if (!effectiveDate && file.fields?.date) {
+            effectiveDate = (file.fields.date as any).value;
+        }
 
         const allowedExtensions = ['csv', 'xlsx', 'xls'];
         const ext = file.filename.split('.').pop()?.toLowerCase();
@@ -53,7 +68,7 @@ export class StockBulkUploadController {
         const maxSize = 50 * 1024 * 1024; // 50MB
         if (buffer.length > maxSize) throw new BadRequestException('File size exceeds 50MB limit');
 
-        const result = await this.bulkUploadService.initiateValidation(buffer, file.filename, userId);
+        const result = await this.bulkUploadService.initiateValidation(buffer, file.filename, userId, effectiveDate);
 
         return { status: true, message: 'Stock validation initiated', data: result };
     }
@@ -64,8 +79,16 @@ export class StockBulkUploadController {
     @Post(':uploadId/confirm')
     @ApiOperation({ summary: 'Confirm and start import of valid stock records' })
     @UseGuards(JwtAuthGuard, PermissionGuard('warehouse.stock.create'))
-    async confirmUpload(@Param('uploadId') uploadId: string, @GetUser('id') userId: string) {
-        const result = await this.bulkUploadService.confirmUpload(uploadId, userId);
+    async confirmUpload(
+        @Param('uploadId') uploadId: string,
+        @GetUser('id') userId: string,
+        @Query('effectiveDate') effectiveDateQuery?: string,
+        @Query('date') dateQuery?: string,
+        @Body('effectiveDate') effectiveDateBody?: string,
+        @Body('date') dateBody?: string,
+    ) {
+        const effectiveDate = effectiveDateQuery || dateQuery || effectiveDateBody || dateBody;
+        const result = await this.bulkUploadService.confirmUpload(uploadId, userId, effectiveDate);
         return { status: true, message: 'Stock import confirmed and started', data: result };
     }
 
