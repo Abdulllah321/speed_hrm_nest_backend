@@ -433,6 +433,7 @@ export class StockLedgerController {
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
+      exportType?: 'hierarchical' | 'flat';
       summaryOnly?: boolean;
       showBrand?: boolean;
       showDivision?: boolean;
@@ -452,6 +453,7 @@ export class StockLedgerController {
       startDate: body.startDate,
       endDate: body.endDate,
       format: body.format,
+      exportType: body.exportType,
       summaryOnly: body.summaryOnly,
       showBrand: body.showBrand,
       showDivision: body.showDivision,

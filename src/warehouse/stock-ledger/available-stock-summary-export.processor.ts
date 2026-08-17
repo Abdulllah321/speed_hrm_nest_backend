@@ -20,6 +20,7 @@ export interface AvailableStockSummaryExportJobData {
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'hierarchical' | 'flat';
   summaryOnly?: boolean;
   showBrand?: boolean;
   showDivision?: boolean;
@@ -56,11 +57,11 @@ export class AvailableStockSummaryExportProcessor {
   @Process({ concurrency: 1 })
   async handleExport(job: Job<AvailableStockSummaryExportJobData>): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format,
+      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format, exportType,
       summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
       includeCosting
     } = job.data;
-    this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
+    this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export for user ${userId}`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -102,7 +103,7 @@ export class AvailableStockSummaryExportProcessor {
       await job.progress(25);
 
       // Generate structured data using our service core method
-      const { root, grandTotals } = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
+      const { root, grandTotals, items, itemMetricsMap } = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
         prisma,
         {
           locationId,
@@ -176,8 +177,10 @@ export class AvailableStockSummaryExportProcessor {
         } finally {
           await browser.close();
         }
+      } else if (format === 'xlsx' && exportType === 'flat') {
+        await this.writeFlatWorkbook(filePath, items || [], itemMetricsMap || new Map(), grandTotals, !!includeCosting);
       } else {
-        // XLSX Export using ExcelJS stream WorkbookWriter
+        // XLSX Export using ExcelJS stream WorkbookWriter (Hierarchical)
         const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
           filename: filePath,
           useStyles: true,
@@ -389,6 +392,168 @@ export class AvailableStockSummaryExportProcessor {
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     }
+  }
+
+  private async writeFlatWorkbook(
+    filePath: string,
+    items: any[],
+    itemMetricsMap: Map<string, any>,
+    grandTotals: any,
+    includeCosting: boolean,
+  ): Promise<void> {
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      filename: filePath,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+
+    const FLAT_COLUMNS = [
+      { header: 'Brand', key: 'brand', width: 16, align: 'left' as const },
+      { header: 'Division', key: 'division', width: 14, align: 'left' as const },
+      { header: 'Category', key: 'category', width: 18, align: 'left' as const },
+      { header: 'Gender', key: 'gender', width: 12, align: 'left' as const },
+      { header: 'Silhouette', key: 'silhouette', width: 14, align: 'left' as const },
+      { header: 'SKU', key: 'sku', width: 14, align: 'left' as const },
+      { header: 'Article Name', key: 'articleName', width: 28, align: 'left' as const },
+      { header: 'Color', key: 'color', width: 14, align: 'left' as const },
+      { header: 'Size', key: 'size', width: 8, align: 'center' as const },
+      { header: 'Barcode', key: 'barCode', width: 16, align: 'left' as const },
+      { header: 'Quantity', key: 'quantity', width: 12, align: 'right' as const },
+      { header: 'In Transit', key: 'transit', width: 12, align: 'right' as const },
+      { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' as const },
+      { header: 'Total', key: 'total', width: 14, align: 'right' as const },
+      { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' as const },
+      { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' as const },
+    ];
+
+    if (includeCosting) {
+      FLAT_COLUMNS.push(
+        { header: 'Cost Price', key: 'unitCost', width: 14, align: 'right' as const },
+        { header: 'Total Costing', key: 'costingValue', width: 18, align: 'right' as const },
+      );
+    }
+
+    const ws = workbook.addWorksheet('Flat Available Stock', {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true },
+      views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
+    });
+
+    ws.columns = FLAT_COLUMNS.map(c => ({ key: c.key, width: c.width }));
+
+    // 1. Column headers
+    const headerRow = ws.getRow(1);
+    FLAT_COLUMNS.forEach((col, idx) => {
+      const cell = headerRow.getCell(idx + 1);
+      cell.value = col.header;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+      cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        bottom: { style: 'medium', color: { argb: 'FF1E293B' } },
+        right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      };
+    });
+    headerRow.height = 24;
+    headerRow.commit();
+
+    const borderThin = {
+      top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+      left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+      right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+    };
+
+    const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
+    const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
+    const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
+
+    for (const item of items) {
+      const metrics = itemMetricsMap?.get(item.id) || {
+        quantity: 0, transit: 0, reserved: 0, total: 0,
+        unitPrice: 0, value: 0, unitCost: 0, costingValue: 0,
+      };
+
+      const rowData: any = {
+        brand: item.brand?.name || 'No Brand',
+        division: item.division?.name || 'No Division',
+        category: item.category?.name || 'No Category',
+        gender: item.gender?.name || 'No Gender',
+        silhouette: item.silhouette?.name || 'No Silhouette',
+        sku: item.sku || '',
+        articleName: item.description || '',
+        color: item.color?.name || 'Default',
+        size: item.size?.name || 'Default',
+        barCode: item.barCode || '',
+
+        quantity: metrics.quantity,
+        transit: metrics.transit,
+        reserved: metrics.reserved,
+        total: metrics.total,
+        unitPrice: metrics.unitPrice,
+        value: metrics.value,
+      };
+      if (includeCosting) {
+        rowData.unitCost = metrics.unitCost;
+        rowData.costingValue = metrics.costingValue;
+      }
+
+      const row = ws.addRow(rowData);
+
+      for (let colNum = 1; colNum <= FLAT_COLUMNS.length; colNum++) {
+        const cell = row.getCell(colNum);
+        cell.font = { size: 9, color: { argb: 'FF1E293B' } };
+        cell.border = borderThin;
+        cell.alignment = colNum === 9 ? centerAlign : (colNum <= 10 ? leftAlign : rightAlign);
+
+        if (colNum >= 11 && typeof cell.value === 'number') {
+          cell.numFmt = '#,##0';
+        }
+      }
+      row.height = 18;
+      row.commit();
+    }
+
+    // Grand Totals row at bottom
+    if (grandTotals) {
+      const totalRowData: any = {
+        brand: 'GRAND TOTAL',
+        division: '', category: '', gender: '', silhouette: '', sku: '', articleName: '', color: '', size: '', barCode: '',
+        quantity: grandTotals.quantity,
+        transit: grandTotals.transit,
+        reserved: grandTotals.reserved,
+        total: grandTotals.total,
+        unitPrice: '',
+        value: grandTotals.value,
+      };
+      if (includeCosting) {
+        totalRowData.unitCost = '';
+        totalRowData.costingValue = grandTotals.costingValue;
+      }
+
+      const totalRow = ws.addRow(totalRowData);
+
+      totalRow.eachCell((cell, colNum) => {
+        cell.font = { bold: true, size: 10, color: { argb: 'FF000000' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'double', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        cell.alignment = colNum <= 10 ? leftAlign : rightAlign;
+
+        if (colNum >= 11 && typeof cell.value === 'number') {
+          cell.numFmt = '#,##0';
+        }
+      });
+      totalRow.height = 24;
+      totalRow.commit();
+    }
+
+    await workbook.commit();
   }
 
   private buildPdfHtml(
