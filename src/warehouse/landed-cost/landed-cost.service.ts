@@ -459,6 +459,7 @@ export class LandedCostService {
         },
         supplier: true,
         items: true,
+        purchaseOrder: true,
       },
     });
 
