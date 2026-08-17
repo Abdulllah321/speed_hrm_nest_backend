@@ -163,18 +163,34 @@ export class PurchaseReturnService {
             },
           },
         },
-        grn: true,
+        grn: {
+          include: {
+            purchaseOrder: true,
+          },
+        },
         landedCost: {
           include: {
-            grn: true,
+            grn: {
+              include: {
+                purchaseOrder: true,
+              },
+            },
           },
         },
         purchaseInvoice: {
           include: {
-            grn: true,
+            grn: {
+              include: {
+                purchaseOrder: true,
+              },
+            },
             landedCost: {
               include: {
-                grn: true,
+                grn: {
+                  include: {
+                    purchaseOrder: true,
+                  },
+                },
               },
             },
           },

@@ -165,17 +165,29 @@ export class PurchaseInvoiceService {
         take: limit,
         include: {
           supplier: true,
-          grn: true,
-          landedCost: true,
-          items: {
-          include: {
-            item: {
-              include: {
-                brand: true,
+          grn: {
+            include: {
+              purchaseOrder: true,
+            },
+          },
+          landedCost: {
+            include: {
+              grn: {
+                include: {
+                  purchaseOrder: true,
+                },
               },
             },
           },
-        },
+          items: {
+            include: {
+              item: {
+                include: {
+                  brand: true,
+                },
+              },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
