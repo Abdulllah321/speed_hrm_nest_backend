@@ -1,4 +1,4 @@
-import { PrismaClient, MovementType, Prisma } from '@prisma/client';
+import { PrismaClient, MovementType } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as dotenv from 'dotenv';
@@ -31,6 +31,42 @@ const PREV_FY_START = process.env.PREV_FY_START
 const PREV_FY_END = process.env.PREV_FY_END
   ? new Date(process.env.PREV_FY_END)
   : new Date('2026-06-30T23:59:59.999Z');
+
+async function bulkInsertLedgerEntries(pool: Pool, entries: any[]) {
+  if (entries.length === 0) return 0;
+  const CHUNK = 1000;
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    const chunk = entries.slice(i, i + CHUNK);
+    const valueStrings: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+
+    for (const item of chunk) {
+      valueStrings.push(
+        `($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7})`
+      );
+      params.push(
+        item.itemId,
+        item.warehouseId,
+        item.locationId || null,
+        item.qty,
+        item.movementType,
+        item.referenceType,
+        item.referenceId,
+        item.createdAt
+      );
+      idx += 8;
+    }
+
+    const query = `
+      INSERT INTO stock_ledgers (
+        item_id, warehouse_id, location_id, qty, movement_type, reference_type, reference_id, created_at
+      ) VALUES ${valueStrings.join(', ')}
+    `;
+    await pool.query(query, params);
+  }
+  return entries.length;
+}
 
 async function syncTenantDb(dbName: string) {
   const dbUrl = `postgresql://${user}:${password}@${host}:${port}/${dbName}?schema=public`;
@@ -173,7 +209,7 @@ async function syncTenantDb(dbName: string) {
               itemId: item.itemId,
               warehouseId: whId,
               locationId: locId,
-              qty: new Prisma.Decimal(item.quantity),
+              qty: Number(item.quantity),
               movementType: MovementType.INBOUND,
               referenceType: 'POS_VOID',
               referenceId: order.id,
@@ -188,7 +224,7 @@ async function syncTenantDb(dbName: string) {
               itemId: item.itemId,
               warehouseId: whId,
               locationId: locId,
-              qty: new Prisma.Decimal(-item.quantity),
+              qty: -Number(item.quantity),
               movementType: MovementType.OUTBOUND,
               referenceType: 'POS_SALE',
               referenceId: order.id,
@@ -224,7 +260,7 @@ async function syncTenantDb(dbName: string) {
           itemId: info.itemId,
           warehouseId: info.whId,
           locationId: info.locId,
-          qty: new Prisma.Decimal(info.netQty),
+          qty: Number(info.netQty),
           movementType: MovementType.OPENING_BALANCE,
           referenceType: 'PREV_FY_OPENING',
           referenceId: 'PREV_FY_AUTO_BAL',
@@ -235,32 +271,44 @@ async function syncTenantDb(dbName: string) {
 
     let openingCreated = 0;
     if (openingLedgerBatch.length > 0) {
-      console.log(`Inserting ${openingLedgerBatch.length} PREV_FY_OPENING balancing entries dated ${PREV_FY_START.toISOString()}...`);
-      console.log('Sample entry:', JSON.stringify(openingLedgerBatch[0], null, 2));
-      const CHUNK = 1000;
-      for (let i = 0; i < openingLedgerBatch.length; i += CHUNK) {
-        const chunk = openingLedgerBatch.slice(i, i + CHUNK);
-        await prisma.stockLedger.createMany({ data: chunk });
-      }
-      openingCreated = openingLedgerBatch.length;
+      const batchItemIds = [...new Set(openingLedgerBatch.map(b => b.itemId))];
+      const validItems = await prisma.item.findMany({
+        where: { id: { in: batchItemIds } },
+        select: { id: true },
+      });
+      const validItemIdSet = new Set(validItems.map(i => i.id));
+      const validOpeningBatch = openingLedgerBatch.filter(b => validItemIdSet.has(b.itemId));
+
+      console.log(`Inserting ${validOpeningBatch.length} PREV_FY_OPENING balancing entries dated ${PREV_FY_START.toISOString()}...`);
+      openingCreated = await bulkInsertLedgerEntries(pool, validOpeningBatch);
     }
 
     let salesCreated = 0;
     if (salesLedgerBatch.length > 0) {
-      console.log(`Inserting ${salesLedgerBatch.length} POS_SALE OUTBOUND ledger entries...`);
-      const CHUNK = 1000;
-      for (let i = 0; i < salesLedgerBatch.length; i += CHUNK) {
-        const chunk = salesLedgerBatch.slice(i, i + CHUNK);
-        await prisma.stockLedger.createMany({ data: chunk });
-      }
-      salesCreated = salesLedgerBatch.length;
+      const salesItemIds = [...new Set(salesLedgerBatch.map(b => b.itemId))];
+      const validItems = await prisma.item.findMany({
+        where: { id: { in: salesItemIds } },
+        select: { id: true },
+      });
+      const validSet = new Set(validItems.map(i => i.id));
+      const validSalesBatch = salesLedgerBatch.filter(b => validSet.has(b.itemId));
+
+      console.log(`Inserting ${validSalesBatch.length} POS_SALE OUTBOUND ledger entries...`);
+      salesCreated = await bulkInsertLedgerEntries(pool, validSalesBatch);
     }
 
     let returnsCreated = 0;
     if (returnLedgerBatch.length > 0) {
-      console.log(`Inserting ${returnLedgerBatch.length} POS_VOID INBOUND ledger entries...`);
-      await prisma.stockLedger.createMany({ data: returnLedgerBatch });
-      returnsCreated = returnLedgerBatch.length;
+      const returnItemIds = [...new Set(returnLedgerBatch.map(b => b.itemId))];
+      const validItems = await prisma.item.findMany({
+        where: { id: { in: returnItemIds } },
+        select: { id: true },
+      });
+      const validSet = new Set(validItems.map(i => i.id));
+      const validReturnsBatch = returnLedgerBatch.filter(b => validSet.has(b.itemId));
+
+      console.log(`Inserting ${validReturnsBatch.length} POS_VOID INBOUND ledger entries...`);
+      returnsCreated = await bulkInsertLedgerEntries(pool, validReturnsBatch);
     }
 
     console.log('\n======================================================');
