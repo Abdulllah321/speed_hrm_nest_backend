@@ -181,9 +181,8 @@ async function syncTenantDb(dbName: string) {
       }
     }
 
-    // 4. Calculate net quantity sold per (itemId, locationId) to generate self-balancing Opening Stock
-    const itemLocSalesMap = new Map<string, { itemId: string; locId: string; whId: string; netQty: number }>();
-
+    // 4. Generate paired AUTO_OPENING_BAL (UP) and POS_SALE (DOWN) entries per cash memo transaction timestamp
+    const openingLedgerBatch: any[] = [];
     const salesLedgerBatch: any[] = [];
     const returnLedgerBatch: any[] = [];
 
@@ -194,14 +193,6 @@ async function syncTenantDb(dbName: string) {
       if (!whId) continue;
 
       for (const item of order.items) {
-        const itemKey = `${item.itemId}_${locId}`;
-        const mapEntry = itemLocSalesMap.get(itemKey) || {
-          itemId: item.itemId,
-          locId,
-          whId,
-          netQty: 0,
-        };
-
         if (order.status === 'voided') {
           const key = `${order.id}_${item.itemId}`;
           if (!existingReturnSet.has(key)) {
@@ -220,6 +211,19 @@ async function syncTenantDb(dbName: string) {
         } else {
           const key = `${order.id}_${item.itemId}`;
           if (!existingSalesLedgerSet.has(key)) {
+            // 1. UP Entry: AUTO_OPENING_BAL on the exact cash memo timestamp
+            openingLedgerBatch.push({
+              itemId: item.itemId,
+              warehouseId: whId,
+              locationId: locId,
+              qty: Number(item.quantity),
+              movementType: MovementType.OPENING_BALANCE,
+              referenceType: 'AUTO_OPENING_BAL',
+              referenceId: 'AUTO_OPENING_BAL',
+              createdAt: order.createdAt,
+            });
+
+            // 2. DOWN Entry: POS_SALE on the exact cash memo timestamp
             salesLedgerBatch.push({
               itemId: item.itemId,
               warehouseId: whId,
@@ -230,42 +234,10 @@ async function syncTenantDb(dbName: string) {
               referenceId: order.id,
               createdAt: order.createdAt,
             });
-            existingSalesLedgerSet.add(key);
 
-            mapEntry.netQty += Number(item.quantity);
-            itemLocSalesMap.set(itemKey, mapEntry);
+            existingSalesLedgerSet.add(key);
           }
         }
-      }
-    }
-
-    // 5. Generate self-balancing PREV_FY_OPENING entries for previous year so net ending stock on June 30 is 0
-    const openingLedgerBatch: any[] = [];
-
-    for (const [key, info] of itemLocSalesMap.entries()) {
-      if (info.netQty <= 0 || !info.itemId || !info.whId) continue;
-
-      // Check if PREV_FY_OPENING already exists for this item/location
-      const existingOpening = await prisma.stockLedger.findFirst({
-        where: {
-          itemId: info.itemId,
-          locationId: info.locId,
-          referenceType: 'PREV_FY_OPENING',
-          createdAt: PREV_FY_START,
-        },
-      });
-
-      if (!existingOpening) {
-        openingLedgerBatch.push({
-          itemId: info.itemId,
-          warehouseId: info.whId,
-          locationId: info.locId,
-          qty: Number(info.netQty),
-          movementType: MovementType.OPENING_BALANCE,
-          referenceType: 'PREV_FY_OPENING',
-          referenceId: 'PREV_FY_AUTO_BAL',
-          createdAt: PREV_FY_START,
-        });
       }
     }
 
@@ -279,7 +251,7 @@ async function syncTenantDb(dbName: string) {
       const validItemIdSet = new Set(validItems.map(i => i.id));
       const validOpeningBatch = openingLedgerBatch.filter(b => validItemIdSet.has(b.itemId));
 
-      console.log(`Inserting ${validOpeningBatch.length} PREV_FY_OPENING balancing entries dated ${PREV_FY_START.toISOString()}...`);
+      console.log(`Inserting ${validOpeningBatch.length} AUTO_OPENING_BAL entries paired with cash memo timestamps...`);
       openingCreated = await bulkInsertLedgerEntries(pool, validOpeningBatch);
     }
 

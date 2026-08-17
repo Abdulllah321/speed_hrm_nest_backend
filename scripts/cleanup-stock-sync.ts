@@ -30,10 +30,11 @@ async function cleanupTenantDb(dbName: string) {
   const pool = new Pool({ connectionString: connStr });
 
   try {
-    // 1. Delete AUTO_OPENING_BAL entries
+    // 1. Delete AUTO_OPENING_BAL and PREV_FY_OPENING entries created by sync script
     const delAutoOpening = await pool.query(`
       DELETE FROM stock_ledgers
-      WHERE "reference_id" = 'AUTO_OPENING_BAL'
+      WHERE "reference_id" IN ('AUTO_OPENING_BAL', 'PREV_FY_AUTO_BAL')
+         OR "reference_type" IN ('AUTO_OPENING_BAL', 'PREV_FY_OPENING')
     `);
     console.log(
       `[${dbName}] Deleted ${delAutoOpening.rowCount} AUTO_OPENING_BAL ledger entries.`,
