@@ -93,6 +93,10 @@ export class CreatePurchaseInvoiceDto {
 
   @IsOptional()
   @IsString()
+  staxEInvoiceNumber?: string;
+
+  @IsOptional()
+  @IsString()
   @IsIn(['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'])
   status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'CANCELLED';
 

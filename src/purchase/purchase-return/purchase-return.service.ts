@@ -39,11 +39,14 @@ export class PurchaseReturnService {
       if (createDto.purchaseInvoiceId) {
         const inv = await this.prisma.purchaseInvoice.findUnique({
           where: { id: createDto.purchaseInvoiceId },
-          select: { grnId: true, landedCostId: true },
+          select: { grnId: true, landedCostId: true, staxEInvoiceNumber: true },
         });
         if (inv) {
           if (!resolvedGrnId) resolvedGrnId = inv.grnId || undefined;
           if (!resolvedLandedCostId) resolvedLandedCostId = inv.landedCostId || undefined;
+          if (inv.staxEInvoiceNumber && !createDto.staxEInvoiceNumber) {
+            createDto.staxEInvoiceNumber = inv.staxEInvoiceNumber;
+          }
         }
       }
 
@@ -991,6 +994,7 @@ export class PurchaseReturnService {
       supplier: inv.supplier,
       warehouse: inv.warehouse,
       advanceTaxRate: Number(inv.advanceTaxRate || 0.5),
+      staxEInvoiceNumber: inv.staxEInvoiceNumber,
       items: inv.items.map(item => ({
         id: item.id,
         itemId: item.itemId,
