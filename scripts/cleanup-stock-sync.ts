@@ -11,10 +11,13 @@ const password = urlObj.password;
 const host = urlObj.hostname;
 const port = urlObj.port || '5432';
 const dbFromEnv = urlObj.pathname.slice(1);
+const defaultTenantDb = (!dbFromEnv || dbFromEnv === 'spl_core_db')
+  ? 'tenant_speed_main_mox1gfsi'
+  : dbFromEnv;
 
 const targetDbs = process.argv[2]
   ? [process.argv[2]]
-  : [dbFromEnv || 'tenant_speed_main_mox1gfsi'];
+  : [defaultTenantDb];
 
 async function cleanupTenantDb(dbName: string) {
   const connStr = `postgresql://${user}:${password}@${host}:${port}/${dbName}?schema=public`;
