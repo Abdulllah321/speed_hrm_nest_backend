@@ -188,6 +188,7 @@ export class PurchaseInvoiceController {
       paymentStatus?: string;
       invoiceType?: string;
       format: 'xlsx' | 'pdf';
+      exportType?: 'hierarchical' | 'flat';
       search?: string;
     },
     @Req() req: any,
@@ -202,6 +203,7 @@ export class PurchaseInvoiceController {
       paymentStatus: body.paymentStatus,
       invoiceType: body.invoiceType,
       format: body.format || 'xlsx',
+      exportType: body.exportType,
       search: body.search,
     });
   }
