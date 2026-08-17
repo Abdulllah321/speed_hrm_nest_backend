@@ -151,6 +151,28 @@ export class StockValuationExportProcessor {
     }
   }
 
+  @Process('generate-valuation-preview')
+  async handleValuationPreview(job: Job<any>): Promise<void> {
+    const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+    this.logger.log(`[ValuationPreview ${jobId}] Starting background valuation preview computation`);
+    try {
+      await job.progress(10);
+      const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+
+      await job.progress(30);
+      const data = await this.stockValuationExportService.generateValuationReportDataInternal(prisma, opts);
+
+      await job.progress(85);
+      this.stockValuationExportService.saveReportPreviewResult(jobId, data);
+
+      await job.progress(100);
+      this.logger.log(`[ValuationPreview ${jobId}] Successfully generated and saved valuation preview result`);
+    } catch (err: any) {
+      this.logger.error(`[ValuationPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
+
   @Process({ concurrency: 1 })
   async handleExport(job: Job<StockValuationExportJobData>): Promise<void> {
     const {
@@ -184,25 +206,37 @@ export class StockValuationExportProcessor {
 
       await job.progress(20);
 
-      const { root, grandTotals, items, itemMetricsMap } = await this.stockValuationExportService.generateValuationReportDataInternal(prisma, {
-        locationId,
-        startDate: startStr,
-        endDate: endStr,
-        filterBrands,
-        filterDivisions,
-        filterCategories,
-        filterGenders,
-        filterSilhouettes,
-        searchText,
-        summaryOnly,
-        showBrand,
-        showDivision,
-        showCategory,
-        showGender,
-        showSilhouette,
-        showArticle,
-        showVariant,
-      });
+      let reportData: any = null;
+      if ((job.data as any).previewJobId) {
+        reportData = this.stockValuationExportService.getReportPreviewResult((job.data as any).previewJobId);
+        if (reportData) {
+          this.logger.log(`[StockValuationExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`);
+        }
+      }
+
+      if (!reportData) {
+        reportData = await this.stockValuationExportService.generateValuationReportDataInternal(prisma, {
+          locationId,
+          startDate: startStr,
+          endDate: endStr,
+          filterBrands,
+          filterDivisions,
+          filterCategories,
+          filterGenders,
+          filterSilhouettes,
+          searchText,
+          summaryOnly,
+          showBrand,
+          showDivision,
+          showCategory,
+          showGender,
+          showSilhouette,
+          showArticle,
+          showVariant,
+        });
+      }
+
+      const { root, grandTotals, items, itemMetricsMap } = reportData;
 
       await job.progress(60);
 
