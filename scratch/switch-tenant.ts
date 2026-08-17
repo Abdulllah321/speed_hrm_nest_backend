@@ -11,15 +11,15 @@ async function main() {
     const updated = await prisma.company.update({
       where: { code: 'speed' },
       data: {
-        dbName: 'tenant_speed_mql1nil9',
-        dbUrl: 'postgresql://speedlimit:speedlimit123@localhost:5433/tenant_speed_mql1nil9?schema=public',
+        dbName: 'tenant_speed_main_mox1gfsi',
+        dbUrl: 'postgresql://speedlimit:speedlimit123@localhost:5433/tenant_speed_main_mox1gfsi?schema=public',
         dbUser: 'speedlimit',
         dbPassword: null, // Clear dynamic encryption to use dbUrl directly
         dbPort: 5433,
         dbHost: 'localhost'
       }
     });
-    console.log('Successfully switched tenant database to tenant_speed_mql1nil9!');
+    console.log('Successfully switched tenant database to tenant_speed_main_mox1gfsi!');
     console.log(JSON.stringify(updated, null, 2));
   } catch (error) {
     console.error('Error switching tenant database:', error);
