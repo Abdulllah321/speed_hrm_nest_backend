@@ -81,6 +81,16 @@ export class JournalVoucherController {
     return this.journalVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
   }
 
+  @Patch(':id/unapprove')
+  @Permissions('erp.finance.journal-voucher.approve')
+  unapprove(
+    @Param('id') id: string,
+    @Body() body: { remarks?: string },
+    @Req() req: any,
+  ) {
+    return this.journalVoucherService.unapprove(id, body?.remarks, { userId: req.user?.id });
+  }
+
   @Patch(':id/print')
   @Permissions('erp.finance.journal-voucher.read')
   markAsPrinted(@Param('id') id: string, @Req() req: any) {

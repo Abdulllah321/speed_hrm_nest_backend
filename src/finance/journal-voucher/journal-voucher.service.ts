@@ -278,42 +278,20 @@ export class JournalVoucherService {
 
       let updated: any;
 
-      if (details) {
-        const totalDebit  = details.reduce((s, d) => s + Number(d.debit),  0);
-        const totalCredit = details.reduce((s, d) => s + Number(d.credit), 0);
-
-        if (Math.abs(totalDebit - totalCredit) > 0.01) {
-          throw new Error('Total Debit must equal Total Credit');
+      updated = await this.prisma.$transaction(async (prisma) => {
+        if (existing.status === 'approved') {
+          await this.accounting.unpostLines('JOURNAL_VOUCHER', id, prisma);
         }
 
-        updated = await this.prisma.$transaction(async (prisma) => {
-          // Delete old detail lines
+        if (details) {
           await prisma.journalVoucherDetail.deleteMany({ where: { journalVoucherId: id } });
+        }
 
-          // Reverse old AccountTransaction entries for this voucher ONLY IF previously approved
-          if (existing.status === 'approved') {
-            const oldLines = existing.details.map((d: any) => ({
-              accountId:  d.accountId,
-              tagAccountId: d.tagAccountId ?? undefined,
-              debit:  Number(d.debit),
-              credit: Number(d.credit),
-            }));
-            if (oldLines.length > 0) {
-              await this.accounting.reverseLines(oldLines, {
-                sourceType:      'JOURNAL_VOUCHER',
-                sourceId:        id,
-                sourceRef:       `${existing.jvNo}-REV`,
-                description:     `Reversal on edit of ${existing.jvNo}`,
-                transactionDate: new Date(),
-              }, prisma);
-            }
-          }
-
-          // Save updated voucher + new detail lines
-          const saved = await prisma.journalVoucher.update({
-            where: { id },
-            data: {
-              ...data,
+        const saved = await prisma.journalVoucher.update({
+          where: { id },
+          data: {
+            ...data,
+            ...(details && {
               details: {
                 create: details.map(d => ({
                   accountId:       d.accountId,
@@ -326,92 +304,39 @@ export class JournalVoucherService {
                   taxType:         d.taxType ?? 'Taxable',
                 })),
               },
-            },
-            include: {
-              details: { include: { account: true, tagAccount: true } },
-            },
-          });
-
-          // Post new AccountTransaction entries ONLY IF approved
-          const targetStatus = data.status || existing.status;
-          if (targetStatus === 'approved') {
-            await this.accounting.postLines(
-              details.map(d => ({
-                accountId:       d.accountId,
-                tagAccountId:    d.tagAccountId?.trim() || undefined,
-                debit:           Number(d.debit),
-                credit:          Number(d.credit),
-                narration:       d.narration       || (data as any).description || existing.description || undefined,
-                refBillNo:       d.refBillNo       || undefined,
-                refBillNo2:      d.refBillNo2      || undefined,
-                taxType:         d.taxType ?? 'Taxable',
-              })),
-              {
-                sourceType:      'JOURNAL_VOUCHER',
-                sourceId:        id,
-                sourceRef:       saved.jvNo,
-                description:     (data as any).description || existing.description || undefined,
-                transactionDate: new Date((data as any).jvDate || existing.jvDate),
-              },
-              prisma,
-            );
-          }
-
-          return saved;
+            }),
+          },
+          include: {
+            details: { include: { account: true, tagAccount: true } },
+          },
         });
-      } else {
-        // If details are not updated, but status has changed
-        updated = await this.prisma.$transaction(async (prisma) => {
-          const saved = await prisma.journalVoucher.update({
-            where: { id },
-            data,
-            include: {
-              details: { include: { account: true, tagAccount: true } },
-            },
-          });
 
-          // Handle state transitions
-          if (existing.status !== 'approved' && saved.status === 'approved') {
-            // Pending/Rejected -> Approved: post ledger transactions
-            const linesToPost = saved.details.map((d: any) => ({
+        const targetStatus = data.status || existing.status;
+        if (targetStatus === 'approved') {
+          await this.accounting.postLines(
+            saved.details.map((d: any) => ({
               accountId:       d.accountId,
-              tagAccountId:    d.tagAccountId ?? undefined,
+              tagAccountId:    d.tagAccountId?.trim() || undefined,
               debit:           Number(d.debit),
               credit:          Number(d.credit),
-              narration:       d.narration || saved.description || undefined,
-              refBillNo:       d.refBillNo || undefined,
-              refBillNo2:      d.refBillNo2 || undefined,
+              narration:       d.narration       || saved.description || undefined,
+              refBillNo:       d.refBillNo       || undefined,
+              refBillNo2:      d.refBillNo2      || undefined,
               taxType:         d.taxType ?? 'Taxable',
-            }));
-            await this.accounting.postLines(linesToPost, {
+            })),
+            {
               sourceType:      'JOURNAL_VOUCHER',
               sourceId:        id,
               sourceRef:       saved.jvNo,
               description:     saved.description ?? undefined,
               transactionDate: new Date(saved.jvDate),
-            }, prisma);
-          } else if (existing.status === 'approved' && saved.status !== 'approved') {
-            // Approved -> Pending/Rejected: reverse ledger transactions
-            const oldLines = existing.details.map((d: any) => ({
-              accountId:  d.accountId,
-              tagAccountId: d.tagAccountId ?? undefined,
-              debit:  Number(d.debit),
-              credit: Number(d.credit),
-            }));
-            if (oldLines.length > 0) {
-              await this.accounting.reverseLines(oldLines, {
-                sourceType:      'JOURNAL_VOUCHER',
-                sourceId:        id,
-                sourceRef:       `${existing.jvNo}-REV`,
-                description:     `Reversal on status change of ${existing.jvNo}`,
-                transactionDate: new Date(),
-              }, prisma);
-            }
-          }
+            },
+            prisma,
+          );
+        }
 
-          return saved;
-        });
-      }
+        return saved;
+      });
 
       runInBackground(
         'Update Journal Voucher',
@@ -459,26 +384,9 @@ export class JournalVoucherService {
     try {
       const existing = await this.findOne(id);
 
-
-
       await this.prisma.$transaction(async (prisma) => {
-        // Reverse AccountTransaction entries before deleting ONLY if approved
         if (existing.status === 'approved') {
-          const oldLines = existing.details.map((d: any) => ({
-            accountId:   d.accountId,
-            tagAccountId: d.tagAccountId ?? undefined,
-            debit:  Number(d.debit),
-            credit: Number(d.credit),
-          }));
-          if (oldLines.length > 0) {
-            await this.accounting.reverseLines(oldLines, {
-              sourceType:      'JOURNAL_VOUCHER',
-              sourceId:        id,
-              sourceRef:       `${existing.jvNo}-DEL`,
-              description:     `Reversal on deletion of ${existing.jvNo}`,
-              transactionDate: new Date(),
-            }, prisma);
-          }
+          await this.accounting.unpostLines('JOURNAL_VOUCHER', id, prisma);
         }
 
         await prisma.journalVoucher.delete({ where: { id } });
@@ -543,6 +451,10 @@ export class JournalVoucherService {
     }
 
     return this.prisma.$transaction(async (prisma) => {
+      if (existing.status === 'approved' && status !== 'approved') {
+        await this.accounting.unpostLines('JOURNAL_VOUCHER', id, prisma);
+      }
+
       const updated = await prisma.journalVoucher.update({
         where: { id },
         data: updateData,
@@ -551,7 +463,7 @@ export class JournalVoucherService {
         },
       });
 
-      if (status === 'approved') {
+      if (existing.status !== 'approved' && status === 'approved') {
         await this.accounting.postLines(
           updated.details.map(d => ({
             accountId:       d.accountId,
@@ -576,6 +488,10 @@ export class JournalVoucherService {
 
       return updated;
     });
+  }
+
+  async unapprove(id: string, remarks?: string, ctx?: { userId?: string }) {
+    return this.updateStatus(id, 'pending_check', remarks || 'Unapproved voucher', ctx);
   }
 
   async markAsPrinted(id: string, ctx?: { userId?: string }) {

@@ -173,6 +173,18 @@ export class PaymentVoucherController {
     return this.paymentVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
   }
 
+  @Patch(':id/unapprove')
+  @Permissions('erp.finance.payment-voucher.approve')
+  @ApiOperation({ summary: 'Unapprove and unpost payment voucher' })
+  @ApiResponse({ status: 200, description: 'Voucher unapproved successfully' })
+  unapprove(
+    @Param('id') id: string,
+    @Body() body: { remarks?: string },
+    @Req() req: any,
+  ) {
+    return this.paymentVoucherService.unapprove(id, body?.remarks, { userId: req.user?.id });
+  }
+
   @Patch(':id/cpr')
   @Permissions('erp.finance.payment-voucher.update')
   @ApiOperation({ summary: 'Update CPR numbers for a payment voucher' })

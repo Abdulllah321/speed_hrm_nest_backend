@@ -121,6 +121,54 @@ export class AccountingService {
         }, tx);
     }
 
+    /**
+     * Unpost/remove previously posted lines.
+     * Reverses the delta applied to ChartOfAccount.balance for each transaction
+     * and deletes the AccountTransaction rows for the given sourceId and sourceType(s).
+     */
+    async unpostLines(sourceType: string | string[], sourceId: string, tx?: any): Promise<void> {
+        const client = tx ?? this.prisma;
+        const sourceTypes = Array.isArray(sourceType) ? sourceType : [sourceType];
+
+        const transactions = await client.accountTransaction.findMany({
+            where: {
+                sourceId,
+                sourceType: { in: sourceTypes },
+            },
+        });
+
+        if (transactions.length === 0) return;
+
+        const accountIds = [...new Set(transactions.map((t: any) => t.accountId))];
+        const accounts = await client.chartOfAccount.findMany({
+            where: { id: { in: accountIds } },
+            select: { id: true, type: true },
+        });
+        const accountTypeMap = new Map<string, AccountType>(
+            accounts.map((a: any) => [a.id, a.type])
+        );
+
+        for (const txRow of transactions) {
+            const accountType = accountTypeMap.get(txRow.accountId);
+            if (!accountType) continue;
+
+            const delta = this.calculateDelta(accountType, Number(txRow.debit), Number(txRow.credit));
+            if (delta !== 0) {
+                await client.chartOfAccount.update({
+                    where: { id: txRow.accountId },
+                    data: { balance: { decrement: delta } },
+                });
+            }
+        }
+
+        await client.accountTransaction.deleteMany({
+            where: {
+                sourceId,
+                sourceType: { in: sourceTypes },
+            },
+        });
+    }
+
     private calculateDelta(type: AccountType, debit: number, credit: number): number {
         switch (type) {
             case 'ASSET':
