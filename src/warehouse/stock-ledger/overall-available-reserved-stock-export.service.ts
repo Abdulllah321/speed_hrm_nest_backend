@@ -392,6 +392,8 @@ export class OverallAvailableReservedStockExportService {
       return { root: [], grandTotals: { totalQty: 0, totalReserved: 0, totalAvailable: 0, totalCostValue: 0 }, items: [], itemMetricsMap: new Map(), flatItemsList: [], stockLocationsList: [], warehousesList: [] };
     }
 
+    await onProgress?.(10, 'Discovering active stock locations & warehouses...');
+
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     let locationWhere: any;
 
@@ -464,24 +466,27 @@ export class OverallAvailableReservedStockExportService {
 
     const isHistorical = targetDate.getTime() < (now.getTime() - 24 * 60 * 60 * 1000);
 
-    // Fetch inventory item ids up to targetDate
-    const inventoryItems = await prisma.inventoryItem.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        status: 'AVAILABLE',
-        createdAt: { lte: targetDate },
-      },
-      select: { itemId: true },
-    });
+    await onProgress?.(20, 'Querying stock ledgers & inventory items...');
 
-    const ledgerItems = await prisma.stockLedger.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        createdAt: { lte: targetDate },
-      },
-      select: { itemId: true },
-      distinct: ['itemId'],
-    });
+    // Fetch inventory item ids up to targetDate
+    const [inventoryItems, ledgerItems] = await Promise.all([
+      prisma.inventoryItem.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          status: 'AVAILABLE',
+          createdAt: { lte: targetDate },
+        },
+        select: { itemId: true },
+      }),
+      prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: { lte: targetDate },
+        },
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
+    ]);
 
     const uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
@@ -500,26 +505,43 @@ export class OverallAvailableReservedStockExportService {
       };
     }
 
-    const items = await prisma.item.findMany({
-      where: {
-        OR: [
-          { id: { in: uniqueItemIds } },
-          { itemId: { in: uniqueItemIds } },
-        ],
-      },
-      include: {
-        color: true,
-        size: true,
-        gender: true,
-        category: true,
-        division: true,
-        brand: true,
-        silhouette: true,
-        season: true,
-        itemClass: true,
-        subCategory: true,
-      },
-    });
+    await onProgress?.(35, `Loading product catalog metadata for ${uniqueItemIds.length} items...`);
+
+    const chunkArray = <T>(arr: T[], size = 1000): T[][] => {
+      const chunks: T[][] = [];
+      for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+      }
+      return chunks;
+    };
+
+    const itemChunks = chunkArray(uniqueItemIds, 1000);
+    const itemsNested = await Promise.all(
+      itemChunks.map((chunk) =>
+        prisma.item.findMany({
+          where: {
+            OR: [
+              { id: { in: chunk } },
+              { itemId: { in: chunk } },
+            ],
+          },
+          include: {
+            color: true,
+            size: true,
+            gender: true,
+            category: true,
+            division: true,
+            brand: true,
+            silhouette: true,
+            season: true,
+            itemClass: true,
+            subCategory: true,
+          },
+        }),
+      ),
+    );
+
+    const items = itemsNested.flat();
 
     if (items.length === 0) {
       return {
@@ -530,7 +552,10 @@ export class OverallAvailableReservedStockExportService {
       };
     }
 
+    await onProgress?.(50, 'Calculating in-transit and reserved stock allocations...');
+
     const matchedItemIds = items.map(i => i.id);
+    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
@@ -540,120 +565,158 @@ export class OverallAvailableReservedStockExportService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    // Query transit items as of targetDate
-    const transitItems = await prisma.transferRequestItem.findMany({
-      where: {
-        itemId: { in: matchedItemIds },
-        transferRequest: {
-          ...toLocOrWhWhere,
-          createdAt: { lte: targetDate },
-          status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-          transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
-        },
-      },
-      select: {
-        itemId: true,
-        quantity: true,
-      },
-    });
-
     const transitMap = new Map<string, number>();
-    for (const row of transitItems) {
-      const qty = Number(row.quantity || 0);
-      transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
-    }
+    const transitResults = await Promise.all(
+      matchedItemChunks.map((chunk) =>
+        prisma.transferRequestItem.findMany({
+          where: {
+            itemId: { in: chunk },
+            transferRequest: {
+              ...toLocOrWhWhere,
+              createdAt: { lte: targetDate },
+              status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+              transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+            },
+          },
+          select: {
+            itemId: true,
+            quantity: true,
+          },
+        }),
+      ),
+    );
 
-    // Query reserved stock for matched items as of targetDate
-    const reserveGroup = await prisma.stockReserve.groupBy({
-      by: ['itemId'],
-      where: {
-        itemId: { in: matchedItemIds },
-        createdAt: { lte: targetDate },
-        ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gte: targetDate } }
-        ]
-      },
-      _sum: { quantity: true },
-    });
+    for (const transitItems of transitResults) {
+      for (const row of transitItems) {
+        const qty = Number(row.quantity || 0);
+        transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+      }
+    }
 
     const reserveMap = new Map<string, number>();
-    for (const row of reserveGroup) {
-      reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+    const reserveResults = await Promise.all(
+      matchedItemChunks.map((chunk) =>
+        prisma.stockReserve.groupBy({
+          by: ['itemId'],
+          where: {
+            itemId: { in: chunk },
+            createdAt: { lte: targetDate },
+            ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gte: targetDate } }
+            ]
+          },
+          _sum: { quantity: true },
+        }),
+      ),
+    );
+
+    for (const reserveGroup of reserveResults) {
+      for (const row of reserveGroup) {
+        reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+      }
     }
+
+    await onProgress?.(65, 'Processing location & warehouse stock breakdown...');
 
     // Breakdown per location / warehouse
     const invLocMap = new Map<string, number>();
     const invWhMap = new Map<string, number>();
 
     if (isHistorical) {
-      // Historical stock as of targetDate calculated from StockLedger
-      const histLocGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId', 'locationId'],
-        where: {
-          itemId: { in: matchedItemIds },
-          locationId: { not: null },
-          createdAt: { lte: targetDate },
-        },
-        _sum: { qty: true },
-      });
+      const [histLocResults, histWhResults] = await Promise.all([
+        Promise.all(
+          matchedItemChunks.map((chunk) =>
+            prisma.stockLedger.groupBy({
+              by: ['itemId', 'locationId'],
+              where: {
+                itemId: { in: chunk },
+                locationId: { not: null },
+                createdAt: { lte: targetDate },
+              },
+              _sum: { qty: true },
+            }),
+          ),
+        ),
+        Promise.all(
+          matchedItemChunks.map((chunk) =>
+            prisma.stockLedger.groupBy({
+              by: ['itemId', 'warehouseId'],
+              where: {
+                itemId: { in: chunk },
+                locationId: null,
+                createdAt: { lte: targetDate },
+              },
+              _sum: { qty: true },
+            }),
+          ),
+        ),
+      ]);
 
-      for (const row of histLocGroup) {
-        if (row.locationId) {
-          invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.qty || 0));
+      for (const histLocGroup of histLocResults) {
+        for (const row of histLocGroup) {
+          if (row.locationId) {
+            invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.qty || 0));
+          }
         }
       }
 
-      const histWhGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId', 'warehouseId'],
-        where: {
-          itemId: { in: matchedItemIds },
-          locationId: null,
-          createdAt: { lte: targetDate },
-        },
-        _sum: { qty: true },
-      });
-
-      for (const row of histWhGroup) {
-        if (row.warehouseId) {
-          invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.qty || 0));
+      for (const histWhGroup of histWhResults) {
+        for (const row of histWhGroup) {
+          if (row.warehouseId) {
+            invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.qty || 0));
+          }
         }
       }
     } else {
-      // Real-time stock from InventoryItem table
-      const invLocGroup = await prisma.inventoryItem.groupBy({
-        by: ['itemId', 'locationId'],
-        where: {
-          itemId: { in: matchedItemIds },
-          status: 'AVAILABLE',
-          locationId: { not: null },
-        },
-        _sum: { quantity: true },
-      });
+      const [invLocResults, invWhResults] = await Promise.all([
+        Promise.all(
+          matchedItemChunks.map((chunk) =>
+            prisma.inventoryItem.groupBy({
+              by: ['itemId', 'locationId'],
+              where: {
+                itemId: { in: chunk },
+                status: 'AVAILABLE',
+                locationId: { not: null },
+              },
+              _sum: { quantity: true },
+            }),
+          ),
+        ),
+        Promise.all(
+          matchedItemChunks.map((chunk) =>
+            prisma.inventoryItem.groupBy({
+              by: ['itemId', 'warehouseId'],
+              where: {
+                itemId: { in: chunk },
+                status: 'AVAILABLE',
+                locationId: null,
+              },
+              _sum: { quantity: true },
+            }),
+          ),
+        ),
+      ]);
 
-      for (const row of invLocGroup) {
-        if (row.locationId) {
-          invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.quantity || 0));
+      for (const invLocGroup of invLocResults) {
+        for (const row of invLocGroup) {
+          if (row.locationId) {
+            invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.quantity || 0));
+          }
         }
       }
 
-      const invWhGroup = await prisma.inventoryItem.groupBy({
-        by: ['itemId', 'warehouseId'],
-        where: {
-          itemId: { in: matchedItemIds },
-          status: 'AVAILABLE',
-          locationId: null,
-        },
-        _sum: { quantity: true },
-      });
-
-      for (const row of invWhGroup) {
-        if (row.warehouseId) {
-          invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.quantity || 0));
+      for (const invWhGroup of invWhResults) {
+        for (const row of invWhGroup) {
+          if (row.warehouseId) {
+            invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.quantity || 0));
+          }
         }
       }
     }
+
+    await onProgress?.(85, 'Building report hierarchy tree & computing grand totals...');
 
     const root: any[] = [];
 
