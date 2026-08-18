@@ -37,12 +37,18 @@ export interface QueueStockValuationExportOptions {
 @Injectable()
 export class StockValuationExportService {
   private readonly logger = new Logger(StockValuationExportService.name);
+  private readonly cancelledPreviewJobIds = new Set<string>();
 
   constructor(
     @InjectQueue('stock-valuation-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
   ) {}
+
+  isJobCancelled(jobId?: string): boolean {
+    if (!jobId) return false;
+    return this.cancelledPreviewJobIds.has(jobId);
+  }
 
   async queueReportPreview(opts: {
     userId: string;
@@ -68,21 +74,37 @@ export class StockValuationExportService {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
-    // Remove any waiting preview jobs previously queued by this user to prevent queue buildup
+    // Cancel any waiting or active preview jobs previously queued by this user to prevent queue buildup
     if (opts.userId) {
       try {
-        const waitingJobs = await this.exportQueue.getWaiting();
+        const [waitingJobs, activeJobs] = await Promise.all([
+          this.exportQueue.getWaiting(),
+          this.exportQueue.getActive(),
+        ]);
+
         for (const wJob of waitingJobs) {
           if (
             wJob.name === 'generate-valuation-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded valuation preview job ${wJob.id} for user ${opts.userId}`);
+            this.logger.log(`Pruning superseded waiting valuation preview job ${wJob.id} for user ${opts.userId}`);
+            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
+
+        for (const aJob of activeJobs) {
+          if (
+            aJob.name === 'generate-valuation-preview' &&
+            aJob.data?.userId === opts.userId
+          ) {
+            const activeJobId = aJob.data?.jobId;
+            this.logger.log(`Cancelling active running valuation preview job ${activeJobId} for user ${opts.userId}`);
+            if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
+          }
+        }
       } catch (err: any) {
-        this.logger.warn(`Could not prune waiting valuation preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(`Could not prune valuation preview jobs for user ${opts.userId}: ${err.message}`);
       }
     }
 

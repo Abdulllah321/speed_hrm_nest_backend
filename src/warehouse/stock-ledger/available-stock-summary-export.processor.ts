@@ -69,11 +69,17 @@ export class AvailableStockSummaryExportProcessor {
         prisma,
         {
           ...opts,
+          previewJobId: jobId,
           onProgress: async (percent: number, message: string) => {
             await job.progress({ percent, message });
           },
         },
       );
+
+      if (this.availableStockSummaryService.isJobCancelled(jobId)) {
+        this.logger.log(`[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        return;
+      }
 
       await job.progress({ percent: 90, message: 'Compressing report payload & caching result...' });
       this.availableStockSummaryService.saveReportPreviewResult(jobId, data);

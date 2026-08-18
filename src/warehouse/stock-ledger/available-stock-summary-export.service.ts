@@ -33,12 +33,18 @@ export interface QueueAvailableStockSummaryExportOptions {
 @Injectable()
 export class AvailableStockSummaryExportService {
   private readonly logger = new Logger(AvailableStockSummaryExportService.name);
+  private readonly cancelledPreviewJobIds = new Set<string>();
 
   constructor(
     @InjectQueue('available-stock-summary-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
   ) {}
+
+  isJobCancelled(jobId?: string): boolean {
+    if (!jobId) return false;
+    return this.cancelledPreviewJobIds.has(jobId);
+  }
 
   async queueReportPreview(opts: {
     userId: string;
@@ -60,21 +66,37 @@ export class AvailableStockSummaryExportService {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
-    // Remove any waiting preview jobs previously queued by this user to prevent queue buildup
+    // Cancel any waiting or active preview jobs previously queued by this user to prevent queue buildup
     if (opts.userId) {
       try {
-        const waitingJobs = await this.exportQueue.getWaiting();
+        const [waitingJobs, activeJobs] = await Promise.all([
+          this.exportQueue.getWaiting(),
+          this.exportQueue.getActive(),
+        ]);
+
         for (const wJob of waitingJobs) {
           if (
             wJob.name === 'generate-report-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded available stock preview job ${wJob.id} for user ${opts.userId}`);
+            this.logger.log(`Pruning superseded waiting available stock preview job ${wJob.id} for user ${opts.userId}`);
+            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
+
+        for (const aJob of activeJobs) {
+          if (
+            aJob.name === 'generate-report-preview' &&
+            aJob.data?.userId === opts.userId
+          ) {
+            const activeJobId = aJob.data?.jobId;
+            this.logger.log(`Cancelling active running available stock preview job ${activeJobId} for user ${opts.userId}`);
+            if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
+          }
+        }
       } catch (err: any) {
-        this.logger.warn(`Could not prune waiting available stock preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(`Could not prune available stock preview jobs for user ${opts.userId}: ${err.message}`);
       }
     }
 
@@ -325,6 +347,7 @@ export class AvailableStockSummaryExportService {
     showSilhouette?: boolean;
     showArticle?: boolean;
     showVariant?: boolean;
+    previewJobId?: string;
     isAborted?: () => boolean;
   }) {
     const tenantId = this.prisma.getTenantId() ?? '';
@@ -351,6 +374,7 @@ export class AvailableStockSummaryExportService {
       showSilhouette?: boolean;
       showArticle?: boolean;
       showVariant?: boolean;
+      previewJobId?: string;
       isAborted?: () => boolean;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
@@ -369,11 +393,15 @@ export class AvailableStockSummaryExportService {
       showSilhouette,
       showArticle,
       showVariant,
+      previewJobId,
       isAborted,
       onProgress,
     } = opts;
 
-    if (isAborted?.()) {
+    const checkCancelled = () => isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId));
+
+    if (checkCancelled()) {
+      this.logger.log(`[ReportPreview ${previewJobId}] Computation aborted early as job was cancelled by user.`);
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
 
