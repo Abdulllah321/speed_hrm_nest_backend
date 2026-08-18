@@ -629,6 +629,70 @@ export class StockLedgerController {
     return { status: true, data };
   }
 
+  @Post('overall-available-reserved-stock/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueOverallAvailableReservedStockPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      asOfDate?: string;
+      summaryOnly?: boolean;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
+      includeCosting?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.overallAvailableReservedStockExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('overall-available-reserved-stock/stream/:jobId')
+  streamOverallAvailableReservedStockReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.overallAvailableReservedStockExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            message: status.message,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('overall-available-reserved-stock/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getOverallAvailableReservedStockReportResult(@Param('jobId') jobId: string) {
+    const data = this.overallAvailableReservedStockExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Report result not ready or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('overall-available-reserved-stock/cancel-preview/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async cancelOverallAvailableReservedStockPreview(@Param('jobId') jobId: string) {
+    this.overallAvailableReservedStockExportService.cancelReportPreview(jobId);
+    return { status: true, message: 'Preview job cancelled' };
+  }
+
   @Post('overall-available-reserved-stock/export/queue')
   @UseGuards(JwtAuthGuard)
   async queueOverallAvailableReservedStockExport(
@@ -647,6 +711,7 @@ export class StockLedgerController {
       showArticle?: boolean;
       showVariant?: boolean;
       includeCosting?: boolean;
+      previewJobId?: string;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
@@ -665,6 +730,7 @@ export class StockLedgerController {
       showArticle: body.showArticle,
       showVariant: body.showVariant,
       includeCosting: body.includeCosting,
+      previewJobId: body.previewJobId,
     });
     return { status: true, data: result };
   }
