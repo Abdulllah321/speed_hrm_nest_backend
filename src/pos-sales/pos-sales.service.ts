@@ -6798,6 +6798,7 @@ export class PosSalesService implements OnModuleInit {
     showArticle?: boolean;
     showVariant?: boolean;
     showInvoices?: boolean;
+    prismaClient?: any;
   }) {
     const {
       locationId,
@@ -6818,6 +6819,7 @@ export class PosSalesService implements OnModuleInit {
       showVariant,
       showInvoices,
     } = options;
+    const db = options.prismaClient || this.prisma;
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const now = new Date();
@@ -6849,7 +6851,7 @@ export class PosSalesService implements OnModuleInit {
       levels.push('product');
     }
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const orders = await db.salesOrder.findMany({
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
@@ -7227,6 +7229,7 @@ export class PosSalesService implements OnModuleInit {
     showArticle?: boolean;
     showVariant?: boolean;
     showInvoices?: boolean;
+    prismaClient?: any;
   }) {
     const {
       locationId,
@@ -7247,6 +7250,7 @@ export class PosSalesService implements OnModuleInit {
       showVariant,
       showInvoices,
     } = options;
+    const db = options.prismaClient || this.prisma;
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const now = new Date();
@@ -7279,7 +7283,7 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // 1. Fetch Returns/Refunds from StockLedger
-    const returnLedgerEntries = await this.prisma.stockLedger.findMany({
+    const returnLedgerEntries = await db.stockLedger.findMany({
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
         createdAt: { gte: startDate, lte: endDate },
@@ -7305,7 +7309,7 @@ export class PosSalesService implements OnModuleInit {
       ...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean)),
     ];
     const referenceOrders = referenceOrderIds.length
-      ? await this.prisma.salesOrder.findMany({
+      ? await db.salesOrder.findMany({
         where: {
           id: { in: referenceOrderIds },
           ...(cashierUserId ? { cashierUserId } : {}),
@@ -7322,7 +7326,7 @@ export class PosSalesService implements OnModuleInit {
     }
 
     // 2. Fetch Approved Claims from PosClaim
-    const claims = await this.prisma.posClaim.findMany({
+    const claims = await db.posClaim.findMany({
       where: {
         status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
         createdAt: { gte: startDate, lte: endDate },

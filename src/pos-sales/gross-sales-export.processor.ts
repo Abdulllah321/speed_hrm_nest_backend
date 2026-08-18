@@ -15,6 +15,7 @@ interface GrossSalesExportJobData {
   jobId: string;
   userId: string;
   tenantId: string;
+  companyId?: string;
   tenantDbUrl: string;
   locationId: string;
   startDate?: string;
@@ -84,6 +85,7 @@ export class GrossSalesExportProcessor {
       jobId,
       userId,
       tenantId,
+      companyId,
       tenantDbUrl,
       locationId,
       startDate,
@@ -106,68 +108,77 @@ export class GrossSalesExportProcessor {
       reportType,
     } = job.data;
 
-    const reportLabel = reportType === 'return' ? 'Gross Sales Return' : 'Gross Sales Summary';
-    this.logger.log(`[GrossSalesExport ${jobId}] Starting ${format.toUpperCase()} export for ${reportLabel}`);
+    return PrismaService.asyncLocalStorage.run(
+      {
+        tenantId,
+        companyId: companyId || tenantId,
+        dbUrl: tenantDbUrl,
+      },
+      async () => {
+        const reportLabel = reportType === 'return' ? 'Gross Sales Return' : 'Gross Sales Summary';
+        this.logger.log(`[GrossSalesExport ${jobId}] Starting ${format.toUpperCase()} export for ${reportLabel}`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
-    const prismaMaster = new PrismaMasterService();
-    const exportDir = path.join(process.cwd(), 'uploads', 'exports');
-    fs.mkdirSync(exportDir, { recursive: true });
-    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
-    const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
+        const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+        const prismaMaster = new PrismaMasterService();
+        const exportDir = path.join(process.cwd(), 'uploads', 'exports');
+        fs.mkdirSync(exportDir, { recursive: true });
+        const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+        const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
-    try {
-      await job.progress(15);
+        try {
+          await job.progress(15);
 
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+          const location = await prisma.location.findUnique({
+            where: { id: locationId },
+            select: { name: true },
+          });
+          const locationName = location?.name || 'Store';
 
-      // Fetch flat rows from Service
-      let result;
-      if (reportType === 'return') {
-        result = await this.posSalesService.getGrossSalesReturnReport({
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          showBrand,
-          showDivision,
-          showCategory,
-          showGender,
-          showSilhouette,
-          showArticle,
-          showVariant,
-          showInvoices,
-        });
-      } else {
-        result = await this.posSalesService.getGrossSalesSummaryReport({
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          showBrand,
-          showDivision,
-          showCategory,
-          showGender,
-          showSilhouette,
-          showArticle,
-          showVariant,
-          showInvoices,
-        });
-      }
+          // Fetch flat rows from Service
+          let result;
+          if (reportType === 'return') {
+            result = await this.posSalesService.getGrossSalesReturnReport({
+              locationId,
+              startDate,
+              endDate,
+              cashierUserId,
+              search,
+              paymentModeGroup,
+              minAmount,
+              maxAmount,
+              fbrOnly,
+              showBrand,
+              showDivision,
+              showCategory,
+              showGender,
+              showSilhouette,
+              showArticle,
+              showVariant,
+              showInvoices,
+              prismaClient: prisma,
+            });
+          } else {
+            result = await this.posSalesService.getGrossSalesSummaryReport({
+              locationId,
+              startDate,
+              endDate,
+              cashierUserId,
+              search,
+              paymentModeGroup,
+              minAmount,
+              maxAmount,
+              fbrOnly,
+              showBrand,
+              showDivision,
+              showCategory,
+              showGender,
+              showSilhouette,
+              showArticle,
+              showVariant,
+              showInvoices,
+              prismaClient: prisma,
+            });
+          }
 
       const rows = result.data || [];
       await job.progress(50);
@@ -396,6 +407,8 @@ export class GrossSalesExportProcessor {
     } finally {
       await prismaMaster.$disconnect();
     }
+      },
+    );
   }
 
   private buildPdfHtml(
