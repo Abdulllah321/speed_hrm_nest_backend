@@ -650,26 +650,22 @@ export class AvailableStockSummaryExportService {
 
     // Populate BF Map
     const bfMap = new Map<string, number>();
-    for (const group of bfGroupResults.flat()) {
-      for (const row of group as any) {
-        const locKey = isSeparate
-          ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
-          : 'all';
-        const key = `${locKey}_${row.itemId}`;
-        bfMap.set(key, (bfMap.get(key) || 0) + Number(row._sum.qty || 0));
-      }
+    for (const row of bfGroupResults.flat()) {
+      const locKey = isSeparate
+        ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
+        : 'all';
+      const key = `${locKey}_${row.itemId}`;
+      bfMap.set(key, (bfMap.get(key) || 0) + Number(row._sum.qty || 0));
     }
 
     // Add In-Range Openings to BF Map
-    for (const group of inRangeOpeningResults.flat()) {
-      for (const row of group as any) {
-        const locKey = isSeparate
-          ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
-          : 'all';
-        const key = `${locKey}_${row.itemId}`;
-        const currentBf = bfMap.get(key) || 0;
-        bfMap.set(key, currentBf + Number(row._sum.qty || 0));
-      }
+    for (const row of inRangeOpeningResults.flat()) {
+      const locKey = isSeparate
+        ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
+        : 'all';
+      const key = `${locKey}_${row.itemId}`;
+      const currentBf = bfMap.get(key) || 0;
+      bfMap.set(key, currentBf + Number(row._sum.qty || 0));
     }
 
     // Populate Setting Map
