@@ -347,6 +347,7 @@ export class StockValuationExportService {
       filterGenders?: string[];
       filterSilhouettes?: string[];
       searchText?: string;
+      onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ) {
     const {
@@ -361,7 +362,10 @@ export class StockValuationExportService {
       showSilhouette,
       showArticle,
       showVariant,
+      onProgress,
     } = opts;
+
+    await onProgress?.(10, 'Discovering distinct items from stock ledgers...');
 
     const now = new Date();
     // Default to start of current fiscal year (July 1st in Pakistan) if not provided
@@ -395,6 +399,8 @@ export class StockValuationExportService {
       };
     }
 
+    await onProgress?.(25, 'Loading product catalog, brands, categories & valuation settings...');
+
     const itemChunks = chunkArray(uniqueItemIds, 1000);
     const itemsNested = await Promise.all(
       itemChunks.map((chunk) =>
@@ -424,6 +430,8 @@ export class StockValuationExportService {
     const tenantSettings = settingsNested.flat();
 
     const settingMap = new Map(tenantSettings.map(s => [s.itemId, s]));
+
+    await onProgress?.(45, 'Applying active brand, category & search filters...');
 
     // Apply active filter parameters (Brand, Division, Category, Gender, Silhouette, SearchText)
     let activeItems = items;
@@ -474,6 +482,8 @@ export class StockValuationExportService {
 
     const matchedItemIds = pageItems.map(i => i.id);
 
+    await onProgress?.(60, 'Fetching historical stock ledger movements and cost entries...');
+
     // Fetch stock ledger entries in 1,000 item chunks to compute historical WAC safely
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
     const ledgerMap = new Map<string, any[]>();
@@ -507,6 +517,8 @@ export class StockValuationExportService {
         list.push(entry);
       }
     }
+
+    await onProgress?.(80, 'Calculating weighted average costs, opening, sales & closing valuation...');
 
     const itemMetricsMap = new Map<string, ReturnType<typeof this.createEmptyValuationTotals>>();
 

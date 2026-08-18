@@ -156,18 +156,25 @@ export class StockValuationExportProcessor {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
     this.logger.log(`[ValuationPreview ${jobId}] Starting background valuation preview computation`);
     try {
-      await job.progress(10);
+      await job.progress({ percent: 5, message: 'Worker thread active. Connecting to database...' });
       const prisma = (tenantId && tenantDbUrl)
         ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
         : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      await job.progress(30);
-      const data = await this.stockValuationExportService.generateValuationReportDataInternal(prisma, opts);
+      const data = await this.stockValuationExportService.generateValuationReportDataInternal(
+        prisma,
+        {
+          ...opts,
+          onProgress: async (percent: number, message: string) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
 
-      await job.progress(85);
+      await job.progress({ percent: 90, message: 'Compressing report payload & caching valuation preview...' });
       this.stockValuationExportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress(100);
+      await job.progress({ percent: 100, message: 'Stock valuation report computation complete!' });
       this.logger.log(`[ValuationPreview ${jobId}] Successfully generated and saved valuation preview result`);
     } catch (err: any) {
       this.logger.error(`[ValuationPreview ${jobId}] Failed: ${err.message}`, err.stack);

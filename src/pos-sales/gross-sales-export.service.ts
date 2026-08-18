@@ -42,8 +42,10 @@ export class GrossSalesExportService {
 
   async queueExport(opts: QueueGrossSalesExportOptions): Promise<{ jobId: string }> {
     const jobId = uuidv4();
-    const tenantId = this.prisma.getTenantId() ?? '';
-    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const store = PrismaService.asyncLocalStorage.getStore();
+    const tenantId = store?.tenantId ?? this.prisma.getTenantId() ?? '';
+    const companyId = store?.companyId ?? tenantId;
+    const tenantDbUrl = store?.dbUrl ?? this.prisma.getTenantDbUrl() ?? '';
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
     const prefix = opts.reportType === 'return' ? 'gross-sales-return' : 'gross-sales-summary';
 
@@ -64,6 +66,7 @@ export class GrossSalesExportService {
         jobId,
         userId: opts.userId,
         tenantId,
+        companyId,
         tenantDbUrl,
         locationId: opts.locationId,
         startDate: opts.startDate,
