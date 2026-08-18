@@ -69,6 +69,7 @@ export class PurchaseInvoiceService {
           remainingAmount: totalAmount,
           notes: createDto.notes,
           staxEInvoiceNumber: createDto.staxEInvoiceNumber,
+          staxEInvoiceDate: createDto.staxEInvoiceDate ? new Date(createDto.staxEInvoiceDate) : null,
           status: createDto.status || 'DRAFT',
           items: {
             create: resolvedItems.map((item: any) => {
@@ -271,6 +272,10 @@ export class PurchaseInvoiceService {
 
       // If updating items, advanceTaxRate, or discountAmount, recalculate totals
       let updateData: any = { ...updateDto };
+
+      if (updateDto.invoiceDate) updateData.invoiceDate = new Date(updateDto.invoiceDate);
+      if (updateDto.dueDate !== undefined) updateData.dueDate = updateDto.dueDate ? new Date(updateDto.dueDate) : null;
+      if (updateDto.staxEInvoiceDate !== undefined) updateData.staxEInvoiceDate = updateDto.staxEInvoiceDate ? new Date(updateDto.staxEInvoiceDate) : null;
       
       if (updateDto.items || updateDto.advanceTaxRate !== undefined || updateDto.discountAmount !== undefined) {
         const dtoForCalc = {
