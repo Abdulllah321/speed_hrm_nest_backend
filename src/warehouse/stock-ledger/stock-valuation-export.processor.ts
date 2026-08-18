@@ -165,11 +165,17 @@ export class StockValuationExportProcessor {
         prisma,
         {
           ...opts,
+          previewJobId: jobId,
           onProgress: async (percent: number, message: string) => {
             await job.progress({ percent, message });
           },
         },
       );
+
+      if (this.stockValuationExportService.isJobCancelled(jobId)) {
+        this.logger.log(`[ValuationPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        return;
+      }
 
       await job.progress({ percent: 90, message: 'Compressing report payload & caching valuation preview...' });
       this.stockValuationExportService.saveReportPreviewResult(jobId, data);
