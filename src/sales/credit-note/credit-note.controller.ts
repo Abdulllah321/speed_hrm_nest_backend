@@ -1,7 +1,7 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { CreditNoteService } from './credit-note.service';
 
-@Controller('sales/credit-notes')
+@Controller('api/sales/credit-notes')
 export class CreditNoteController {
   constructor(private readonly creditNoteService: CreditNoteService) {}
 

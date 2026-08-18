@@ -39,13 +39,16 @@ export class PurchaseReturnService {
       if (createDto.purchaseInvoiceId) {
         const inv = await this.prisma.purchaseInvoice.findUnique({
           where: { id: createDto.purchaseInvoiceId },
-          select: { grnId: true, landedCostId: true, staxEInvoiceNumber: true },
+          select: { grnId: true, landedCostId: true, staxEInvoiceNumber: true, staxEInvoiceDate: true, invoiceDate: true },
         });
         if (inv) {
           if (!resolvedGrnId) resolvedGrnId = inv.grnId || undefined;
           if (!resolvedLandedCostId) resolvedLandedCostId = inv.landedCostId || undefined;
           if (inv.staxEInvoiceNumber && !createDto.staxEInvoiceNumber) {
             createDto.staxEInvoiceNumber = inv.staxEInvoiceNumber;
+          }
+          if ((inv.staxEInvoiceDate || inv.invoiceDate) && !createDto.returnDate) {
+            createDto.returnDate = (inv.staxEInvoiceDate || inv.invoiceDate)?.toISOString();
           }
         }
       }
@@ -1005,6 +1008,8 @@ export class PurchaseReturnService {
     return invoices.map(inv => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
+      invoiceDate: inv.invoiceDate ? inv.invoiceDate.toISOString().split('T')[0] : null,
+      staxEInvoiceDate: inv.staxEInvoiceDate ? inv.staxEInvoiceDate.toISOString().split('T')[0] : null,
       grn: inv.grn,
       landedCost: inv.landedCost,
       supplier: inv.supplier,

@@ -42,6 +42,7 @@
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
     "import:transfers": "bun scripts/import-transfers.ts",
     "import:transfers:dry": "bun scripts/import-transfers.ts --dry-run",
+    "update:pi-tax-dates": "bun scripts/update-pi-tax-invoice-dates.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {

@@ -3,7 +3,7 @@ import { SalesReturnService } from './sales-return.service';
 import { CreateSalesReturnDto } from './dto/create-sales-return.dto';
 import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
 
-@Controller('sales/sales-returns')
+@Controller('api/sales/sales-returns')
 export class SalesReturnController {
   constructor(private readonly salesReturnService: SalesReturnService) {}
 

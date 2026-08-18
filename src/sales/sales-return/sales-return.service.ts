@@ -8,6 +8,7 @@ import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance
 import { JournalVoucherService } from '../../finance/journal-voucher/journal-voucher.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { generateNextJvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
 
 @Injectable()
 export class SalesReturnService {
@@ -137,7 +138,17 @@ export class SalesReturnService {
         items: {
           include: {
             deliveryChallanItem: true,
-            salesInvoiceItem: true,
+            salesInvoiceItem: {
+              include: {
+                item: {
+                  include: {
+                    size: true,
+                    color: true,
+                    brand: true,
+                  },
+                },
+              },
+            },
             item: {
               include: {
                 size: true,
@@ -151,6 +162,17 @@ export class SalesReturnService {
           include: {
             salesOrder: true,
             deliveryChallan: true,
+            items: {
+              include: {
+                item: {
+                  include: {
+                    size: true,
+                    color: true,
+                    brand: true,
+                  },
+                },
+              },
+            },
           },
         },
         deliveryChallan: {
@@ -376,6 +398,9 @@ export class SalesReturnService {
 
   async getEligibleInvoices() {
     return this.prisma.eRPSalesInvoice.findMany({
+      where: {
+        status: 'POSTED',
+      },
       include: {
         customer: true,
         warehouse: true,
@@ -642,55 +667,197 @@ export class SalesReturnService {
       return;
     }
 
-    // Try finding Sales Return Parent account (60010004 or 40020001 / Sales Return) and Accounts Receivable
-    const parentReturnAccount = await this.prisma.chartOfAccount.findFirst({
-      where: { name: { contains: 'Sales Return', mode: 'insensitive' } },
-    }) || await this.prisma.chartOfAccount.findFirst({
-      where: { code: '60010004' },
-    });
+    const jvDate = new Date();
+    const sequentialJvNo = await generateNextJvNumber(this.prisma, jvDate);
+    const sequentialFolio = await generateNextFolioNumber(this.prisma, jvDate);
 
-    const arParentAccount = await this.prisma.chartOfAccount.findFirst({
-      where: { name: { contains: 'Accounts Receivable', mode: 'insensitive' } },
-    }) || await this.prisma.chartOfAccount.findFirst({
-      where: { code: '12010001' },
-    });
+    const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
-    if (!parentReturnAccount || !arParentAccount) {
-      console.log('Skipping auto JV generation: Sales Return or AR account not configured.');
-      return;
+    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const returnMonth = monthNames[jvDate.getMonth()];
+    const returnYearTwoDigit = jvDate.getFullYear().toString().slice(-2);
+    const periodStr = `M/O ${returnMonth}'${returnYearTwoDigit}, CO`;
+
+    // Helper to resolve parent COA and its tag child C00001
+    const getAccountWithTag = async (parentCode: string, tagCode: string = 'C00001') => {
+      const parent = await this.prisma.chartOfAccount.findFirst({
+        where: { code: parentCode },
+      });
+      if (!parent) {
+        throw new BadRequestException(`Chart of Account with code "${parentCode}" not found.`);
+      }
+      const tag = await this.prisma.chartOfAccount.findFirst({
+        where: {
+          parentId: parent.id,
+          code: tagCode,
+        },
+      });
+      return { parent, tag };
+    };
+
+    const detailsData: any[] = [];
+    const invoiceNo = salesReturn.salesInvoice?.invoiceNo || '';
+    const challanNo = salesReturn.salesInvoice?.deliveryChallan?.challanNo || salesReturn.deliveryChallan?.challanNo || '';
+
+    // Calculate tax rate groups from return items
+    const taxRateGroups: { [taxRate: number]: { grossValueExclTax: number; discountAmount: number; taxableAmount: number; taxAmount: number } } = {};
+
+    for (const returnItem of salesReturn.items) {
+      const originalInvoiceItem = returnItem.salesInvoiceItem;
+      const rate = Number(returnItem.item?.taxRate1 || originalInvoiceItem?.item?.taxRate1 || 18);
+
+      if (!taxRateGroups[rate]) {
+        taxRateGroups[rate] = { grossValueExclTax: 0, discountAmount: 0, taxableAmount: 0, taxAmount: 0 };
+      }
+
+      const returnQty = Number(returnItem.returnQty || 0);
+      const unitPrice = Number(returnItem.unitPrice || originalInvoiceItem?.salePrice || 0);
+
+      // Base margin discount proportion
+      const originalItemQty = Number(originalInvoiceItem?.quantity || 1);
+      const originalItemDiscount = Number(originalInvoiceItem?.discount || 0);
+      const discountPerUnit = originalItemQty > 0 ? (originalItemDiscount / originalItemQty) : 0;
+      const itemDiscount = roundToTwo(discountPerUnit * returnQty);
+
+      // Gross value without sales tax (WOST)
+      const wostUnitPrice = unitPrice / (1 + rate / 100);
+      const grossVal = roundToTwo(wostUnitPrice * returnQty);
+
+      // Taxable amount and Sales tax
+      const taxableAmt = grossVal - itemDiscount;
+      const itemTaxAmt = roundToTwo((taxableAmt * rate) / 100);
+
+      taxRateGroups[rate].grossValueExclTax += grossVal;
+      taxRateGroups[rate].discountAmount += itemDiscount;
+      taxRateGroups[rate].taxableAmount += taxableAmt;
+      taxRateGroups[rate].taxAmount += itemTaxAmt;
     }
 
-    const totalAmount = Number(salesReturn.totalAmount);
-    const invoiceNo = salesReturn.salesInvoice?.invoiceNo || '';
+    // 1. Lines: 40010008 (18%) / 40010009 (25%) WHOLE SALES RETURN (Debit: Gross Value Excl Tax)
+    for (const [rateStr, group] of Object.entries(taxRateGroups)) {
+      const rate = Number(rateStr);
+      const grossVal = roundToTwo(group.grossValueExclTax);
+      if (grossVal > 0) {
+        const returnCode = rate === 25 ? '40010009' : '40010008';
+        const returnAcc = await getAccountWithTag(returnCode, 'C00001');
+        detailsData.push({
+          accountId: returnAcc.parent.id,
+          tagAccountId: returnAcc.tag?.id || null,
+          debit: grossVal,
+          credit: 0,
+          narration: `REC WHOLE SALES ${rate}% ${periodStr}`,
+          refBillNo: invoiceNo,
+          refBillNo2: challanNo,
+          taxType: 'Taxable',
+        });
+      }
+    }
 
-    const details = [
-      {
-        accountId: parentReturnAccount.id,
-        debit: totalAmount,
-        credit: 0,
-        narration: `Sales Return ${salesReturn.returnNumber} against ${invoiceNo}`,
-        refBillNo: invoiceNo,
-        taxType: 'Taxable',
-      },
-      {
-        accountId: arParentAccount.id,
-        debit: 0,
-        credit: totalAmount,
-        narration: `Sales Return ${salesReturn.returnNumber} - Customer Balance Credit`,
-        refBillNo: invoiceNo,
-        taxType: 'Taxable',
-      },
-    ];
-
-    await this.journalVoucherService.create(
-      {
-        jvNo: `TEMP-JV-${Date.now()}`,
-        jvDate: new Date(),
-        description: `Auto-generated JV for Sales Return ${salesReturn.returnNumber}`,
-        status: 'pending',
-        details,
-      },
-      { userId: ctx?.userId },
+    // 2. Line: 31070001 SALES TAX CURRENT ACCOUNT (Debit: Total Sales Tax Amount)
+    const totalTaxAmount = roundToTwo(
+      Object.values(taxRateGroups).reduce((sum, g) => sum + g.taxAmount, 0) || Number(salesReturn.taxAmount || 0)
     );
+    if (totalTaxAmount > 0) {
+      const staxCurAcc = await getAccountWithTag('31070001', 'C00001');
+      detailsData.push({
+        accountId: staxCurAcc.parent.id,
+        tagAccountId: staxCurAcc.tag?.id || null,
+        debit: totalTaxAmount,
+        credit: 0,
+        narration: `REC SALES TAX OUTPUT WHOLE SALES ${periodStr}`,
+        refBillNo: invoiceNo,
+        refBillNo2: challanNo,
+        taxType: 'Taxable',
+      });
+    }
+
+    // 3. Line: 40010014 WHOLE SALES RETURN-CONTROL A/C (Credit: Total Return Value Incl Sales Tax)
+    const totalReturnValueInclTax = roundToTwo(
+      Object.values(taxRateGroups).reduce((sum, g) => sum + (g.taxableAmount + g.taxAmount), 0) || Number(salesReturn.totalAmount)
+    );
+    if (totalReturnValueInclTax > 0) {
+      const controlAcc = await getAccountWithTag('40010014', 'C00001');
+      detailsData.push({
+        accountId: controlAcc.parent.id,
+        tagAccountId: controlAcc.tag?.id || null,
+        debit: 0,
+        credit: totalReturnValueInclTax,
+        narration: `REC WHOLE SALES RETURN ${periodStr}`,
+        refBillNo: invoiceNo,
+        refBillNo2: challanNo,
+        taxType: 'Taxable',
+      });
+    }
+
+    // 4. Lines: 40010011 (18%) / 40010012 (25%) WHOLE SALES DISCOUNT RETURN (Credit: Discount Amount)
+    for (const [rateStr, group] of Object.entries(taxRateGroups)) {
+      const rate = Number(rateStr);
+      const discVal = roundToTwo(group.discountAmount);
+      if (discVal > 0) {
+        const discReturnCode = rate === 25 ? '40010012' : '40010011';
+        const discReturnAcc = await getAccountWithTag(discReturnCode, 'C00001');
+        detailsData.push({
+          accountId: discReturnAcc.parent.id,
+          tagAccountId: discReturnAcc.tag?.id || null,
+          debit: 0,
+          credit: discVal,
+          narration: `REC WHOLE SALES DISCOUNT ${rate}% SALES TAX ${periodStr}`,
+          refBillNo: invoiceNo,
+          refBillNo2: challanNo,
+          taxType: 'Taxable',
+        });
+      }
+    }
+
+    // 5. Line: 40010013 SALES TAX-OUTPUT WHOLE SALES (Credit: Total Sales Tax Amount)
+    if (totalTaxAmount > 0) {
+      const staxOutputAcc = await getAccountWithTag('40010013', 'C00001');
+      detailsData.push({
+        accountId: staxOutputAcc.parent.id,
+        tagAccountId: staxOutputAcc.tag?.id || null,
+        debit: 0,
+        credit: totalTaxAmount,
+        narration: `REC SALES TAX-OUTPUT WHOLE SALES ${periodStr}`,
+        refBillNo: invoiceNo,
+        refBillNo2: challanNo,
+        taxType: 'Taxable',
+      });
+    }
+
+    // Balance check and adjustment for micro-penny rounding if any
+    const totalDebit = roundToTwo(detailsData.reduce((sum, d) => sum + Number(d.debit || 0), 0));
+    const totalCredit = roundToTwo(detailsData.reduce((sum, d) => sum + Number(d.credit || 0), 0));
+    const diff = roundToTwo(totalDebit - totalCredit);
+
+    if (diff !== 0 && detailsData.length > 0) {
+      const controlLine = detailsData.find(d => d.credit > 0);
+      if (controlLine) {
+        controlLine.credit = roundToTwo(controlLine.credit + diff);
+      }
+    }
+
+    // Create Draft Journal Voucher
+    await this.prisma.journalVoucher.create({
+      data: {
+        jvNo: sequentialJvNo,
+        folio: sequentialFolio,
+        jvDate,
+        description: `Auto-generated JV for Wholesale Return ${salesReturn.returnNumber}`,
+        status: 'pending_check',
+        makerId: ctx?.userId,
+        details: {
+          create: detailsData.map(d => ({
+            accountId: d.accountId,
+            tagAccountId: d.tagAccountId,
+            debit: d.debit,
+            credit: d.credit,
+            narration: d.narration,
+            refBillNo: d.refBillNo,
+            refBillNo2: d.refBillNo2,
+            taxType: d.taxType,
+          })),
+        },
+      },
+    });
   }
 }
