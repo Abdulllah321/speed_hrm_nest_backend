@@ -505,8 +505,17 @@ export class StockValuationExportService {
     // Fetch stock ledger entries in 1,000 item chunks to compute historical WAC safely
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
     const ledgerMap = new Map<string, any[]>();
+    const totalChunks = matchedItemChunks.length;
+    let chunkIndex = 0;
 
     for (const chunk of matchedItemChunks) {
+      chunkIndex++;
+      const pct = 60 + Math.floor((chunkIndex / Math.max(1, totalChunks)) * 20);
+      await onProgress?.(
+        pct,
+        `Fetching stock ledger entries for ${matchedItemIds.length} items (Chunk ${chunkIndex} of ${totalChunks})...`,
+      );
+
       const chunkLedgerEntries = await prisma.stockLedger.findMany({
         where: {
           ...(locationId ? { locationId } : {}),
@@ -536,7 +545,7 @@ export class StockValuationExportService {
       }
     }
 
-    await onProgress?.(80, 'Calculating weighted average costs, opening, sales & closing valuation...');
+    await onProgress?.(80, `Calculating weighted average costs, opening, sales & closing valuation for ${matchedItemIds.length} items...`);
 
     const itemMetricsMap = new Map<string, ReturnType<typeof this.createEmptyValuationTotals>>();
 
