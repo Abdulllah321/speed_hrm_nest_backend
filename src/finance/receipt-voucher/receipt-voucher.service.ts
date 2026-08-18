@@ -334,7 +334,6 @@ export class ReceiptVoucherService {
     const { details, invoices: _invoices, ...data } = dto as any;
     const existing = await this.findOne(id);
 
-
     // Only scalar fields that Prisma accepts on update
     const scalarData = {
       ...(data.type !== undefined && { type: data.type }),
@@ -353,10 +352,17 @@ export class ReceiptVoucherService {
       ...(data.taxType !== undefined && { taxType: data.taxType }),
     };
 
-    if (details) {
-      return this.prisma.$transaction(async (prisma) => {
+    return this.prisma.$transaction(async (prisma) => {
+      if (existing.status === 'approved') {
+        await this.unpostReceiptVoucherFromLedger(id, prisma);
+      }
+
+      const targetStatus = data.status || existing.status;
+      let updated: any;
+
+      if (details) {
         await prisma.receiptVoucherDetail.deleteMany({ where: { receiptVoucherId: id } });
-        return prisma.receiptVoucher.update({
+        updated = await prisma.receiptVoucher.update({
           where: { id },
           data: {
             ...scalarData,
@@ -377,20 +383,31 @@ export class ReceiptVoucherService {
           },
           include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
         });
-      });
-    }
+      } else {
+        updated = await prisma.receiptVoucher.update({
+          where: { id },
+          data: scalarData,
+          include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
+        });
+      }
 
-    return this.prisma.receiptVoucher.update({
-      where: { id },
-      data: scalarData,
-      include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
+      if (targetStatus === 'approved') {
+        await this.postReceiptVoucherToLedger(id, prisma);
+      }
+
+      return updated;
     });
   }
 
   async remove(id: string) {
     const existing = await this.findOne(id);
    
-    return this.prisma.receiptVoucher.delete({ where: { id } });
+    return this.prisma.$transaction(async (prisma) => {
+      if (existing.status === 'approved') {
+        await this.unpostReceiptVoucherFromLedger(id, prisma);
+      }
+      return prisma.receiptVoucher.delete({ where: { id } });
+    });
   }
 
   async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
@@ -415,6 +432,10 @@ export class ReceiptVoucherService {
     }
 
     return this.prisma.$transaction(async (prisma) => {
+      if (existing.status === 'approved' && status !== 'approved') {
+        await this.unpostReceiptVoucherFromLedger(id, prisma);
+      }
+
       const updated = await prisma.receiptVoucher.update({
         where: { id },
         data: updateData,
@@ -429,12 +450,57 @@ export class ReceiptVoucherService {
         },
       });
 
-      if (status === 'approved') {
+      if (existing.status !== 'approved' && status === 'approved') {
         await this.postReceiptVoucherToLedger(id, prisma);
       }
 
       return updated;
     });
+  }
+
+  async unapprove(id: string, remarks?: string, ctx?: { userId?: string }) {
+    return this.updateStatus(id, 'pending_check', remarks || 'Unapproved voucher', ctx);
+  }
+
+  private async unpostReceiptVoucherFromLedger(voucherId: string, prisma: any) {
+    const voucher = await prisma.receiptVoucher.findUnique({
+      where: { id: voucherId },
+      include: { details: true },
+    });
+    if (!voucher) return;
+
+    const invoices = await prisma.receiptVoucherToInvoice.findMany({
+      where: { receiptVoucherId: voucherId },
+    });
+
+    // 1. Revert Sales Invoice payment amounts and statuses
+    if (invoices && invoices.length > 0) {
+      for (const inv of invoices) {
+        const si = await prisma.eRPSalesInvoice.findUnique({ where: { id: inv.salesInvoiceId } });
+        if (si) {
+          const newPaid = Math.max(0, Number(si.paidAmount) - Number(inv.receivedAmount));
+          const newBalance = Number(si.grandTotal) - newPaid;
+          let paymentStatus = 'UNPAID';
+          if (newBalance <= 0.01) paymentStatus = 'FULLY_PAID';
+          else if (newPaid > 0) paymentStatus = 'PARTIALLY_PAID';
+
+          const invoiceStatus = newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'POSTED';
+
+          await prisma.eRPSalesInvoice.update({
+            where: { id: inv.salesInvoiceId },
+            data: {
+              paidAmount: newPaid,
+              balanceAmount: Math.max(0, newBalance),
+              paymentStatus,
+              status: invoiceStatus as any,
+            },
+          });
+        }
+      }
+    }
+
+    // 2. Unpost GL transactions
+    await this.accounting.unpostLines('RECEIPT_VOUCHER', voucherId, prisma);
   }
 
   private async postReceiptVoucherToLedger(voucherId: string, prisma: any) {

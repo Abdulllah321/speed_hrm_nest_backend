@@ -99,6 +99,17 @@ export class ReceiptVoucherController {
     return this.receiptVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
   }
 
+  @Patch(':id/unapprove')
+  @Permissions('erp.finance.receipt-voucher.approve')
+  @ApiOperation({ summary: 'Unapprove and unpost receipt voucher' })
+  unapprove(
+    @Param('id') id: string,
+    @Body() body: { remarks?: string },
+    @Req() req: any,
+  ) {
+    return this.receiptVoucherService.unapprove(id, body?.remarks, { userId: req.user?.id });
+  }
+
   @Patch(':id/print')
   @Permissions('erp.finance.receipt-voucher.read')
   @ApiOperation({ summary: 'Mark receipt voucher as printed' })

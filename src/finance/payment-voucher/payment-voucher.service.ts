@@ -347,22 +347,23 @@ export class PaymentVoucherService {
 
   async update(id: string, updatePaymentVoucherDto: UpdatePaymentVoucherDto) {
     const { details, ...data } = updatePaymentVoucherDto;
-
     const existing = await this.findOne(id);
-  
 
-    if (details) {
-      const totalDebit = details.reduce(
-        (sum, item) => sum + Number(item.debit),
-        0,
-      );
+    return this.prisma.$transaction(async (prisma) => {
+      // If previously approved, unpost GL entries, supplier ledger, and invoice payments first
+      if (existing.status === 'approved') {
+        await this.unpostPaymentVoucherFromLedger(id, prisma);
+      }
 
-      return this.prisma.$transaction(async (prisma) => {
+      const targetStatus = data.status || existing.status;
+      let updated: any;
+
+      if (details) {
         await prisma.paymentVoucherDetail.deleteMany({
           where: { paymentVoucherId: id },
         });
 
-        return prisma.paymentVoucher.update({
+        updated = await prisma.paymentVoucher.update({
           where: { id },
           data: {
             type: data.type,
@@ -401,40 +402,51 @@ export class PaymentVoucherService {
             supplier: true,
           },
         });
-      });
-    }
+      } else {
+        updated = await prisma.paymentVoucher.update({
+          where: { id },
+          data: {
+            type: data.type,
+            pvNo: data.pvNo,
+            pvDate: data.pvDate,
+            refBillNo: data.refBillNo,
+            billDate: data.billDate,
+            chequeNo: data.chequeNo,
+            chequeDate: data.chequeDate,
+            creditAccountId: data.creditAccountId,
+            supplierId: data.supplierId,
+            creditAmount: data.creditAmount,
+            isAdvance: data.isAdvance,
+            taxType: data.taxType,
+            description: data.description,
+            status: data.status,
+          },
+          include: {
+            details: { include: { account: true, tagAccount: true } },
+            creditAccount: true,
+            supplier: true,
+          },
+        });
+      }
 
-    return this.prisma.paymentVoucher.update({
-      where: { id },
-      data: {
-        type: data.type,
-        pvNo: data.pvNo,
-        pvDate: data.pvDate,
-        refBillNo: data.refBillNo,
-        billDate: data.billDate,
-        chequeNo: data.chequeNo,
-        chequeDate: data.chequeDate,
-        creditAccountId: data.creditAccountId,
-        supplierId: data.supplierId,
-        creditAmount: data.creditAmount,
-        isAdvance: data.isAdvance,
-        taxType: data.taxType,
-        description: data.description,
-        status: data.status,
-      },
-      include: {
-        details: { include: { account: true, tagAccount: true } },
-        creditAccount: true,
-        supplier: true,
-      },
+      if (targetStatus === 'approved') {
+        await this.postPaymentVoucherToLedger(id, prisma);
+      }
+
+      return updated;
     });
   }
 
   async remove(id: string) {
     const existing = await this.findOne(id);
    
-    return this.prisma.paymentVoucher.delete({
-      where: { id },
+    return this.prisma.$transaction(async (prisma) => {
+      if (existing.status === 'approved') {
+        await this.unpostPaymentVoucherFromLedger(id, prisma);
+      }
+      return prisma.paymentVoucher.delete({
+        where: { id },
+      });
     });
   }
 
@@ -1040,6 +1052,111 @@ export class PaymentVoucherService {
     });
   }
 
+  private async unpostPaymentVoucherFromLedger(voucherId: string, prisma: any) {
+    const voucher = await prisma.paymentVoucher.findUnique({
+      where: { id: voucherId },
+      include: { details: true },
+    });
+    if (!voucher) return;
+
+    const existingTx = await prisma.accountTransaction.findFirst({
+      where: {
+        sourceId: voucherId,
+        sourceType: { in: ['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'] },
+      },
+      select: { id: true },
+    });
+
+    const details = voucher.details;
+    const totalDebit = details.reduce((sum: number, item: any) => sum + Number(item.debit || 0), 0);
+
+    const invoices = await prisma.paymentVoucherToInvoice.findMany({
+      where: { paymentVoucherId: voucherId },
+    });
+
+    const advanceApplications = await prisma.advanceApplication.findMany({
+      where: { appliedInVoucherId: voucherId },
+    });
+
+    // 1. Revert Purchase Invoice payment amounts and statuses
+    if (invoices && invoices.length > 0) {
+      for (const invoicePayment of invoices) {
+        const invoice = await prisma.purchaseInvoice.findUnique({
+          where: { id: invoicePayment.purchaseInvoiceId },
+        });
+        if (invoice) {
+          const newPaidAmount = Math.max(0, Number(invoice.paidAmount) - Number(invoicePayment.paidAmount));
+          const newRemainingAmount = Number(invoice.totalAmount) - newPaidAmount - Number(invoice.returnAmount || 0);
+          let paymentStatus = 'UNPAID';
+          if (newRemainingAmount <= 0.01) paymentStatus = 'FULLY_PAID';
+          else if (newPaidAmount > 0) paymentStatus = 'PARTIALLY_PAID';
+
+          await prisma.purchaseInvoice.update({
+            where: { id: invoicePayment.purchaseInvoiceId },
+            data: {
+              paidAmount: newPaidAmount,
+              remainingAmount: Math.max(0, newRemainingAmount),
+              paymentStatus: paymentStatus as any,
+            },
+          });
+        }
+      }
+    }
+
+    // 2. Revert Advance Applications (decrement advanceApplied on source advance PVs)
+    if (advanceApplications && advanceApplications.length > 0) {
+      for (const app of advanceApplications) {
+        await prisma.paymentVoucher.update({
+          where: { id: app.sourceAdvanceId },
+          data: { advanceApplied: { decrement: Number(app.appliedAmount) } },
+        });
+      }
+    }
+
+    // 3. Revert Supplier Ledger & Supplier Balances
+    if (voucher.supplierId) {
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: voucher.supplierId },
+        select: { currentBalance: true, advanceBalance: true },
+      });
+      if (supplier) {
+        let runningBalance = Number(supplier.currentBalance);
+        let runningAdvance = Number(supplier.advanceBalance);
+
+        if (voucher.isAdvance) {
+          runningAdvance = Math.max(0, runningAdvance - totalDebit);
+        } else {
+          runningBalance += totalDebit;
+          for (const app of advanceApplications) {
+            runningBalance += Number(app.appliedAmount);
+            runningAdvance += Number(app.appliedAmount);
+          }
+        }
+
+        // Delete supplier ledger entries created by this voucher
+        await prisma.supplierLedger.deleteMany({
+          where: {
+            supplierId: voucher.supplierId,
+            sourceId: voucher.id,
+          },
+        });
+
+        await prisma.supplier.update({
+          where: { id: voucher.supplierId },
+          data: {
+            currentBalance: runningBalance,
+            advanceBalance: runningAdvance,
+          },
+        });
+      }
+    }
+
+    // 4. Unpost GL transactions
+    if (existingTx) {
+      await this.accounting.unpostLines(['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'], voucherId, prisma);
+    }
+  }
+
   async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
     const existing = await this.findOne(id);
 
@@ -1062,6 +1179,11 @@ export class PaymentVoucherService {
     }
 
     return this.prisma.$transaction(async (prisma) => {
+      // If currently approved and moving to a non-approved status, unpost everything
+      if (existing.status === 'approved' && status !== 'approved') {
+        await this.unpostPaymentVoucherFromLedger(id, prisma);
+      }
+
       const updated = await prisma.paymentVoucher.update({
         where: { id },
         data: updateData,
@@ -1072,12 +1194,16 @@ export class PaymentVoucherService {
         },
       });
 
-      if (status === 'approved') {
+      if (existing.status !== 'approved' && status === 'approved') {
         await this.postPaymentVoucherToLedger(id, prisma);
       }
 
       return updated;
     });
+  }
+
+  async unapprove(id: string, remarks?: string, ctx?: { userId?: string }) {
+    return this.updateStatus(id, 'pending_check', remarks || 'Unapproved voucher', ctx);
   }
 
   async markAsPrinted(id: string, ctx?: { userId?: string }) {
