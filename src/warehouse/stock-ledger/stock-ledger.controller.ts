@@ -10,6 +10,8 @@ import { OverallAvailableReservedStockExportService } from './overall-available-
 import { MovementType } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Controller('api/stock-ledger')
 export class StockLedgerController {
   constructor(
@@ -19,6 +21,7 @@ export class StockLedgerController {
     private readonly stockTransactionDetailExportService: StockTransactionDetailExportService,
     private readonly availableStockSummaryExportService: AvailableStockSummaryExportService,
     private readonly overallAvailableReservedStockExportService: OverallAvailableReservedStockExportService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) { }
 
   @Get('levels')
@@ -750,5 +753,42 @@ export class StockLedgerController {
       const status = err?.status ?? 404;
       res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
     }
+  }
+
+  @Post('fiscal-year-close/execute')
+  @UseGuards(JwtAuthGuard)
+  async executeFiscalYearClose(
+    @Req() req: any,
+    @Body() body: { fiscalYearName?: string; closingDate?: string; skipLedgerEntries?: boolean },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const now = new Date();
+    const prevYear = now.getFullYear() - 1;
+    const closingYear = now.getFullYear();
+    const fiscalYearName = body.fiscalYearName || `FY_${prevYear}_${closingYear}`;
+    const closingDate = body.closingDate ? new Date(body.closingDate) : new Date(closingYear, 5, 30, 23, 59, 59);
+
+    const result = await this.fiscalClosingService.executeYearEndClose(req.prisma || this.stockLedgerService.getPrismaClient(), {
+      fiscalYearName,
+      closingDate,
+      userId,
+      skipLedgerEntries: !!body.skipLedgerEntries,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('fiscal-year-close/latest-snapshot')
+  @UseGuards(JwtAuthGuard)
+  async getLatestFiscalSnapshot(@Req() req: any) {
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(req.prisma || this.stockLedgerService.getPrismaClient());
+    return { status: true, data: { snapshotDate } };
+  }
+
+  @Post('fiscal-year-close/backfill')
+  @UseGuards(JwtAuthGuard)
+  async backfillFiscalSnapshot(@Req() req: any) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.fiscalClosingService.backfillInitialFiscalPeriod(req.prisma || this.stockLedgerService.getPrismaClient(), userId);
+    return { status: true, data: result };
   }
 }
