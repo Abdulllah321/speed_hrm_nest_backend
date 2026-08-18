@@ -28,6 +28,7 @@ export interface OverallAvailableReservedStockExportJobData {
   showArticle?: boolean;
   showVariant?: boolean;
   includeCosting?: boolean;
+  previewJobId?: string;
 }
 
 @Processor('overall-available-reserved-stock-export')
@@ -39,6 +40,43 @@ export class OverallAvailableReservedStockExportProcessor {
     private readonly exportHistoryService: ExportHistoryService,
     private readonly reportService: OverallAvailableReservedStockExportService,
   ) {}
+
+  @Process('generate-report-preview')
+  async handleReportPreview(job: Job<any>): Promise<void> {
+    const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+    this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
+    try {
+      await job.progress({ percent: 5, message: 'Worker thread started. Connecting to database...' });
+      const prisma = (tenantId && tenantDbUrl)
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+      const data = await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
+        prisma,
+        {
+          ...opts,
+          previewJobId: jobId,
+          onProgress: async (percent: number, message: string) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      if (this.reportService.isJobCancelled(jobId)) {
+        this.logger.log(`[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        return;
+      }
+
+      await job.progress({ percent: 90, message: 'Compressing report payload & caching result...' });
+      this.reportService.saveReportPreviewResult(jobId, data);
+
+      await job.progress({ percent: 100, message: 'Report computation complete!' });
+      this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<OverallAvailableReservedStockExportJobData>): Promise<void> {
@@ -61,8 +99,16 @@ export class OverallAvailableReservedStockExportProcessor {
     try {
       await job.progress(10);
 
-      const { root, grandTotals, warehouses, stockLocations } =
-        await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
+      let reportData: any = null;
+      if ((job.data as any).previewJobId) {
+        reportData = this.reportService.getReportPreviewResult((job.data as any).previewJobId);
+        if (reportData) {
+          this.logger.log(`[OverallAvailableReservedStockExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`);
+        }
+      }
+
+      if (!reportData) {
+        reportData = await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
           prisma,
           {
             locationId,
@@ -76,8 +122,12 @@ export class OverallAvailableReservedStockExportProcessor {
             showSilhouette,
             showArticle,
             showVariant,
-          }
+            includeCosting,
+          },
         );
+      }
+
+      const { root, grandTotals, warehouses, stockLocations } = reportData;
 
       await job.progress(50);
 

@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
@@ -23,17 +24,198 @@ export interface QueueOverallAvailableReservedStockExportOptions {
   showArticle?: boolean;
   showVariant?: boolean;
   includeCosting?: boolean;
+  previewJobId?: string;
 }
 
 @Injectable()
 export class OverallAvailableReservedStockExportService {
   private readonly logger = new Logger(OverallAvailableReservedStockExportService.name);
+  private readonly cancelledPreviewJobIds = new Set<string>();
 
   constructor(
     @InjectQueue('overall-available-reserved-stock-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
   ) {}
+
+  isJobCancelled(jobId?: string): boolean {
+    if (!jobId) return false;
+    return this.cancelledPreviewJobIds.has(jobId);
+  }
+
+  cancelReportPreview(jobId: string): void {
+    if (jobId) {
+      this.cancelledPreviewJobIds.add(jobId);
+    }
+  }
+
+  async queueReportPreview(opts: {
+    userId: string;
+    locationId?: string;
+    warehouseId?: string;
+    asOfDate?: string;
+    summaryOnly?: boolean;
+    showBrand?: boolean;
+    showDivision?: boolean;
+    showCategory?: boolean;
+    showGender?: boolean;
+    showSilhouette?: boolean;
+    showArticle?: boolean;
+    showVariant?: boolean;
+    includeCosting?: boolean;
+  }): Promise<{ jobId: string; queuePosition: number; waitingCount: number }> {
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    // Cancel any waiting or active preview jobs previously queued by this user
+    if (opts.userId) {
+      try {
+        const [waitingJobs, activeJobs] = await Promise.all([
+          this.exportQueue.getWaiting(),
+          this.exportQueue.getActive(),
+        ]);
+
+        for (const wJob of waitingJobs) {
+          if (
+            wJob.name === 'generate-report-preview' &&
+            wJob.data?.userId === opts.userId
+          ) {
+            this.logger.log(`Pruning superseded waiting preview job ${wJob.id} for user ${opts.userId}`);
+            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            await wJob.remove();
+          }
+        }
+
+        for (const aJob of activeJobs) {
+          if (
+            aJob.name === 'generate-report-preview' &&
+            aJob.data?.userId === opts.userId
+          ) {
+            const activeJobId = aJob.data?.jobId;
+            this.logger.log(`Cancelling active running preview job ${activeJobId} for user ${opts.userId}`);
+            if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not prune preview jobs for user ${opts.userId}: ${err.message}`);
+      }
+    }
+
+    await this.exportQueue.add(
+      'generate-report-preview',
+      {
+        jobId,
+        userId: opts.userId,
+        tenantId,
+        tenantDbUrl,
+        locationId: opts.locationId,
+        warehouseId: opts.warehouseId,
+        asOfDate: opts.asOfDate,
+        summaryOnly: !!opts.summaryOnly,
+        showBrand: opts.showBrand,
+        showDivision: opts.showDivision,
+        showCategory: opts.showCategory,
+        showGender: opts.showGender,
+        showSilhouette: opts.showSilhouette,
+        showArticle: opts.showArticle,
+        showVariant: opts.showVariant,
+        includeCosting: !!opts.includeCosting,
+      },
+      {
+        jobId,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+
+    const [waiting, active] = await Promise.all([
+      this.exportQueue.getWaiting(),
+      this.exportQueue.getActive(),
+    ]);
+
+    const allJobs = [...active, ...waiting];
+    const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
+    const queuePosition = idx >= 0 ? idx + 1 : 1;
+
+    return { jobId, queuePosition, waitingCount: waiting.length };
+  }
+
+  async getJobQueueStatus(jobId: string): Promise<{
+    state: string;
+    progress: number;
+    message: string;
+    queuePosition: number;
+    waitingCount: number;
+    failedReason?: string;
+  }> {
+    const job = await this.exportQueue.getJob(jobId);
+    if (!job) {
+      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+    }
+
+    const state = await job.getState();
+    const progressRaw = job.progress();
+    let progress = 0;
+    let message = '';
+
+    if (typeof progressRaw === 'number') {
+      progress = progressRaw;
+    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
+      progress = (progressRaw as any).percent || 0;
+      message = (progressRaw as any).message || '';
+    }
+
+    let queuePosition = 0;
+    let waitingCount = 0;
+
+    if (state === 'waiting' || state === 'delayed') {
+      const [waiting, active] = await Promise.all([
+        this.exportQueue.getWaiting(),
+        this.exportQueue.getActive(),
+      ]);
+      waitingCount = waiting.length;
+      const allJobs = [...active, ...waiting];
+      const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
+      queuePosition = idx >= 0 ? idx + 1 : 1;
+    }
+
+    return {
+      state,
+      progress,
+      message,
+      queuePosition,
+      waitingCount,
+      failedReason: job.failedReason,
+    };
+  }
+
+  saveReportPreviewResult(jobId: string, data: any): void {
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    fs.mkdirSync(previewDir, { recursive: true });
+    const jsonStr = JSON.stringify(data);
+    const gzipped = zlib.gzipSync(jsonStr);
+    const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
+    fs.writeFileSync(filePath, gzipped);
+
+    // Auto cleanup temp file after 1 hour
+    setTimeout(() => {
+      if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+      }
+    }, 60 * 60 * 1000);
+  }
+
+  getReportPreviewResult(jobId: string): any {
+    const filePath = path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const gzipped = fs.readFileSync(filePath);
+    const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
+    return JSON.parse(jsonStr);
+  }
 
   async queueExport(opts: QueueOverallAvailableReservedStockExportOptions): Promise<{ jobId: string }> {
     const jobId = uuidv4();
@@ -71,6 +253,7 @@ export class OverallAvailableReservedStockExportService {
         showArticle: opts.showArticle,
         showVariant: opts.showVariant,
         includeCosting: !!opts.includeCosting,
+        previewJobId: opts.previewJobId,
       },
       {
         jobId,
@@ -155,6 +338,8 @@ export class OverallAvailableReservedStockExportService {
     showArticle?: boolean;
     showVariant?: boolean;
     includeCosting?: boolean;
+    previewJobId?: string;
+    isAborted?: () => boolean;
   }) {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -178,6 +363,9 @@ export class OverallAvailableReservedStockExportService {
       showArticle?: boolean;
       showVariant?: boolean;
       includeCosting?: boolean;
+      previewJobId?: string;
+      isAborted?: () => boolean;
+      onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ) {
     const {
@@ -192,7 +380,17 @@ export class OverallAvailableReservedStockExportService {
       showSilhouette,
       showArticle,
       showVariant,
+      previewJobId,
+      isAborted,
+      onProgress,
     } = opts;
+
+    const checkCancelled = () => isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId));
+
+    if (checkCancelled()) {
+      this.logger.log(`[ReportPreview ${previewJobId}] Computation aborted early as job was cancelled by user.`);
+      return { root: [], grandTotals: { totalQty: 0, totalReserved: 0, totalAvailable: 0, totalCostValue: 0 }, items: [], itemMetricsMap: new Map(), flatItemsList: [], stockLocationsList: [], warehousesList: [] };
+    }
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     let locationWhere: any;
