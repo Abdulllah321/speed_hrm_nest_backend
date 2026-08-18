@@ -122,6 +122,11 @@ export class CreatePurchaseReturnDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  staxEInvoiceDate?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   returnDate?: string;
 
   @ApiProperty({ required: false })
