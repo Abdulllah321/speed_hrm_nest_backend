@@ -68,6 +68,24 @@ export class StockValuationExportService {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
+    // Remove any waiting preview jobs previously queued by this user to prevent queue buildup
+    if (opts.userId) {
+      try {
+        const waitingJobs = await this.exportQueue.getWaiting();
+        for (const wJob of waitingJobs) {
+          if (
+            wJob.name === 'generate-valuation-preview' &&
+            wJob.data?.userId === opts.userId
+          ) {
+            this.logger.log(`Pruning superseded valuation preview job ${wJob.id} for user ${opts.userId}`);
+            await wJob.remove();
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not prune waiting valuation preview jobs for user ${opts.userId}: ${err.message}`);
+      }
+    }
+
     await this.exportQueue.add(
       'generate-valuation-preview',
       {

@@ -60,6 +60,24 @@ export class AvailableStockSummaryExportService {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
+    // Remove any waiting preview jobs previously queued by this user to prevent queue buildup
+    if (opts.userId) {
+      try {
+        const waitingJobs = await this.exportQueue.getWaiting();
+        for (const wJob of waitingJobs) {
+          if (
+            wJob.name === 'generate-report-preview' &&
+            wJob.data?.userId === opts.userId
+          ) {
+            this.logger.log(`Pruning superseded available stock preview job ${wJob.id} for user ${opts.userId}`);
+            await wJob.remove();
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not prune waiting available stock preview jobs for user ${opts.userId}: ${err.message}`);
+      }
+    }
+
     await this.exportQueue.add(
       'generate-report-preview',
       {
