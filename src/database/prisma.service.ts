@@ -127,40 +127,51 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
 
   /**
    * Retrieves or instantiates a unique Prisma Client for a given tenant company
+  /**
+   * Static method to retrieve or create dynamic tenant PrismaClient instance with pool pooling
    */
-  getTenantClient(companyId: string, dbUrl: string): PrismaClient {
+  static getTenantClient(companyId: string, dbUrl: string): PrismaClient {
+    if (!companyId || !dbUrl) {
+      throw new Error('companyId and dbUrl are required for tenant client creation');
+    }
+
     let client = PrismaService.clientsPool.get(companyId);
 
     if (!client) {
-      this.logger.log(
+      const logger = new Logger('PrismaService');
+      logger.log(
         `Creating new connection pool and PrismaClient for tenant company: ${companyId}`,
       );
 
       const pool = new Pool({
         connectionString: dbUrl,
-        max: 10, // Max 10 connections per tenant pool (highly efficient and lightweight)
+        max: 20, // Max 20 connections per tenant pool
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        connectionTimeoutMillis: 30000, // 30 second connection timeout to prevent rapid pool exhaustion
       });
 
       pool.on('error', (err) => {
-        this.logger.error(`Pool error for tenant company ${companyId}:`, err);
+        logger.error(`Pool error for tenant company ${companyId}:`, err);
       });
 
       const adapter = new PrismaPg(pool);
 
-      // Create instance ONCE per company context.
       client = new PrismaClient({
         adapter: adapter as any,
       });
 
-      // Track pool on the client for safe teardown
       (client as any)._pgPool = pool;
-
       PrismaService.clientsPool.set(companyId, client);
     }
 
     return client;
+  }
+
+  /**
+   * Dynamic tenant client resolver - delegates to static method
+   */
+  getTenantClient(companyId: string, dbUrl: string): PrismaClient {
+    return PrismaService.getTenantClient(companyId, dbUrl);
   }
 
   /**

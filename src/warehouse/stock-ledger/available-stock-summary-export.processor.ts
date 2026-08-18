@@ -60,16 +60,25 @@ export class AvailableStockSummaryExportProcessor {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
     this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
     try {
-      await job.progress(10);
-      const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+      await job.progress({ percent: 5, message: 'Worker thread started. Connecting to database...' });
+      const prisma = (tenantId && tenantDbUrl)
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      await job.progress(30);
-      const data = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(prisma, opts);
+      const data = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
+        prisma,
+        {
+          ...opts,
+          onProgress: async (percent: number, message: string) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
 
-      await job.progress(85);
+      await job.progress({ percent: 90, message: 'Compressing report payload & caching result...' });
       this.availableStockSummaryService.saveReportPreviewResult(jobId, data);
 
-      await job.progress(100);
+      await job.progress({ percent: 100, message: 'Report computation complete!' });
       this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
     } catch (err: any) {
       this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
@@ -86,7 +95,9 @@ export class AvailableStockSummaryExportProcessor {
     } = job.data;
     this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}, mode: ${reportType || 'merged'}) export for user ${userId}`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';

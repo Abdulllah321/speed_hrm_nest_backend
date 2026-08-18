@@ -7,6 +7,7 @@ import * as zlib from 'zlib';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
+import { PrismaClient } from '@prisma/client';
 import { chunkArray } from '../../common/utils/chunk.util';
 
 export interface QueueStockValuationExportOptions {
@@ -115,17 +116,27 @@ export class StockValuationExportService {
   async getJobQueueStatus(jobId: string): Promise<{
     state: string;
     progress: number;
+    message: string;
     queuePosition: number;
     waitingCount: number;
     failedReason?: string;
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { state: 'unknown', progress: 0, queuePosition: 0, waitingCount: 0 };
+      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
     }
 
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progressRaw = job.progress();
+    let progress = 0;
+    let message = '';
+
+    if (typeof progressRaw === 'number') {
+      progress = progressRaw;
+    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
+      progress = (progressRaw as any).percent || 0;
+      message = (progressRaw as any).message || '';
+    }
 
     let queuePosition = 0;
     let waitingCount = 0;
@@ -144,6 +155,7 @@ export class StockValuationExportService {
     return {
       state,
       progress,
+      message,
       queuePosition,
       waitingCount,
       failedReason: job.failedReason,
@@ -315,7 +327,7 @@ export class StockValuationExportService {
 
   // Core valuation logic shared between the controller preview and background processor
   async generateValuationReportDataInternal(
-    prisma: PrismaService,
+    prisma: PrismaClient | PrismaService,
     opts: {
       locationId?: string;
       startDate?: string;
