@@ -193,7 +193,20 @@ export class AvailableStockSummaryExportService {
   saveReportPreviewResult(jobId: string, data: any): void {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     fs.mkdirSync(previewDir, { recursive: true });
-    const jsonStr = JSON.stringify(data);
+
+    let serializableItemMetricsMap: Record<string, any> | undefined;
+    if (data?.itemMetricsMap instanceof Map) {
+      serializableItemMetricsMap = Object.fromEntries(data.itemMetricsMap);
+    } else if (typeof data?.itemMetricsMap === 'object' && data?.itemMetricsMap !== null) {
+      serializableItemMetricsMap = data.itemMetricsMap;
+    }
+
+    const payloadToSerialize = {
+      ...data,
+      itemMetricsMap: serializableItemMetricsMap,
+    };
+
+    const jsonStr = JSON.stringify(payloadToSerialize);
     const gzipped = zlib.gzipSync(jsonStr);
     const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
     fs.writeFileSync(filePath, gzipped);
@@ -213,7 +226,11 @@ export class AvailableStockSummaryExportService {
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
-    return JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.itemMetricsMap && !(parsed.itemMetricsMap instanceof Map)) {
+      parsed.itemMetricsMap = new Map(Object.entries(parsed.itemMetricsMap));
+    }
+    return parsed;
   }
 
   async queueExport(opts: QueueAvailableStockSummaryExportOptions): Promise<{ jobId: string }> {
