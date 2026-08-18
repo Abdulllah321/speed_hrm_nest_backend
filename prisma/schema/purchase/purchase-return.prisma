@@ -15,6 +15,7 @@ model PurchaseReturn {
   totalAmount  Decimal   @default(0) @map("total_amount") @db.Decimal(15, 2)
   notes        String?
   staxEInvoiceNumber String? @map("stax_e_invoice_number")
+  staxEInvoiceDate   DateTime? @map("stax_e_invoice_date")
   seasonId           String? @map("season_id")
   companyGstNumber   String? @map("company_gst_number")
   supplierGstNumber  String? @map("supplier_gst_number")

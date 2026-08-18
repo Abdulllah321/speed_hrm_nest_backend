@@ -96,6 +96,11 @@ export class CreatePurchaseInvoiceDto {
   staxEInvoiceNumber?: string;
 
   @IsOptional()
+  @IsDateString()
+  @Transform(({ value }) => value === '' ? undefined : value)
+  staxEInvoiceDate?: string;
+
+  @IsOptional()
   @IsString()
   @IsIn(['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'])
   status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'CANCELLED';

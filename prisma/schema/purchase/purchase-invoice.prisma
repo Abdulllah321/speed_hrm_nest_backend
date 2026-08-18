@@ -21,6 +21,7 @@ model PurchaseInvoice {
   invoiceType     String                    @default("GRN_BASED") @map("invoice_type")
   notes           String?
   staxEInvoiceNumber String?                    @map("stax_e_invoice_number")
+  staxEInvoiceDate   DateTime?                 @map("stax_e_invoice_date")
   createdAt       DateTime                  @default(now()) @map("created_at")
   updatedAt       DateTime                  @updatedAt @map("updated_at")
   items           PurchaseInvoiceItem[]
