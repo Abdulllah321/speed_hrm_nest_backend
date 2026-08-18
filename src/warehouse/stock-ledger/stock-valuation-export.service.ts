@@ -34,6 +34,8 @@ export interface QueueStockValuationExportOptions {
   previewJobId?: string;
 }
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Injectable()
 export class StockValuationExportService {
   private readonly logger = new Logger(StockValuationExportService.name);
@@ -43,6 +45,7 @@ export class StockValuationExportService {
     @InjectQueue('stock-valuation-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) {}
 
   isJobCancelled(jobId?: string): boolean {
@@ -436,6 +439,10 @@ export class StockValuationExportService {
     const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
+    // Resolve nearest Fiscal Opening Snapshot date to prune scanning closed historical fiscal years
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
+
     // Discover all distinct items from the StockLedger (location-agnostic when no locationId is provided)
     const ledgerItems = await prisma.stockLedger.findMany({
       where: {
@@ -559,7 +566,10 @@ export class StockValuationExportService {
         where: {
           ...(locationId ? { locationId } : {}),
           itemId: { in: chunk },
-          createdAt: { lte: endDate },
+          createdAt: {
+            gte: queryStartDate,
+            lte: endDate,
+          },
         },
         select: {
           id: true,
@@ -630,6 +640,13 @@ export class StockValuationExportService {
           entryCost = runningWac;
         }
         const isBeforePeriod = entry.createdAt < startDate;
+        const ref = entry.referenceType || '';
+        const isFiscalYearOpening = ref === 'FISCAL_YEAR_OPENING';
+
+        // Skip mid-range automated Fiscal Year Opening snapshots to prevent double counting when querying across fiscal years
+        if (isFiscalYearOpening && !isBeforePeriod && queryStartDate < entry.createdAt && startDate < entry.createdAt) {
+          continue;
+        }
 
         if (
           entry.movementType === 'INBOUND' ||

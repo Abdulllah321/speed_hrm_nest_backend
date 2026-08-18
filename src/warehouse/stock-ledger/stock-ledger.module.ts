@@ -18,6 +18,9 @@ import { NotificationsModule } from '../../notifications/notifications.module';
 import { ExportHistoryModule } from '../export-history/export-history.module';
 import { UploadModule } from '../../upload/upload.module';
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
+
 @Module({
   imports: [
     PrismaModule,
@@ -47,6 +50,8 @@ import { UploadModule } from '../../upload/upload.module';
     AvailableStockSummaryExportProcessor,
     OverallAvailableReservedStockExportService,
     OverallAvailableReservedStockExportProcessor,
+    FiscalYearClosingService,
+    FiscalYearClosingCron,
   ],
   exports: [
     StockLedgerService,
@@ -55,6 +60,7 @@ import { UploadModule } from '../../upload/upload.module';
     StockTransactionDetailExportService,
     AvailableStockSummaryExportService,
     OverallAvailableReservedStockExportService,
+    FiscalYearClosingService,
   ],
 })
 export class StockLedgerModule {}
