@@ -65,6 +65,10 @@ export class PayrollService {
           subDepartmentId: true,
           designationId: true,
           employeeGradeId: true,
+          employmentStatusId: true,
+          employmentStatus: {
+            select: { id: true, status: true },
+          },
           workingHoursPolicyId: true,
           leavesPolicyId: true,
           socialSecurityInstitutionId: true,
@@ -128,6 +132,7 @@ export class PayrollService {
       rebateNatures,
       allHolidays,
       allTaxSlabs,
+      employeeStatuses,
       policyAssignments,
     ] = await Promise.all([
       this.prisma.salaryBreakup.findMany({ where: { status: 'active' } }),
@@ -260,6 +265,7 @@ export class PayrollService {
       this.prisma.rebateNature.findMany(),
       this.prisma.holiday.findMany({ where: { status: 'active' } }),
       this.prisma.taxSlab.findMany({ where: { status: 'active' } }),
+      this.prisma.employeeStatus.findMany({ where: { isDeleted: false } }),
       this.prisma.workingHoursPolicyAssignment.findMany({
         where: {
           employeeId: { in: ids },
@@ -285,10 +291,18 @@ export class PayrollService {
     const deductionHeadMap = new Map(deductionHeads.map((h) => [h.id, h]));
     const bonusTypeMap = new Map(bonusTypes.map((t) => [t.id, t]));
     const rebateNatureMap = new Map(rebateNatures.map((n) => [n.id, n]));
+    const employeeStatusMap = new Map(
+      (employeeStatuses as any[]).map((s) => [s.id, s]),
+    );
 
     // 3. Map relations to employees to create enriched employee objects
     const enrichedEmployees = employees.map((emp) => ({
       ...emp,
+      employmentStatus:
+        emp.employmentStatus ||
+        (emp.employmentStatusId
+          ? employeeStatusMap.get(emp.employmentStatusId)
+          : null),
       socialSecurityInstitution: emp.socialSecurityInstitutionId
         ? ssInstitutionMap.get(emp.socialSecurityInstitutionId)
         : null,
@@ -834,16 +848,38 @@ export class PayrollService {
         });
       }
       
-      const { taxDeduction, taxBreakup } = await this.calculateTaxAnnualized(
-        employee.id,
-        allTaxableComponents,
-        emp.rebates || [],
-        allTaxSlabs,
-        salaryFraction,
-        normalizedMonth,
-        normalizedYear,
-        previousPayrolls,
-      );
+      // Check if employee has Internship / Intern status (Zero Tax)
+      const empStatusName = String(
+        emp.employmentStatus?.status ||
+        employee.employmentStatus?.status ||
+        ''
+      ).toLowerCase();
+      const isIntern = empStatusName.includes('intern');
+
+      let taxDeduction = new Decimal(0);
+      let taxBreakup: any = {
+        isTaxExempt: isIntern,
+        reason: isIntern ? 'Internship / Tax Exempt Status' : undefined,
+        currentMonthGross: adjustedTaxablePackageAmount.toNumber(),
+        totalAnnualIncome: 0,
+        annualTax: 0,
+        monthlyTax: 0,
+      };
+
+      if (!isIntern) {
+        const taxResult = await this.calculateTaxAnnualized(
+          employee.id,
+          allTaxableComponents,
+          emp.rebates || [],
+          allTaxSlabs,
+          salaryFraction,
+          normalizedMonth,
+          normalizedYear,
+          previousPayrolls,
+        );
+        taxDeduction = taxResult.taxDeduction;
+        taxBreakup = taxResult.taxBreakup;
+      }
 
       // G. Calculate EOBI & PF
       // PF and EOBI should only be calculated from salary components marked as deductible
@@ -5157,6 +5193,7 @@ export class PayrollService {
             include: {
               location: true,
               department: true,
+              employmentStatus: true,
             },
           },
         },
@@ -5350,6 +5387,13 @@ export class PayrollService {
 
       for (const d of details) {
         const emp = d.employee;
+
+        // Skip intern / internship employees from Journal Voucher
+        const statusName = String(emp?.employmentStatus?.status || '').toLowerCase();
+        if (statusName.includes('intern')) {
+          continue;
+        }
+
         const loc = emp?.location;
         const locId = loc?.id || 'NO_LOC';
 
