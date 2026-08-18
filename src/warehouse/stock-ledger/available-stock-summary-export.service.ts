@@ -524,7 +524,7 @@ export class AvailableStockSummaryExportService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    await onProgress?.(55, 'Executing database queries for stock movements, transit & balances...');
+    await onProgress?.(55, `Executing queries for ${matchedItemIds.length} items across ${matchedItemChunks.length} chunks (stock movements, transit & reserves)...`);
 
     // Execute ALL database query pipelines concurrently via Promise.all
     const [
