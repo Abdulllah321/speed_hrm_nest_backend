@@ -7,7 +7,7 @@ import * as zlib from 'zlib';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
-import { MovementType } from '@prisma/client';
+import { MovementType, PrismaClient } from '@prisma/client';
 
 export interface QueueAvailableStockSummaryExportOptions {
   userId: string;
@@ -104,17 +104,27 @@ export class AvailableStockSummaryExportService {
   async getJobQueueStatus(jobId: string): Promise<{
     state: string;
     progress: number;
+    message: string;
     queuePosition: number;
     waitingCount: number;
     failedReason?: string;
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { state: 'unknown', progress: 0, queuePosition: 0, waitingCount: 0 };
+      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
     }
 
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progressRaw = job.progress();
+    let progress = 0;
+    let message = '';
+
+    if (typeof progressRaw === 'number') {
+      progress = progressRaw;
+    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
+      progress = (progressRaw as any).percent || 0;
+      message = (progressRaw as any).message || '';
+    }
 
     let queuePosition = 0;
     let waitingCount = 0;
@@ -133,6 +143,7 @@ export class AvailableStockSummaryExportService {
     return {
       state,
       progress,
+      message,
       queuePosition,
       waitingCount,
       failedReason: job.failedReason,
@@ -307,7 +318,7 @@ export class AvailableStockSummaryExportService {
 
   // Core Available Stock Summary logic shared between UI preview and processor
   async generateAvailableStockSummaryReportDataInternal(
-    prisma: PrismaService,
+    prisma: PrismaClient | PrismaService,
     opts: {
       locationId?: string;
       warehouseId?: string;
@@ -323,6 +334,7 @@ export class AvailableStockSummaryExportService {
       showArticle?: boolean;
       showVariant?: boolean;
       isAborted?: () => boolean;
+      onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ) {
     const {
@@ -340,6 +352,7 @@ export class AvailableStockSummaryExportService {
       showArticle,
       showVariant,
       isAborted,
+      onProgress,
     } = opts;
 
     if (isAborted?.()) {
@@ -388,6 +401,8 @@ export class AvailableStockSummaryExportService {
     const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
+    await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
+
     // Location & Warehouse names lookup for Separate mode
     const locationNameMap = new Map<string, string>();
     if (isSeparate) {
@@ -398,6 +413,8 @@ export class AvailableStockSummaryExportService {
       for (const l of allLocations) locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
       for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
     }
+
+    await onProgress?.(25, 'Discovering inventory items & stock ledgers...');
 
     // Concurrent discovery of inventory items and ledger items
     const [inventoryItems, ledgerItems] = await Promise.all([
@@ -436,6 +453,8 @@ export class AvailableStockSummaryExportService {
     if (uniqueItemIds.length === 0) {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
+
+    await onProgress?.(40, 'Fetching product catalog, brands, categories & size details...');
 
     // Safely chunk item fetching to prevent database query parameter limit errors
     const CHUNK_SIZE = 1000;
@@ -486,6 +505,8 @@ export class AvailableStockSummaryExportService {
     const toLocOrWhWhere = toLocOrWhFilters.length > 1
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
+    await onProgress?.(55, 'Executing database queries for stock movements, transit & balances...');
 
     // Execute ALL database query pipelines concurrently via Promise.all
     const [

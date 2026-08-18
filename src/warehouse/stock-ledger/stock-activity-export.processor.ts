@@ -98,7 +98,9 @@ export class StockActivityExportProcessor {
     } = job.data;
     this.logger.log(`[StockActivityExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';

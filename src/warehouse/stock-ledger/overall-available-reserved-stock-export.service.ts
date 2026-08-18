@@ -6,7 +6,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
-import { MovementType } from '@prisma/client';
+import { MovementType, PrismaClient } from '@prisma/client';
 
 export interface QueueOverallAvailableReservedStockExportOptions {
   userId: string;
@@ -164,7 +164,7 @@ export class OverallAvailableReservedStockExportService {
   }
 
   async generateOverallAvailableReservedStockReportDataInternal(
-    prisma: PrismaService,
+    prisma: PrismaClient | PrismaService,
     opts: {
       locationId?: string;
       warehouseId?: string;

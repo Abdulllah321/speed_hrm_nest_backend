@@ -157,7 +157,9 @@ export class StockValuationExportProcessor {
     this.logger.log(`[ValuationPreview ${jobId}] Starting background valuation preview computation`);
     try {
       await job.progress(10);
-      const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+      const prisma = (tenantId && tenantDbUrl)
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
       await job.progress(30);
       const data = await this.stockValuationExportService.generateValuationReportDataInternal(prisma, opts);
@@ -182,7 +184,9 @@ export class StockValuationExportProcessor {
     } = job.data;
     this.logger.log(`[StockValuationExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export for user ${userId}`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
