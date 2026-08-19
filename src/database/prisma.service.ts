@@ -97,12 +97,15 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
           return Reflect.get(target, prop, receiver);
         }
 
-        // B. Delegate JavaScript/TypeScript inspects, private properties, and Promise properties
+        // B. Delegate JavaScript/TypeScript inspects, Object prototype methods, NestJS lifecycle hooks, private properties, and Promise properties
         if (
           typeof prop === 'symbol' ||
-          prop.startsWith('_') ||
-          prop === 'constructor' ||
-          prop === 'then'
+          (typeof prop === 'string' && (
+            prop.startsWith('_') ||
+            prop.startsWith('onModule') ||
+            prop.startsWith('onApplication') ||
+            ['constructor', 'then', 'hasOwnProperty', 'toString', 'valueOf', 'toJSON', 'inspect'].includes(prop)
+          ))
         ) {
           return Reflect.get(target, prop, receiver);
         }
