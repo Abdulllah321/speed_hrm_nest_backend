@@ -30,6 +30,8 @@ export interface QueueAvailableStockSummaryExportOptions {
   previewJobId?: string;
 }
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Injectable()
 export class AvailableStockSummaryExportService {
   private readonly logger = new Logger(AvailableStockSummaryExportService.name);
@@ -39,6 +41,7 @@ export class AvailableStockSummaryExportService {
     @InjectQueue('available-stock-summary-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) {}
 
   isJobCancelled(jobId?: string): boolean {
@@ -477,9 +480,13 @@ export class AvailableStockSummaryExportService {
       for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
     }
 
+    // Resolve nearest Fiscal Opening Snapshot date
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
+
     await onProgress?.(25, 'Discovering inventory items & stock ledgers...');
 
-    // Concurrent discovery of inventory items and ledger items
+    // Concurrent discovery of inventory items and ledger items within query date window
     const [inventoryItems, ledgerItems] = await Promise.all([
       prisma.inventoryItem.findMany({
         where: {
@@ -490,6 +497,7 @@ export class AvailableStockSummaryExportService {
       prisma.stockLedger.findMany({
         where: {
           ...locationOrWarehouseWhere,
+          createdAt: { gte: queryStartDate, lte: endDate },
         },
         select: { itemId: true },
         distinct: ['itemId'],

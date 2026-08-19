@@ -443,16 +443,28 @@ export class StockValuationExportService {
     const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
     const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
 
-    // Discover all distinct items from the StockLedger (location-agnostic when no locationId is provided)
-    const ledgerItems = await prisma.stockLedger.findMany({
-      where: {
-        ...(locationId ? { locationId } : {}),
-      },
-      select: { itemId: true },
-      distinct: ['itemId'],
-    });
+    // Discover active items from InventoryItem and StockLedger within active query date window
+    const [inventoryItems, ledgerItems] = await Promise.all([
+      prisma.inventoryItem.findMany({
+        where: {
+          ...(locationId ? { locationId } : {}),
+        },
+        select: { itemId: true },
+      }),
+      prisma.stockLedger.findMany({
+        where: {
+          ...(locationId ? { locationId } : {}),
+          createdAt: { gte: queryStartDate, lte: endDate },
+        },
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
+    ]);
 
-    const uniqueItemIds = [...new Set(ledgerItems.map(l => l.itemId))];
+    const uniqueItemIds = [...new Set([
+      ...inventoryItems.map((i: any) => i.itemId),
+      ...ledgerItems.map((l: any) => l.itemId),
+    ])];
 
     if (uniqueItemIds.length === 0) {
       return {
