@@ -774,4 +774,25 @@ export class StockLedgerController {
     const result = await this.fiscalClosingService.backfillInitialFiscalPeriod(req.prisma || this.stockLedgerService.getPrismaClient(), userId);
     return { status: true, data: result };
   }
+
+  @Post('fiscal-year-close/adjust-opening-balances')
+  @UseGuards(JwtAuthGuard)
+  async adjustOpeningBalances(
+    @Req() req: any,
+    @Body() body: {
+      warehouseCode?: string;
+      warehouseId?: string;
+      adjustments: Array<{
+        barCode: string;
+        deductQty: number;
+        newUnitCost: number;
+      }>;
+    },
+  ) {
+    const result = await this.fiscalClosingService.adjustOpeningBalances(
+      req.prisma || this.stockLedgerService.getPrismaClient(),
+      body,
+    );
+    return { status: true, data: result };
+  }
 }
