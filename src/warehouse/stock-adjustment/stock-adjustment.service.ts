@@ -468,36 +468,104 @@ export class StockAdjustmentService {
   async delete(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     const existing = await this.prisma.stockAdjustment.findUnique({
       where: { id },
+      include: { items: true },
     });
 
     if (!existing) {
       throw new NotFoundException('Stock adjustment not found');
     }
 
-    if (existing.status !== 'DRAFT' && existing.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException('Can only delete stock adjustments in DRAFT or PENDING_APPROVAL status');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      // If the adjustment was SUBMITTED, reverse stock and stock ledger entries
+      if (existing.status === 'SUBMITTED') {
+        for (const line of existing.items) {
+          const adjustedQty = Number(line.adjustedQty);
+          if (adjustedQty === 0) continue;
 
-    await this.prisma.stockAdjustment.delete({
-      where: { id },
+          const stockAgg = await tx.inventoryItem.aggregate({
+            where: {
+              warehouseId: existing.warehouseId,
+              locationId: line.locationId || null,
+              itemId: line.itemId,
+              status: 'AVAILABLE',
+            },
+            _sum: { quantity: true },
+          });
+          const totalAvailableQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+
+          const existingStock = await tx.inventoryItem.findFirst({
+            where: {
+              warehouseId: existing.warehouseId,
+              locationId: line.locationId || null,
+              itemId: line.itemId,
+              status: 'AVAILABLE',
+            },
+          });
+
+          if (adjustedQty > 0) {
+            // Submitted added stock; deletion must decrement stock back
+            if (totalAvailableQty < adjustedQty) {
+              throw new BadRequestException(
+                `Cannot delete adjustment. Insufficient stock for item ${line.itemId} to reverse adjustment. Current available: ${totalAvailableQty}, Required to revert: ${adjustedQty}`,
+              );
+            }
+            if (existingStock) {
+              await tx.inventoryItem.update({
+                where: { id: existingStock.id },
+                data: { quantity: { decrement: new Prisma.Decimal(adjustedQty) } },
+              });
+            }
+          } else {
+            // Submitted reduced stock; deletion must increment stock back
+            if (existingStock) {
+              await tx.inventoryItem.update({
+                where: { id: existingStock.id },
+                data: { quantity: { increment: new Prisma.Decimal(Math.abs(adjustedQty)) } },
+              });
+            } else {
+              await tx.inventoryItem.create({
+                data: {
+                  warehouseId: existing.warehouseId,
+                  locationId: line.locationId || null,
+                  itemId: line.itemId,
+                  quantity: new Prisma.Decimal(Math.abs(adjustedQty)),
+                  status: 'AVAILABLE',
+                },
+              });
+            }
+          }
+        }
+
+        // Delete associated stock ledger entries
+        await tx.stockLedger.deleteMany({
+          where: {
+            referenceType: 'STOCK_ADJUSTMENT',
+            referenceId: existing.id,
+          },
+        });
+      }
+
+      await tx.stockAdjustment.delete({
+        where: { id },
+      });
+
+      runInBackground(
+        'Delete Stock Adjustment',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'stock-adjustment',
+          entity: 'StockAdjustment',
+          entityId: id,
+          description: `Deleted stock adjustment ${existing.adjustmentNo} (${existing.status})`,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return { status: true, message: 'Stock adjustment deleted successfully' };
     });
-
-    runInBackground(
-      'Delete Stock Adjustment',
-      this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'stock-adjustment',
-        entity: 'StockAdjustment',
-        entityId: id,
-        description: `Deleted stock adjustment draft ${existing.adjustmentNo}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
-    );
-
-    return { status: true, message: 'Stock adjustment deleted successfully' };
   }
 
   async submit(

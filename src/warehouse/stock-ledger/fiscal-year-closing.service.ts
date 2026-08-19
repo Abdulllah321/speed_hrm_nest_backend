@@ -14,15 +14,20 @@ export class FiscalYearClosingService {
     prisma: PrismaService | any,
     beforeDate?: Date,
   ): Promise<Date | null> {
+    const targetDate = beforeDate || new Date();
+    const currentYear = targetDate.getFullYear();
+    const month = targetDate.getMonth(); // 0-indexed, 6 = July
+    const fyStartYear = month >= 6 ? currentYear : currentYear - 1;
+    const fiscalYearStart = new Date(fyStartYear, 6, 1); // July 1st 00:00:00
+
     try {
-      const targetDate = beforeDate || new Date();
       const latestSnapshot = await prisma.stockLedger.findFirst({
         where: {
           OR: [
             { movementType: MovementType.OPENING_BALANCE },
             { referenceType: { in: ['FISCAL_YEAR_OPENING', 'OPENING_BALANCE', 'BULK_STOCK_UPLOAD'] } },
           ],
-          createdAt: { lte: targetDate },
+          createdAt: { gte: fiscalYearStart, lte: targetDate },
         },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
@@ -38,14 +43,7 @@ export class FiscalYearClosingService {
       this.logger.warn(`Failed to resolve latest fiscal opening snapshot: ${err.message}`);
     }
 
-    // Default Fallback: July 1st of the target year or previous year
-    const now = beforeDate || new Date();
-    const currentYear = now.getFullYear();
-    const fiscalJuly1 = now.getMonth() >= 6 
-      ? new Date(currentYear, 6, 1) // July 1st of current year
-      : new Date(currentYear - 1, 6, 1); // July 1st of previous year
-    
-    return fiscalJuly1;
+    return fiscalYearStart;
   }
 
   /**
@@ -340,15 +338,6 @@ export class FiscalYearClosingService {
           },
         });
 
-        // Also update Item default unitCost & fob in Item catalog
-        await prisma.item.update({
-          where: { id: item.id },
-          data: {
-            unitCost: adj.newUnitCost,
-            fob: adj.newUnitCost,
-          },
-        });
-
         // Update active InventoryItem qty balance
         const invItems = await prisma.inventoryItem.findMany({
           where: { itemId: item.id, warehouseId },
@@ -373,21 +362,11 @@ export class FiscalYearClosingService {
           status: 'SUCCESS',
         });
       } else {
-        // If no existing opening balance entry found, update Item unitCost & fob
-        await prisma.item.update({
-          where: { id: item.id },
-          data: {
-            unitCost: adj.newUnitCost,
-            fob: adj.newUnitCost,
-          },
-        });
-
         details.push({
           barCode: adj.barCode,
           itemId: item.id,
-          newUnitCost: adj.newUnitCost,
-          status: 'UNIT_COST_UPDATED',
-          reason: 'No existing opening ledger entry found to deduct qty',
+          status: 'SKIPPED',
+          reason: 'No existing opening ledger entry found to adjust',
         });
       }
     }
