@@ -259,7 +259,7 @@ export class PiRegisterExportProcessor {
           for (const colIdx of [7, 8, 9, 10, 11]) {
             catRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF008000' } };
             catRow.getCell(colIdx).alignment = { horizontal: 'right' };
-            catRow.getCell(colIdx).numFmt = '#,##0.00';
+            catRow.getCell(colIdx).numFmt = '#,##0';
           }
           catRow.commit();
 
@@ -288,7 +288,7 @@ export class PiRegisterExportProcessor {
                 for (const colIdx of [7, 8, 9, 10, 11]) {
                   artRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF0000FF' } };
                   artRow.getCell(colIdx).alignment = { horizontal: 'right' };
-                  artRow.getCell(colIdx).numFmt = '#,##0.00';
+                  artRow.getCell(colIdx).numFmt = '#,##0';
                 }
                 artRow.commit();
 
@@ -315,7 +315,7 @@ export class PiRegisterExportProcessor {
                   vRow.getCell(5).numFmt = '#,##0';
                   for (const colIdx of [6, 7, 8, 9, 10, 11]) {
                     vRow.getCell(colIdx).alignment = { horizontal: 'right' };
-                    vRow.getCell(colIdx).numFmt = '#,##0.00';
+                    vRow.getCell(colIdx).numFmt = '#,##0';
                   }
                   for (let c = 1; c <= 11; c++) {
                     vRow.getCell(c).border = borderThin;
@@ -353,7 +353,7 @@ export class PiRegisterExportProcessor {
       docTotRow.getCell(5).numFmt = '#,##0';
       for (const colIdx of [7, 8, 9, 10, 11]) {
         docTotRow.getCell(colIdx).alignment = { horizontal: 'right' };
-        docTotRow.getCell(colIdx).numFmt = '#,##0.00';
+        docTotRow.getCell(colIdx).numFmt = '#,##0';
       }
       docTotRow.commit();
 
@@ -385,7 +385,7 @@ export class PiRegisterExportProcessor {
     grandRow.getCell(5).numFmt = '#,##0';
     for (const colIdx of [7, 8, 9, 10, 11]) {
       grandRow.getCell(colIdx).alignment = { horizontal: 'right' };
-      grandRow.getCell(colIdx).numFmt = '#,##0.00';
+      grandRow.getCell(colIdx).numFmt = '#,##0';
     }
     grandRow.commit();
 
@@ -529,7 +529,7 @@ export class PiRegisterExportProcessor {
                     if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
                     else if (c >= 20) {
                       cell.alignment = { horizontal: 'right' };
-                      cell.numFmt = c === 20 ? '#,##0' : '#,##0.00';
+                      cell.numFmt = '#,##0';
                     } else {
                       cell.alignment = { horizontal: 'left' };
                     }
@@ -583,7 +583,7 @@ export class PiRegisterExportProcessor {
     grandRow.getCell(20).numFmt = '#,##0';
     for (const colIdx of [22, 23, 24, 25, 26]) {
       grandRow.getCell(colIdx).alignment = { horizontal: 'right' };
-      grandRow.getCell(colIdx).numFmt = '#,##0.00';
+      grandRow.getCell(colIdx).numFmt = '#,##0';
     }
     grandRow.commit();
 
@@ -651,13 +651,13 @@ export class PiRegisterExportProcessor {
                       <td class="text-center">${v.color}</td>
                       <td class="text-center">${v.size}</td>
                       <td class="text-center text-slate-500">${v.barCode}</td>
-                      <td class="text-right font-semibold">${v.quantity.toLocaleString()}</td>
-                      <td class="text-right">${v.unitCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                      <td class="text-right">${v.valExclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                      <td class="text-right">${v.salesTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                      <td class="text-right">${v.valInclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                      <td class="text-right">${v.advTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                      <td class="text-right font-bold text-emerald-600">${v.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td class="text-right font-semibold">${Math.round(v.quantity || 0).toLocaleString()}</td>
+                      <td class="text-right">${Math.round(v.unitCost || 0).toLocaleString()}</td>
+                      <td class="text-right">${Math.round(v.valExclTax || 0).toLocaleString()}</td>
+                      <td class="text-right">${Math.round(v.salesTax || 0).toLocaleString()}</td>
+                      <td class="text-right">${Math.round(v.valInclTax || 0).toLocaleString()}</td>
+                      <td class="text-right">${Math.round(v.advTax || 0).toLocaleString()}</td>
+                      <td class="text-right font-bold text-emerald-600">${Math.round(v.lineTotal || 0).toLocaleString()}</td>
                     </tr>
                   `;
                 }
@@ -671,13 +671,13 @@ export class PiRegisterExportProcessor {
                     <td></td>
                     <td></td>
                     <td></td>
-                    <td class="text-right prod-qty">${art.totalQuantity.toLocaleString()}</td>
+                    <td class="text-right prod-qty">${Math.round(art.totalQuantity || 0).toLocaleString()}</td>
                     <td></td>
-                    <td class="text-right font-bold">${art.totalValExclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="text-right font-bold">${art.totalSalesTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="text-right font-bold">${art.totalValInclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="text-right font-bold">${art.totalAdvTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="text-right font-bold text-blue-600">${art.totalLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td class="text-right font-bold">${Math.round(art.totalValExclTax || 0).toLocaleString()}</td>
+                    <td class="text-right font-bold">${Math.round(art.totalSalesTax || 0).toLocaleString()}</td>
+                    <td class="text-right font-bold">${Math.round(art.totalValInclTax || 0).toLocaleString()}</td>
+                    <td class="text-right font-bold">${Math.round(art.totalAdvTax || 0).toLocaleString()}</td>
+                    <td class="text-right font-bold text-blue-600">${Math.round(art.totalLineTotal || 0).toLocaleString()}</td>
                   </tr>
                   ${variantHtml}
                 `;
@@ -695,13 +695,13 @@ export class PiRegisterExportProcessor {
               <td></td>
               <td></td>
               <td></td>
-              <td class="text-right cat-qty">${cat.totalQuantity.toLocaleString()}</td>
+              <td class="text-right cat-qty">${Math.round(cat.totalQuantity || 0).toLocaleString()}</td>
               <td></td>
-              <td class="text-right cat-qty">${cat.totalValExclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-              <td class="text-right cat-qty">${cat.totalSalesTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-              <td class="text-right cat-qty">${cat.totalValInclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-              <td class="text-right cat-qty">${cat.totalAdvTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-              <td class="text-right cat-qty">${cat.totalLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+              <td class="text-right cat-qty">${Math.round(cat.totalValExclTax || 0).toLocaleString()}</td>
+              <td class="text-right cat-qty">${Math.round(cat.totalSalesTax || 0).toLocaleString()}</td>
+              <td class="text-right cat-qty">${Math.round(cat.totalValInclTax || 0).toLocaleString()}</td>
+              <td class="text-right cat-qty">${Math.round(cat.totalAdvTax || 0).toLocaleString()}</td>
+              <td class="text-right cat-qty">${Math.round(cat.totalLineTotal || 0).toLocaleString()}</td>
             </tr>
             ${genHtml}
           `;

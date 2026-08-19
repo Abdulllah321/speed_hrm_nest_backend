@@ -62,9 +62,9 @@ export class SalesOrderItemDto {
 
 // ── Multi-tender item ────────────────────────────────────────────────────
 export class TenderItemDto {
-    @ApiProperty({ description: 'Tender method: cash | card | bank_transfer | voucher | credit_account' })
+    @ApiProperty({ description: 'Tender method: cash | card | bank_transfer | voucher | credit_account | reward_voucher' })
     @IsString()
-    @IsIn(['cash', 'card', 'bank_transfer', 'voucher', 'credit_account'])
+    @IsIn(['cash', 'card', 'bank_transfer', 'voucher', 'credit_account', 'reward_voucher'])
     method: string;
 
     @ApiProperty({ description: 'Amount tendered' })
@@ -77,10 +77,20 @@ export class TenderItemDto {
     @IsString()
     cardLast4?: string;
 
-    @ApiPropertyOptional({ description: 'Merchant / bank slip reference number' })
+    @ApiPropertyOptional({ description: 'Merchant / bank slip reference number or remark' })
     @IsOptional()
     @IsString()
     slipNo?: string;
+
+    @ApiPropertyOptional({ description: 'Remarks (for reward voucher or custom notes)' })
+    @IsOptional()
+    @IsString()
+    remarks?: string;
+
+    @ApiPropertyOptional({ description: 'Cardholder name (for card tenders)' })
+    @IsOptional()
+    @IsString()
+    cardholderName?: string;
 
     @ApiPropertyOptional({ description: 'Voucher UUID (for voucher tenders)' })
     @IsOptional()

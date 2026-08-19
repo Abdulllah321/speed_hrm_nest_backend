@@ -435,7 +435,11 @@ export class PosSessionService {
 
       if (
         order.paymentMethod === 'credit_account' ||
-        order.tenderType === 'credit_account'
+        order.tenderType === 'credit_account' ||
+        order.paymentMethod === 'reward_voucher' ||
+        order.tenderType === 'reward_voucher' ||
+        order.paymentMethod === 'split' ||
+        order.tenderType === 'split'
       ) {
         const netCash = Math.max(0, rawCash - Number(order.changeAmount ?? 0));
         const creditAmt = Math.max(
@@ -863,6 +867,8 @@ export class PosSessionService {
       if (
         order.paymentMethod === 'credit_account' ||
         order.tenderType === 'credit_account' ||
+        order.paymentMethod === 'reward_voucher' ||
+        order.tenderType === 'reward_voucher' ||
         order.paymentMethod === 'split' ||
         order.tenderType === 'split'
       ) {
@@ -1528,6 +1534,8 @@ export class PosSessionService {
         if (
           order.paymentMethod === 'credit_account' ||
           order.tenderType === 'credit_account' ||
+          order.paymentMethod === 'reward_voucher' ||
+          order.tenderType === 'reward_voucher' ||
           order.paymentMethod === 'split' ||
           order.tenderType === 'split'
         ) {
