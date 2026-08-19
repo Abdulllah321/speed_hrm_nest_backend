@@ -197,16 +197,33 @@ export class AvailableStockSummaryExportService {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     fs.mkdirSync(previewDir, { recursive: true });
 
-    let serializableItemMetricsMap: Record<string, any> | undefined;
-    if (data?.itemMetricsMap instanceof Map) {
-      serializableItemMetricsMap = Object.fromEntries(data.itemMetricsMap);
-    } else if (typeof data?.itemMetricsMap === 'object' && data?.itemMetricsMap !== null) {
-      serializableItemMetricsMap = data.itemMetricsMap;
-    }
+    // Clean flat items list to strip heavy Prisma objects and save clean plain key-values
+    const cleanFlatItemsList = (data?.flatItemsList || []).map((entry: any) => ({
+      locationName: entry.locationName,
+      brand: entry.brand ?? entry.item?.brand?.name ?? 'No Brand',
+      division: entry.division ?? entry.item?.division?.name ?? 'No Division',
+      category: entry.category ?? entry.item?.category?.name ?? 'No Category',
+      gender: entry.gender ?? entry.item?.gender?.name ?? 'No Gender',
+      silhouette: entry.silhouette ?? entry.item?.silhouette?.name ?? 'No Silhouette',
+      sku: entry.sku ?? entry.item?.sku ?? '',
+      articleName: entry.articleName ?? entry.item?.description ?? '',
+      color: entry.color ?? entry.item?.color?.name ?? 'Default',
+      size: entry.size ?? entry.item?.size?.name ?? 'Default',
+      barCode: entry.barCode ?? entry.item?.barCode ?? '',
+      quantity: entry.quantity ?? entry.metrics?.quantity ?? 0,
+      transit: entry.transit ?? entry.metrics?.transit ?? 0,
+      reserved: entry.reserved ?? entry.metrics?.reserved ?? 0,
+      total: entry.total ?? entry.metrics?.total ?? 0,
+      unitPrice: entry.unitPrice ?? entry.metrics?.unitPrice ?? 0,
+      value: entry.value ?? entry.metrics?.value ?? 0,
+      unitCost: entry.unitCost ?? entry.metrics?.unitCost ?? 0,
+      costingValue: entry.costingValue ?? entry.metrics?.costingValue ?? 0,
+    }));
 
     const payloadToSerialize = {
-      ...data,
-      itemMetricsMap: serializableItemMetricsMap,
+      root: data.root || [],
+      grandTotals: data.grandTotals || {},
+      flatItemsList: cleanFlatItemsList,
     };
 
     const jsonStr = JSON.stringify(payloadToSerialize);
@@ -229,11 +246,7 @@ export class AvailableStockSummaryExportService {
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
-    const parsed = JSON.parse(jsonStr);
-    if (parsed && parsed.itemMetricsMap && !(parsed.itemMetricsMap instanceof Map)) {
-      parsed.itemMetricsMap = new Map(Object.entries(parsed.itemMetricsMap));
-    }
-    return parsed;
+    return JSON.parse(jsonStr);
   }
 
   async queueExport(opts: QueueAvailableStockSummaryExportOptions): Promise<{ jobId: string }> {
@@ -582,125 +595,128 @@ export class AvailableStockSummaryExportService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    await onProgress?.(55, `Executing queries for ${matchedItemIds.length} items across ${matchedItemChunks.length} chunks (stock movements, transit & reserves)...`);
+    const totalChunks = matchedItemChunks.length;
+    let completedChunks = 0;
 
-    // Execute ALL database query pipelines concurrently via Promise.all
-    const [
-      bfGroupResults,
-      inRangeOpeningResults,
-      tenantSettingsResults,
-      ledgerEntriesResults,
-      transitItemsResults,
-      reserveGroupResults,
-    ] = await Promise.all([
-      // 1. Compute BF (Opening balance before startDate)
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockLedger.groupBy({
-            by: groupByCols,
-            where: {
-              ...locationOrWarehouseWhere,
-              itemId: { in: chunk },
-              createdAt: { gte: queryStartDate, lt: startDate },
-            },
-            _sum: { qty: true },
-          })
-        )
-      ),
-      // 2. Query OPENING_BALANCE entries within range
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockLedger.groupBy({
-            by: groupByCols,
-            where: {
-              ...locationOrWarehouseWhere,
-              itemId: { in: chunk },
-              createdAt: { gte: startDate, lte: endDate },
-              OR: [
-                { movementType: MovementType.OPENING_BALANCE },
-                { referenceType: 'OPENING_BALANCE' },
-                { referenceType: 'BULK_STOCK_UPLOAD' }
-              ]
-            },
-            _sum: { qty: true },
-          })
-        )
-      ),
-      // 3. Fetch tenant item settings
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.tenantItemSetting.findMany({
-            where: { itemId: { in: chunk } },
-          })
-        )
-      ),
-      // 4. Query normal ledger entries within range
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockLedger.findMany({
-            where: {
-              ...locationOrWarehouseWhere,
-              itemId: { in: chunk },
-              createdAt: { gte: startDate, lte: endDate },
-              NOT: [
-                { movementType: MovementType.OPENING_BALANCE },
-                { referenceType: 'OPENING_BALANCE' },
-                { referenceType: 'BULK_STOCK_UPLOAD' }
-              ]
-            },
-            select: {
-              itemId: true,
-              qty: true,
-              referenceType: true,
-              movementType: true,
-              locationId: true,
-              warehouseId: true,
-              unitCost: true,
-              rate: true,
-            },
-          })
-        )
-      ),
-      // 5. Query transit items
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.transferRequestItem.findMany({
-            where: {
-              itemId: { in: chunk },
-              transferRequest: {
-                ...toLocOrWhWhere,
-                status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-                transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+    await onProgress?.(55, `Processing ${matchedItemIds.length} items across ${totalChunks} chunks (stock movements, transit & reserves)...`);
+
+    const bfGroupResults: any[][] = [];
+    const inRangeOpeningResults: any[][] = [];
+    const tenantSettingsResults: any[][] = [];
+    const ledgerEntriesResults: any[][] = [];
+    const transitItemsResults: any[][] = [];
+    const reserveGroupResults: any[][] = [];
+
+    const SUB_BATCH_SIZE = 5;
+    for (let c = 0; c < totalChunks; c += SUB_BATCH_SIZE) {
+      if (isAborted?.()) {
+        return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      }
+
+      const batchChunks = matchedItemChunks.slice(c, c + SUB_BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batchChunks.map(chunk =>
+          Promise.all([
+            // 1. Compute BF (Opening balance before startDate)
+            prisma.stockLedger.groupBy({
+              by: groupByCols,
+              where: {
+                ...locationOrWarehouseWhere,
+                itemId: { in: chunk },
+                createdAt: { gte: queryStartDate, lt: startDate },
               },
-            },
-            select: {
-              itemId: true,
-              quantity: true,
-              transferRequest: {
-                select: { toLocationId: true, toWarehouseId: true },
+              _sum: { qty: true },
+            }),
+            // 2. Query OPENING_BALANCE entries within range
+            prisma.stockLedger.groupBy({
+              by: groupByCols,
+              where: {
+                ...locationOrWarehouseWhere,
+                itemId: { in: chunk },
+                createdAt: { gte: startDate, lte: endDate },
+                OR: [
+                  { movementType: MovementType.OPENING_BALANCE },
+                  { referenceType: 'OPENING_BALANCE' },
+                  { referenceType: 'BULK_STOCK_UPLOAD' }
+                ]
               },
-            },
-          })
+              _sum: { qty: true },
+            }),
+            // 3. Fetch tenant item settings
+            prisma.tenantItemSetting.findMany({
+              where: { itemId: { in: chunk } },
+            }),
+            // 4. Query normal ledger entries within range
+            prisma.stockLedger.findMany({
+              where: {
+                ...locationOrWarehouseWhere,
+                itemId: { in: chunk },
+                createdAt: { gte: startDate, lte: endDate },
+                NOT: [
+                  { movementType: MovementType.OPENING_BALANCE },
+                  { referenceType: 'OPENING_BALANCE' },
+                  { referenceType: 'BULK_STOCK_UPLOAD' }
+                ]
+              },
+              select: {
+                itemId: true,
+                qty: true,
+                referenceType: true,
+                movementType: true,
+                locationId: true,
+                warehouseId: true,
+                unitCost: true,
+                rate: true,
+              },
+            }),
+            // 5. Query transit items
+            prisma.transferRequestItem.findMany({
+              where: {
+                itemId: { in: chunk },
+                transferRequest: {
+                  ...toLocOrWhWhere,
+                  status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+                  transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+                },
+              },
+              select: {
+                itemId: true,
+                quantity: true,
+                transferRequest: {
+                  select: { toLocationId: true, toWarehouseId: true },
+                },
+              },
+            }),
+            // 6. Query reserved stock
+            prisma.stockReserve.groupBy({
+              by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
+              where: {
+                itemId: { in: chunk },
+                ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+                OR: [
+                  { expiresAt: null },
+                  { expiresAt: { gte: new Date() } }
+                ]
+              },
+              _sum: { quantity: true },
+            }),
+          ])
         )
-      ),
-      // 6. Query reserved stock
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockReserve.groupBy({
-            by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
-            where: {
-              itemId: { in: chunk },
-              ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gte: new Date() } }
-              ]
-            },
-            _sum: { quantity: true },
-          })
-        )
-      ),
-    ]);
+      );
+
+      for (const res of batchResults) {
+        bfGroupResults.push(res[0]);
+        inRangeOpeningResults.push(res[1]);
+        tenantSettingsResults.push(res[2]);
+        ledgerEntriesResults.push(res[3]);
+        transitItemsResults.push(res[4]);
+        reserveGroupResults.push(res[5]);
+      }
+
+      completedChunks += batchChunks.length;
+      const progressPercent = Math.min(85, 55 + Math.floor((completedChunks / totalChunks) * 30));
+      await onProgress?.(progressPercent, `Processed ${completedChunks} of ${totalChunks} item chunks (${progressPercent}%)...`);
+    }
 
     if (isAborted?.()) {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
