@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { CacheModule } from '@nestjs/cache-manager';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisStore } from 'cache-manager-redis-yet';
@@ -141,11 +140,10 @@ import { VoucherExportModule } from './finance/voucher-export/voucher-export.mod
           return { store };
         } catch (error) {
           console.warn('Failed to connect to Redis. Using fallback memory cache.');
-          return {};
+          return {}; // fallback memory cache
         }
       },
     }),
-    ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     QueueModule,
     DatabaseModule,

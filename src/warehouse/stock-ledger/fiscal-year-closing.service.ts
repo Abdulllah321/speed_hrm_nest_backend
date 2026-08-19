@@ -248,4 +248,155 @@ export class FiscalYearClosingService {
       snapshotDate,
     };
   }
+
+  /**
+   * Directly adjusts opening balance quantities and unit costs in StockLedger and InventoryItem
+   * for specified barcodes in a warehouse.
+   */
+  async adjustOpeningBalances(
+    prisma: PrismaService | any,
+    opts: {
+      warehouseCode?: string;
+      warehouseId?: string;
+      adjustments: Array<{
+        barCode: string;
+        deductQty: number;
+        newUnitCost: number;
+      }>;
+    },
+  ): Promise<{ success: boolean; updatedCount: number; message: string; details: any[] }> {
+    const { warehouseCode = 'C40001', warehouseId: explicitWhId, adjustments } = opts;
+
+    // 1. Resolve Warehouse
+    let warehouseId = explicitWhId;
+    if (!warehouseId && warehouseCode) {
+      const wh = await prisma.warehouse.findFirst({
+        where: {
+          OR: [{ code: warehouseCode }, { name: warehouseCode }],
+          isDeleted: false,
+        },
+        select: { id: true, code: true, name: true },
+      });
+      if (wh) warehouseId = wh.id;
+    }
+
+    if (!warehouseId) {
+      return { success: false, updatedCount: 0, message: `Warehouse "${warehouseCode}" not found.`, details: [] };
+    }
+
+    // 2. Resolve items by barcode / itemId
+    const barCodes = adjustments.map(a => a.barCode);
+    const items = await prisma.item.findMany({
+      where: {
+        OR: [
+          { barCode: { in: barCodes } },
+          { itemId: { in: barCodes } },
+        ],
+      },
+      select: { id: true, barCode: true, itemId: true, description: true },
+    });
+
+    const itemMap = new Map<string, any>();
+    for (const item of items) {
+      if (item.barCode) itemMap.set(item.barCode, item);
+      if (item.itemId) itemMap.set(item.itemId, item);
+    }
+
+    let updatedCount = 0;
+    const details: any[] = [];
+
+    for (const adj of adjustments) {
+      const item = itemMap.get(adj.barCode);
+      if (!item) {
+        details.push({ barCode: adj.barCode, status: 'SKIPPED', reason: 'Barcode not found in Item master' });
+        continue;
+      }
+
+      // Find opening balance ledger entries for this item & warehouse
+      const ledgerEntries = await prisma.stockLedger.findMany({
+        where: {
+          itemId: item.id,
+          warehouseId,
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: { in: ['OPENING_BALANCE', 'BULK_STOCK_UPLOAD', 'FISCAL_YEAR_OPENING'] } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (ledgerEntries.length > 0) {
+        // Update the primary opening balance ledger entry
+        const primaryLedger = ledgerEntries[0];
+        const currentQty = Number(primaryLedger.qty || 0);
+        const newQty = Math.max(0, currentQty - adj.deductQty);
+
+        await prisma.stockLedger.update({
+          where: { id: primaryLedger.id },
+          data: {
+            qty: newQty,
+            unitCost: adj.newUnitCost,
+            rate: adj.newUnitCost,
+          },
+        });
+
+        // Also update Item default unitCost & fob in Item catalog
+        await prisma.item.update({
+          where: { id: item.id },
+          data: {
+            unitCost: adj.newUnitCost,
+            fob: adj.newUnitCost,
+          },
+        });
+
+        // Update active InventoryItem qty balance
+        const invItems = await prisma.inventoryItem.findMany({
+          where: { itemId: item.id, warehouseId },
+        });
+
+        for (const inv of invItems) {
+          const newInvQty = Math.max(0, Number(inv.qty || 0) - adj.deductQty);
+          await prisma.inventoryItem.update({
+            where: { id: inv.id },
+            data: { qty: newInvQty },
+          });
+        }
+
+        updatedCount++;
+        details.push({
+          barCode: adj.barCode,
+          itemId: item.id,
+          oldQty: currentQty,
+          newQty,
+          deducted: adj.deductQty,
+          newUnitCost: adj.newUnitCost,
+          status: 'SUCCESS',
+        });
+      } else {
+        // If no existing opening balance entry found, update Item unitCost & fob
+        await prisma.item.update({
+          where: { id: item.id },
+          data: {
+            unitCost: adj.newUnitCost,
+            fob: adj.newUnitCost,
+          },
+        });
+
+        details.push({
+          barCode: adj.barCode,
+          itemId: item.id,
+          newUnitCost: adj.newUnitCost,
+          status: 'UNIT_COST_UPDATED',
+          reason: 'No existing opening ledger entry found to deduct qty',
+        });
+      }
+    }
+
+    return {
+      success: true,
+      updatedCount,
+      message: `Successfully adjusted opening balances and unit costs for ${updatedCount} barcodes in warehouse ${warehouseCode}.`,
+      details,
+    };
+  }
 }
