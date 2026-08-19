@@ -360,12 +360,18 @@ export class UploadService {
         publicUrl = `s3://${s3Key}`;
       }
     } else {
-      const destDir = path.join(this.uploadRoot, 'exports');
-      fs.mkdirSync(destDir, { recursive: true });
-      const destPath = path.join(destDir, filenameWithTs);
-      fs.writeFileSync(destPath, buffer);
+      const publicDestDir = path.join(this.uploadRoot, 'exports');
+      const rootDestDir = path.join(process.cwd(), 'uploads', 'exports');
+      fs.mkdirSync(publicDestDir, { recursive: true });
+      fs.mkdirSync(rootDestDir, { recursive: true });
 
-      publicUrl = path.join('uploads', 'exports', filenameWithTs);
+      const publicDestPath = path.join(publicDestDir, filenameWithTs);
+      const rootDestPath = path.join(rootDestDir, filenameWithTs);
+
+      fs.writeFileSync(publicDestPath, buffer);
+      fs.writeFileSync(rootDestPath, buffer);
+
+      publicUrl = `uploads/exports/${filenameWithTs}`;
     }
 
     return { url: publicUrl, key: s3Key };
