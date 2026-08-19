@@ -482,7 +482,14 @@ export class AvailableStockSummaryExportService {
     }
 
     const now = new Date();
-    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const getDefaultFiscalYearStart = (ref: Date) => {
+      const year = ref.getFullYear();
+      const month = ref.getMonth(); // 0 = Jan, 6 = July
+      const fyYear = month >= 6 ? year : year - 1;
+      return new Date(fyYear, 6, 1, 0, 0, 0, 0);
+    };
+
+    const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
@@ -500,7 +507,7 @@ export class AvailableStockSummaryExportService {
 
     // Resolve nearest Fiscal Opening Snapshot date
     const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
-    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
 
     await onProgress?.(25, 'Discovering inventory items & stock ledgers...');
 
@@ -515,7 +522,7 @@ export class AvailableStockSummaryExportService {
       prisma.stockLedger.findMany({
         where: {
           ...locationOrWarehouseWhere,
-          createdAt: { gte: queryStartDate, lte: endDate },
+          createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
         },
         select: { itemId: true },
         distinct: ['itemId'],
@@ -623,7 +630,7 @@ export class AvailableStockSummaryExportService {
               where: {
                 ...locationOrWarehouseWhere,
                 itemId: { in: chunk },
-                createdAt: { gte: queryStartDate, lt: startDate },
+                createdAt: queryStartDate ? { gte: queryStartDate, lt: startDate } : { lt: startDate },
               },
               _sum: { qty: true },
             }),
