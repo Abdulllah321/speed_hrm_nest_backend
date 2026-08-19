@@ -255,30 +255,13 @@ export class StockLedgerController {
       showSilhouette?: boolean;
       showArticle?: boolean;
       showVariant?: boolean;
+      previewJobId?: string;
     },
   ) {
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.user?.userId;
     const result = await this.stockValuationExportService.queueExport({
       userId,
-      locationId: body.locationId,
-      startDate: body.startDate,
-      endDate: body.endDate,
-      format: body.format,
-      exportType: body.exportType,
-      filterBrands: body.filterBrands,
-      filterDivisions: body.filterDivisions,
-      filterCategories: body.filterCategories,
-      filterGenders: body.filterGenders,
-      filterSilhouettes: body.filterSilhouettes,
-      searchText: body.searchText,
-      summaryOnly: body.summaryOnly,
-      showBrand: body.showBrand,
-      showDivision: body.showDivision,
-      showCategory: body.showCategory,
-      showGender: body.showGender,
-      showSilhouette: body.showSilhouette,
-      showArticle: body.showArticle,
-      showVariant: body.showVariant,
+      ...body,
     });
     return { status: true, data: result };
   }
