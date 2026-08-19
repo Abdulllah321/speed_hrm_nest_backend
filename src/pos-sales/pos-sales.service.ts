@@ -92,8 +92,6 @@ export class PosSalesService implements OnModuleInit {
 
     const lastOrder = await prismaClient.salesOrder.findFirst({
       where: {
-        locationId,
-        createdAt: { gte: fiscalYearStartDate },
         [fieldName]: { startsWith: matchPrefix },
       },
       orderBy: { [fieldName]: 'desc' },
@@ -118,7 +116,9 @@ export class PosSalesService implements OnModuleInit {
       select: { id: true },
     });
 
-    while (exists) {
+    let attempts = 0;
+    while (exists && attempts < 50) {
+      attempts++;
       seq++;
       nextNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
       exists = await prismaClient.salesOrder.findUnique({
@@ -381,7 +381,8 @@ export class PosSalesService implements OnModuleInit {
             (t) =>
               t.method !== 'cash' &&
               t.method !== 'voucher' &&
-              t.method !== 'credit_account',
+              t.method !== 'credit_account' &&
+              t.method !== 'reward_voucher',
           )
           .reduce((a, t) => a + Number(t.amount), 0);
 
@@ -779,6 +780,16 @@ export class PosSalesService implements OnModuleInit {
         if (dto.notes) notesParts.push(dto.notes);
         if (isCreditSale)
           notesParts.push(`[Credit Sale] Balance: ${creditAmount}`);
+        const rewardVoucherTenders = tenders.filter((t) => t.method === 'reward_voucher');
+        if (rewardVoucherTenders.length > 0) {
+          const rvDetails = rewardVoucherTenders
+            .map((t) => {
+              const r = (t as any).remarks || t.slipNo;
+              return r ? `${r} (Amount: ${t.amount})` : `Amount: ${t.amount}`;
+            })
+            .join(' | ');
+          notesParts.push(`[Reward Voucher] ${rvDetails}`);
+        }
         if (appliedDiscountType === 'alliance' && dto.allianceMeta) {
           const m = dto.allianceMeta;
           const parts: string[] = [];
@@ -1083,7 +1094,7 @@ export class PosSalesService implements OnModuleInit {
               ? `Order ${orderNumber} created successfully. Credit voucher(s) issued: ${creditVouchers.map((v) => v.code).join(', ')}`
               : `Order ${orderNumber} created successfully`,
         };
-      });
+      }, { maxWait: 15000, timeout: 45000 });
 
       // ── FBR Sync (outside transaction — never rolls back local DB) ──
       await this.syncWithFbr(result.data, itemsData);
@@ -1329,6 +1340,7 @@ export class PosSalesService implements OnModuleInit {
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
+        customer: { select: { id: true, name: true, contactNo: true, email: true, cnicNo: true, address: true } },
         items: {
           include: {
             item: {
@@ -1710,6 +1722,16 @@ export class PosSalesService implements OnModuleInit {
       if (order.tenderType === 'split') {
         if (cash > 0) tenders.push({ method: 'cash', amount: cash });
         if (card > 0) tenders.push({ method: 'card', amount: card });
+        const remainder = Math.max(0, grandTotal - cash - card - voucherTotalFromRedemptions);
+        if (remainder > 0) {
+          if (order.notes?.includes('[Reward Voucher]')) {
+            const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
+            const remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
+            tenders.push({ method: 'reward_voucher', amount: remainder, slipNo: remarkText || undefined });
+          } else if (order.notes?.includes('[Credit Sale]')) {
+            tenders.push({ method: 'credit_account', amount: remainder });
+          }
+        }
       } else if (order.paymentMethod) {
         if (order.paymentMethod === 'cash') {
           const finalCash =
@@ -1733,8 +1755,13 @@ export class PosSalesService implements OnModuleInit {
             0,
             grandTotal - voucherTotalFromRedemptions,
           );
+          let remarkText: string | undefined;
+          if (order.paymentMethod === 'reward_voucher' && order.notes?.includes('[Reward Voucher]')) {
+            const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
+            remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
+          }
           if (finalAmt > 0)
-            tenders.push({ method: order.paymentMethod, amount: finalAmt });
+            tenders.push({ method: order.paymentMethod, amount: finalAmt, slipNo: remarkText });
         }
       }
 
@@ -2574,6 +2601,16 @@ export class PosSalesService implements OnModuleInit {
     if (order.tenderType === 'split') {
       if (cash > 0) tenders.push({ method: 'cash', amount: cash });
       if (card > 0) tenders.push({ method: 'card', amount: card });
+      const remainder = Math.max(0, grandTotal - cash - card - voucherTotalFromRedemptions);
+      if (remainder > 0) {
+        if (order.notes?.includes('[Reward Voucher]')) {
+          const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
+          const remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
+          tenders.push({ method: 'reward_voucher', amount: remainder, slipNo: remarkText || undefined });
+        } else if (order.notes?.includes('[Credit Sale]')) {
+          tenders.push({ method: 'credit_account', amount: remainder });
+        }
+      }
     } else if (order.paymentMethod) {
       if (order.paymentMethod === 'cash') {
         const finalCash =
@@ -2593,8 +2630,13 @@ export class PosSalesService implements OnModuleInit {
           tenders.push({ method: order.paymentMethod, amount: finalCard });
       } else if (order.paymentMethod !== 'voucher') {
         const finalAmt = Math.max(0, grandTotal - voucherTotalFromRedemptions);
+        let remarkText: string | undefined;
+        if (order.paymentMethod === 'reward_voucher' && order.notes?.includes('[Reward Voucher]')) {
+          const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
+          remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
+        }
         if (finalAmt > 0)
-          tenders.push({ method: order.paymentMethod, amount: finalAmt });
+          tenders.push({ method: order.paymentMethod, amount: finalAmt, slipNo: remarkText });
       }
     }
 
@@ -5012,7 +5054,8 @@ export class PosSalesService implements OnModuleInit {
             (t) =>
               t.method !== 'cash' &&
               t.method !== 'voucher' &&
-              t.method !== 'credit_account',
+              t.method !== 'credit_account' &&
+              t.method !== 'reward_voucher',
           )
           .reduce((a, t) => a + Number(t.amount), 0);
         const grandTotal = Number(order.grandTotal);
@@ -6541,7 +6584,18 @@ export class PosSalesService implements OnModuleInit {
       let cash = Number(order.cashAmount || 0);
       let card = Number(order.cardAmount || 0);
       let onCredit = balance;
-      let rewardVoucher = 0; // default 0
+      let rewardVoucher = 0;
+      if (
+        order.paymentMethod === 'reward_voucher' ||
+        order.tenderType === 'reward_voucher'
+      ) {
+        rewardVoucher = Number(order.grandTotal);
+      } else if (notesStr.includes('[Reward Voucher]')) {
+        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (amtMatch) {
+          rewardVoucher = Number(amtMatch[1]);
+        }
+      }
 
       let giftVoucher = 0;
       let creditVoucher = 0;
