@@ -7,6 +7,10 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsOptional()
+  code?: string;
+
+  @IsString()
+  @IsOptional()
   traderId?: string;
 
   @IsString()
@@ -72,6 +76,10 @@ export class UpdateCustomerDto {
   @IsString()
   @IsOptional()
   name?: string;
+
+  @IsString()
+  @IsOptional()
+  code?: string;
 
   @IsString()
   @IsOptional()

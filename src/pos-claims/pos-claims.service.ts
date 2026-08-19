@@ -111,7 +111,7 @@ export class PosClaimsService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const { salesOrderId, claimType, reasonCode, reasonNotes, items } = dto;
+      const { salesOrderId, claimType, reasonCode, reasonNotes, customerName, customerPhone, items } = dto;
 
       const order = await this.prisma.salesOrder.findUnique({
         where: { id: salesOrderId },
@@ -127,13 +127,18 @@ export class PosClaimsService {
         0,
       );
 
+      const customerPrefix = customerName || customerPhone
+        ? `[Customer: ${customerName || '-'} | Phone: ${customerPhone || '-'}]`
+        : '';
+      const fullNotes = [customerPrefix, reasonNotes].filter(Boolean).join('\n');
+
       const claim = await this.prisma.posClaim.create({
         data: {
           claimNumber,
           salesOrderId,
           claimType: claimType || 'RETURN',
-          reasonCode,
-          reasonNotes: reasonNotes || null,
+          reasonCode: reasonCode || 'DEFECTIVE',
+          reasonNotes: fullNotes || null,
           status: 'SUBMITTED',
           claimedAmount: new Decimal(claimedAmount),
           createdBy: createdBy || null,
