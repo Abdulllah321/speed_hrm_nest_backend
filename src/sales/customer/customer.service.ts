@@ -25,9 +25,12 @@ export class CustomerService {
         traderId = String(count + 10001);
       }
 
+      const { code, ...restData } = createDto;
+
       const customer = await this.prisma.customer.create({
         data: {
-          ...createDto,
+          ...restData,
+          subCode: restData.subCode || code || undefined,
           traderId,
           customerType: createDto.customerType ?? 'ERP',
         } as any,
