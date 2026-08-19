@@ -15,10 +15,6 @@ export class FiscalYearClosingService {
     beforeDate?: Date,
   ): Promise<Date | null> {
     const targetDate = beforeDate || new Date();
-    const currentYear = targetDate.getFullYear();
-    const month = targetDate.getMonth(); // 0-indexed, 6 = July
-    const fyStartYear = month >= 6 ? currentYear : currentYear - 1;
-    const fiscalYearStart = new Date(fyStartYear, 6, 1); // July 1st 00:00:00
 
     try {
       const latestSnapshot = await prisma.stockLedger.findFirst({
@@ -27,14 +23,13 @@ export class FiscalYearClosingService {
             { movementType: MovementType.OPENING_BALANCE },
             { referenceType: { in: ['FISCAL_YEAR_OPENING', 'OPENING_BALANCE', 'BULK_STOCK_UPLOAD'] } },
           ],
-          createdAt: { gte: fiscalYearStart, lte: targetDate },
+          createdAt: { lte: targetDate },
         },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       });
 
       if (latestSnapshot?.createdAt) {
-        // Return 00:00:00 of the snapshot day
         const snapshotDate = new Date(latestSnapshot.createdAt);
         snapshotDate.setHours(0, 0, 0, 0);
         return snapshotDate;
@@ -43,7 +38,7 @@ export class FiscalYearClosingService {
       this.logger.warn(`Failed to resolve latest fiscal opening snapshot: ${err.message}`);
     }
 
-    return fiscalYearStart;
+    return null;
   }
 
   /**
