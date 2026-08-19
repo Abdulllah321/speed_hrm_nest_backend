@@ -601,7 +601,7 @@ export class AvailableStockSummaryExportService {
             where: {
               ...locationOrWarehouseWhere,
               itemId: { in: chunk },
-              createdAt: { lt: startDate },
+              createdAt: { gte: queryStartDate, lt: startDate },
             },
             _sum: { qty: true },
           })
