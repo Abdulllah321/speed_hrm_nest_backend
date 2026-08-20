@@ -83,16 +83,19 @@ export class PurchaseReturnRegisterExportProcessor {
     try {
       await job.progress(10);
 
-      const reportData = await this.purchaseReturnRegisterExportService.getReportData({
-        brandId,
-        supplierId,
-        startDate,
-        endDate,
-        status,
-        returnType,
-        sourceType,
-        search,
-      });
+      const reportData = await this.purchaseReturnRegisterExportService.getReportData(
+        {
+          brandId,
+          supplierId,
+          startDate,
+          endDate,
+          status,
+          returnType,
+          sourceType,
+          search,
+        },
+        prisma,
+      );
 
       await job.progress(40);
 
