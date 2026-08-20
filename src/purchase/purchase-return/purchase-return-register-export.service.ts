@@ -17,6 +17,7 @@ export interface QueuePurchaseReturnRegisterExportOptions {
   returnType?: string;
   sourceType?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'hierarchical' | 'flat';
   search?: string;
 }
 
@@ -431,6 +432,7 @@ export class PurchaseReturnRegisterExportService {
         returnType: opts.returnType,
         sourceType: opts.sourceType,
         format: opts.format,
+        exportType: opts.exportType,
         search: opts.search,
       },
       {
