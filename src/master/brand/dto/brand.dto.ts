@@ -10,6 +10,11 @@ export class CreateBrandDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  code?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   status?: string;
 }
 

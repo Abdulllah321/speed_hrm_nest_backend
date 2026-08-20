@@ -20,6 +20,36 @@ export class EmployeeService {
     private activityLogs: ActivityLogsService,
   ) {}
 
+  async getNextEmployeeCode(): Promise<{ status: boolean; code: string }> {
+    try {
+      const employees = await this.prisma.employee.findMany({
+        select: { employeeId: true },
+      });
+      let maxNum = 0;
+      for (const e of employees) {
+        if (e.employeeId) {
+          const match = e.employeeId.trim().match(/^EMP(\d+)$/i);
+          if (match) {
+            const val = parseInt(match[1], 10);
+            if (!isNaN(val) && val > maxNum) {
+              maxNum = val;
+            }
+          } else if (/^\d+$/.test(e.employeeId.trim())) {
+            const val = parseInt(e.employeeId.trim(), 10);
+            if (!isNaN(val) && val > maxNum) {
+              maxNum = val;
+            }
+          }
+        }
+      }
+      const nextNum = maxNum + 1;
+      const code = `EMP${String(nextNum).padStart(3, '0')}`;
+      return { status: true, code };
+    } catch (error: any) {
+      return { status: false, code: 'EMP001' };
+    }
+  }
+
   async list(query?: { page?: number; limit?: number; search?: string }) {
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 50;

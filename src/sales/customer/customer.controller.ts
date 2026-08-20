@@ -29,6 +29,11 @@ export class CustomerController {
     return this.service.create(dto, this.ctx(req));
   }
 
+  @Get('next-code')
+  getNextCustomerCode() {
+    return this.service.getNextCustomerCode();
+  }
+
   @Get()
   findAll(@Query('search') search?: string) {
     return this.service.findAll(search);
