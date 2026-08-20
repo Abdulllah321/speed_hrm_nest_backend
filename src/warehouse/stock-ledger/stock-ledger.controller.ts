@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body, Sse, MessageEvent } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body, Sse, MessageEvent, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Observable, interval } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { StockLedgerService } from './stock-ledger.service';
@@ -499,6 +500,27 @@ export class StockLedgerController {
     const result = await this.availableStockSummaryExportService.queueExport({
       userId,
       ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Post('available-stock-summary/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerClientGeneratedExport(
+    @Req() req: any,
+    @UploadedFile() file: any,
+    @Body() body: { fileName?: string; format?: 'xlsx' | 'pdf' },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    if (!file || !file.buffer) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const result = await this.availableStockSummaryExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName: body.fileName || `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${body.format || 'xlsx'}`,
+      format: body.format || 'xlsx',
     });
     return { status: true, data: result };
   }
