@@ -588,22 +588,18 @@ export class SalesHistoryUploadProcessor {
             }
         }
 
-        // 4. Pre-fetch next sequential order numbers in memory for each location (persist across batches)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth();
-        const fiscalYearStartYear = month >= 6 ? year : year - 1;
-        const fySuffix = String(fiscalYearStartYear).slice(-2);
-        const fiscalYearStartDate = new Date(Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0));
+        // Helper to compute fiscal year suffix (e.g. 26 for FY 25-26, 27 for FY 26-27)
+        const getFySuffix = (date?: Date): string => {
+            const d = date || new Date();
+            const month = d.getUTCMonth();
+            const year = d.getUTCFullYear();
+            const fyEndYear = month >= 6 ? year + 1 : year;
+            return String(fyEndYear).slice(-2);
+        };
 
-        const distinctLocIds = new Set<string>();
-        for (const [, rows] of batch) {
-            const locId = resolveLocInMem(rows[0]?.data?.costCentre) || defaultLocationId;
-            if (locId) distinctLocIds.add(locId);
-        }
-
-        for (const locId of distinctLocIds) {
-            if (!locSequenceMap.has(locId)) {
+        const getOrInitLocSequence = async (locId: string, fySuffix: string) => {
+            const mapKey = `${locId}_${fySuffix}`;
+            if (!locSequenceMap.has(mapKey)) {
                 const loc = allLocations.find((l) => l.id === locId);
                 let rawCode = loc?.shortCode?.trim() || loc?.name || 'LOC';
                 let cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'LOC';
@@ -612,7 +608,6 @@ export class SalesHistoryUploadProcessor {
                 const existingOrderNums = await prisma.salesOrder.findMany({
                     where: {
                         locationId: locId,
-                        createdAt: { gte: fiscalYearStartDate },
                         orderNumber: { startsWith: matchPrefix },
                     },
                     select: { orderNumber: true },
@@ -627,14 +622,15 @@ export class SalesHistoryUploadProcessor {
                         if (parsed > maxSeq) maxSeq = parsed;
                     }
                 }
-                locSequenceMap.set(locId, { prefix: matchPrefix, currentSeq: maxSeq + 1 });
+                locSequenceMap.set(mapKey, { prefix: matchPrefix, currentSeq: maxSeq + 1 });
             }
-        }
+            return locSequenceMap.get(mapKey)!;
+        };
 
-        const generateOrderNumberInMem = (locId?: string, docNum?: string): string => {
+        const generateOrderNumberInMem = async (locId?: string, docNum?: string, date?: Date): Promise<string> => {
             if (!locId) return docNum || 'SO-00001';
-            const entry = locSequenceMap.get(locId);
-            if (!entry) return docNum || 'SO-00001';
+            const fySuffix = getFySuffix(date);
+            const entry = await getOrInitLocSequence(locId, fySuffix);
             const num = `${entry.prefix}${String(entry.currentSeq).padStart(5, '0')}`;
             entry.currentSeq++;
             return num;
@@ -648,15 +644,15 @@ export class SalesHistoryUploadProcessor {
                 const firstRow = rows[0].data;
                 const targetLocationId = resolveLocInMem(firstRow.costCentre) || defaultLocationId;
 
+                const createdAt = parseDocumentDate(firstRow.documentDate);
+
                 const existingEntry = existingOrderByDocNum.get(documentNumber);
                 let orderNumber: string;
                 if (existingEntry) {
                     orderNumber = existingEntry.orderNumber;
                 } else {
-                    orderNumber = generateOrderNumberInMem(targetLocationId, documentNumber);
+                    orderNumber = await generateOrderNumberInMem(targetLocationId, documentNumber, createdAt);
                 }
-
-                const createdAt = parseDocumentDate(firstRow.documentDate);
 
                 const cashSale = firstRow.cashSale || 0;
                 const cardSale = firstRow.cardSale || 0;
