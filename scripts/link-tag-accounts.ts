@@ -246,46 +246,87 @@ export async function auditTagAccounts(prisma: PrismaClient, tenantLabel = 'MAIN
 }
 
 async function main() {
-  const masterDbUrl = process.env.MASTER_DATABASE_URL;
+  const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.MASTER_DATABASE_URL;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
   const singleDbUrl = process.env.DATABASE_URL;
 
-  if (masterDbUrl && masterKey) {
-    console.log('📡 Connecting to Master DB to scan all tenants...');
-    const pool = new Pool({ connectionString: masterDbUrl });
+  let processedTenantsCount = 0;
+
+  if (managementUrl && masterKey) {
+    console.log('📡 Connecting to Master DB to query active companies/tenants...');
+    const pool = new Pool({ connectionString: managementUrl });
     const adapter = new PrismaPg(pool);
-    const management = new ManagementClient({ adapter });
+    const management = new ManagementClient({ adapter } as any);
 
     try {
       await management.$connect();
-      const tenants = await management.tenant.findMany({ where: { isDeleted: false } });
 
-      for (const tenant of tenants) {
-        if (!tenant.dbPasswordEnc) continue;
+      let companies: any[] = [];
+      try {
+        companies = await management.company.findMany({ where: { status: 'active' } });
+      } catch {
         try {
-          const dbPassword = decrypt(tenant.dbPasswordEnc, masterKey);
-          const tenantDbUrl = `postgresql://${tenant.dbUsername}:${encodeURIComponent(dbPassword)}@${tenant.dbHost}:${tenant.dbPort}/${tenant.dbName}?schema=public`;
-          const tenantPool = new Pool({ connectionString: tenantDbUrl });
-          const tenantAdapter = new PrismaPg(tenantPool);
-          const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
-
-          try {
-            await tenantPrisma.$connect();
-            await auditTagAccounts(tenantPrisma, `${tenant.name} (${tenant.code})`);
-          } finally {
-            await tenantPrisma.$disconnect();
-            await tenantPool.end();
-          }
-        } catch (tErr: any) {
-          console.error(`❌ Failed auditing tenant ${tenant.code}: ${tErr.message}`);
+          companies = await management.tenant.findMany({ where: { isDeleted: false } });
+        } catch {
+          companies = [];
         }
       }
+
+      if (companies.length > 0) {
+        console.log(`📡 Found ${companies.length} active company/tenant database(s). Running audit...`);
+        for (const company of companies) {
+          const cCode = company.code || company.dbName || 'TENANT';
+          const cName = company.name || company.code || 'Tenant';
+          console.log(`\n👉 Auditing tenant: ${cName} (${cCode})`);
+
+          let connectionString = company.dbUrl;
+          const rawPassword = company.dbPassword || company.dbPasswordEnc;
+          const dbUser = company.dbUser || company.dbUsername;
+
+          if (rawPassword) {
+            try {
+              const decPassword = encodeURIComponent(decrypt(rawPassword, masterKey));
+              connectionString = `postgresql://${dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+            } catch {
+              console.warn(`  ⚠️ Decryption failed for ${cCode}, using stored dbUrl...`);
+            }
+          }
+
+          if (!connectionString) {
+            console.error(`  ❌ No connection details for ${cCode}`);
+            continue;
+          }
+
+          try {
+            const tenantPool = new Pool({ connectionString });
+            const tenantAdapter = new PrismaPg(tenantPool);
+            const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
+
+            try {
+              await tenantPrisma.$connect();
+              await auditTagAccounts(tenantPrisma, `${cName} (${cCode})`);
+              processedTenantsCount++;
+            } finally {
+              await tenantPrisma.$disconnect();
+              await tenantPool.end();
+            }
+          } catch (err: any) {
+            console.error(`  ❌ Failed processing tenant ${cCode}: ${err.message}`);
+          }
+        }
+      } else {
+        console.log('ℹ️ No active companies/tenants found in Master DB.');
+      }
+    } catch (mErr: any) {
+      console.warn(`⚠️ Master DB connection failed: ${mErr.message}`);
     } finally {
-      await management.$disconnect();
-      await pool.end();
+      await management.$disconnect().catch(() => {});
+      await pool.end().catch(() => {});
     }
-  } else if (singleDbUrl) {
-    console.log('📡 Running audit script in Single Database Mode (DATABASE_URL)...');
+  }
+
+  if (processedTenantsCount === 0 && singleDbUrl) {
+    console.log('📡 Running audit script in Single Database Mode (using DATABASE_URL)...');
     const tenantPool = new Pool({ connectionString: singleDbUrl });
     const tenantAdapter = new PrismaPg(tenantPool);
     const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
@@ -297,8 +338,6 @@ async function main() {
       await tenantPrisma.$disconnect();
       await tenantPool.end();
     }
-  } else {
-    console.error('❌ Neither MASTER_DATABASE_URL nor DATABASE_URL found in environment.');
   }
 }
 
