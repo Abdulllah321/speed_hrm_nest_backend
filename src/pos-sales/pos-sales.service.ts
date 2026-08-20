@@ -159,11 +159,19 @@ export class PosSalesService implements OnModuleInit {
     if (!searchTerm)
       return { status: false, message: 'Search query is required' };
 
+    // Fetch registered brands for this location (if any configured)
+    const locationBrands = await this.prisma.locationBrand.findMany({
+      where: { locationId },
+      select: { brandId: true },
+    });
+    const brandIds = locationBrands.map((lb) => lb.brandId).filter(Boolean);
+
     // ── Step 1: text-match items first (selective, small result set) ──
     // Exact matches on barCode/sku/itemId are boosted by ordering them first.
     const items = await this.prisma.item.findMany({
       where: {
         isActive: true,
+        ...(brandIds.length > 0 ? { brandId: { in: brandIds } } : {}),
         OR: [
           { barCode: { equals: searchTerm, mode: 'insensitive' } },
           { sku: { equals: searchTerm, mode: 'insensitive' } },
@@ -193,9 +201,16 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── Quick barcode scan (exact match only, returns single item) ───
   async scanBarcode(barcode: string, locationId: string) {
+    const locationBrands = await this.prisma.locationBrand.findMany({
+      where: { locationId },
+      select: { brandId: true },
+    });
+    const brandIds = locationBrands.map((lb) => lb.brandId).filter(Boolean);
+
     const item = await this.prisma.item.findFirst({
       where: {
         isActive: true,
+        ...(brandIds.length > 0 ? { brandId: { in: brandIds } } : {}),
         OR: [
           { barCode: { equals: barcode.trim(), mode: 'insensitive' } },
           { sku: { equals: barcode.trim(), mode: 'insensitive' } },
@@ -1080,10 +1095,44 @@ export class PosSalesService implements OnModuleInit {
           );
         }
 
+        // Resolve cashier info for immediate receipt rendering
+        let cashier: {
+          name: string;
+          empCode: string | null;
+          email: string | null;
+        } | null = null;
+        if (cashierUserId) {
+          try {
+            const emp = await tx.employee.findFirst({
+              where: {
+                OR: [{ userId: cashierUserId }, { id: cashierUserId }],
+              },
+              select: { id: true, employeeName: true, employeeId: true },
+            });
+            const user = await this.prismaMaster.user.findUnique({
+              where: { id: cashierUserId },
+              select: { id: true, firstName: true, lastName: true, email: true },
+            });
+            if (emp || user) {
+              cashier = {
+                name:
+                  emp?.employeeName ||
+                  (user ? `${user.firstName} ${user.lastName}`.trim() : 'Unknown'),
+                empCode: emp?.employeeId || null,
+                email: user?.email || null,
+              };
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
         return {
           status: true,
           data: {
             ...order,
+            cashier,
+            cashierName: cashier?.name || undefined,
             tenders,
             changeAmount,
             creditVouchers:

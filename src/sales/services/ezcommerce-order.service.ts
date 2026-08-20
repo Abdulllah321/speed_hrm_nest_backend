@@ -87,6 +87,7 @@ export class EzcommerceOrderService {
           { id: cleanCenterId },
           { code: cleanCenterId },
           { shortCode: cleanCenterId },
+          { centerId: cleanCenterId },
         ],
         isDeleted: false,
       },
@@ -99,7 +100,11 @@ export class EzcommerceOrderService {
     } else {
       const warehouse = await this.prisma.warehouse.findFirst({
         where: {
-          OR: [{ id: cleanCenterId }, { code: cleanCenterId }],
+          OR: [
+            { id: cleanCenterId },
+            { code: cleanCenterId },
+            { centerId: cleanCenterId },
+          ],
           isDeleted: false,
         },
         select: { id: true },
