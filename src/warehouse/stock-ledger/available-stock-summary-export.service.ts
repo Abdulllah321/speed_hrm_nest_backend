@@ -663,11 +663,11 @@ export class AvailableStockSummaryExportService {
 
     // Collect active item IDs from all aggregated result sets
     const activeItemIdsSet = new Set<string>();
-    for (const r of bfGroupResults) activeItemIdsSet.add(r.itemId);
-    for (const r of inRangeOpeningResults) activeItemIdsSet.add(r.itemId);
-    for (const r of ledgerEntriesResults) activeItemIdsSet.add(r.itemId);
-    for (const r of transitItemsResults) activeItemIdsSet.add(r.itemId);
-    for (const r of reserveGroupResults) activeItemIdsSet.add(r.itemId);
+    for (const r of bfGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of inRangeOpeningResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of ledgerEntriesResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of transitItemsResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of reserveGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
 
     if (activeItemIdsSet.size === 0) {
       const inventoryFallback = await prisma.inventoryItem.findMany({
@@ -675,10 +675,10 @@ export class AvailableStockSummaryExportService {
         select: { itemId: true },
         take: 2000,
       });
-      for (const inv of inventoryFallback) activeItemIdsSet.add(inv.itemId);
+      for (const inv of inventoryFallback) if (inv?.itemId) activeItemIdsSet.add(inv.itemId);
     }
 
-    const activeItemIds = Array.from(activeItemIdsSet);
+    const activeItemIds = Array.from(activeItemIdsSet).filter(Boolean);
     if (activeItemIds.length === 0 || isAborted?.()) {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
@@ -695,7 +695,12 @@ export class AvailableStockSummaryExportService {
     const itemsNested = await Promise.all(
       itemChunks.map(chunk =>
         prisma.item.findMany({
-          where: { id: { in: chunk } },
+          where: {
+            OR: [
+              { id: { in: chunk } },
+              { itemId: { in: chunk } },
+            ],
+          },
           include: {
             brand: true,
             division: true,
@@ -884,10 +889,12 @@ export class AvailableStockSummaryExportService {
 
       for (const item of items) {
         const mapKey = `${locKey}_${item.id}`;
-        const bf = bfMap.get(mapKey) || 0;
-        const transit = transitMap.get(mapKey) || 0;
-        const reserved = reserveMap.get(mapKey) || 0;
-        const m = movementMetricsMap.get(mapKey) || {
+        const altMapKey = item.itemId ? `${locKey}_${item.itemId}` : mapKey;
+
+        const bf = (bfMap.get(mapKey) ?? bfMap.get(altMapKey)) || 0;
+        const transit = (transitMap.get(mapKey) ?? transitMap.get(altMapKey)) || 0;
+        const reserved = (reserveMap.get(mapKey) ?? reserveMap.get(altMapKey)) || 0;
+        const m = (movementMetricsMap.get(mapKey) ?? movementMetricsMap.get(altMapKey)) || {
           fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
           exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
         };
@@ -902,11 +909,8 @@ export class AvailableStockSummaryExportService {
           continue;
         }
 
-        const setting = settingMap.get(item.id);
+        const setting = settingMap.get(item.id) || (item.itemId ? settingMap.get(item.itemId) : undefined);
         let unitPrice = Number(item.unitPrice || 0);
-        if (unitPrice === 0 && (setting as any)?.retailPrice) {
-          unitPrice = Number((setting as any).retailPrice);
-        }
 
         let unitCost = Number(item.unitCost || 0);
         if (unitCost === 0) {
@@ -915,6 +919,7 @@ export class AvailableStockSummaryExportService {
             setting?.standardCost ||
             item.fob ||
             latestLedgerCostMap.get(item.id) ||
+            (item.itemId ? latestLedgerCostMap.get(item.itemId) : undefined) ||
             0
           );
         }
