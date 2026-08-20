@@ -642,6 +642,7 @@ model Brand {
   isDeleted Boolean   @default(false)
   deletedAt DateTime?
   id          String     @id @default(uuid())
+  code        String?    @unique
   name        String     @unique
   status      String     @default("active")
   createdById String?
@@ -651,6 +652,7 @@ model Brand {
   items             Item[]
   stockRequisitions StockRequisition[]
   locationBrands    LocationBrand[]
+  supplierBrands    SupplierBrand[]
 }
 
 model Division {

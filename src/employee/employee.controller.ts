@@ -50,6 +50,12 @@ export class EmployeeController {
     private eventsService: EmployeeUploadEventsService,
   ) { }
 
+  @Get('employees/next-code')
+  @ApiOperation({ summary: 'Get next employee code sequence' })
+  async getNextEmployeeCode() {
+    return this.service.getNextEmployeeCode();
+  }
+
   @Get('employees')
   @ApiOperation({ summary: 'List all employees' })
   async list(
