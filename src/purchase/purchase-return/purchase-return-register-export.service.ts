@@ -112,16 +112,20 @@ export class PurchaseReturnRegisterExportService {
     private readonly uploadService: UploadService,
   ) {}
 
-  async getReportData(params: {
-    brandId?: string;
-    supplierId?: string;
-    startDate?: string;
-    endDate?: string;
-    status?: string;
-    returnType?: string;
-    sourceType?: string;
-    search?: string;
-  }): Promise<PurchaseReturnRegisterReportResult> {
+  async getReportData(
+    params: {
+      brandId?: string;
+      supplierId?: string;
+      startDate?: string;
+      endDate?: string;
+      status?: string;
+      returnType?: string;
+      sourceType?: string;
+      search?: string;
+    },
+    prismaParam?: PrismaService,
+  ): Promise<PurchaseReturnRegisterReportResult> {
+    const prisma = prismaParam || this.prisma;
     const {
       brandId,
       supplierId,
@@ -188,7 +192,7 @@ export class PurchaseReturnRegisterExportService {
       ];
     }
 
-    const returns = await this.prisma.purchaseReturn.findMany({
+    const returns = await prisma.purchaseReturn.findMany({
       where,
       include: {
         supplier: true,
