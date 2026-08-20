@@ -56,7 +56,15 @@ export async function auditTagAccounts(prisma: PrismaClient, tenantLabel = 'MAIN
     });
   });
 
-  // 2. Identify candidate Tag Accounts (referenced in vouchers/transactions, or child sub-accounts)
+  // 2. Build parent accounts set (accounts that have children underneath them)
+  const parentAccountIds = new Set<string>();
+  allAccounts.forEach((acc: any) => {
+    if (acc.parentId) {
+      parentAccountIds.add(acc.parentId);
+    }
+  });
+
+  // Identify candidate Tag Accounts (sub-account leaf nodes, explicitly tagged accounts, or voucher tag references)
   const jvTags = await safeFindMany('journalVoucherDetail', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
   const pvTags = await safeFindMany('paymentVoucherDetail', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
   const rvTags = await safeFindMany('receiptVoucherDetail', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
@@ -69,10 +77,14 @@ export async function auditTagAccounts(prisma: PrismaClient, tenantLabel = 'MAIN
   atTags.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
 
   const candidateAccounts = allAccounts.filter((a: any) => {
-    return a.isTagAccount || referencedTagIds.has(a.id) || (a.parentId && !a.isGroup);
+    // If account has children underneath it, it is a Control/Parent Account (e.g. Authorized Capital), NOT a tag sub-account
+    if (parentAccountIds.has(a.id) && !referencedTagIds.has(a.id)) {
+      return false;
+    }
+    return a.isTagAccount || referencedTagIds.has(a.id) || (Boolean(a.parentId) && !a.isGroup);
   });
 
-  console.log(`📌 Found ${candidateAccounts.length} total tag / sub-account(s) for audit.`);
+  console.log(`📌 Found ${candidateAccounts.length} total tag / sub-account(s) for audit (excluding control header accounts).`);
 
   // 3. Load Master entities for matching
   const customers = await safeFindMany('customer');
