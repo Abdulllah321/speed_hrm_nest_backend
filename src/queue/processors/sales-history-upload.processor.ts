@@ -501,21 +501,21 @@ export class SalesHistoryUploadProcessor {
         ];
 
         const items = await prisma.item.findMany({
-            where: { barCode: { in: allBarCodes } },
-            select: { id: true, barCode: true, unitPrice: true, taxRate1: true },
+            where: {
+                OR: [
+                    { barCode: { in: allBarCodes } },
+                    { sku: { in: allBarCodes } },
+                    { itemId: { in: allBarCodes } },
+                ],
+            },
+            select: { id: true, barCode: true, sku: true, itemId: true, unitPrice: true, taxRate1: true },
         });
-        const itemByBarCode = new Map(items.map((i) => [i.barCode!, i]));
 
-        const missingBarCodes = allBarCodes.filter((bc) => !itemByBarCode.has(bc));
-        if (missingBarCodes.length > 0) {
-            const byItemId = await prisma.item.findMany({
-                where: { itemId: { in: missingBarCodes } },
-                select: { id: true, barCode: true, itemId: true, unitPrice: true, taxRate1: true },
-            });
-            for (const item of byItemId) {
-                const searchedAs = missingBarCodes.find((bc) => bc === item.itemId);
-                if (searchedAs) itemByBarCode.set(searchedAs, item);
-            }
+        const itemByBarCode = new Map<string, any>();
+        for (const item of items) {
+            if (item.barCode) itemByBarCode.set(item.barCode.trim(), item);
+            if (item.sku) itemByBarCode.set(item.sku.trim(), item);
+            if (item.itemId) itemByBarCode.set(item.itemId.trim(), item);
         }
 
         // 2. Pre-fetch all locations in memory for instant zero-query resolution
