@@ -492,13 +492,13 @@ export class SalesHistoryUploadProcessor {
         locSequenceMap: Map<string, { prefix: string; currentSeq: number }> = new Map(),
     ): Promise<void> {
         // 1. Bulk item lookup by barCode & itemId
-        const allBarCodes = [
-            ...new Set(
+        const allBarCodes = Array.from(
+            new Set(
                 batch.flatMap(([, rows]) =>
                     rows.map((r) => r.data.barCode).filter(Boolean) as string[],
                 ),
             ),
-        ];
+        );
 
         const items = await prisma.item.findMany({
             where: {
