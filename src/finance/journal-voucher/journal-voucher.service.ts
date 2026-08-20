@@ -464,26 +464,32 @@ export class JournalVoucherService {
       });
 
       if (existing.status !== 'approved' && status === 'approved') {
-        await this.accounting.postLines(
-          updated.details.map(d => ({
-            accountId:       d.accountId,
-            tagAccountId:    d.tagAccountId?.trim() || undefined,
-            debit:           Number(d.debit),
-            credit:          Number(d.credit),
-            narration:       d.narration       || updated.description || undefined,
-            refBillNo:       d.refBillNo       || undefined,
-            refBillNo2:      d.refBillNo2      || undefined,
-            taxType:         d.taxType ?? 'Taxable',
-          })),
-          {
-            sourceType:      'JOURNAL_VOUCHER',
-            sourceId:        updated.id,
-            sourceRef:       updated.jvNo,
-            description:     updated.description ?? undefined,
-            transactionDate: new Date(updated.jvDate),
-          },
-          prisma,
-        );
+        const existingTx = await prisma.accountTransaction.findFirst({
+          where: { sourceType: 'JOURNAL_VOUCHER', sourceId: updated.id },
+          select: { id: true },
+        });
+        if (!existingTx) {
+          await this.accounting.postLines(
+            updated.details.map(d => ({
+              accountId:       d.accountId,
+              tagAccountId:    d.tagAccountId?.trim() || undefined,
+              debit:           Number(d.debit),
+              credit:          Number(d.credit),
+              narration:       d.narration       || updated.description || undefined,
+              refBillNo:       d.refBillNo       || undefined,
+              refBillNo2:      d.refBillNo2      || undefined,
+              taxType:         d.taxType ?? 'Taxable',
+            })),
+            {
+              sourceType:      'JOURNAL_VOUCHER',
+              sourceId:        updated.id,
+              sourceRef:       updated.jvNo,
+              description:     updated.description ?? undefined,
+              transactionDate: new Date(updated.jvDate),
+            },
+            prisma,
+          );
+        }
       }
 
       return updated;

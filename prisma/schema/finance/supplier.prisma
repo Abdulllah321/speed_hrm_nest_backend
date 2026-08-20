@@ -1,7 +1,6 @@
 model Supplier {
   id               String                      @id @default(uuid())
   code             String                      @unique
-  code2            String?                     // GL code for import
   brand            String?
   name             String
   nature           String?
@@ -38,9 +37,25 @@ model Supplier {
 
   debitNotes       DebitNote[]
   ledgerEntries    SupplierLedger[]
+  supplierBrands   SupplierBrand[]
 
   @@index([nature])
   @@index([type])
+}
+
+model SupplierBrand {
+  id         String   @id @default(uuid())
+  supplierId String   @map("supplier_id")
+  brandId    String   @map("brand_id")
+  createdAt  DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  brand    Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, brandId])
+  @@index([supplierId])
+  @@index([brandId])
+  @@map("supplier_brands")
 }
 
 enum SupplierNature {

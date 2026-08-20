@@ -5,19 +5,15 @@ import {
   IsOptional,
   IsString,
   IsEmail,
+  IsArray,
 } from 'class-validator';
 import { SupplierNature, SupplierType } from '@prisma/client';
 
 export class CreateSupplierDto {
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  code: string;
-
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
-  code2?: string;
+  code?: string;
 
   @ApiProperty()
   @IsString()
@@ -38,6 +34,11 @@ export class CreateSupplierDto {
   @IsString()
   @IsOptional()
   brand?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsArray()
+  @IsOptional()
+  brandIds?: string[];
 
   @ApiPropertyOptional()
   @IsString()

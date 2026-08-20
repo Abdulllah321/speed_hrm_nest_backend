@@ -1,0 +1,16 @@
+model FiscalPeriod {
+  id             String    @id @default(cuid())
+  companyId      String?   @map("company_id")
+  name           String
+  startDate      DateTime  @map("start_date")
+  endDate        DateTime  @map("end_date")
+  isClosed       Boolean   @default(false) @map("is_closed")
+  closedAt       DateTime? @map("closed_at")
+  closedByUserId String?   @map("closed_by_user_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([companyId, isClosed])
+  @@index([startDate, endDate])
+  @@map("fiscal_periods")
+}

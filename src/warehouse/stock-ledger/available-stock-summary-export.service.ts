@@ -30,6 +30,8 @@ export interface QueueAvailableStockSummaryExportOptions {
   previewJobId?: string;
 }
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Injectable()
 export class AvailableStockSummaryExportService {
   private readonly logger = new Logger(AvailableStockSummaryExportService.name);
@@ -39,6 +41,7 @@ export class AvailableStockSummaryExportService {
     @InjectQueue('available-stock-summary-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) {}
 
   isJobCancelled(jobId?: string): boolean {
@@ -194,16 +197,33 @@ export class AvailableStockSummaryExportService {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     fs.mkdirSync(previewDir, { recursive: true });
 
-    let serializableItemMetricsMap: Record<string, any> | undefined;
-    if (data?.itemMetricsMap instanceof Map) {
-      serializableItemMetricsMap = Object.fromEntries(data.itemMetricsMap);
-    } else if (typeof data?.itemMetricsMap === 'object' && data?.itemMetricsMap !== null) {
-      serializableItemMetricsMap = data.itemMetricsMap;
-    }
+    // Clean flat items list to strip heavy Prisma objects and save clean plain key-values
+    const cleanFlatItemsList = (data?.flatItemsList || []).map((entry: any) => ({
+      locationName: entry.locationName,
+      brand: entry.brand ?? entry.item?.brand?.name ?? 'No Brand',
+      division: entry.division ?? entry.item?.division?.name ?? 'No Division',
+      category: entry.category ?? entry.item?.category?.name ?? 'No Category',
+      gender: entry.gender ?? entry.item?.gender?.name ?? 'No Gender',
+      silhouette: entry.silhouette ?? entry.item?.silhouette?.name ?? 'No Silhouette',
+      sku: entry.sku ?? entry.item?.sku ?? '',
+      articleName: entry.articleName ?? entry.item?.description ?? '',
+      color: entry.color ?? entry.item?.color?.name ?? 'Default',
+      size: entry.size ?? entry.item?.size?.name ?? 'Default',
+      barCode: entry.barCode ?? entry.item?.barCode ?? '',
+      quantity: entry.quantity ?? entry.metrics?.quantity ?? 0,
+      transit: entry.transit ?? entry.metrics?.transit ?? 0,
+      reserved: entry.reserved ?? entry.metrics?.reserved ?? 0,
+      total: entry.total ?? entry.metrics?.total ?? 0,
+      unitPrice: entry.unitPrice ?? entry.metrics?.unitPrice ?? 0,
+      value: entry.value ?? entry.metrics?.value ?? 0,
+      unitCost: entry.unitCost ?? entry.metrics?.unitCost ?? 0,
+      costingValue: entry.costingValue ?? entry.metrics?.costingValue ?? 0,
+    }));
 
     const payloadToSerialize = {
-      ...data,
-      itemMetricsMap: serializableItemMetricsMap,
+      root: data.root || [],
+      grandTotals: data.grandTotals || {},
+      flatItemsList: cleanFlatItemsList,
     };
 
     const jsonStr = JSON.stringify(payloadToSerialize);
@@ -226,11 +246,7 @@ export class AvailableStockSummaryExportService {
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
-    const parsed = JSON.parse(jsonStr);
-    if (parsed && parsed.itemMetricsMap && !(parsed.itemMetricsMap instanceof Map)) {
-      parsed.itemMetricsMap = new Map(Object.entries(parsed.itemMetricsMap));
-    }
-    return parsed;
+    return JSON.parse(jsonStr);
   }
 
   async queueExport(opts: QueueAvailableStockSummaryExportOptions): Promise<{ jobId: string }> {
@@ -328,10 +344,15 @@ export class AvailableStockSummaryExportService {
       return res.redirect(record.filePath, 302);
     }
 
-    const filePath = path.join(process.cwd(), record.filePath);
+    let filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      const publicFallback = path.join(process.cwd(), 'public', record.filePath);
+      if (fs.existsSync(publicFallback)) {
+        filePath = publicFallback;
+      } else {
+        throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      }
     }
 
     const stat = fs.statSync(filePath);
@@ -461,7 +482,14 @@ export class AvailableStockSummaryExportService {
     }
 
     const now = new Date();
-    const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const getDefaultFiscalYearStart = (ref: Date) => {
+      const year = ref.getFullYear();
+      const month = ref.getMonth(); // 0 = Jan, 6 = July
+      const fyYear = month >= 6 ? year : year - 1;
+      return new Date(fyYear, 6, 1, 0, 0, 0, 0);
+    };
+
+    const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
@@ -477,9 +505,13 @@ export class AvailableStockSummaryExportService {
       for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
     }
 
+    // Resolve nearest Fiscal Opening Snapshot date
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
+
     await onProgress?.(25, 'Discovering inventory items & stock ledgers...');
 
-    // Concurrent discovery of inventory items and ledger items
+    // Concurrent discovery of inventory items and ledger items within query date window
     const [inventoryItems, ledgerItems] = await Promise.all([
       prisma.inventoryItem.findMany({
         where: {
@@ -490,6 +522,7 @@ export class AvailableStockSummaryExportService {
       prisma.stockLedger.findMany({
         where: {
           ...locationOrWarehouseWhere,
+          createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
         },
         select: { itemId: true },
         distinct: ['itemId'],
@@ -519,46 +552,6 @@ export class AvailableStockSummaryExportService {
 
     await onProgress?.(40, 'Fetching product catalog, brands, categories & size details...');
 
-    // Safely chunk item fetching to prevent database query parameter limit errors
-    const CHUNK_SIZE = 1000;
-    const itemChunks: string[][] = [];
-    for (let i = 0; i < uniqueItemIds.length; i += CHUNK_SIZE) {
-      itemChunks.push(uniqueItemIds.slice(i, i + CHUNK_SIZE));
-    }
-
-    const itemsNested = await Promise.all(
-      itemChunks.map(chunk =>
-        prisma.item.findMany({
-          where: {
-            OR: [
-              { id: { in: chunk } },
-              { itemId: { in: chunk } },
-            ],
-          },
-          include: {
-            color: true,
-            size: true,
-            gender: true,
-            category: true,
-            division: true,
-            brand: true,
-            silhouette: true,
-          },
-        })
-      )
-    );
-
-    const items = itemsNested.flat();
-    if (items.length === 0 || isAborted?.()) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
-    }
-
-    const matchedItemIds = items.map(i => i.id);
-    const matchedItemChunks: string[][] = [];
-    for (let i = 0; i < matchedItemIds.length; i += CHUNK_SIZE) {
-      matchedItemChunks.push(matchedItemIds.slice(i, i + CHUNK_SIZE));
-    }
-
     const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = isSeparate ? ['itemId', 'locationId', 'warehouseId'] : ['itemId'];
 
     const toLocOrWhFilters: any[] = [];
@@ -569,125 +562,157 @@ export class AvailableStockSummaryExportService {
       ? { OR: toLocOrWhFilters }
       : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    await onProgress?.(55, `Executing queries for ${matchedItemIds.length} items across ${matchedItemChunks.length} chunks (stock movements, transit & reserves)...`);
+    await onProgress?.(45, 'Executing relational JOIN aggregations for stock movements, transit & reserves...');
 
-    // Execute ALL database query pipelines concurrently via Promise.all
+    // Single-batch execution of 6 indexed DB queries bounded strictly by active Fiscal Year
     const [
       bfGroupResults,
       inRangeOpeningResults,
-      tenantSettingsResults,
       ledgerEntriesResults,
       transitItemsResults,
       reserveGroupResults,
+      tenantSettingsResults,
     ] = await Promise.all([
-      // 1. Compute BF (Opening balance before startDate)
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockLedger.groupBy({
-            by: groupByCols,
-            where: {
-              ...locationOrWarehouseWhere,
-              itemId: { in: chunk },
-              createdAt: { lt: startDate },
-            },
-            _sum: { qty: true },
-          })
-        )
-      ),
-      // 2. Query OPENING_BALANCE entries within range
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockLedger.groupBy({
-            by: groupByCols,
-            where: {
-              ...locationOrWarehouseWhere,
-              itemId: { in: chunk },
-              createdAt: { gte: startDate, lte: endDate },
-              OR: [
-                { movementType: MovementType.OPENING_BALANCE },
-                { referenceType: 'OPENING_BALANCE' },
-                { referenceType: 'BULK_STOCK_UPLOAD' }
-              ]
-            },
-            _sum: { qty: true },
-          })
-        )
-      ),
-      // 3. Fetch tenant item settings
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.tenantItemSetting.findMany({
-            where: { itemId: { in: chunk } },
-          })
-        )
-      ),
-      // 4. Query normal ledger entries within range
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockLedger.findMany({
-            where: {
-              ...locationOrWarehouseWhere,
-              itemId: { in: chunk },
-              createdAt: { gte: startDate, lte: endDate },
-              NOT: [
-                { movementType: MovementType.OPENING_BALANCE },
-                { referenceType: 'OPENING_BALANCE' },
-                { referenceType: 'BULK_STOCK_UPLOAD' }
-              ]
-            },
-            select: {
-              itemId: true,
-              qty: true,
-              referenceType: true,
-              movementType: true,
-              locationId: true,
-              warehouseId: true,
-              unitCost: true,
-              rate: true,
-            },
-          })
-        )
-      ),
-      // 5. Query transit items
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.transferRequestItem.findMany({
-            where: {
-              itemId: { in: chunk },
-              transferRequest: {
-                ...toLocOrWhWhere,
-                status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-                transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
-              },
-            },
-            select: {
-              itemId: true,
-              quantity: true,
-              transferRequest: {
-                select: { toLocationId: true, toWarehouseId: true },
-              },
-            },
-          })
-        )
-      ),
-      // 6. Query reserved stock
-      Promise.all(
-        matchedItemChunks.map(chunk =>
-          prisma.stockReserve.groupBy({
-            by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
-            where: {
-              itemId: { in: chunk },
-              ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gte: new Date() } }
-              ]
-            },
-            _sum: { quantity: true },
-          })
-        )
-      ),
+      // 1. Compute B/F Opening balance before startDate
+      prisma.stockLedger.groupBy({
+        by: groupByCols,
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: queryStartDate ? { gte: queryStartDate, lt: startDate } : { lt: startDate },
+        },
+        _sum: { qty: true },
+      }),
+      // 2. Query OPENING_BALANCE entries within date range
+      prisma.stockLedger.groupBy({
+        by: groupByCols,
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: { gte: startDate, lte: endDate },
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        _sum: { qty: true },
+      }),
+      // 3. Query in-period stock ledger movements
+      prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: { gte: startDate, lte: endDate },
+          NOT: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        select: {
+          itemId: true,
+          qty: true,
+          referenceType: true,
+          movementType: true,
+          locationId: true,
+          warehouseId: true,
+          unitCost: true,
+          rate: true,
+        },
+      }),
+      // 4. Query active transit items
+      prisma.transferRequestItem.findMany({
+        where: {
+          transferRequest: {
+            ...toLocOrWhWhere,
+            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+          },
+        },
+        select: {
+          itemId: true,
+          quantity: true,
+          transferRequest: {
+            select: { toLocationId: true, toWarehouseId: true },
+          },
+        },
+      }),
+      // 5. Query active stock reserves
+      prisma.stockReserve.groupBy({
+        by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
+        where: {
+          ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } },
+          ],
+        },
+        _sum: { quantity: true },
+      }),
+      // 6. Query tenant item settings
+      prisma.tenantItemSetting.findMany({
+        select: {
+          itemId: true,
+          averageCost: true,
+          standardCost: true,
+        },
+      }),
     ]);
+
+    if (isAborted?.()) {
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+    }
+
+    // Collect active item IDs from all aggregated result sets
+    const activeItemIdsSet = new Set<string>();
+    for (const r of bfGroupResults) activeItemIdsSet.add(r.itemId);
+    for (const r of inRangeOpeningResults) activeItemIdsSet.add(r.itemId);
+    for (const r of ledgerEntriesResults) activeItemIdsSet.add(r.itemId);
+    for (const r of transitItemsResults) activeItemIdsSet.add(r.itemId);
+    for (const r of reserveGroupResults) activeItemIdsSet.add(r.itemId);
+
+    if (activeItemIdsSet.size === 0) {
+      const inventoryFallback = await prisma.inventoryItem.findMany({
+        where: { ...locationOrWarehouseWhere },
+        select: { itemId: true },
+        take: 2000,
+      });
+      for (const inv of inventoryFallback) activeItemIdsSet.add(inv.itemId);
+    }
+
+    const activeItemIds = Array.from(activeItemIdsSet);
+    if (activeItemIds.length === 0 || isAborted?.()) {
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+    }
+
+    await onProgress?.(65, `Joining product catalog, brands, categories & size details for ${activeItemIds.length} active items...`);
+
+    // Single joined query on Item table with Brand, Division, Category, Gender, Silhouette, Size, Color relations
+    const CHUNK_SIZE = 1000;
+    const itemChunks: string[][] = [];
+    for (let i = 0; i < activeItemIds.length; i += CHUNK_SIZE) {
+      itemChunks.push(activeItemIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    const itemsNested = await Promise.all(
+      itemChunks.map(chunk =>
+        prisma.item.findMany({
+          where: { id: { in: chunk } },
+          include: {
+            brand: true,
+            division: true,
+            category: true,
+            gender: true,
+            silhouette: true,
+            size: true,
+            color: true,
+          },
+        })
+      )
+    );
+
+    const items = itemsNested.flat();
+    if (items.length === 0 || isAborted?.()) {
+      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+    }
 
     if (isAborted?.()) {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
@@ -695,7 +720,7 @@ export class AvailableStockSummaryExportService {
 
     // Populate BF Map
     const bfMap = new Map<string, number>();
-    for (const row of bfGroupResults.flat()) {
+    for (const row of bfGroupResults) {
       const locKey = isSeparate
         ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
         : 'all';
@@ -704,7 +729,7 @@ export class AvailableStockSummaryExportService {
     }
 
     // Add In-Range Openings to BF Map
-    for (const row of inRangeOpeningResults.flat()) {
+    for (const row of inRangeOpeningResults) {
       const locKey = isSeparate
         ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
         : 'all';
@@ -714,10 +739,10 @@ export class AvailableStockSummaryExportService {
     }
 
     // Populate Setting Map
-    const settingMap = new Map(tenantSettingsResults.flat().map(s => [s.itemId, s]));
+    const settingMap = new Map(tenantSettingsResults.map(s => [s.itemId, s]));
 
     // Populate Ledger Movements and Cost Map
-    const ledgerEntries = ledgerEntriesResults.flat();
+    const ledgerEntries = ledgerEntriesResults;
     const latestLedgerCostMap = new Map<string, number>();
     for (const entry of ledgerEntries) {
       const cost = Number(entry.unitCost ?? entry.rate ?? 0);
@@ -728,7 +753,7 @@ export class AvailableStockSummaryExportService {
 
     // Populate Transit Map
     const transitMap = new Map<string, number>();
-    for (const row of transitItemsResults.flat()) {
+    for (const row of transitItemsResults) {
       const qty = Number(row.quantity || 0);
       const tr = row.transferRequest;
       const locKey = isSeparate
@@ -740,7 +765,7 @@ export class AvailableStockSummaryExportService {
 
     // Populate Reserve Map
     const reserveMap = new Map<string, number>();
-    for (const row of reserveGroupResults.flat()) {
+    for (const row of reserveGroupResults) {
       const locKey = isSeparate
         ? (row.warehouseId ? `wh:${row.warehouseId}` : 'all')
         : 'all';

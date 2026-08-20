@@ -16,21 +16,51 @@ export class CustomerService {
     private activityLogs: ActivityLogsService,
   ) { }
 
+  async getNextCustomerCode(): Promise<{ status: boolean; code: string }> {
+    try {
+      const customers = await this.prisma.customer.findMany({
+        select: { subCode: true, traderId: true },
+      });
+      let maxNum = 310000;
+      for (const c of customers) {
+        if (c.subCode && /^\d+$/.test(c.subCode.trim())) {
+          const val = parseInt(c.subCode.trim(), 10);
+          if (!isNaN(val) && val > maxNum) {
+            maxNum = val;
+          }
+        }
+        if (c.traderId && /^\d+$/.test(c.traderId.trim())) {
+          const val = parseInt(c.traderId.trim(), 10);
+          if (!isNaN(val) && val > maxNum) {
+            maxNum = val;
+          }
+        }
+      }
+      const nextCode = String(maxNum + 1);
+      return { status: true, code: nextCode };
+    } catch (error: any) {
+      return { status: false, code: '310001' };
+    }
+  }
+
   // ─── ERP: Create (defaults to ERP type) ──────────────────────────
   async create(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
+      const { code, ...restData } = createDto;
+      let subCode = restData.subCode || code;
+      if (!subCode) {
+        const nextRes = await this.getNextCustomerCode();
+        subCode = nextRes.code;
+      }
       let traderId = createDto.traderId;
       if (!traderId) {
-        const count = await this.prisma.customer.count();
-        traderId = String(count + 10001);
+        traderId = subCode;
       }
-
-      const { code, ...restData } = createDto;
 
       const customer = await this.prisma.customer.create({
         data: {
           ...restData,
-          subCode: restData.subCode || code || undefined,
+          subCode,
           traderId,
           customerType: createDto.customerType ?? 'ERP',
         } as any,

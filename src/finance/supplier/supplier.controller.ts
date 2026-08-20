@@ -22,6 +22,11 @@ export class SupplierController {
     return this.supplierService.create(createSupplierDto);
   }
 
+  @Get('next-code')
+  getNextSupplierCode() {
+    return this.supplierService.getNextSupplierCode();
+  }
+
   @Get()
   findAll() {
     return this.supplierService.findAll();

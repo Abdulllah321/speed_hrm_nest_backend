@@ -34,6 +34,8 @@ export interface QueueStockValuationExportOptions {
   previewJobId?: string;
 }
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Injectable()
 export class StockValuationExportService {
   private readonly logger = new Logger(StockValuationExportService.name);
@@ -43,6 +45,7 @@ export class StockValuationExportService {
     @InjectQueue('stock-valuation-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) {}
 
   isJobCancelled(jobId?: string): boolean {
@@ -342,10 +345,15 @@ export class StockValuationExportService {
       return res.redirect(record.filePath, 302);
     }
 
-    const filePath = path.join(process.cwd(), record.filePath);
+    let filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      const publicFallback = path.join(process.cwd(), 'public', record.filePath);
+      if (fs.existsSync(publicFallback)) {
+        filePath = publicFallback;
+      } else {
+        throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      }
     }
 
     const stat = fs.statSync(filePath);
@@ -436,16 +444,32 @@ export class StockValuationExportService {
     const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
-    // Discover all distinct items from the StockLedger (location-agnostic when no locationId is provided)
-    const ledgerItems = await prisma.stockLedger.findMany({
-      where: {
-        ...(locationId ? { locationId } : {}),
-      },
-      select: { itemId: true },
-      distinct: ['itemId'],
-    });
+    // Resolve nearest Fiscal Opening Snapshot date to prune scanning closed historical fiscal years
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
 
-    const uniqueItemIds = [...new Set(ledgerItems.map(l => l.itemId))];
+    // Discover active items from InventoryItem and StockLedger within active query date window
+    const [inventoryItems, ledgerItems] = await Promise.all([
+      prisma.inventoryItem.findMany({
+        where: {
+          ...(locationId ? { locationId } : {}),
+        },
+        select: { itemId: true },
+      }),
+      prisma.stockLedger.findMany({
+        where: {
+          ...(locationId ? { locationId } : {}),
+          createdAt: { gte: queryStartDate, lte: endDate },
+        },
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
+    ]);
+
+    const uniqueItemIds = [...new Set([
+      ...inventoryItems.map((i: any) => i.itemId),
+      ...ledgerItems.map((l: any) => l.itemId),
+    ])];
 
     if (uniqueItemIds.length === 0) {
       return {
@@ -559,7 +583,10 @@ export class StockValuationExportService {
         where: {
           ...(locationId ? { locationId } : {}),
           itemId: { in: chunk },
-          createdAt: { lte: endDate },
+          createdAt: {
+            gte: queryStartDate,
+            lte: endDate,
+          },
         },
         select: {
           id: true,
@@ -630,6 +657,13 @@ export class StockValuationExportService {
           entryCost = runningWac;
         }
         const isBeforePeriod = entry.createdAt < startDate;
+        const ref = entry.referenceType || '';
+        const isFiscalYearOpening = ref === 'FISCAL_YEAR_OPENING';
+
+        // Skip mid-range automated Fiscal Year Opening snapshots to prevent double counting when querying across fiscal years
+        if (isFiscalYearOpening && !isBeforePeriod && queryStartDate < entry.createdAt && startDate < entry.createdAt) {
+          continue;
+        }
 
         if (
           entry.movementType === 'INBOUND' ||

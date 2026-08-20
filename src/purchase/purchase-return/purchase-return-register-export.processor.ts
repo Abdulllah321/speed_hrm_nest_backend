@@ -27,6 +27,7 @@ export interface PurchaseReturnRegisterExportJobData {
   returnType?: string;
   sourceType?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'hierarchical' | 'flat';
   search?: string;
 }
 
@@ -67,9 +68,10 @@ export class PurchaseReturnRegisterExportProcessor {
       returnType,
       sourceType,
       format,
+      exportType,
       search,
     } = job.data;
-    this.logger.log(`[PurchaseReturnRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
+    this.logger.log(`[PurchaseReturnRegisterExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -81,21 +83,28 @@ export class PurchaseReturnRegisterExportProcessor {
     try {
       await job.progress(10);
 
-      const reportData = await this.purchaseReturnRegisterExportService.getReportData({
-        brandId,
-        supplierId,
-        startDate,
-        endDate,
-        status,
-        returnType,
-        sourceType,
-        search,
-      });
+      const reportData = await this.purchaseReturnRegisterExportService.getReportData(
+        {
+          brandId,
+          supplierId,
+          startDate,
+          endDate,
+          status,
+          returnType,
+          sourceType,
+          search,
+        },
+        prisma,
+      );
 
       await job.progress(40);
 
       if (format === 'xlsx') {
-        await this.generateExcel(filePath, reportData);
+        if (exportType === 'flat') {
+          await this.generateFlatExcel(filePath, reportData);
+        } else {
+          await this.generateExcel(filePath, reportData);
+        }
       } else {
         await this.generatePdf(filePath, reportData);
       }
@@ -293,6 +302,187 @@ export class PurchaseReturnRegisterExportProcessor {
     grandRow.getCell(5).numFmt = '#,##0';
     grandRow.getCell(7).alignment = { horizontal: 'right' };
     grandRow.getCell(7).numFmt = '#,##0.00';
+    grandRow.commit();
+
+    await workbook.commit();
+  }
+
+  private async generateFlatExcel(filePath: string, reportData: PurchaseReturnRegisterReportResult): Promise<void> {
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      filename: filePath,
+      useStyles: true,
+      useSharedStrings: true,
+    });
+
+    const worksheet = workbook.addWorksheet('Purchase Return Register Flat');
+
+    worksheet.columns = [
+      { header: 'Return #', key: 'returnNumber', width: 16 },
+      { header: 'Return Date', key: 'returnDate', width: 14 },
+      { header: 'Supplier Name', key: 'supplierName', width: 28 },
+      { header: 'Supplier Location', key: 'supplierLocation', width: 20 },
+      { header: 'GRN #', key: 'grnNumber', width: 16 },
+      { header: 'Status', key: 'status', width: 14 },
+      { header: 'Source Type', key: 'sourceType', width: 16 },
+      { header: 'Return Type', key: 'returnType', width: 16 },
+      { header: 'Brand', key: 'brand', width: 18 },
+      { header: 'Division', key: 'division', width: 14 },
+      { header: 'Category', key: 'category', width: 18 },
+      { header: 'SubCategory', key: 'subCategory', width: 18 },
+      { header: 'Gender', key: 'gender', width: 12 },
+      { header: 'Silhouette', key: 'silhouette', width: 14 },
+      { header: 'SKU', key: 'sku', width: 16 },
+      { header: 'Product Description', key: 'description', width: 32 },
+      { header: 'Color', key: 'color', width: 14 },
+      { header: 'Size', key: 'size', width: 10 },
+      { header: 'Barcode', key: 'barCode', width: 18 },
+      { header: 'Return Qty', key: 'returnQty', width: 14 },
+      { header: 'Unit Price', key: 'unitPrice', width: 16 },
+      { header: 'Line Total', key: 'lineTotal', width: 18 },
+    ];
+
+    const borderThin = {
+      top: { style: 'thin' as const },
+      left: { style: 'thin' as const },
+      bottom: { style: 'thin' as const },
+      right: { style: 'thin' as const },
+    };
+
+    // Title Row
+    const titleRow = worksheet.addRow(['Purchase Return Register (Flat Data)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    titleRow.height = 30;
+    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
+    titleRow.getCell(22).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.commit();
+
+    worksheet.addRow([]).commit();
+
+    // Headers Row
+    const colHeaderRow = worksheet.addRow([
+      'Return #',
+      'Return Date',
+      'Supplier Name',
+      'Supplier Location',
+      'GRN #',
+      'Status',
+      'Source Type',
+      'Return Type',
+      'Brand',
+      'Division',
+      'Category',
+      'SubCategory',
+      'Gender',
+      'Silhouette',
+      'SKU',
+      'Product Description',
+      'Color',
+      'Size',
+      'Barcode',
+      'Return Qty',
+      'Unit Price',
+      'Line Total',
+    ]);
+    colHeaderRow.height = 24;
+    for (let c = 1; c <= 22; c++) {
+      const cell = colHeaderRow.getCell(c);
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+      cell.border = borderThin;
+      if (c >= 20) cell.alignment = { horizontal: 'right' };
+      else if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
+      else cell.alignment = { horizontal: 'left' };
+    }
+    colHeaderRow.commit();
+
+    for (const doc of reportData.documents) {
+      for (const div of doc.divisions) {
+        for (const cat of div.categories) {
+          for (const gen of cat.genders) {
+            for (const sil of gen.silhouettes) {
+              for (const art of sil.articles) {
+                for (const v of art.variants) {
+                  const row = worksheet.addRow([
+                    doc.returnNumber,
+                    doc.returnDate,
+                    doc.supplierName,
+                    doc.supplierLocation,
+                    doc.grnNumber || 'N/A',
+                    doc.status,
+                    doc.sourceType,
+                    doc.returnType,
+                    doc.brandsDisplay,
+                    div.divisionName,
+                    cat.categoryName,
+                    cat.subCategoryName || 'N/A',
+                    gen.genderName,
+                    sil.silhouetteName,
+                    art.sku,
+                    art.description,
+                    v.color,
+                    v.size,
+                    v.barCode,
+                    v.returnQty,
+                    v.unitPrice,
+                    v.lineTotal,
+                  ]);
+                  row.height = 19;
+                  for (let c = 1; c <= 22; c++) {
+                    const cell = row.getCell(c);
+                    cell.border = borderThin;
+                    if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
+                    else if (c >= 20) {
+                      cell.alignment = { horizontal: 'right' };
+                      if (c === 20) cell.numFmt = '#,##0';
+                      else cell.numFmt = '#,##0.00';
+                    } else {
+                      cell.alignment = { horizontal: 'left' };
+                    }
+                  }
+                  row.commit();
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Grand Total Row
+    const grandRow = worksheet.addRow([
+      'GRAND TOTAL',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      reportData.grandTotals.quantity,
+      '',
+      reportData.grandTotals.lineTotal,
+    ]);
+    grandRow.height = 26;
+    for (let c = 1; c <= 22; c++) {
+      const cell = grandRow.getCell(c);
+      cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.border = borderThin;
+    }
+    grandRow.getCell(20).alignment = { horizontal: 'right' };
+    grandRow.getCell(20).numFmt = '#,##0';
+    grandRow.getCell(22).alignment = { horizontal: 'right' };
+    grandRow.getCell(22).numFmt = '#,##0.00';
     grandRow.commit();
 
     await workbook.commit();
