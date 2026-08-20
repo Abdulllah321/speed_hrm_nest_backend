@@ -7,7 +7,7 @@ import readline from 'readline';
 import { Pool } from 'pg';
 
 async function reconcilePosSales() {
-  let filePath = process.argv[2] || path.resolve(__dirname, '../../s');
+  let filePath = process.argv[2] || path.resolve(__dirname, '../s');
   if (!fs.existsSync(filePath)) {
     filePath = path.resolve(__dirname, '../s');
   }
