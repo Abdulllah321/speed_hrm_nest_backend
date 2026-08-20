@@ -7,7 +7,11 @@ import readline from 'readline';
 import { Pool } from 'pg';
 
 async function reconcilePosSales() {
-  const filePath = process.argv[2] || path.resolve(__dirname, '../s');
+  let filePath = process.argv[2] || path.resolve(__dirname, '../../s');
+  if (!fs.existsSync(filePath)) {
+    filePath = path.resolve(__dirname, '../s');
+  }
+
   console.log(`=======================================================`);
   console.log(`🚀 Starting POS Sales & Barcode Reconciliation Audit`);
   console.log(`📁 File Source: ${filePath}`);
@@ -30,11 +34,8 @@ async function reconcilePosSales() {
   let fileLineCount = 0;
   
   // File Storage:
-  // fileBarcodeTotalQty: barcode -> total qty
   const fileBarcodeTotalQty = new Map<string, number>();
-  // fileOrderTotalQty: orderNumber -> total qty
   const fileOrderTotalQty = new Map<string, number>();
-  // fileBarcodeQtyByOrder: orderNumber -> Map<barcode, qty>
   const fileBarcodeQtyByOrder = new Map<string, Map<string, number>>();
 
   for await (const line of rl) {
@@ -196,7 +197,6 @@ async function reconcilePosSales() {
       console.log(`⚠️ Mismatched Barcodes:    ${mismatchedBarcodeCount.toLocaleString()}`);
       console.log(`Net Store Quantity Diff:   ${(totalDbQty - totalFileQty).toLocaleString()}\n`);
 
-      // Save Barcode Mismatch CSV
       const barcodeCsvPath = path.resolve(__dirname, '../../pos_barcode_summary_reconciliation.csv');
       const barcodeCsvHeader = 'Barcode,FileTotalQty,DbTotalQty,Variance,Status\n';
       const barcodeCsvLines = barcodeMismatches
@@ -255,7 +255,6 @@ async function reconcilePosSales() {
       console.log(`✅ Fully Matched Orders:   ${matchedOrderCount.toLocaleString()}`);
       console.log(`⚠️ Mismatched Orders:      ${mismatchedOrderCount.toLocaleString()}\n`);
 
-      // Save Order Mismatch CSV
       const orderCsvPath = path.resolve(__dirname, '../../pos_order_summary_reconciliation.csv');
       const orderCsvHeader = 'OrderNumber,FileTotalQty,DbTotalQty,Variance,Status\n';
       const orderCsvLines = orderMismatches
