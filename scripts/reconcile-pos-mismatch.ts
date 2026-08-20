@@ -7,7 +7,7 @@ import readline from 'readline';
 import { Pool } from 'pg';
 
 async function reconcilePosSales() {
-  const filePath = process.argv[2] || path.resolve(__dirname, '../../s');
+  const filePath = process.argv[2] || path.resolve(__dirname, '../s');
   console.log(`=======================================================`);
   console.log(`🚀 Starting POS Sales & Barcode Reconciliation Audit`);
   console.log(`📁 File Source: ${filePath}`);
