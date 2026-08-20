@@ -38,6 +38,7 @@ export class LocationService {
         name: true,
         code: true,
         shortCode: true,
+        centerId: true,
         isStockLocation: true,
         locationBrands: {
           select: {
@@ -125,7 +126,7 @@ export class LocationService {
   }
 
   async create(
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; isStockLocation?: boolean; brandIds?: string[] },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; centerId?: string; isStockLocation?: boolean; brandIds?: string[] },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -140,6 +141,7 @@ export class LocationService {
           createdById: ctx.userId,
           cashGLCode: body.cashGLCode || null,
           shortCode: body.shortCode?.trim() || generateShortCode(body.name),
+          centerId: body.centerId?.trim() || null,
           isStockLocation: body.isStockLocation !== undefined ? body.isStockLocation : true,
           locationBrands: body.brandIds?.length
             ? {
@@ -196,7 +198,7 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; isStockLocation?: boolean; brandIds?: string[] },
+    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; centerId?: string; isStockLocation?: boolean; brandIds?: string[] },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -239,6 +241,10 @@ export class LocationService {
             body.shortCode !== undefined
               ? body.shortCode?.trim() || generateShortCode(body.name ?? existing.name ?? '')
               : existing.shortCode,
+          centerId:
+            body.centerId !== undefined
+              ? (body.centerId?.trim() || null)
+              : existing.centerId,
           isStockLocation:
             body.isStockLocation !== undefined ? body.isStockLocation : existing.isStockLocation,
         },
@@ -444,6 +450,7 @@ export class LocationService {
       status?: string;
       cashGLCode?: string;
       shortCode?: string;
+      centerId?: string;
     }[],
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -460,6 +467,7 @@ export class LocationService {
           createdById: ctx.userId,
           cashGLCode: i.cashGLCode || null,
           shortCode: i.shortCode?.trim() || generateShortCode(i.name),
+          centerId: i.centerId?.trim() || null,
         })),
         skipDuplicates: true,
       });
@@ -509,6 +517,7 @@ export class LocationService {
       status?: string;
       cashGLCode?: string;
       shortCode?: string;
+      centerId?: string;
       isStockLocation?: boolean;
       brandIds?: string[];
     }[],
@@ -552,6 +561,10 @@ export class LocationService {
               i.shortCode !== undefined
                 ? i.shortCode?.trim() || generateShortCode(i.name ?? existing?.name ?? '')
                 : existing?.shortCode,
+            centerId:
+              i.centerId !== undefined
+                ? (i.centerId?.trim() || null)
+                : existing?.centerId,
             isStockLocation:
               i.isStockLocation !== undefined ? i.isStockLocation : existing?.isStockLocation,
           },
