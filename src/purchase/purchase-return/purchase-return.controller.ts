@@ -96,6 +96,7 @@ export class PurchaseReturnController {
       returnType?: string;
       sourceType?: string;
       format: 'xlsx' | 'pdf';
+      exportType?: 'hierarchical' | 'flat';
       search?: string;
     },
     @Req() req: any,
@@ -110,6 +111,7 @@ export class PurchaseReturnController {
       returnType: body.returnType,
       sourceType: body.sourceType,
       format: body.format || 'xlsx',
+      exportType: body.exportType,
       search: body.search,
     });
   }

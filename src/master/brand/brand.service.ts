@@ -88,6 +88,7 @@ export class BrandService {
       const brands = await this.prisma.brand.createMany({
         data: items.map((item) => ({
           name: item.name,
+          code: item.code || undefined,
           status: item.status || 'active',
           createdById,
         })),
@@ -132,7 +133,7 @@ export class BrandService {
 
       const brand = await this.prisma.brand.update({
         where: { id },
-        data: { name: dto.name, status: dto.status },
+        data: { name: dto.name, code: dto.code !== undefined ? dto.code : undefined, status: dto.status },
       });
 
       runInBackground(
@@ -173,7 +174,7 @@ export class BrandService {
         updated.push(
           await this.prisma.brand.update({
             where: { id: dto.id },
-            data: { name: dto.name, status: dto.status },
+            data: { name: dto.name, code: dto.code !== undefined ? dto.code : undefined, status: dto.status },
           }),
         );
       }

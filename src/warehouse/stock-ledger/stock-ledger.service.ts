@@ -22,6 +22,10 @@ export class StockLedgerService {
     @InjectQueue('stock-ledger-export') private readonly exportQueue: Queue,
   ) { }
 
+  getPrismaClient(): PrismaService {
+    return this.prisma;
+  }
+
   async findAll(options?: {
     locationId?: string;
     warehouseId?: string;

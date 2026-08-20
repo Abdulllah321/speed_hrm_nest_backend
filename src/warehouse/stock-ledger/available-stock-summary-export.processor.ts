@@ -519,35 +519,33 @@ export class AvailableStockSummaryExportProcessor {
       : items.map(item => ({ locationName: 'All Selected Outlets / Warehouses', item, metrics: itemMetricsMap?.get(item.id) }));
 
     for (const entry of rowsToExport) {
-      const { locationName, item, metrics } = entry;
-      const m = metrics || {
-        quantity: 0, transit: 0, reserved: 0, total: 0,
-        unitPrice: 0, value: 0, unitCost: 0, costingValue: 0,
-      };
+      const locationName = entry.locationName || 'All Selected Outlets / Warehouses';
+      const item = entry.item || {};
+      const metrics = entry.metrics || entry;
 
       const rowData: any = {
-        locationName: locationName || 'All Selected Outlets / Warehouses',
-        brand: item.brand?.name || 'No Brand',
-        division: item.division?.name || 'No Division',
-        category: item.category?.name || 'No Category',
-        gender: item.gender?.name || 'No Gender',
-        silhouette: item.silhouette?.name || 'No Silhouette',
-        sku: item.sku || '',
-        articleName: item.description || '',
-        color: item.color?.name || 'Default',
-        size: item.size?.name || 'Default',
-        barCode: item.barCode || '',
+        locationName,
+        brand: entry.brand ?? item.brand?.name ?? 'No Brand',
+        division: entry.division ?? item.division?.name ?? 'No Division',
+        category: entry.category ?? item.category?.name ?? 'No Category',
+        gender: entry.gender ?? item.gender?.name ?? 'No Gender',
+        silhouette: entry.silhouette ?? item.silhouette?.name ?? 'No Silhouette',
+        sku: entry.sku ?? item.sku ?? '',
+        articleName: entry.articleName ?? item.description ?? '',
+        color: entry.color ?? item.color?.name ?? 'Default',
+        size: entry.size ?? item.size?.name ?? 'Default',
+        barCode: entry.barCode ?? item.barCode ?? '',
 
-        quantity: m.quantity,
-        transit: m.transit,
-        reserved: m.reserved,
-        total: m.total,
-        unitPrice: m.unitPrice,
-        value: m.value,
+        quantity: metrics.quantity ?? 0,
+        transit: metrics.transit ?? 0,
+        reserved: metrics.reserved ?? 0,
+        total: metrics.total ?? 0,
+        unitPrice: metrics.unitPrice ?? 0,
+        value: metrics.value ?? 0,
       };
       if (includeCosting) {
-        rowData.unitCost = m.unitCost;
-        rowData.costingValue = m.costingValue;
+        rowData.unitCost = metrics.unitCost ?? 0;
+        rowData.costingValue = metrics.costingValue ?? 0;
       }
 
       const row = ws.addRow(rowData);

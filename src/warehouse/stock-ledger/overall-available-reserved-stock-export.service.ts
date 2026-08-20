@@ -27,6 +27,8 @@ export interface QueueOverallAvailableReservedStockExportOptions {
   previewJobId?: string;
 }
 
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Injectable()
 export class OverallAvailableReservedStockExportService {
   private readonly logger = new Logger(OverallAvailableReservedStockExportService.name);
@@ -36,6 +38,7 @@ export class OverallAvailableReservedStockExportService {
     @InjectQueue('overall-available-reserved-stock-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) {}
 
   isJobCancelled(jobId?: string): boolean {
@@ -322,10 +325,15 @@ export class OverallAvailableReservedStockExportService {
       return res.redirect(record.filePath, 302);
     }
 
-    const filePath = path.join(process.cwd(), record.filePath);
+    let filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      const publicFallback = path.join(process.cwd(), 'public', record.filePath);
+      if (fs.existsSync(publicFallback)) {
+        filePath = publicFallback;
+      } else {
+        throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      }
     }
 
     const stat = fs.statSync(filePath);
@@ -483,9 +491,12 @@ export class OverallAvailableReservedStockExportService {
 
     const isHistorical = targetDate.getTime() < (now.getTime() - 24 * 60 * 60 * 1000);
 
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, targetDate);
+    const queryStartDate = snapshotDate && snapshotDate < targetDate ? snapshotDate : undefined;
+
     await onProgress?.(20, 'Querying stock ledgers & inventory items...');
 
-    // Fetch inventory item ids up to targetDate
+    // Fetch inventory item ids within active date window
     const [inventoryItems, ledgerItems] = await Promise.all([
       prisma.inventoryItem.findMany({
         where: {
@@ -498,7 +509,7 @@ export class OverallAvailableReservedStockExportService {
       prisma.stockLedger.findMany({
         where: {
           ...locationOrWarehouseWhere,
-          createdAt: { lte: targetDate },
+          createdAt: queryStartDate ? { gte: queryStartDate, lte: targetDate } : { lte: targetDate },
         },
         select: { itemId: true },
         distinct: ['itemId'],
