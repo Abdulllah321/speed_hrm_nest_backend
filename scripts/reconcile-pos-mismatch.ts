@@ -29,8 +29,13 @@ async function reconcilePosSales() {
   let isHeader = true;
   let fileLineCount = 0;
   
+  // File Storage:
+  // fileBarcodeTotalQty: barcode -> total qty
+  const fileBarcodeTotalQty = new Map<string, number>();
+  // fileOrderTotalQty: orderNumber -> total qty
+  const fileOrderTotalQty = new Map<string, number>();
+  // fileBarcodeQtyByOrder: orderNumber -> Map<barcode, qty>
   const fileBarcodeQtyByOrder = new Map<string, Map<string, number>>();
-  const fileTotalQtyByOrder = new Map<string, number>();
 
   for await (const line of rl) {
     const trimmed = line.trim();
@@ -55,23 +60,29 @@ async function reconcilePosSales() {
     const paddedSeq = isNaN(docSeq) ? docNumRaw : String(docSeq).padStart(5, '0');
     const orderNumber = `SI-SSDMC26-${paddedSeq}`;
 
+    // 1a. Store-wide barcode total
+    fileBarcodeTotalQty.set(barcode, (fileBarcodeTotalQty.get(barcode) || 0) + qty);
+
+    // 1b. Order total
+    fileOrderTotalQty.set(orderNumber, (fileOrderTotalQty.get(orderNumber) || 0) + qty);
+
+    // 1c. Order + Barcode detail
     if (!fileBarcodeQtyByOrder.has(orderNumber)) {
       fileBarcodeQtyByOrder.set(orderNumber, new Map<string, number>());
     }
     const orderMap = fileBarcodeQtyByOrder.get(orderNumber)!;
     orderMap.set(barcode, (orderMap.get(barcode) || 0) + qty);
-
-    fileTotalQtyByOrder.set(orderNumber, (fileTotalQtyByOrder.get(orderNumber) || 0) + qty);
   }
 
-  const uniqueFileOrdersCount = fileTotalQtyByOrder.size;
+  const uniqueFileOrdersCount = fileOrderTotalQty.size;
   let totalFileQty = 0;
-  for (const q of fileTotalQtyByOrder.values()) totalFileQty += q;
+  for (const q of fileBarcodeTotalQty.values()) totalFileQty += q;
 
   console.log(`✔ Read ${fileLineCount.toLocaleString()} detail rows from file.`);
-  console.log(`✔ Found ${uniqueFileOrdersCount.toLocaleString()} unique orders in file (Total Qty: ${totalFileQty.toLocaleString()}).\n`);
+  console.log(`✔ Found ${uniqueFileOrdersCount.toLocaleString()} unique orders in file.`);
+  console.log(`✔ Found ${fileBarcodeTotalQty.size.toLocaleString()} unique barcodes in file (Total File Qty: ${totalFileQty.toLocaleString()}).\n`);
 
-  // 2. Resolve database connection URL
+  // 2. Connect to Database
   let masterUrl = process.env.DATABASE_URL!;
   const dbNamesToTry = ['tenant_speed_main_mox1gfsi', 'spl_core_db'];
 
@@ -114,108 +125,185 @@ async function reconcilePosSales() {
         continue;
       }
 
+      // DB Storage
+      const dbBarcodeTotalQty = new Map<string, number>();
+      const dbOrderTotalQty = new Map<string, number>();
       const dbBarcodeQtyByOrder = new Map<string, Map<string, number>>();
-      const dbTotalQtyByOrder = new Map<string, number>();
 
       for (const row of dbSalesItems) {
         const orderNum = row.orderNumber;
         const barcode = row.barCode;
         const qty = parseInt(row.quantity, 10);
 
+        dbBarcodeTotalQty.set(barcode, (dbBarcodeTotalQty.get(barcode) || 0) + qty);
+        dbOrderTotalQty.set(orderNum, (dbOrderTotalQty.get(orderNum) || 0) + qty);
+
         if (!dbBarcodeQtyByOrder.has(orderNum)) {
           dbBarcodeQtyByOrder.set(orderNum, new Map<string, number>());
         }
         const orderMap = dbBarcodeQtyByOrder.get(orderNum)!;
         orderMap.set(barcode, (orderMap.get(barcode) || 0) + qty);
-
-        dbTotalQtyByOrder.set(orderNum, (dbTotalQtyByOrder.get(orderNum) || 0) + qty);
       }
 
-      const uniqueDbOrdersCount = dbTotalQtyByOrder.size;
       let totalDbQty = 0;
-      for (const q of dbTotalQtyByOrder.values()) totalDbQty += q;
+      for (const q of dbBarcodeTotalQty.values()) totalDbQty += q;
 
-      console.log(`✔ DB (${dbName}) contains ${uniqueDbOrdersCount.toLocaleString()} orders for SI-SSDMC26-% (Total DB Qty: ${totalDbQty.toLocaleString()}).\n`);
+      console.log(`✔ DB (${dbName}) contains ${dbOrderTotalQty.size.toLocaleString()} orders for SI-SSDMC26-% (Total DB Qty: ${totalDbQty.toLocaleString()}).\n`);
 
-      // Perform 3-Way Reconciliation
-      interface DiscrepancyRow {
+      // =======================================================
+      // A. STORE-WIDE BARCODE QUANTITY RECONCILIATION
+      // =======================================================
+      console.log(`📊 A. BARCODE-LEVEL RECONCILIATION (Store-Wide Total Qty per Barcode)`);
+      console.log(`-------------------------------------------------------`);
+      
+      const allBarcodes = new Set<string>([
+        ...fileBarcodeTotalQty.keys(),
+        ...dbBarcodeTotalQty.keys(),
+      ]);
+
+      interface BarcodeMismatchRow {
+        barcode: string;
+        fileQty: number;
+        dbQty: number;
+        variance: number;
+        status: 'MATCHED' | 'MISSING_IN_DB' | 'MISSING_IN_FILE' | 'QTY_MISMATCH';
+      }
+
+      const barcodeMismatches: BarcodeMismatchRow[] = [];
+      let matchedBarcodeCount = 0;
+      let mismatchedBarcodeCount = 0;
+
+      for (const barcode of allBarcodes) {
+        const fQty = fileBarcodeTotalQty.get(barcode) || 0;
+        const dQty = dbBarcodeTotalQty.get(barcode) || 0;
+        const variance = dQty - fQty;
+
+        let status: BarcodeMismatchRow['status'] = 'MATCHED';
+        if (fQty > 0 && dQty === 0) status = 'MISSING_IN_DB';
+        else if (fQty === 0 && dQty > 0) status = 'MISSING_IN_FILE';
+        else if (fQty !== dQty) status = 'QTY_MISMATCH';
+
+        if (status === 'MATCHED') {
+          matchedBarcodeCount++;
+        } else {
+          mismatchedBarcodeCount++;
+          barcodeMismatches.push({ barcode, fileQty: fQty, dbQty: dQty, variance, status });
+        }
+      }
+
+      console.log(`Total Barcodes Checked:    ${allBarcodes.size.toLocaleString()}`);
+      console.log(`✅ Fully Matched Barcodes: ${matchedBarcodeCount.toLocaleString()}`);
+      console.log(`⚠️ Mismatched Barcodes:    ${mismatchedBarcodeCount.toLocaleString()}`);
+      console.log(`Net Store Quantity Diff:   ${(totalDbQty - totalFileQty).toLocaleString()}\n`);
+
+      // Save Barcode Mismatch CSV
+      const barcodeCsvPath = path.resolve(__dirname, '../../pos_barcode_summary_reconciliation.csv');
+      const barcodeCsvHeader = 'Barcode,FileTotalQty,DbTotalQty,Variance,Status\n';
+      const barcodeCsvLines = barcodeMismatches
+        .map((b) => `"${b.barcode}",${b.fileQty},${b.dbQty},${b.variance},"${b.status}"`)
+        .join('\n');
+      fs.writeFileSync(barcodeCsvPath, barcodeCsvHeader + barcodeCsvLines);
+      console.log(`📄 Barcode Summary Audit CSV saved to: ${barcodeCsvPath}`);
+
+      if (barcodeMismatches.length > 0) {
+        console.log(`🔍 Top Barcode Discrepancies (Sample 10):`);
+        console.table(barcodeMismatches.slice(0, 10));
+      }
+
+      // =======================================================
+      // B. ORDER-LEVEL QUANTITY RECONCILIATION
+      // =======================================================
+      console.log(`\n📊 B. ORDER-LEVEL RECONCILIATION (Total Item Qty per Order Number)`);
+      console.log(`-------------------------------------------------------`);
+      
+      const allOrders = new Set<string>([
+        ...fileOrderTotalQty.keys(),
+        ...dbOrderTotalQty.keys(),
+      ]);
+
+      interface OrderMismatchRow {
+        orderNumber: string;
+        fileTotalQty: number;
+        dbTotalQty: number;
+        variance: number;
+        status: 'MATCHED' | 'MISSING_IN_DB' | 'MISSING_IN_FILE' | 'QTY_MISMATCH';
+      }
+
+      const orderMismatches: OrderMismatchRow[] = [];
+      let matchedOrderCount = 0;
+      let mismatchedOrderCount = 0;
+
+      for (const orderNum of allOrders) {
+        const fQty = fileOrderTotalQty.get(orderNum) || 0;
+        const dQty = dbOrderTotalQty.get(orderNum) || 0;
+        const variance = dQty - fQty;
+
+        let status: OrderMismatchRow['status'] = 'MATCHED';
+        if (fQty > 0 && dQty === 0) status = 'MISSING_IN_DB';
+        else if (fQty === 0 && dQty > 0) status = 'MISSING_IN_FILE';
+        else if (fQty !== dQty) status = 'QTY_MISMATCH';
+
+        if (status === 'MATCHED') {
+          matchedOrderCount++;
+        } else {
+          mismatchedOrderCount++;
+          orderMismatches.push({ orderNumber: orderNum, fileTotalQty: fQty, dbTotalQty: dQty, variance, status });
+        }
+      }
+
+      console.log(`Total Orders Checked:      ${allOrders.size.toLocaleString()}`);
+      console.log(`✅ Fully Matched Orders:   ${matchedOrderCount.toLocaleString()}`);
+      console.log(`⚠️ Mismatched Orders:      ${mismatchedOrderCount.toLocaleString()}\n`);
+
+      // Save Order Mismatch CSV
+      const orderCsvPath = path.resolve(__dirname, '../../pos_order_summary_reconciliation.csv');
+      const orderCsvHeader = 'OrderNumber,FileTotalQty,DbTotalQty,Variance,Status\n';
+      const orderCsvLines = orderMismatches
+        .map((o) => `"${o.orderNumber}",${o.fileTotalQty},${o.dbTotalQty},${o.variance},"${o.status}"`)
+        .join('\n');
+      fs.writeFileSync(orderCsvPath, orderCsvHeader + orderCsvLines);
+      console.log(`📄 Order Summary Audit CSV saved to: ${orderCsvPath}`);
+
+      if (orderMismatches.length > 0) {
+        console.log(`🔍 Top Order Discrepancies (Sample 10):`);
+        console.table(orderMismatches.slice(0, 10));
+      }
+
+      // =======================================================
+      // C. LINE ITEM INVOICE DETAIL RECONCILIATION
+      // =======================================================
+      interface DetailMismatchRow {
         orderNumber: string;
         barcode: string;
         fileQty: number;
         dbQty: number;
-        variance: number; // dbQty - fileQty
+        variance: number;
         issueType: 'MISSING_IN_DB' | 'MISSING_IN_FILE' | 'QTY_MISMATCH';
       }
 
-      const discrepancies: DiscrepancyRow[] = [];
-      const allOrderNumbers = new Set<string>([
-        ...fileTotalQtyByOrder.keys(),
-        ...dbTotalQtyByOrder.keys(),
-      ]);
+      const detailDiscrepancies: DetailMismatchRow[] = [];
 
-      let matchedOrderCount = 0;
-      let mismatchedOrderCount = 0;
-      let missingOrdersInDb = 0;
-      let missingOrdersInFile = 0;
-
-      for (const orderNum of allOrderNumbers) {
+      for (const orderNum of allOrders) {
         const fileMap = fileBarcodeQtyByOrder.get(orderNum);
         const dbMap = dbBarcodeQtyByOrder.get(orderNum);
 
-        if (!dbMap) {
-          missingOrdersInDb++;
-          mismatchedOrderCount++;
-          if (fileMap) {
-            for (const [barcode, fQty] of fileMap.entries()) {
-              discrepancies.push({
-                orderNumber: orderNum,
-                barcode,
-                fileQty: fQty,
-                dbQty: 0,
-                variance: -fQty,
-                issueType: 'MISSING_IN_DB',
-              });
-            }
-          }
-          continue;
-        }
-
-        if (!fileMap) {
-          missingOrdersInFile++;
-          mismatchedOrderCount++;
-          for (const [barcode, dQty] of dbMap.entries()) {
-            discrepancies.push({
-              orderNumber: orderNum,
-              barcode,
-              fileQty: 0,
-              dbQty: dQty,
-              variance: dQty,
-              issueType: 'MISSING_IN_FILE',
-            });
-          }
-          continue;
-        }
-
-        const allBarcodesInOrder = new Set<string>([
-          ...fileMap.keys(),
-          ...dbMap.keys(),
+        const orderBarcodes = new Set<string>([
+          ...(fileMap ? fileMap.keys() : []),
+          ...(dbMap ? dbMap.keys() : []),
         ]);
 
-        let hasMismatch = false;
-
-        for (const barcode of allBarcodesInOrder) {
-          const fQty = fileMap.get(barcode) || 0;
-          const dQty = dbMap.get(barcode) || 0;
+        for (const b of orderBarcodes) {
+          const fQty = fileMap?.get(b) || 0;
+          const dQty = dbMap?.get(b) || 0;
 
           if (fQty !== dQty) {
-            hasMismatch = true;
-            let issue: DiscrepancyRow['issueType'] = 'QTY_MISMATCH';
+            let issue: DetailMismatchRow['issueType'] = 'QTY_MISMATCH';
             if (fQty > 0 && dQty === 0) issue = 'MISSING_IN_DB';
             else if (fQty === 0 && dQty > 0) issue = 'MISSING_IN_FILE';
 
-            discrepancies.push({
+            detailDiscrepancies.push({
               orderNumber: orderNum,
-              barcode,
+              barcode: b,
               fileQty: fQty,
               dbQty: dQty,
               variance: dQty - fQty,
@@ -223,49 +311,18 @@ async function reconcilePosSales() {
             });
           }
         }
-
-        if (hasMismatch) {
-          mismatchedOrderCount++;
-        } else {
-          matchedOrderCount++;
-        }
       }
 
-      console.log(`=======================================================`);
-      console.log(`📊 RECONCILIATION SUMMARY REPORT (DB: ${dbName})`);
-      console.log(`=======================================================`);
-      console.log(`Total Orders Checked:        ${allOrderNumbers.size.toLocaleString()}`);
-      console.log(`✅ Fully Matched Orders:     ${matchedOrderCount.toLocaleString()}`);
-      console.log(`⚠️ Mismatched Orders:        ${mismatchedOrderCount.toLocaleString()}`);
-      console.log(`   - Orders Missing in DB:   ${missingOrdersInDb.toLocaleString()}`);
-      console.log(`   - Orders Missing in File: ${missingOrdersInFile.toLocaleString()}`);
-      console.log(`-------------------------------------------------------`);
-      console.log(`Total File Items Quantity:   ${totalFileQty.toLocaleString()}`);
-      console.log(`Total DB Items Quantity:     ${totalDbQty.toLocaleString()}`);
-      console.log(`Net Quantity Variance:       ${(totalDbQty - totalFileQty).toLocaleString()}`);
-      console.log(`Total Line Item Mismatches:  ${discrepancies.length.toLocaleString()}`);
-      console.log(`=======================================================\n`);
-
-      const csvOutputPath = path.resolve(__dirname, '../../pos_reconciliation_mismatches.csv');
-      const csvHeader = 'OrderNumber,Barcode,FileQty,DbQty,Variance,IssueType\n';
-      const csvLines = discrepancies
-        .map(
-          (d) =>
-            `"${d.orderNumber}","${d.barcode}",${d.fileQty},${d.dbQty},${d.variance},"${d.issueType}"`,
-        )
+      const detailCsvPath = path.resolve(__dirname, '../../pos_reconciliation_mismatches.csv');
+      const detailCsvHeader = 'OrderNumber,Barcode,FileQty,DbQty,Variance,IssueType\n';
+      const detailCsvLines = detailDiscrepancies
+        .map((d) => `"${d.orderNumber}","${d.barcode}",${d.fileQty},${d.dbQty},${d.variance},"${d.issueType}"`)
         .join('\n');
-
-      fs.writeFileSync(csvOutputPath, csvHeader + csvLines);
-      console.log(`📄 Detailed mismatch audit report saved to:`);
-      console.log(`   👉 ${csvOutputPath}\n`);
-
-      if (discrepancies.length > 0) {
-        console.log(`🔍 Sample Discrepancies (Top 15):`);
-        console.table(discrepancies.slice(0, 15));
-      }
+      fs.writeFileSync(detailCsvPath, detailCsvHeader + detailCsvLines);
+      console.log(`\n📄 Line Item Detailed Audit CSV saved to: ${detailCsvPath}`);
 
       await pool.end();
-      break; // Successfully processed main tenant database
+      break;
     } catch (err: any) {
       console.log(`⚠️ Database ${dbName} query failed: ${err.message}`);
       await pool.end();
