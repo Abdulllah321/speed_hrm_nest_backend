@@ -124,9 +124,15 @@ export class PosSalesController {
   // ─── Item lookup for POS (search by barcode, SKU, description) ────
   @Get('lookup')
   @ApiOperation({ summary: 'Search items for POS by barcode/SKU/name' })
-  async lookupItem(@Query('q') query: string, @Req() req: any) {
+  async lookupItem(
+    @Query('q') query: string,
+    @Req() req: any,
+    @Query('locationId') locIdQuery?: string,
+  ) {
     const locationId =
-      req.user?.locationId || this.extractLocationFromCookie(req);
+      locIdQuery ||
+      req.user?.locationId ||
+      this.extractLocationFromCookie(req);
     if (!locationId) {
       throw new BadRequestException(
         'Location context is required for POS search',
@@ -138,9 +144,15 @@ export class PosSalesController {
   // ─── Barcode scan — exact match, single item ──────────────────────
   @Get('scan')
   @ApiOperation({ summary: 'Scan barcode — exact match single item' })
-  async scanBarcode(@Query('barcode') barcode: string, @Req() req: any) {
+  async scanBarcode(
+    @Query('barcode') barcode: string,
+    @Req() req: any,
+    @Query('locationId') locIdQuery?: string,
+  ) {
     const locationId =
-      req.user?.locationId || this.extractLocationFromCookie(req);
+      locIdQuery ||
+      req.user?.locationId ||
+      this.extractLocationFromCookie(req);
     if (!locationId) {
       throw new BadRequestException(
         'Location context is required for POS scan',
@@ -166,9 +178,11 @@ export class PosSalesController {
   @Permissions('pos.sale.create')
   @ApiOperation({ summary: 'Create a sales order / checkout' })
   async createOrder(@Body() dto: CreateSalesOrderDto, @Req() req: any) {
-    // Use cashierUserId from DTO if provided (manual selection on checkout),
-    // otherwise fall back to the logged-in user's ID
-    const cashierUserId = dto.cashierUserId || req.user?.id;
+    // Salesman must be explicitly selected on every sale
+    const cashierUserId = dto.cashierUserId;
+    if (!cashierUserId) {
+      throw new BadRequestException('Salesman selection is required to complete the sale');
+    }
 
     // 1. Context from req.user (Preferred - comes from combined cashier token)
     if (req.user?.isPosUser || req.user?.isTerminal) {

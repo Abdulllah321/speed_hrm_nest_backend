@@ -4,6 +4,7 @@ model Warehouse {
   id                   String              @id @default(uuid())
   code                 String              @unique
   name                 String
+  centerId             String?             @map("center_id")
   address              String?
   type                 String              @default("GENERAL")
   description          String?
@@ -33,6 +34,7 @@ model Warehouse {
 
   @@index([companyId])
   @@index([type])
+  @@index([centerId])
 }
 
 model Location {
@@ -42,6 +44,7 @@ model Location {
   name               String    @unique
   code               String    @unique @default(cuid())
   shortCode          String?   @unique @map("short_code")
+  centerId           String?   @map("center_id")
   phone              String?
   warehouseId        String?   @map("warehouse_id")
   geoFenceEnabled    Boolean   @default(false)
@@ -94,6 +97,7 @@ model Location {
   locationBrands            LocationBrand[]
 
   @@index([warehouseId])
+  @@index([centerId])
 }
 
 model LocationBrand {

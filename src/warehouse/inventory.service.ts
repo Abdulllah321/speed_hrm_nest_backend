@@ -55,12 +55,45 @@ export class InventoryService {
   }
 
   async getDetailedStock(itemId: string): Promise<any[]> {
+    const item = await this.prisma.item.findUnique({
+      where: { id: itemId },
+      select: { id: true, brandId: true },
+    });
+
     const items = await this.prisma.inventoryItem.findMany({
       where: { itemId, status: 'AVAILABLE' },
     });
 
+    const locIds = items
+      .map((i) => i.locationId)
+      .filter(Boolean) as string[];
+
+    const allLocationBrands =
+      locIds.length > 0
+        ? await this.prisma.locationBrand.findMany({
+            where: { locationId: { in: locIds } },
+            select: { locationId: true, brandId: true },
+          })
+        : [];
+
+    const locBrandMap = new Map<string, string[]>();
+    for (const lb of allLocationBrands) {
+      const existing = locBrandMap.get(lb.locationId) || [];
+      locBrandMap.set(lb.locationId, [...existing, lb.brandId]);
+    }
+
+    // Filter items: if an item is located at an outlet location (locationId is not null),
+    // and that location has registered brands, but the item's brand is not registered for that location, exclude it.
+    const eligibleItems = items.filter((inv) => {
+      if (!inv.locationId) return true; // Warehouse stock is always eligible
+      const registeredBrands = locBrandMap.get(inv.locationId);
+      if (!registeredBrands || registeredBrands.length === 0) return true; // Unrestricted location
+      if (item?.brandId && !registeredBrands.includes(item.brandId)) return false; // Location is not authorized for this brand
+      return true;
+    });
+
     const enriched = await Promise.all(
-      items.map(async (item) => {
+      eligibleItems.map(async (item) => {
         const warehouse = await this.prisma.warehouse.findUnique({
           where: { id: item.warehouseId },
           select: { id: true, name: true },
@@ -129,7 +162,19 @@ export class InventoryService {
     }
   ) {
     const filterWhere: any = {};
-    if (filters?.brandIds?.length) filterWhere.brandId = { in: filters.brandIds };
+    if (filters?.brandIds?.length) {
+      filterWhere.brandId = { in: filters.brandIds };
+    } else if (locationId) {
+      // If locationId provided and no explicit brandIds filter, check location's registered brands
+      const locationBrands = await this.prisma.locationBrand.findMany({
+        where: { locationId },
+        select: { brandId: true },
+      });
+      const brandIds = locationBrands.map((lb) => lb.brandId).filter(Boolean);
+      if (brandIds.length > 0) {
+        filterWhere.brandId = { in: brandIds };
+      }
+    }
     if (filters?.categoryIds?.length) filterWhere.categoryId = { in: filters.categoryIds };
     if (filters?.silhouetteIds?.length) filterWhere.silhouetteId = { in: filters.silhouetteIds };
     if (filters?.genderIds?.length) filterWhere.genderId = { in: filters.genderIds };
@@ -138,10 +183,10 @@ export class InventoryService {
       where: {
         OR: query
           ? [
-              { sku: { contains: query, mode: 'insensitive' } },
-              { description: { contains: query, mode: 'insensitive' } },
-              { barCode: { contains: query, mode: 'insensitive' } },
-            ]
+            { sku: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
+            { barCode: { contains: query, mode: 'insensitive' } },
+          ]
           : undefined,
         isActive: true,
         ...filterWhere,
@@ -316,7 +361,7 @@ export class InventoryService {
       WITH target_center AS (
         SELECT id AS loc_id, warehouse_id AS wh_id
         FROM "Location"
-        WHERE (id = ${cleanCenterId} OR code = ${cleanCenterId} OR short_code = ${cleanCenterId}) AND "isDeleted" = false
+        WHERE (id = ${cleanCenterId} OR code = ${cleanCenterId} OR short_code = ${cleanCenterId} OR center_id = ${cleanCenterId}) AND "isDeleted" = false
         LIMIT 1
       ),
       target_wh AS (
