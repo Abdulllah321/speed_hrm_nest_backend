@@ -31,6 +31,7 @@ export interface QueueAvailableStockSummaryExportOptions {
 }
 
 import { FiscalYearClosingService } from './fiscal-year-closing.service';
+import { ExportHistoryService } from '../export-history/export-history.service';
 
 @Injectable()
 export class AvailableStockSummaryExportService {
@@ -42,7 +43,53 @@ export class AvailableStockSummaryExportService {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly fiscalClosingService: FiscalYearClosingService,
+    private readonly exportHistoryService: ExportHistoryService,
   ) {}
+
+  async registerClientGeneratedExport(opts: {
+    userId: string;
+    fileBuffer: Buffer;
+    fileName: string;
+    format: 'xlsx' | 'pdf';
+  }) {
+    const jobId = uuidv4();
+    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
+    const relativePath = path.join('uploads', 'exports', `export-${jobId}.${ext}`);
+    const fullPath = path.join(process.cwd(), relativePath);
+
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, opts.fileBuffer);
+
+    // Save export job record in ExportHistory audit table
+    await this.prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId: opts.userId,
+        fileName: opts.fileName || `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        filePath: relativePath,
+        moduleName: 'AVAILABLE_STOCK_SUMMARY_REPORT',
+        status: 'PENDING',
+      },
+    });
+
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : this.prisma;
+
+    const mimeType = opts.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    await this.exportHistoryService.completeAndUploadExport(
+      prisma,
+      jobId,
+      fullPath,
+      opts.fileName,
+      mimeType,
+    );
+
+    return { jobId, status: 'COMPLETED' };
+  }
 
   isJobCancelled(jobId?: string): boolean {
     if (!jobId) return false;
@@ -199,7 +246,11 @@ export class AvailableStockSummaryExportService {
 
     // Clean flat items list to strip heavy Prisma objects and save clean plain key-values
     const cleanFlatItemsList = (data?.flatItemsList || []).map((entry: any) => ({
-      locationName: entry.locationName,
+      locationId: entry.locationId ?? null,
+      warehouseId: entry.warehouseId ?? null,
+      locationName: entry.locationName || 'Unknown Location',
+      locationType: entry.locationType || (entry.locationId ? 'OUTLET' : 'WAREHOUSE'),
+      itemId: entry.itemId ?? entry.item?.id ?? '',
       brand: entry.brand ?? entry.item?.brand?.name ?? 'No Brand',
       division: entry.division ?? entry.item?.division?.name ?? 'No Division',
       category: entry.category ?? entry.item?.category?.name ?? 'No Category',
@@ -210,6 +261,9 @@ export class AvailableStockSummaryExportService {
       color: entry.color ?? entry.item?.color?.name ?? 'Default',
       size: entry.size ?? entry.item?.size?.name ?? 'Default',
       barCode: entry.barCode ?? entry.item?.barCode ?? '',
+      bf: entry.bf ?? 0,
+      inbound: entry.inbound ?? 0,
+      outbound: entry.outbound ?? 0,
       quantity: entry.quantity ?? entry.metrics?.quantity ?? 0,
       transit: entry.transit ?? entry.metrics?.transit ?? 0,
       reserved: entry.reserved ?? entry.metrics?.reserved ?? 0,
@@ -494,16 +548,14 @@ export class AvailableStockSummaryExportService {
 
     await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
 
-    // Location & Warehouse names lookup for Separate mode
+    // Location & Warehouse names lookup for all locations
+    const [allLocations, allWarehouses] = await Promise.all([
+      prisma.location.findMany({ select: { id: true, name: true } }),
+      prisma.warehouse.findMany({ select: { id: true, name: true } }),
+    ]);
     const locationNameMap = new Map<string, string>();
-    if (isSeparate) {
-      const [allLocations, allWarehouses] = await Promise.all([
-        prisma.location.findMany({ select: { id: true, name: true } }),
-        prisma.warehouse.findMany({ select: { id: true, name: true } }),
-      ]);
-      for (const l of allLocations) locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
-      for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
-    }
+    for (const l of allLocations) locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
+    for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
 
     // Resolve nearest Fiscal Opening Snapshot date
     const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
@@ -552,7 +604,7 @@ export class AvailableStockSummaryExportService {
 
     await onProgress?.(40, 'Fetching product catalog, brands, categories & size details...');
 
-    const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = isSeparate ? ['itemId', 'locationId', 'warehouseId'] : ['itemId'];
+    const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = ['itemId', 'locationId', 'warehouseId'];
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
@@ -871,7 +923,7 @@ export class AvailableStockSummaryExportService {
       costingValue: number;
     }>();
 
-    const flatItemsList: { locationName: string; item: any; metrics: any }[] = [];
+    const flatItemsList: any[] = [];
 
     const addTotals = (target: any, source: any) => {
       target.quantity += source.quantity;
@@ -939,7 +991,36 @@ export class AvailableStockSummaryExportService {
         };
 
         itemMetricsMap.set(mapKey, variantMetrics);
-        flatItemsList.push({ locationName, item, metrics: variantMetrics });
+        flatItemsList.push({
+          locationId: locKey.startsWith('loc:') ? locKey.replace('loc:', '') : null,
+          warehouseId: locKey.startsWith('wh:') ? locKey.replace('wh:', '') : null,
+          locationName,
+          locationType: locKey.startsWith('loc:') ? 'OUTLET' : 'WAREHOUSE',
+          itemId: item.id,
+          brand: item.brand?.name ?? 'No Brand',
+          division: item.division?.name ?? 'No Division',
+          category: item.category?.name ?? 'No Category',
+          gender: item.gender?.name ?? 'No Gender',
+          silhouette: item.silhouette?.name ?? 'No Silhouette',
+          sku: item.sku ?? '',
+          articleName: item.description ?? '',
+          color: item.color?.name ?? 'Default',
+          size: item.size?.name ?? 'Default',
+          barCode: item.barCode ?? '',
+          bf,
+          inbound: m.fromWarehouse + m.fromOutlet + m.exchg + m.refund + m.claim + (m.adj > 0 ? m.adj : 0),
+          outbound: m.toWarehouse + m.toOutlet + m.sales + (m.adj < 0 ? Math.abs(m.adj) : 0),
+          quantity: availableStock,
+          transit,
+          reserved,
+          total: balance,
+          unitPrice,
+          value,
+          unitCost,
+          costingValue,
+          item,
+          metrics: variantMetrics,
+        });
 
         let currentLevelNodes = root;
         for (let i = 0; i < levels.length; i++) {
