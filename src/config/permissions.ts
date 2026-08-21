@@ -1861,7 +1861,12 @@ export const PERMISSIONS = [
   { name: 'erp.inventory.transfer.create', description: 'Create Stock Transfer' },
 
   // ── ERP Inventory — Transactions ───────────────────────────────────────────
+  { name: 'erp.inventory.stock-requisition.read', description: 'View Stock Requisition Notes' },
+  { name: 'erp.inventory.stock-requisition.create', description: 'Create Stock Requisition Note' },
+  { name: 'erp.inventory.stock-requisition.approve', description: 'Approve Stock Requisition Note' },
+  { name: 'erp.inventory.stock-requisition.pending.read', description: 'View Pending Stock Requisitions' },
   { name: 'erp.inventory.stock-transfer.read', description: 'View Stock Transfer History' },
+  { name: 'erp.inventory.stock-transfer.create', description: 'Create Stock Transfer' },
   { name: 'erp.inventory.delivery-note.read', description: 'View Delivery Notes' },
   { name: 'erp.inventory.delivery-note.create', description: 'Create Delivery Note' },
   { name: 'erp.inventory.stock-ledger.read', description: 'View Stock Ledger' },
@@ -1875,6 +1880,8 @@ export const PERMISSIONS = [
   { name: 'erp.inventory.warehouse.update', description: 'Update Warehouse' },
   { name: 'erp.inventory.warehouse.delete', description: 'Delete Warehouse' },
   { name: 'erp.inventory.warehouse.inventory.view', description: 'View Warehouse Inventory Levels' },
+  { name: 'erp.inventory.warehouse.stock-requisition.pending', description: 'View Warehouse Pending Requisitions' },
+  { name: 'erp.inventory.warehouse.stock-transfer', description: 'Process Warehouse Stock Transfer' },
 
   { name: 'erp.inventory.claims.acknowledge', description: 'Acknowledge Inventory Claim' },
   { name: 'erp.inventory.claims.reject', description: 'Reject Inventory Claim' },
