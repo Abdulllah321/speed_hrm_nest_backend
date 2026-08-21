@@ -151,7 +151,9 @@ export class StockTransactionDetailExportService {
       grandTotals: data?.grandTotals || { openingBalance: 0, closingBalance: 0, inTransitQty: 0 },
     };
 
-    const jsonStr = JSON.stringify(payloadToSerialize);
+    const jsonStr = JSON.stringify(payloadToSerialize, (_, v) =>
+      typeof v === 'bigint' ? v.toString() : v
+    );
     const gzipped = zlib.gzipSync(jsonStr);
     const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
     fs.writeFileSync(filePath, gzipped);

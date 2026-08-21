@@ -367,12 +367,12 @@ export class InventoryService {
       target_wh AS (
         SELECT id AS wh_id
         FROM "Warehouse"
-        WHERE (id = ${cleanCenterId} OR code = ${cleanCenterId}) AND "isDeleted" = false
+        WHERE (id = ${cleanCenterId} OR code = ${cleanCenterId} OR center_id = ${cleanCenterId}) AND "isDeleted" = false
         LIMIT 1
       ),
       resolved AS (
         SELECT 
-          COALESCE((SELECT loc_id FROM target_center), ${cleanCenterId}) AS loc_id,
+          (SELECT loc_id FROM target_center) AS loc_id,
           COALESCE((SELECT wh_id FROM target_center), (SELECT wh_id FROM target_wh)) AS wh_id
       ),
       inv_agg AS (
@@ -392,7 +392,7 @@ export class InventoryService {
           sr."itemId",
           SUM(sr.quantity) AS reserved_qty
         FROM "StockReserve" sr, resolved r
-        WHERE (r.wh_id IS NOT NULL AND sr."warehouseId" = r.wh_id)
+        WHERE (r.loc_id IS NULL AND r.wh_id IS NOT NULL AND sr."warehouseId" = r.wh_id)
           AND (sr."expiresAt" IS NULL OR sr."expiresAt" >= NOW())
         GROUP BY sr."itemId"
       )
