@@ -13,7 +13,7 @@ export class StockRequisitionController {
   constructor(private readonly requisitionService: StockRequisitionService) {}
 
   @Post()
-  @Permissions('erp.inventory.transfer.create')
+  @Permissions('erp.inventory.transfer.create', 'erp.inventory.stock-requisition.create')
   @ApiOperation({ summary: 'Create a new stock requisition note (SRN)' })
   async create(
     @Body() dto: {
@@ -37,7 +37,7 @@ export class StockRequisitionController {
   }
 
   @Post('upload')
-  @Permissions('erp.inventory.transfer.create')
+  @Permissions('erp.inventory.transfer.create', 'erp.inventory.stock-requisition.create', 'erp.inventory.stock-requisition.read')
   @ApiOperation({ summary: 'Upload consolidated Excel sheet to parse items' })
   async uploadExcel(@Req() req: any) {
     const file = await req.file();
