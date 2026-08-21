@@ -782,6 +782,95 @@ export class StockLedgerController {
     return { status: true, data: result };
   }
 
+  // ─── Stock Transaction Detail Report SSE & Export Endpoints ────────────────
+
+  @Post('stock-transaction-detail/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueStockTransactionDetailPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      itemId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockTransactionDetailExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('stock-transaction-detail/stream/:jobId')
+  streamStockTransactionDetailReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.stockTransactionDetailExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            message: status.message,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('stock-transaction-detail/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getStockTransactionDetailReportResult(@Param('jobId') jobId: string) {
+    const data = this.stockTransactionDetailExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Report result not ready or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('stock-transaction-detail/cancel-preview/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async cancelStockTransactionDetailPreview(@Param('jobId') jobId: string) {
+    this.stockTransactionDetailExportService.cancelReportPreview(jobId);
+    return { status: true, message: 'Preview job cancelled' };
+  }
+
+  @Post('stock-transaction-detail/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerStockTransactionDetailClientExport(
+    @UploadedFile() file: any,
+    @Body('fileName') fileName: string,
+    @Body('format') formatStr: string,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      return { status: false, message: 'No file uploaded' };
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockTransactionDetailExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName,
+      format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
+    });
+    return { status: true, data: result };
+  }
+
   @Post('fiscal-year-close/execute')
   @UseGuards(JwtAuthGuard)
   async executeFiscalYearClose(
