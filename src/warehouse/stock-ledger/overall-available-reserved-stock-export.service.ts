@@ -74,33 +74,70 @@ export class OverallAvailableReservedStockExportService {
 
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : this.prisma;
 
-    this.logger.log(`[ReportPreview ${jobId}] Starting background computation for user ${opts.userId}`);
-
-    // Compute preview dataset asynchronously in background
-    setImmediate(async () => {
+    // Cancel any waiting or active preview jobs previously queued by this user
+    if (opts.userId) {
       try {
-        const previewResult = await this.generateOverallAvailableReservedStockReportDataInternal(prisma, {
-          ...opts,
-          previewJobId: jobId,
-          isAborted: () => this.isJobCancelled(jobId),
-        });
+        const [waitingJobs, activeJobs] = await Promise.all([
+          this.exportQueue.getWaiting(),
+          this.exportQueue.getActive(),
+        ]);
 
-        if (this.isJobCancelled(jobId)) {
-          this.logger.log(`[ReportPreview ${jobId}] Preview result discarded as job was cancelled.`);
-          return;
+        for (const wJob of waitingJobs) {
+          if (
+            wJob.name === 'generate-report-preview' &&
+            wJob.data?.userId === opts.userId
+          ) {
+            this.logger.log(`Pruning superseded waiting overall stock preview job ${wJob.id} for user ${opts.userId}`);
+            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            await wJob.remove();
+          }
         }
 
-        this.saveReportPreviewResult(jobId, previewResult);
-        this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
+        for (const aJob of activeJobs) {
+          if (
+            aJob.name === 'generate-report-preview' &&
+            aJob.data?.userId === opts.userId
+          ) {
+            const activeJobId = aJob.data?.jobId;
+            this.logger.log(`Cancelling active running overall stock preview job ${activeJobId} for user ${opts.userId}`);
+            if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
+          }
+        }
       } catch (err: any) {
-        this.logger.error(`[ReportPreview ${jobId}] Error computing report preview: ${err.message}`, err.stack);
+        this.logger.warn(`Could not prune overall stock preview jobs for user ${opts.userId}: ${err.message}`);
       }
-    });
+    }
 
+    await this.exportQueue.add(
+      'generate-report-preview',
+      {
+        jobId,
+        userId: opts.userId,
+        tenantId,
+        tenantDbUrl,
+        locationId: opts.locationId,
+        warehouseId: opts.warehouseId,
+        asOfDate: opts.asOfDate,
+        summaryOnly: !!opts.summaryOnly,
+        showBrand: opts.showBrand,
+        showDivision: opts.showDivision,
+        showCategory: opts.showCategory,
+        showGender: opts.showGender,
+        showSilhouette: opts.showSilhouette,
+        showArticle: opts.showArticle,
+        showVariant: opts.showVariant,
+        includeCosting: !!opts.includeCosting,
+      },
+      {
+        jobId,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+
+    this.logger.log(`[ReportPreview ${jobId}] Queued background computation for user ${opts.userId}`);
     return { jobId };
   }
 
