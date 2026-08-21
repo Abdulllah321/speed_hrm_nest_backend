@@ -106,7 +106,7 @@ export class StockRequisitionService {
           documentType: data.documentType || 'New Arrival',
           remarks: data.remarks || null,
           notes: data.notes || null,
-          financialYear: data.financialYear || '25-26',
+          financialYear: data.financialYear || '26-27',
           status,
           createdById: userId,
           items: {
