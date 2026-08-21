@@ -610,17 +610,14 @@ export class StockRequisitionService {
     // Convert to 2D array
     const rows = xlsx.utils.sheet_to_json<any[]>(sheet, { header: 1 });
 
-    if (rows.length === 0) {
+    if (!rows || rows.length === 0) {
       throw new BadRequestException('Excel file is empty');
     }
 
     const itemsList: { sku: string; quantity: number }[] = [];
 
-    // Let's find header index or assume standard structure:
-    // Column I (index 8) is Requisition Quantity.
-    // Let's find which column contains the SKU or barcode.
     let skuColIndex = 0; // Default to column A
-    let qtyColIndex = 8; // Default to Column I (index 8)
+    let qtyColIndex = 1; // Default to Column B for 2-col, or Column I (8) for multi-col
 
     // Try to auto-detect header row
     let headerRowIndex = -1;
@@ -628,12 +625,12 @@ export class StockRequisitionService {
       const row = rows[r];
       if (!Array.isArray(row)) continue;
       const skuIdx = row.findIndex((cell) => {
-        const val = String(cell).toLowerCase().trim();
-        return val === 'sku' || val === 'item code' || val === 'item_code' || val === 'barcode' || val === 'item id';
+        const val = String(cell || '').toLowerCase().trim().replace(/[\s_-]+/g, '');
+        return ['sku', 'itemcode', 'barcode', 'barcodes', 'itemid', 'article', 'item', 'code'].includes(val);
       });
       const qtyIdx = row.findIndex((cell) => {
-        const val = String(cell).toLowerCase().trim();
-        return val === 'quantity' || val === 'qty' || val === 'requisition qty' || val === 'req qty' || val === 'column i' || val === 'quantity (column i)';
+        const val = String(cell || '').toLowerCase().trim().replace(/[\s_-]+/g, '');
+        return ['quantity', 'qty', 'requisitionqty', 'reqqty', 'columni', 'count', 'units', 'transferqty'].includes(val);
       });
 
       if (skuIdx !== -1) {
@@ -645,14 +642,26 @@ export class StockRequisitionService {
       }
     }
 
-    const startRow = headerRowIndex !== -1 ? headerRowIndex + 1 : 1;
+    // If no explicit quantity column found in header, and first data row has > 8 columns, check column index 8
+    if (headerRowIndex === -1 && rows[0] && rows[0].length > 8) {
+      qtyColIndex = 8;
+    } else if (headerRowIndex !== -1 && qtyColIndex === 1 && rows[headerRowIndex].length > 8 && !rows[headerRowIndex][1]) {
+      qtyColIndex = 8;
+    }
+
+    const startRow = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
 
     for (let i = startRow; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length === 0) continue;
 
       const skuRaw = row[skuColIndex];
-      const qtyRaw = row[qtyColIndex];
+      let qtyRaw = row[qtyColIndex];
+
+      // If quantity is undefined/empty in detected column, check second column as fallback
+      if ((qtyRaw === undefined || qtyRaw === null || qtyRaw === '') && row.length === 2) {
+        qtyRaw = row[1];
+      }
 
       if (!skuRaw) continue;
 
@@ -665,31 +674,53 @@ export class StockRequisitionService {
     }
 
     if (itemsList.length === 0) {
-      throw new BadRequestException('No valid items with requisition quantity (Column I) found in the Excel sheet.');
+      throw new BadRequestException('No valid items and quantities found in the uploaded file. Please ensure columns have BarCode/SKU and Quantity.');
     }
 
-    // Resolve SKUs to Database Items
-    const resolvedItems: any[] = [];
-    for (const entry of itemsList) {
-      const dbItem = await this.prisma.item.findFirst({
-        where: {
-          OR: [
-            { sku: entry.sku },
-            { barCode: entry.sku },
-            { itemId: entry.sku }
-          ],
-          isActive: true,
-        },
-        include: {
-          color: true,
-          size: true,
-          category: true,
-          gender: true,
-          segment: true,
-        },
-      });
+    // Extract unique lookup identifiers
+    const uniqueIdentifiers = Array.from(new Set(itemsList.map((i) => i.sku)));
 
+    // Batch query DB Items
+    const dbItems = await this.prisma.item.findMany({
+      where: {
+        OR: [
+          { sku: { in: uniqueIdentifiers } },
+          { barCode: { in: uniqueIdentifiers } },
+          { itemId: { in: uniqueIdentifiers } },
+        ],
+        isActive: true,
+      },
+      include: {
+        color: true,
+        size: true,
+        category: true,
+        gender: true,
+        segment: true,
+      },
+    });
+
+    // Build lookup map
+    const itemMap = new Map<string, any>();
+    for (const item of dbItems) {
+      if (item.sku) itemMap.set(item.sku.toLowerCase(), item);
+      if (item.barCode) itemMap.set(item.barCode.toLowerCase(), item);
+      if (item.itemId) itemMap.set(item.itemId.toLowerCase(), item);
+    }
+
+    const resolvedItems: any[] = [];
+    const aggregatedQtys = new Map<string, number>();
+
+    for (const entry of itemsList) {
+      const dbItem = itemMap.get(entry.sku.toLowerCase());
       if (dbItem) {
+        const currentQty = aggregatedQtys.get(dbItem.id) || 0;
+        aggregatedQtys.set(dbItem.id, currentQty + entry.quantity);
+      }
+    }
+
+    for (const dbItem of dbItems) {
+      const totalQty = aggregatedQtys.get(dbItem.id);
+      if (totalQty && totalQty > 0) {
         resolvedItems.push({
           itemId: dbItem.id,
           sku: dbItem.sku,
@@ -699,10 +730,14 @@ export class StockRequisitionService {
           category: dbItem.category ? { id: dbItem.category.id, name: dbItem.category.name } : null,
           gender: dbItem.gender ? { id: dbItem.gender.id, name: dbItem.gender.name } : null,
           segment: dbItem.segment ? { id: dbItem.segment.id, name: dbItem.segment.name } : null,
-          unitPrice: dbItem.unitPrice,
-          quantity: entry.quantity,
+          unitPrice: Number(dbItem.unitPrice || 0),
+          quantity: totalQty,
         });
       }
+    }
+
+    if (resolvedItems.length === 0) {
+      throw new BadRequestException('None of the SKUs or Barcodes in the file matched existing active catalog items.');
     }
 
     return resolvedItems;
