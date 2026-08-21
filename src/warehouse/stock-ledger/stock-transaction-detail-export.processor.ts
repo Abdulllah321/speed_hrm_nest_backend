@@ -74,12 +74,15 @@ export class StockTransactionDetailExportProcessor {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
     this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
     try {
-      await job.progress({ percent: 5, message: 'Worker thread started. Connecting to database...' });
+      await job.progress({ percent: 5, stage: "INIT", message: "Connecting to database & initializing query pipeline..." });
       const prisma = (tenantId && tenantDbUrl)
         ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
         : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      await job.progress({ percent: 25, message: 'Querying stock ledgers & movement transactions...' });
+      await job.progress({ percent: 25, stage: "FETCH_CATALOG", message: "Querying active catalog items & brand hierarchy..." });
+
+      await job.progress({ percent: 45, stage: "FETCH_TRANSACTIONS", message: "Extracting stock ledgers (GRN receipts, POS sales, transfers, adjustments)..." });
+
       const data = await this.stockLedgerService.getStockTransactionDetailReport(
         opts,
         prisma,
@@ -90,10 +93,10 @@ export class StockTransactionDetailExportProcessor {
         return;
       }
 
-      await job.progress({ percent: 90, message: 'Compressing report payload & caching result...' });
+      await job.progress({ percent: 85, stage: "INDEX_PAYLOAD", message: "Indexing transactions, counting brands & caching report payload..." });
       this.reportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({ percent: 100, message: 'Report computation complete!' });
+      await job.progress({ percent: 100, stage: "READY", message: "Report computation complete! Rendering table view..." });
       this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
     } catch (err: any) {
       this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
