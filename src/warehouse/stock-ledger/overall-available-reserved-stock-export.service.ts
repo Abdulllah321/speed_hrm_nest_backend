@@ -28,6 +28,7 @@ export interface QueueOverallAvailableReservedStockExportOptions {
 }
 
 import { FiscalYearClosingService } from './fiscal-year-closing.service';
+import { ExportHistoryService } from '../export-history/export-history.service';
 
 @Injectable()
 export class OverallAvailableReservedStockExportService {
@@ -39,6 +40,7 @@ export class OverallAvailableReservedStockExportService {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly fiscalClosingService: FiscalYearClosingService,
+    private readonly exportHistoryService: ExportHistoryService,
   ) {}
 
   isJobCancelled(jobId?: string): boolean {
@@ -286,6 +288,51 @@ export class OverallAvailableReservedStockExportService {
 
     this.logger.log(`[OverallAvailableReservedStockExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
     return { jobId };
+  }
+
+  async registerClientGeneratedExport(opts: {
+    userId: string;
+    fileBuffer: Buffer;
+    fileName: string;
+    format: 'xlsx' | 'pdf' | 'html';
+  }) {
+    const jobId = uuidv4();
+    const ext = opts.format === 'pdf' ? 'pdf' : (opts.format === 'html' ? 'html' : 'xlsx');
+    const relativePath = path.join('uploads', 'exports', `export-${jobId}.${ext}`);
+    const fullPath = path.join(process.cwd(), relativePath);
+
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, opts.fileBuffer);
+
+    // Save export job record in ExportHistory audit table
+    await this.prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId: opts.userId,
+        fileName: opts.fileName || `overall-available-reserved-stock-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        filePath: relativePath,
+        moduleName: 'OVERALL_AVAILABLE_RESERVED_STOCK_REPORT',
+        status: 'PENDING',
+      },
+    });
+
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : this.prisma;
+
+    const mimeType = opts.format === 'pdf' ? 'application/pdf' : (opts.format === 'html' ? 'text/html' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+    await this.exportHistoryService.completeAndUploadExport(
+      prisma,
+      jobId,
+      fullPath,
+      opts.fileName,
+      mimeType,
+    );
+
+    return { status: true, jobId };
   }
 
   async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
