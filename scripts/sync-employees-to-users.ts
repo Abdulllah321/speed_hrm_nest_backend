@@ -12,7 +12,7 @@ function parseName(fullName: string) {
 
 async function main() {
   const baseConnStr = process.env.DATABASE_URL || 'postgresql://postgres:root@localhost:5432/spl_core_db?schema=public';
-  const masterDbName = 'ivar_managements';
+  const masterDbName = 'spl_core_db';
 
   const masterConnStr = baseConnStr.replace(/\/[^/]+(?:\?|$)/, `/${masterDbName}?`);
   console.log(`Connecting to Master database: [${masterDbName}]`);
@@ -27,7 +27,7 @@ async function main() {
     const users = usersRes.rows;
     console.log(`Loaded ${users.length} users from Master DB (${masterDbName}).`);
 
-    const tenantDbs = ['tenant_speed_main_mox1gfsi', 'spl_core_db', 'tenant_ivar_msojjrqs', 'speedlimit'];
+    const tenantDbs = ['tenant_speed_main_mox1gfsi'];
 
     for (const tenantDb of tenantDbs) {
       const tenantConnStr = baseConnStr.replace(/\/[^/]+(?:\?|$)/, `/${tenantDb}?`);
