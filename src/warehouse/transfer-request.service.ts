@@ -440,6 +440,15 @@ export class TransferRequestService {
                 status: { in: ['PENDING', 'APPROVED'] },
             },
             include: {
+                fromWarehouse: true,
+                toWarehouse: true,
+                fromLocation: true,
+                toLocation: true,
+                stockRequisition: {
+                    include: {
+                        fromWarehouse: true,
+                    },
+                },
                 items: {
                     include: {
                         item: {
@@ -655,6 +664,20 @@ export class TransferRequestService {
                 },
             });
             req.outboundNo = `OUT-${countOutbound.toString().padStart(4, '0')}`;
+        }
+
+        if (req.fromWarehouseId && !req.fromWarehouse) {
+            const sourceWH = await this.prisma.warehouse.findUnique({
+                where: { id: req.fromWarehouseId }
+            });
+            if (sourceWH) req.fromWarehouse = sourceWH;
+        }
+
+        if (req.toWarehouseId && !req.toWarehouse) {
+            const destWH = await this.prisma.warehouse.findUnique({
+                where: { id: req.toWarehouseId }
+            });
+            if (destWH) req.toWarehouse = destWH;
         }
 
         // Fetch claim data if this is a claim transfer

@@ -5,6 +5,7 @@ import * as xlsx from 'xlsx';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { TransferRequestService } from '../transfer-request.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 @Injectable()
 export class StockRequisitionService {
@@ -12,6 +13,7 @@ export class StockRequisitionService {
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
     private transferRequestService: TransferRequestService,
+    private notifications: NotificationsService,
   ) {}
 
   /**
@@ -141,6 +143,23 @@ export class StockRequisitionService {
             },
           });
         }
+      }
+
+      if (!isDraft) {
+        runInBackground(
+          'Send Warehouse Notification on SRN Creation',
+          this.notifications.sendWarehouseRoleNotification({
+            title: `New Stock Requisition: ${requisitionNo}`,
+            message: `Requisition ${requisitionNo} for ${requisition.toLocation?.name || 'Outlet'} (${data.items.length} items) is pending stock transfer.`,
+            category: 'warehouse',
+            priority: 'high',
+            actionType: 'NAVIGATE',
+            actionPayload: { url: '/erp/inventory/transactions/stock-requisition/pending' },
+            entityType: 'StockRequisition',
+            entityId: requisition.id,
+            warehouseId: requisition.fromWarehouseId,
+          }),
+        );
       }
 
       runInBackground(
@@ -315,6 +334,21 @@ export class StockRequisitionService {
           },
         });
       }
+
+      runInBackground(
+        'Send Warehouse Notification on SRN Approval',
+        this.notifications.sendWarehouseRoleNotification({
+          title: `Stock Requisition Approved: ${existing.requisitionNo}`,
+          message: `Requisition ${existing.requisitionNo} for ${updated.toLocation?.name || 'Outlet'} (${existing.items.length} items) has been approved and is ready for stock transfer.`,
+          category: 'warehouse',
+          priority: 'high',
+          actionType: 'NAVIGATE',
+          actionPayload: { url: '/erp/inventory/transactions/stock-requisition/pending' },
+          entityType: 'StockRequisition',
+          entityId: existing.id,
+          warehouseId: existing.fromWarehouseId,
+        }),
+      );
 
       runInBackground(
         'Log SRN Approval',
