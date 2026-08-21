@@ -12,6 +12,8 @@ import { MovementType, Prisma } from '@prisma/client';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { chunkArray } from '../../common/utils/chunk.util';
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
+
 @Injectable()
 export class StockLedgerService {
   private readonly logger = new Logger(StockLedgerService.name);
@@ -20,6 +22,7 @@ export class StockLedgerService {
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
     @InjectQueue('stock-ledger-export') private readonly exportQueue: Queue,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) { }
 
   getPrismaClient(): PrismaService {
@@ -1009,16 +1012,23 @@ export class StockLedgerService {
 
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
 
-    // 3. Fetch Opening Balances (B/F) before startDate
+    // 3. Resolve latest fiscal year opening snapshot date to prevent historical overflow
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+
+    // 3. Fetch Opening Balances (B/F) bounded from snapshotDate to startDate
     const bfMap = new Map<string, number>();
     for (const chunk of matchedItemChunks) {
+      const bfWhere: any = {
+        ...locationOrWarehouseWhere,
+        itemId: { in: chunk },
+        createdAt: snapshotDate
+          ? { gte: snapshotDate, lt: startDate }
+          : { lt: startDate },
+      };
+
       const bfGroup = await prisma.stockLedger.groupBy({
         by: ['itemId'],
-        where: {
-          ...locationOrWarehouseWhere,
-          itemId: { in: chunk },
-          createdAt: { lt: startDate },
-        },
+        where: bfWhere,
         _sum: { qty: true },
       });
 
