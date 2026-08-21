@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { ExportHistoryService } from '../export-history/export-history.service';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
+import { StockLedgerService } from './stock-ledger.service';
 
 export interface StockTransactionDetailExportJobData {
   jobId: string;
