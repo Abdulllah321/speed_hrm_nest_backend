@@ -760,6 +760,28 @@ export class StockLedgerController {
     }
   }
 
+  @Post('overall-available-reserved-stock/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerOverallAvailableReservedStockClientExport(
+    @UploadedFile() file: any,
+    @Body('fileName') fileName: string,
+    @Body('format') formatStr: string,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      return { status: false, message: 'No file uploaded' };
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.overallAvailableReservedStockExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName,
+      format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
+    });
+    return { status: true, data: result };
+  }
+
   @Post('fiscal-year-close/execute')
   @UseGuards(JwtAuthGuard)
   async executeFiscalYearClose(
