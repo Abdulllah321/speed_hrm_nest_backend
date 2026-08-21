@@ -24,12 +24,16 @@ export class StockRequisitionController {
       remarks?: string;
       notes?: string;
       financialYear?: string;
+      status?: string;
       items: { itemId: string; quantity: number }[];
     },
     @Req() req: any,
   ) {
     const data = await this.requisitionService.createRequisition(dto, req.user?.id);
-    return { status: true, data, message: 'Stock Requisition Note created and stock reserved successfully' };
+    const message = dto.status === 'DRAFT' 
+      ? 'Draft Stock Requisition created successfully' 
+      : 'Stock Requisition Note created and stock reserved successfully';
+    return { status: true, data, message };
   }
 
   @Post('upload')
