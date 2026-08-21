@@ -68,148 +68,57 @@ export class OverallAvailableReservedStockExportService {
     showArticle?: boolean;
     showVariant?: boolean;
     includeCosting?: boolean;
-  }): Promise<{ jobId: string; queuePosition: number; waitingCount: number }> {
+  }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
+    this.cancelledPreviewJobIds.delete(jobId);
+
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : this.prisma;
 
-    // Cancel any waiting or active preview jobs previously queued by this user
-    if (opts.userId) {
+    this.logger.log(`[ReportPreview ${jobId}] Starting background computation for user ${opts.userId}`);
+
+    // Compute preview dataset asynchronously in background
+    setImmediate(async () => {
       try {
-        const [waitingJobs, activeJobs] = await Promise.all([
-          this.exportQueue.getWaiting(),
-          this.exportQueue.getActive(),
-        ]);
+        const previewResult = await this.generateOverallAvailableReservedStockReportDataInternal(prisma, {
+          ...opts,
+          previewJobId: jobId,
+          isAborted: () => this.isJobCancelled(jobId),
+        });
 
-        for (const wJob of waitingJobs) {
-          if (
-            wJob.name === 'generate-report-preview' &&
-            wJob.data?.userId === opts.userId
-          ) {
-            this.logger.log(`Pruning superseded waiting preview job ${wJob.id} for user ${opts.userId}`);
-            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
-            await wJob.remove();
-          }
+        if (this.isJobCancelled(jobId)) {
+          this.logger.log(`[ReportPreview ${jobId}] Preview result discarded as job was cancelled.`);
+          return;
         }
 
-        for (const aJob of activeJobs) {
-          if (
-            aJob.name === 'generate-report-preview' &&
-            aJob.data?.userId === opts.userId
-          ) {
-            const activeJobId = aJob.data?.jobId;
-            this.logger.log(`Cancelling active running preview job ${activeJobId} for user ${opts.userId}`);
-            if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
-          }
-        }
+        this.saveReportPreviewResult(jobId, previewResult);
+        this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
       } catch (err: any) {
-        this.logger.warn(`Could not prune preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.error(`[ReportPreview ${jobId}] Error computing report preview: ${err.message}`, err.stack);
       }
-    }
+    });
 
-    await this.exportQueue.add(
-      'generate-report-preview',
-      {
-        jobId,
-        userId: opts.userId,
-        tenantId,
-        tenantDbUrl,
-        locationId: opts.locationId,
-        warehouseId: opts.warehouseId,
-        asOfDate: opts.asOfDate,
-        summaryOnly: !!opts.summaryOnly,
-        showBrand: opts.showBrand,
-        showDivision: opts.showDivision,
-        showCategory: opts.showCategory,
-        showGender: opts.showGender,
-        showSilhouette: opts.showSilhouette,
-        showArticle: opts.showArticle,
-        showVariant: opts.showVariant,
-        includeCosting: !!opts.includeCosting,
-      },
-      {
-        jobId,
-        attempts: 1,
-        removeOnComplete: false,
-        removeOnFail: false,
-      },
-    );
-
-    const [waiting, active] = await Promise.all([
-      this.exportQueue.getWaiting(),
-      this.exportQueue.getActive(),
-    ]);
-
-    const allJobs = [...active, ...waiting];
-    const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
-    const queuePosition = idx >= 0 ? idx + 1 : 1;
-
-    return { jobId, queuePosition, waitingCount: waiting.length };
-  }
-
-  async getJobQueueStatus(jobId: string): Promise<{
-    state: string;
-    progress: number;
-    message: string;
-    queuePosition: number;
-    waitingCount: number;
-    failedReason?: string;
-  }> {
-    const job = await this.exportQueue.getJob(jobId);
-    if (!job) {
-      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
-    }
-
-    const state = await job.getState();
-    const progressRaw = job.progress();
-    let progress = 0;
-    let message = '';
-
-    if (typeof progressRaw === 'number') {
-      progress = progressRaw;
-    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
-      progress = (progressRaw as any).percent || 0;
-      message = (progressRaw as any).message || '';
-    }
-
-    let queuePosition = 0;
-    let waitingCount = 0;
-
-    if (state === 'waiting' || state === 'delayed') {
-      const [waiting, active] = await Promise.all([
-        this.exportQueue.getWaiting(),
-        this.exportQueue.getActive(),
-      ]);
-      waitingCount = waiting.length;
-      const allJobs = [...active, ...waiting];
-      const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
-      queuePosition = idx >= 0 ? idx + 1 : 1;
-    }
-
-    return {
-      state,
-      progress,
-      message,
-      queuePosition,
-      waitingCount,
-      failedReason: job.failedReason,
-    };
+    return { jobId };
   }
 
   saveReportPreviewResult(jobId: string, data: any): void {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
-    fs.mkdirSync(previewDir, { recursive: true });
-
-    let serializableItemMetricsMap: Record<string, any> | undefined;
-    if (data?.itemMetricsMap instanceof Map) {
-      serializableItemMetricsMap = Object.fromEntries(data.itemMetricsMap);
-    } else if (typeof data?.itemMetricsMap === 'object' && data?.itemMetricsMap !== null) {
-      serializableItemMetricsMap = data.itemMetricsMap;
+    if (!fs.existsSync(previewDir)) {
+      fs.mkdirSync(previewDir, { recursive: true });
     }
 
+    const cleanRoot = Array.isArray(data?.root) ? data.root : [];
+    const cleanFlatItemsList = Array.isArray(data?.flatItemsList) ? data.flatItemsList : [];
+
     const payloadToSerialize = {
-      ...data,
-      itemMetricsMap: serializableItemMetricsMap,
+      root: cleanRoot,
+      grandTotals: data?.grandTotals || this.createEmptyTotals(),
+      warehouses: data?.warehouses || [],
+      stockLocations: data?.stockLocations || [],
+      flatItemsList: cleanFlatItemsList,
     };
 
     const jsonStr = JSON.stringify(payloadToSerialize);
@@ -217,7 +126,6 @@ export class OverallAvailableReservedStockExportService {
     const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
     fs.writeFileSync(filePath, gzipped);
 
-    // Auto cleanup temp file after 1 hour
     setTimeout(() => {
       if (fs.existsSync(filePath)) {
         try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
@@ -232,11 +140,7 @@ export class OverallAvailableReservedStockExportService {
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
-    const parsed = JSON.parse(jsonStr);
-    if (parsed && parsed.itemMetricsMap && !(parsed.itemMetricsMap instanceof Map)) {
-      parsed.itemMetricsMap = new Map(Object.entries(parsed.itemMetricsMap));
-    }
-    return parsed;
+    return JSON.parse(jsonStr);
   }
 
   async queueExport(opts: QueueOverallAvailableReservedStockExportOptions): Promise<{ jobId: string }> {
@@ -304,7 +208,6 @@ export class OverallAvailableReservedStockExportService {
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, opts.fileBuffer);
 
-    // Save export job record in ExportHistory audit table
     await this.prisma.exportHistory.create({
       data: {
         id: jobId,
@@ -373,7 +276,6 @@ export class OverallAvailableReservedStockExportService {
     }
 
     let filePath = path.join(process.cwd(), record.filePath);
-
     if (!fs.existsSync(filePath)) {
       const publicFallback = path.join(process.cwd(), 'public', record.filePath);
       if (fs.existsSync(publicFallback)) {
@@ -385,9 +287,6 @@ export class OverallAvailableReservedStockExportService {
 
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
-    stream.on('error', (err) => {
-      this.logger.error(`[OverallAvailableReservedStockExport] Stream error: ${err.message}`);
-    });
 
     const isPdf = record.fileName.endsWith('.pdf');
     res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -444,14 +343,6 @@ export class OverallAvailableReservedStockExportService {
       locationId,
       warehouseId,
       asOfDate: asOfStr,
-      summaryOnly,
-      showBrand,
-      showDivision,
-      showCategory,
-      showGender,
-      showSilhouette,
-      showArticle,
-      showVariant,
       previewJobId,
       isAborted,
       onProgress,
@@ -460,27 +351,15 @@ export class OverallAvailableReservedStockExportService {
     const checkCancelled = () => isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId));
 
     if (checkCancelled()) {
-      this.logger.log(`[ReportPreview ${previewJobId}] Computation aborted early as job was cancelled by user.`);
-      return { root: [], grandTotals: { totalQty: 0, totalReserved: 0, totalAvailable: 0, totalCostValue: 0 }, items: [], itemMetricsMap: new Map(), flatItemsList: [], stockLocationsList: [], warehousesList: [] };
+      return { root: [], flatItemsList: [], grandTotals: this.createEmptyTotals(), warehouses: [], stockLocations: [] };
     }
 
     await onProgress?.(10, 'Discovering active stock locations & warehouses...');
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    let locationWhere: any;
-
-    if (locIds.length > 0) {
-      locationWhere = locIds.length > 1 ? { in: locIds } : locIds[0];
-    } else {
-      const stockLocations = await prisma.location.findMany({
-        where: { isStockLocation: true, isDeleted: false },
-        select: { id: true },
-      });
-      const stockLocIds = stockLocations.map(l => l.id);
-      locationWhere = { in: stockLocIds };
-    }
-
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
 
     const locOrWhFilters: any[] = [];
@@ -511,35 +390,20 @@ export class OverallAvailableReservedStockExportService {
       orderBy: { name: 'asc' },
     });
 
-    const sBrand = showBrand !== false;
-    const sDivision = showDivision !== false;
-    const sCategory = showCategory !== false;
-    const sGender = showGender !== false;
-    const sSilhouette = showSilhouette !== false;
-    const sArticle = showArticle !== false;
-    const sVariant = showVariant !== undefined ? showVariant : !summaryOnly;
-
-    const levels: string[] = [];
-    if (sBrand) levels.push('brand');
-    if (sDivision) levels.push('division');
-    if (sCategory) levels.push('category');
-    if (sGender) levels.push('gender');
-    if (sSilhouette) levels.push('silhouette');
-    if (sArticle) levels.push('article');
-    if (sVariant) levels.push('variant');
-
-    if (levels.length === 0) {
-      levels.push('brand');
-    }
-
     const now = new Date();
-    const targetDate = asOfStr ? new Date(asOfStr) : new Date();
-    targetDate.setHours(23, 59, 59, 999);
+    const endDate = asOfStr ? new Date(asOfStr) : new Date();
+    endDate.setHours(23, 59, 59, 999);
 
-    const isHistorical = targetDate.getTime() < (now.getTime() - 24 * 60 * 60 * 1000);
+    const getDefaultFiscalYearStart = (ref: Date) => {
+      const year = ref.getFullYear();
+      const month = ref.getMonth(); // 0 = Jan, 6 = July
+      const fyYear = month >= 6 ? year : year - 1;
+      return new Date(fyYear, 6, 1, 0, 0, 0, 0);
+    };
 
-    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, targetDate);
-    const queryStartDate = snapshotDate && snapshotDate < targetDate ? snapshotDate : undefined;
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, endDate);
+    const startDate = snapshotDate && snapshotDate < endDate ? snapshotDate : getDefaultFiscalYearStart(endDate);
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
 
     await onProgress?.(20, 'Querying stock ledgers & inventory items...');
 
@@ -548,39 +412,235 @@ export class OverallAvailableReservedStockExportService {
       prisma.inventoryItem.findMany({
         where: {
           ...locationOrWarehouseWhere,
-          status: 'AVAILABLE',
-          createdAt: { lte: targetDate },
         },
-        select: { itemId: true },
+        select: { itemId: true, locationId: true, warehouseId: true },
       }),
       prisma.stockLedger.findMany({
         where: {
           ...locationOrWarehouseWhere,
-          createdAt: queryStartDate ? { gte: queryStartDate, lte: targetDate } : { lte: targetDate },
+          createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
         },
         select: { itemId: true },
         distinct: ['itemId'],
       }),
     ]);
 
-    const uniqueItemIds = [...new Set([
+    let uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
       ...ledgerItems.map(l => l.itemId),
     ])];
 
-    const whIdsList = warehouses.map(w => w.id);
-    const locIdsList = stockLocations.map(l => l.id);
+    if (uniqueItemIds.length === 0) {
+      const allItemsFallback = await prisma.item.findMany({
+        select: { id: true },
+        take: 2000,
+      });
+      uniqueItemIds = allItemsFallback.map(i => i.id);
+    }
 
     if (uniqueItemIds.length === 0) {
       return {
         root: [],
-        grandTotals: this.createEmptyTotals(whIdsList, locIdsList),
+        flatItemsList: [],
+        grandTotals: this.createEmptyTotals(warehouses.map(w => w.id), stockLocations.map(l => l.id)),
         warehouses,
         stockLocations,
       };
     }
 
-    await onProgress?.(35, `Loading product catalog metadata for ${uniqueItemIds.length} items...`);
+    await onProgress?.(45, 'Executing relational aggregations for stock movements, transit & reserves...');
+
+    const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = ['itemId', 'locationId', 'warehouseId'];
+
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+    const toLocOrWhWhere = toLocOrWhFilters.length > 1
+      ? { OR: toLocOrWhFilters }
+      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
+    const [
+      bfGroupResults,
+      inRangeOpeningResults,
+      ledgerEntriesResults,
+      transitItemsResults,
+      reserveGroupResults,
+      tenantSettingsResults,
+    ] = await Promise.all([
+      prisma.stockLedger.groupBy({
+        by: groupByCols,
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: queryStartDate ? { gte: queryStartDate, lt: startDate } : { lt: startDate },
+        },
+        _sum: { qty: true },
+      }),
+      prisma.stockLedger.groupBy({
+        by: groupByCols,
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: { gte: startDate, lte: endDate },
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        _sum: { qty: true },
+      }),
+      prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: { gte: startDate, lte: endDate },
+          NOT: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        select: {
+          itemId: true,
+          qty: true,
+          referenceType: true,
+          movementType: true,
+          locationId: true,
+          warehouseId: true,
+          unitCost: true,
+          rate: true,
+        },
+      }),
+      prisma.transferRequestItem.findMany({
+        where: {
+          transferRequest: {
+            ...toLocOrWhWhere,
+            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+          },
+        },
+        select: {
+          itemId: true,
+          quantity: true,
+          transferRequest: {
+            select: { toLocationId: true, toWarehouseId: true },
+          },
+        },
+      }),
+      prisma.stockReserve.groupBy({
+        by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
+        where: {
+          ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } },
+          ],
+        },
+        _sum: { quantity: true },
+      }),
+      prisma.tenantItemSetting.findMany({
+        select: {
+          itemId: true,
+          averageCost: true,
+          standardCost: true,
+        },
+      }),
+    ]);
+
+    // Build B/F Opening map
+    const bfMap = new Map<string, number>();
+    for (const r of bfGroupResults) {
+      const locKey = r.locationId ? `loc:${r.locationId}` : (r.warehouseId ? `wh:${r.warehouseId}` : 'unknown');
+      const key = `${locKey}_${r.itemId}`;
+      bfMap.set(key, (bfMap.get(key) || 0) + Number(r._sum?.qty || 0));
+    }
+    for (const r of inRangeOpeningResults) {
+      const locKey = r.locationId ? `loc:${r.locationId}` : (r.warehouseId ? `wh:${r.warehouseId}` : 'unknown');
+      const key = `${locKey}_${r.itemId}`;
+      bfMap.set(key, (bfMap.get(key) || 0) + Number(r._sum?.qty || 0));
+    }
+
+    const latestLedgerCostMap = new Map<string, number>();
+    for (const entry of ledgerEntriesResults) {
+      const cost = Number(entry.unitCost ?? entry.rate ?? 0);
+      if (cost > 0) latestLedgerCostMap.set(entry.itemId, cost);
+    }
+
+    // Transit map per location/warehouse & item
+    const transitMap = new Map<string, number>();
+    for (const row of transitItemsResults) {
+      const qty = Number(row.quantity || 0);
+      const tr = row.transferRequest;
+      const locKey = tr.toLocationId ? `loc:${tr.toLocationId}` : (tr.toWarehouseId ? `wh:${tr.toWarehouseId}` : 'unknown');
+      const key = `${locKey}_${row.itemId}`;
+      transitMap.set(key, (transitMap.get(key) || 0) + qty);
+    }
+
+    // Reserve map per warehouse & item
+    const reserveMap = new Map<string, number>();
+    for (const row of reserveGroupResults) {
+      const locKey = row.warehouseId ? `wh:${row.warehouseId}` : 'all';
+      const key = `${locKey}_${row.itemId}`;
+      reserveMap.set(key, (reserveMap.get(key) || 0) + Number(row._sum.quantity || 0));
+    }
+
+    // Movement metrics map
+    const movementMetricsMap = new Map<string, {
+      fromWarehouse: number;
+      fromOutlet: number;
+      toWarehouse: number;
+      toOutlet: number;
+      exchg: number;
+      refund: number;
+      claim: number;
+      sales: number;
+      adj: number;
+    }>();
+
+    for (const entry of ledgerEntriesResults) {
+      const locKey = entry.locationId ? `loc:${entry.locationId}` : (entry.warehouseId ? `wh:${entry.warehouseId}` : 'unknown');
+      const key = `${locKey}_${entry.itemId}`;
+
+      let m = movementMetricsMap.get(key);
+      if (!m) {
+        m = {
+          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
+          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+        };
+        movementMetricsMap.set(key, m);
+      }
+
+      const qty = Number(entry.qty || 0);
+      const ref = entry.referenceType || '';
+      const mov = entry.movementType;
+
+      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
+        m.adj += qty;
+      } else if (qty > 0) {
+        if (ref === 'TRANSFER_REQUEST') m.fromWarehouse += qty;
+        else if (ref === 'OUTLET_TRANSFER_IN') m.fromOutlet += qty;
+        else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) m.exchg += qty;
+        else if (['POS_REFUND', 'POS_VOID'].includes(ref)) m.refund += qty;
+        else if (ref === 'POS_CLAIM_APPROVED') m.claim += qty;
+        else m.adj += qty;
+      } else if (qty < 0) {
+        const absQty = Math.abs(qty);
+        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) m.toWarehouse += absQty;
+        else if (ref === 'OUTLET_TRANSFER_OUT') m.toOutlet += absQty;
+        else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) m.sales += absQty;
+        else m.adj += qty;
+      }
+    }
+
+    // Collect all item IDs that have activity or inventory
+    const activeItemIdsSet = new Set<string>();
+    for (const r of bfGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of inRangeOpeningResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of ledgerEntriesResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const inv of inventoryItems) if (inv?.itemId) activeItemIdsSet.add(inv.itemId);
+
+    const activeItemIds = Array.from(activeItemIdsSet).filter(Boolean);
+
+    await onProgress?.(65, `Loading product catalog metadata for ${activeItemIds.length} active items...`);
 
     const chunkArray = <T>(arr: T[], size = 1000): T[][] => {
       const chunks: T[][] = [];
@@ -590,7 +650,7 @@ export class OverallAvailableReservedStockExportService {
       return chunks;
     };
 
-    const itemChunks = chunkArray(uniqueItemIds, 1000);
+    const itemChunks = chunkArray(activeItemIds, 1000);
     const itemsNested = await Promise.all(
       itemChunks.map((chunk) =>
         prisma.item.findMany({
@@ -608,9 +668,6 @@ export class OverallAvailableReservedStockExportService {
             division: true,
             brand: true,
             silhouette: true,
-            season: true,
-            itemClass: true,
-            subCategory: true,
           },
         }),
       ),
@@ -618,304 +675,144 @@ export class OverallAvailableReservedStockExportService {
 
     const items = itemsNested.flat();
 
-    if (items.length === 0) {
-      return {
-        root: [],
-        grandTotals: this.createEmptyTotals(whIdsList, locIdsList),
-        warehouses,
-        stockLocations,
-      };
-    }
+    const settingMap = new Map<string, any>();
+    for (const s of tenantSettingsResults) settingMap.set(s.itemId, s);
 
-    await onProgress?.(50, 'Calculating in-transit and reserved stock allocations...');
+    await onProgress?.(85, 'Building store matrix breakdown and grand totals...');
 
-    const matchedItemIds = items.map(i => i.id);
-    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
+    const whIdsList = warehouses.map(w => w.id);
+    const locIdsList = stockLocations.map(l => l.id);
 
-    const toLocOrWhFilters: any[] = [];
-    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
-
-    const toLocOrWhWhere = toLocOrWhFilters.length > 1
-      ? { OR: toLocOrWhFilters }
-      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
-
-    const transitMap = new Map<string, number>();
-    const transitResults = await Promise.all(
-      matchedItemChunks.map((chunk) =>
-        prisma.transferRequestItem.findMany({
-          where: {
-            itemId: { in: chunk },
-            transferRequest: {
-              ...toLocOrWhWhere,
-              createdAt: { lte: targetDate },
-              status: { in: ['PENDING', 'SOURCE_APPROVED'] },
-              transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
-            },
-          },
-          select: {
-            itemId: true,
-            quantity: true,
-          },
-        }),
-      ),
-    );
-
-    for (const transitItems of transitResults) {
-      for (const row of transitItems) {
-        const qty = Number(row.quantity || 0);
-        transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
-      }
-    }
-
-    const reserveMap = new Map<string, number>();
-    const reserveResults = await Promise.all(
-      matchedItemChunks.map((chunk) =>
-        prisma.stockReserve.groupBy({
-          by: ['itemId'],
-          where: {
-            itemId: { in: chunk },
-            createdAt: { lte: targetDate },
-            ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gte: targetDate } }
-            ]
-          },
-          _sum: { quantity: true },
-        }),
-      ),
-    );
-
-    for (const reserveGroup of reserveResults) {
-      for (const row of reserveGroup) {
-        reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
-      }
-    }
-
-    await onProgress?.(65, 'Processing location & warehouse stock breakdown...');
-
-    // Breakdown per location / warehouse
-    const invLocMap = new Map<string, number>();
-    const invWhMap = new Map<string, number>();
-
-    if (isHistorical) {
-      const [histLocResults, histWhResults] = await Promise.all([
-        Promise.all(
-          matchedItemChunks.map((chunk) =>
-            prisma.stockLedger.groupBy({
-              by: ['itemId', 'locationId'],
-              where: {
-                itemId: { in: chunk },
-                locationId: { not: null },
-                createdAt: { lte: targetDate },
-              },
-              _sum: { qty: true },
-            }),
-          ),
-        ),
-        Promise.all(
-          matchedItemChunks.map((chunk) =>
-            prisma.stockLedger.groupBy({
-              by: ['itemId', 'warehouseId'],
-              where: {
-                itemId: { in: chunk },
-                locationId: null,
-                createdAt: { lte: targetDate },
-              },
-              _sum: { qty: true },
-            }),
-          ),
-        ),
-      ]);
-
-      for (const histLocGroup of histLocResults) {
-        for (const row of histLocGroup) {
-          if (row.locationId) {
-            invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.qty || 0));
-          }
-        }
-      }
-
-      for (const histWhGroup of histWhResults) {
-        for (const row of histWhGroup) {
-          if (row.warehouseId) {
-            invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.qty || 0));
-          }
-        }
-      }
-    } else {
-      const [invLocResults, invWhResults] = await Promise.all([
-        Promise.all(
-          matchedItemChunks.map((chunk) =>
-            prisma.inventoryItem.groupBy({
-              by: ['itemId', 'locationId'],
-              where: {
-                itemId: { in: chunk },
-                status: 'AVAILABLE',
-                locationId: { not: null },
-              },
-              _sum: { quantity: true },
-            }),
-          ),
-        ),
-        Promise.all(
-          matchedItemChunks.map((chunk) =>
-            prisma.inventoryItem.groupBy({
-              by: ['itemId', 'warehouseId'],
-              where: {
-                itemId: { in: chunk },
-                status: 'AVAILABLE',
-                locationId: null,
-              },
-              _sum: { quantity: true },
-            }),
-          ),
-        ),
-      ]);
-
-      for (const invLocGroup of invLocResults) {
-        for (const row of invLocGroup) {
-          if (row.locationId) {
-            invLocMap.set(`${row.itemId}_${row.locationId}`, Number(row._sum.quantity || 0));
-          }
-        }
-      }
-
-      for (const invWhGroup of invWhResults) {
-        for (const row of invWhGroup) {
-          if (row.warehouseId) {
-            invWhMap.set(`${row.itemId}_${row.warehouseId}`, Number(row._sum.quantity || 0));
-          }
-        }
-      }
-    }
-
-    await onProgress?.(85, 'Building report hierarchy tree & computing grand totals...');
-
-    const root: any[] = [];
-
-    const addTotals = (target: any, source: any) => {
-      target.quantity += source.quantity;
-      target.transit += source.transit;
-      target.reserved += source.reserved;
-      target.total += source.total;
-      target.value += source.value;
-      target.costingValue += source.costingValue;
-
-      for (const whId of whIdsList) {
-        target.warehouseStocks[whId] = (target.warehouseStocks[whId] || 0) + (source.warehouseStocks[whId] || 0);
-      }
-      for (const locId of locIdsList) {
-        target.locationStocks[locId] = (target.locationStocks[locId] || 0) + (source.locationStocks[locId] || 0);
-      }
-    };
+    const flatItemsList: any[] = [];
+    const grandTotals = this.createEmptyTotals(whIdsList, locIdsList);
 
     for (const item of items) {
-      const transit = transitMap.get(item.id) || 0;
-      const reserved = reserveMap.get(item.id) || 0;
+      let itemAvailableStockSum = 0;
+      let itemTransitSum = 0;
+      let itemReservedSum = 0;
 
-      let sumWh = 0;
       const warehouseStocks: Record<string, number> = {};
       for (const wh of warehouses) {
-        const qty = invWhMap.get(`${item.id}_${wh.id}`) || invWhMap.get(`${item.itemId}_${wh.id}`) || 0;
-        warehouseStocks[wh.id] = qty;
-        sumWh += qty;
+        const key = `wh:${wh.id}_${item.id}`;
+        const altKey = item.itemId ? `wh:${wh.id}_${item.itemId}` : key;
+
+        const bf = (bfMap.get(key) ?? bfMap.get(altKey)) || 0;
+        const m = (movementMetricsMap.get(key) ?? movementMetricsMap.get(altKey)) || {
+          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
+          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+        };
+
+        const totalTrfIn = m.fromWarehouse + m.fromOutlet;
+        const totalTrfOut = m.toWarehouse + m.toOutlet;
+        const stockWh = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+        
+        const validStockWh = Math.max(0, stockWh);
+        warehouseStocks[wh.id] = validStockWh;
+        itemAvailableStockSum += validStockWh;
+
+        const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
+        const rs = (reserveMap.get(key) ?? reserveMap.get(altKey)) || 0;
+        itemTransitSum += tr;
+        itemReservedSum += rs;
       }
 
-      let sumLoc = 0;
       const locationStocks: Record<string, number> = {};
       for (const loc of stockLocations) {
-        const qty = invLocMap.get(`${item.id}_${loc.id}`) || invLocMap.get(`${item.itemId}_${loc.id}`) || 0;
-        locationStocks[loc.id] = qty;
-        sumLoc += qty;
+        const key = `loc:${loc.id}_${item.id}`;
+        const altKey = item.itemId ? `loc:${loc.id}_${item.itemId}` : key;
+
+        const bf = (bfMap.get(key) ?? bfMap.get(altKey)) || 0;
+        const m = (movementMetricsMap.get(key) ?? movementMetricsMap.get(altKey)) || {
+          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
+          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+        };
+
+        const totalTrfIn = m.fromWarehouse + m.fromOutlet;
+        const totalTrfOut = m.toWarehouse + m.toOutlet;
+        const stockLoc = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+
+        const validStockLoc = Math.max(0, stockLoc);
+        locationStocks[loc.id] = validStockLoc;
+        itemAvailableStockSum += validStockLoc;
+
+        const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
+        itemTransitSum += tr;
       }
 
-      const availableStock = sumWh + sumLoc;
-      const balance = availableStock + transit + reserved;
-      const unitPrice = item.unitPrice || 0;
-      const value = balance * unitPrice;
-      const unitCost = item.unitCost || 0;
-      const costingValue = balance * unitCost;
+      const totalBalance = itemAvailableStockSum + itemTransitSum + itemReservedSum;
+      const unitPrice = Number(item.unitPrice || 0);
+      const value = totalBalance * unitPrice;
 
-      const discountRate = item.discountRate || 0;
-      const taxRate = item.taxRate1 || 0;
+      const setting = settingMap.get(item.id) || (item.itemId ? settingMap.get(item.itemId) : undefined);
+      let unitCost = Number(item.unitCost || 0);
+      if (unitCost === 0) {
+        unitCost = Number(
+          setting?.averageCost ||
+          setting?.standardCost ||
+          item.fob ||
+          latestLedgerCostMap.get(item.id) ||
+          (item.itemId ? latestLedgerCostMap.get(item.itemId) : undefined) ||
+          0
+        );
+      }
+      const costingValue = totalBalance * unitCost;
 
-      const variantMetrics = {
-        quantity: availableStock,
-        transit,
-        reserved,
-        total: balance,
+      // Skip item if 0 across all fields
+      if (itemAvailableStockSum === 0 && itemTransitSum === 0 && itemReservedSum === 0 && totalBalance === 0) {
+        continue;
+      }
+
+      const itemRecord = {
+        itemId: item.id,
+        brand: item.brand?.name ?? 'No Brand',
+        division: item.division?.name ?? 'No Division',
+        category: item.category?.name ?? 'No Category',
+        gender: item.gender?.name ?? 'No Gender',
+        silhouette: item.silhouette?.name ?? 'No Silhouette',
+        sku: item.sku ?? '',
+        articleName: item.description ?? '',
+        color: item.color?.name ?? 'Default',
+        size: item.size?.name ?? 'Default',
+        barCode: item.barCode ?? '',
+        quantity: itemAvailableStockSum,
+        transit: itemTransitSum,
+        reserved: itemReservedSum,
+        total: totalBalance,
         unitPrice,
         value,
         unitCost,
         costingValue,
-        discountRate,
-        taxRate,
         warehouseStocks,
         locationStocks,
       };
 
-      let currentLevelNodes = root;
-      for (let i = 0; i < levels.length; i++) {
-        const levelName = levels[i];
-        let nodeVal = '';
-        let extraFields: any = {};
+      flatItemsList.push(itemRecord);
 
-        if (levelName === 'brand') {
-          nodeVal = item.brand?.name || 'No Brand';
-        } else if (levelName === 'division') {
-          nodeVal = item.division?.name || 'No Division';
-        } else if (levelName === 'category') {
-          nodeVal = item.category?.name || 'No Category';
-        } else if (levelName === 'gender') {
-          nodeVal = item.gender?.name || 'No Gender';
-        } else if (levelName === 'silhouette') {
-          nodeVal = item.silhouette?.name || 'No Silhouette';
-        } else if (levelName === 'article') {
-          nodeVal = item.sku;
-          extraFields.sku = item.sku;
-          extraFields.articleName = item.description || 'Unknown Article';
-        } else if (levelName === 'variant') {
-          nodeVal = `${item.color?.name || 'Default'}-${item.size?.name || 'Default'}`;
-          extraFields.color = item.color?.name || 'Default';
-          extraFields.size = item.size?.name || 'Default';
-        }
+      // Accumulate Grand Totals
+      grandTotals.quantity += itemAvailableStockSum;
+      grandTotals.transit += itemTransitSum;
+      grandTotals.reserved += itemReservedSum;
+      grandTotals.total += totalBalance;
+      grandTotals.value += value;
+      grandTotals.costingValue += costingValue;
 
-        let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
-        if (!existingNode) {
-          existingNode = {
-            level: levelName,
-            value: nodeVal,
-            totals: this.createEmptyTotals(whIdsList, locIdsList),
-            ...extraFields,
-            children: [],
-          };
-          currentLevelNodes.push(existingNode);
-        }
-
-        addTotals(existingNode.totals, variantMetrics);
-
-        if (levelName === 'article' || levelName === 'variant') {
-          existingNode.totals.unitPrice = unitPrice;
-          existingNode.totals.unitCost = unitCost;
-          existingNode.totals.discountRate = discountRate;
-          existingNode.totals.taxRate = taxRate;
-        }
-
-        if (i < levels.length - 1) {
-          currentLevelNodes = existingNode.children;
-        }
+      for (const whId of whIdsList) {
+        grandTotals.warehouseStocks[whId] = (grandTotals.warehouseStocks[whId] || 0) + (warehouseStocks[whId] || 0);
+      }
+      for (const locId of locIdsList) {
+        grandTotals.locationStocks[locId] = (grandTotals.locationStocks[locId] || 0) + (locationStocks[locId] || 0);
       }
     }
 
-    // Compute grand totals
-    const grandTotals = this.createEmptyTotals(whIdsList, locIdsList);
-    for (const node of root) {
-      addTotals(grandTotals, node.totals);
-    }
+    await onProgress?.(100, 'Overall stock matrix computation completed');
 
-    return { root, grandTotals, warehouses, stockLocations };
+    return {
+      root: flatItemsList,
+      flatItemsList,
+      grandTotals,
+      warehouses,
+      stockLocations,
+    };
   }
 
   private createEmptyTotals(whIds: string[] = [], locIds: string[] = []) {
