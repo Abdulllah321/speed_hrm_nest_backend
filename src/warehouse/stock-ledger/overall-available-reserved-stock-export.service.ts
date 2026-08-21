@@ -246,6 +246,55 @@ export class OverallAvailableReservedStockExportService {
     return { state, progress };
   }
 
+  async getJobQueueStatus(jobId: string): Promise<{
+    state: string;
+    progress: number;
+    message: string;
+    queuePosition: number;
+    waitingCount: number;
+    failedReason?: string;
+  }> {
+    const job = await this.exportQueue.getJob(jobId);
+    if (!job) {
+      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+    }
+
+    const state = await job.getState();
+    const progressRaw = job.progress();
+    let progress = 0;
+    let message = '';
+
+    if (typeof progressRaw === 'number') {
+      progress = progressRaw;
+    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
+      progress = (progressRaw as any).percent || 0;
+      message = (progressRaw as any).message || '';
+    }
+
+    let queuePosition = 0;
+    let waitingCount = 0;
+
+    if (state === 'waiting' || state === 'delayed') {
+      const [waiting, active] = await Promise.all([
+        this.exportQueue.getWaiting(),
+        this.exportQueue.getActive(),
+      ]);
+      waitingCount = waiting.length;
+      const allJobs = [...active, ...waiting];
+      const idx = allJobs.findIndex((j) => j.id?.toString() === jobId);
+      queuePosition = idx >= 0 ? idx + 1 : 1;
+    }
+
+    return {
+      state,
+      progress,
+      message,
+      queuePosition,
+      waitingCount,
+      failedReason: job.failedReason,
+    };
+  }
+
   async streamExportFile(jobId: string, res: any): Promise<void> {
     const record = await this.prisma.exportHistory.findUnique({
       where: { id: jobId },
