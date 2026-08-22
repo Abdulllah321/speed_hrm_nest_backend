@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
 import { ExportHistoryService } from '../export-history/export-history.service';
+import { FiscalYearClosingService } from './fiscal-year-closing.service';
 import { MovementType } from '@prisma/client';
 import { chunkArray } from '../../common/utils/chunk.util';
 
@@ -127,6 +128,7 @@ export class StockActivityExportService {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly fiscalClosingService: FiscalYearClosingService,
   ) {
     if (!fs.existsSync(this.previewStorageDir)) {
       fs.mkdirSync(this.previewStorageDir, { recursive: true });
@@ -399,20 +401,25 @@ export class StockActivityExportService {
 
     await onProgress?.(45, 'Computing opening B/F balances & in-range ledger transactions...');
 
+    const fiscalOpeningDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+
     const bfMap = new Map<string, number>();
     for (const chunk of matchedItemChunks) {
+      const bfWhere: any = {
+        ...locationOrWarehouseWhere,
+        itemId: { in: chunk },
+        createdAt: fiscalOpeningDate ? { gte: fiscalOpeningDate, lt: startDate } : { lt: startDate },
+      };
+
       const bfGroup = await prisma.stockLedger.groupBy({
         by: ['itemId'],
-        where: {
-          ...locationOrWarehouseWhere,
-          itemId: { in: chunk },
-          createdAt: { lt: startDate },
-        },
+        where: bfWhere,
         _sum: { qty: true },
       });
 
       for (const row of bfGroup) {
-        bfMap.set(row.itemId, Number(row._sum.qty || 0));
+        const val = Number(row._sum.qty || 0);
+        bfMap.set(row.itemId, Math.max(0, val));
       }
 
       const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
@@ -425,6 +432,7 @@ export class StockActivityExportService {
             { movementType: MovementType.OPENING_BALANCE },
             { referenceType: 'OPENING_BALANCE' },
             { referenceType: 'BULK_STOCK_UPLOAD' },
+            { referenceType: 'FISCAL_YEAR_OPENING' },
           ],
         },
         _sum: { qty: true },
@@ -432,7 +440,7 @@ export class StockActivityExportService {
 
       for (const row of inRangeOpeningGroup) {
         const currentBf = bfMap.get(row.itemId) || 0;
-        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+        bfMap.set(row.itemId, Math.max(0, currentBf + Number(row._sum.qty || 0)));
       }
     }
 
@@ -573,8 +581,8 @@ export class StockActivityExportService {
     const grandTotals = createEmptyTotals();
 
     for (const item of items) {
-      const bf = bfMap.get(item.id) || 0;
-      const transit = transitMap.get(item.id) || 0;
+      const bf = Math.max(0, bfMap.get(item.id) || 0);
+      const transit = Math.max(0, transitMap.get(item.id) || 0);
       const m = itemMetricsMap.get(item.id) || {
         fromWarehouse: 0,
         fromOutlet: 0,
@@ -589,7 +597,7 @@ export class StockActivityExportService {
 
       const totalTrfIn = m.fromWarehouse + m.fromOutlet;
       const totalTrfOut = m.toWarehouse + m.toOutlet;
-      const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+      const availableStock = Math.max(0, bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj);
       const balance = availableStock + transit;
 
       const totals: StockActivityTotals = {
