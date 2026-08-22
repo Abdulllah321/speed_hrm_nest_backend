@@ -3,9 +3,102 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
+import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
+import { ExportHistoryService } from '../export-history/export-history.service';
+import { MovementType } from '@prisma/client';
+import { chunkArray } from '../../common/utils/chunk.util';
+
+const gzipAsync = promisify(zlib.gzip);
+const gunzipAsync = promisify(zlib.gunzip);
+
+export interface StockActivityTotals {
+  bf: number;
+  fromWarehouse: number;
+  fromOutlet: number;
+  totalTrfIn: number;
+  toWarehouse: number;
+  toOutlet: number;
+  totalTrfOut: number;
+  exchg: number;
+  refund: number;
+  claim: number;
+  sales: number;
+  adj: number;
+  availableStock: number;
+  transit: number;
+  balance: number;
+}
+
+export interface StockActivityVariantItem {
+  id: string;
+  size: string;
+  color: string;
+  barCode?: string;
+  sku: string;
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityProductNode {
+  sku: string;
+  description: string;
+  productLabel: string;
+  sizes: StockActivityVariantItem[];
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityCategoryNode {
+  categoryId: string;
+  categoryName: string;
+  products: StockActivityProductNode[];
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityGenderNode {
+  genderId: string;
+  genderName: string;
+  categories: StockActivityCategoryNode[];
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityDivisionNode {
+  divisionId: string;
+  divisionName: string;
+  genders: StockActivityGenderNode[];
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityBrandNode {
+  brandId: string;
+  brandName: string;
+  divisions: StockActivityDivisionNode[];
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityFlatRecord {
+  brand: string;
+  division: string;
+  category: string;
+  gender: string;
+  silhouette: string;
+  sku: string;
+  articleName: string;
+  color: string;
+  size: string;
+  barCode: string;
+  totals: StockActivityTotals;
+}
+
+export interface StockActivityReportResult {
+  brands: StockActivityBrandNode[];
+  flatItems: StockActivityFlatRecord[];
+  grandTotals: StockActivityTotals;
+  dateRange: { startDate?: string; endDate?: string };
+  locationNames: string;
+}
 
 export interface QueueStockActivityExportOptions {
   userId: string;
@@ -27,12 +120,659 @@ export interface QueueStockActivityExportOptions {
 @Injectable()
 export class StockActivityExportService {
   private readonly logger = new Logger(StockActivityExportService.name);
+  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
 
   constructor(
     @InjectQueue('stock-activity-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
-  ) {}
+    private readonly exportHistoryService: ExportHistoryService,
+  ) {
+    if (!fs.existsSync(this.previewStorageDir)) {
+      fs.mkdirSync(this.previewStorageDir, { recursive: true });
+    }
+  }
+
+  async queueReportPreview(opts: {
+    userId: string;
+    locationId?: string;
+    warehouseId?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }): Promise<{ jobId: string }> {
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    await this.exportQueue.add(
+      'generate-stock-activity-preview',
+      {
+        jobId,
+        userId: opts.userId,
+        tenantId,
+        tenantDbUrl,
+        locationId: opts.locationId,
+        warehouseId: opts.warehouseId,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
+        search: opts.search,
+      },
+      {
+        jobId: `preview-${jobId}`,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+        timeout: 60 * 60 * 1000,
+      },
+    );
+
+    this.logger.log(`[StockActivityReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    return { jobId };
+  }
+
+  async getJobQueueStatus(jobId: string): Promise<{
+    status: string;
+    state: string;
+    progress: number;
+    message: string;
+    queuePosition: number;
+    waitingCount: number;
+    failedReason?: string;
+  }> {
+    const job = await this.exportQueue.getJob(`preview-${jobId}`) || await this.exportQueue.getJob(jobId);
+    if (!job) {
+      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+    }
+
+    const state = await job.getState();
+    const progressRaw = job.progress();
+    let progress = 0;
+    let message = '';
+
+    if (typeof progressRaw === 'number') {
+      progress = progressRaw;
+    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
+      progress = (progressRaw as any).percent || 0;
+      message = (progressRaw as any).message || '';
+    }
+
+    let queuePosition = 0;
+    let waitingCount = 0;
+
+    if (state === 'waiting' || state === 'delayed') {
+      const [waiting, active] = await Promise.all([
+        this.exportQueue.getWaiting(),
+        this.exportQueue.getActive(),
+      ]);
+      waitingCount = waiting.length;
+      const allJobs = [...active, ...waiting];
+      const idx = allJobs.findIndex((j) => j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId);
+      queuePosition = idx >= 0 ? idx + 1 : 1;
+    }
+
+    return {
+      status: state,
+      state,
+      progress,
+      message,
+      queuePosition,
+      waitingCount,
+      failedReason: job.failedReason,
+    };
+  }
+
+  async saveReportPreviewResult(jobId: string, result: StockActivityReportResult): Promise<void> {
+    const jsonStr = JSON.stringify(result);
+    const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
+    const filePath = path.join(this.previewStorageDir, `stock-activity-preview-${jobId}.json.gz`);
+    await fs.promises.writeFile(filePath, compressed);
+  }
+
+  async getReportPreviewResult(jobId: string): Promise<StockActivityReportResult | null> {
+    const filePath = path.join(this.previewStorageDir, `stock-activity-preview-${jobId}.json.gz`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const compressed = await fs.promises.readFile(filePath);
+    const decompressed = await gunzipAsync(compressed);
+    return JSON.parse(decompressed.toString('utf8'));
+  }
+
+  async generateStockActivityReportDataInternal(
+    prisma: PrismaService,
+    opts: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+      onProgress?: (percent: number, message: string) => Promise<void> | void;
+    },
+  ): Promise<StockActivityReportResult> {
+    const { locationId, warehouseId, startDate: startStr, endDate: endStr, search, onProgress } = opts;
+    const now = new Date();
+
+    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+      if (!dateStr) {
+        if (isEndOfDay) {
+          const d = new Date(now);
+          d.setHours(23, 59, 59, 999);
+          return d;
+        } else {
+          return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        }
+      }
+      if (dateStr.includes('T') || dateStr.includes('Z')) {
+        const d = new Date(dateStr);
+        if (isEndOfDay && !dateStr.includes('T23:59:59')) {
+          d.setHours(23, 59, 59, 999);
+        }
+        return d;
+      }
+      const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+      return new Date(`${dateStr}${timePart}`);
+    };
+
+    const startDate = parseLocalDate(startStr, false);
+    const endDate = parseLocalDate(endStr, true);
+
+    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+
+    const whIds = warehouseId ? warehouseId.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const warehouseWhere = whIds.length > 1 ? { in: whIds } : whIds.length === 1 ? whIds[0] : undefined;
+
+    const locOrWhFilters: any[] = [];
+    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
+    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+
+    const locationOrWarehouseWhere =
+      locOrWhFilters.length > 1
+        ? { OR: locOrWhFilters }
+        : locOrWhFilters.length === 1
+        ? locOrWhFilters[0]
+        : {};
+
+    let locationNames = '';
+    if (locIds.length > 0) {
+      const locs = await prisma.location.findMany({ where: { id: { in: locIds } }, select: { name: true } });
+      locationNames += locs.map((l) => l.name).join(', ');
+    }
+    if (whIds.length > 0) {
+      if (locationNames) locationNames += ' & ';
+      const whs = await prisma.warehouse.findMany({ where: { id: { in: whIds } }, select: { name: true } });
+      locationNames += whs.map((w) => w.name).join(', ');
+    }
+    if (!locationNames) locationNames = 'All Outlets & Warehouses';
+
+    await onProgress?.(15, 'Fetching inventory item IDs & stock ledger history...');
+
+    const [inventoryItems, ledgerItems] = await Promise.all([
+      prisma.inventoryItem.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true },
+      }),
+      prisma.stockLedger.findMany({
+        where: locationOrWarehouseWhere,
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
+    ]);
+
+    const uniqueItemIds = [...new Set([...inventoryItems.map((i) => i.itemId), ...ledgerItems.map((l) => l.itemId)])];
+
+    const createEmptyTotals = (): StockActivityTotals => ({
+      bf: 0,
+      fromWarehouse: 0,
+      fromOutlet: 0,
+      totalTrfIn: 0,
+      toWarehouse: 0,
+      toOutlet: 0,
+      totalTrfOut: 0,
+      exchg: 0,
+      refund: 0,
+      claim: 0,
+      sales: 0,
+      adj: 0,
+      availableStock: 0,
+      transit: 0,
+      balance: 0,
+    });
+
+    const addTotals = (target: StockActivityTotals, source: StockActivityTotals) => {
+      target.bf += source.bf;
+      target.fromWarehouse += source.fromWarehouse;
+      target.fromOutlet += source.fromOutlet;
+      target.totalTrfIn += source.totalTrfIn;
+      target.toWarehouse += source.toWarehouse;
+      target.toOutlet += source.toOutlet;
+      target.totalTrfOut += source.totalTrfOut;
+      target.exchg += source.exchg;
+      target.refund += source.refund;
+      target.claim += source.claim;
+      target.sales += source.sales;
+      target.adj += source.adj;
+      target.availableStock += source.availableStock;
+      target.transit += source.transit;
+      target.balance += source.balance;
+    };
+
+    if (uniqueItemIds.length === 0) {
+      return {
+        brands: [],
+        flatItems: [],
+        grandTotals: createEmptyTotals(),
+        dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+        locationNames,
+      };
+    }
+
+    await onProgress?.(30, 'Retrieving catalog product details...');
+
+    const uniqueItemChunks = chunkArray(uniqueItemIds, 1000);
+    const itemsNested = await Promise.all(
+      uniqueItemChunks.map((chunk) =>
+        prisma.item.findMany({
+          where: {
+            OR: [{ id: { in: chunk } }, { itemId: { in: chunk } }],
+          },
+          include: {
+            color: true,
+            size: true,
+            gender: true,
+            category: true,
+            division: true,
+            brand: true,
+            silhouette: true,
+          },
+        }),
+      ),
+    );
+    const items = itemsNested.flat();
+
+    const matchedItemIds = items.map((i) => i.id);
+    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
+
+    await onProgress?.(45, 'Computing opening B/F balances & in-range ledger transactions...');
+
+    const bfMap = new Map<string, number>();
+    for (const chunk of matchedItemChunks) {
+      const bfGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { lt: startDate },
+        },
+        _sum: { qty: true },
+      });
+
+      for (const row of bfGroup) {
+        bfMap.set(row.itemId, Number(row._sum.qty || 0));
+      }
+
+      const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          OR: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        _sum: { qty: true },
+      });
+
+      for (const row of inRangeOpeningGroup) {
+        const currentBf = bfMap.get(row.itemId) || 0;
+        bfMap.set(row.itemId, currentBf + Number(row._sum.qty || 0));
+      }
+    }
+
+    const ledgerEntries: any[] = [];
+    for (const chunk of matchedItemChunks) {
+      const chunkEntries = await prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          itemId: { in: chunk },
+          createdAt: { gte: startDate, lte: endDate },
+          NOT: [
+            { movementType: MovementType.OPENING_BALANCE },
+            { referenceType: 'OPENING_BALANCE' },
+            { referenceType: 'BULK_STOCK_UPLOAD' },
+          ],
+        },
+        select: {
+          itemId: true,
+          qty: true,
+          referenceType: true,
+          movementType: true,
+        },
+      });
+      ledgerEntries.push(...chunkEntries);
+    }
+
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+    const toLocOrWhWhere =
+      toLocOrWhFilters.length > 1
+        ? { OR: toLocOrWhFilters }
+        : toLocOrWhFilters.length === 1
+        ? toLocOrWhFilters[0]
+        : {};
+
+    const transitItems: any[] = [];
+    for (const chunk of matchedItemChunks) {
+      const chunkTransit = await prisma.transferRequestItem.findMany({
+        where: {
+          itemId: { in: chunk },
+          transferRequest: {
+            ...toLocOrWhWhere,
+            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            transferType: {
+              in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'],
+            },
+          },
+        },
+        select: {
+          itemId: true,
+          quantity: true,
+        },
+      });
+      transitItems.push(...chunkTransit);
+    }
+
+    const transitMap = new Map<string, number>();
+    for (const row of transitItems) {
+      const qty = Number(row.quantity || 0);
+      transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+    }
+
+    await onProgress?.(70, 'Aggregating stock movement metrics by item & location...');
+
+    const itemMetricsMap = new Map<
+      string,
+      {
+        fromWarehouse: number;
+        fromOutlet: number;
+        toWarehouse: number;
+        toOutlet: number;
+        exchg: number;
+        refund: number;
+        claim: number;
+        sales: number;
+        adj: number;
+      }
+    >();
+
+    for (const entry of ledgerEntries) {
+      const itemId = entry.itemId;
+      let m = itemMetricsMap.get(itemId);
+      if (!m) {
+        m = {
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
+        };
+        itemMetricsMap.set(itemId, m);
+      }
+
+      const qty = Number(entry.qty || 0);
+      const ref = entry.referenceType || '';
+      const mov = entry.movementType;
+
+      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
+        m.adj += qty;
+      } else if (qty > 0) {
+        if (ref === 'TRANSFER_REQUEST') {
+          m.fromWarehouse += qty;
+        } else if (ref === 'OUTLET_TRANSFER_IN') {
+          m.fromOutlet += qty;
+        } else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) {
+          m.exchg += qty;
+        } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
+          m.refund += qty;
+        } else if (ref === 'POS_CLAIM_APPROVED') {
+          m.claim += qty;
+        } else {
+          m.adj += qty;
+        }
+      } else if (qty < 0) {
+        const absQty = Math.abs(qty);
+        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) {
+          m.toWarehouse += absQty;
+        } else if (ref === 'OUTLET_TRANSFER_OUT') {
+          m.toOutlet += absQty;
+        } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
+          m.sales += absQty;
+        } else {
+          m.adj += qty;
+        }
+      }
+    }
+
+    await onProgress?.(85, 'Building brand & category hierarchy matrix...');
+
+    const brandsList: StockActivityBrandNode[] = [];
+    const flatItems: StockActivityFlatRecord[] = [];
+    const grandTotals = createEmptyTotals();
+
+    for (const item of items) {
+      const bf = bfMap.get(item.id) || 0;
+      const transit = transitMap.get(item.id) || 0;
+      const m = itemMetricsMap.get(item.id) || {
+        fromWarehouse: 0,
+        fromOutlet: 0,
+        toWarehouse: 0,
+        toOutlet: 0,
+        exchg: 0,
+        refund: 0,
+        claim: 0,
+        sales: 0,
+        adj: 0,
+      };
+
+      const totalTrfIn = m.fromWarehouse + m.fromOutlet;
+      const totalTrfOut = m.toWarehouse + m.toOutlet;
+      const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+      const balance = availableStock + transit;
+
+      const totals: StockActivityTotals = {
+        bf,
+        fromWarehouse: m.fromWarehouse,
+        fromOutlet: m.fromOutlet,
+        totalTrfIn,
+        toWarehouse: m.toWarehouse,
+        toOutlet: m.toOutlet,
+        totalTrfOut,
+        exchg: m.exchg,
+        refund: m.refund,
+        claim: m.claim,
+        sales: m.sales,
+        adj: m.adj,
+        availableStock,
+        transit,
+        balance,
+      };
+
+      // Add to grand totals
+      addTotals(grandTotals, totals);
+
+      const brandId = item.brand?.id || 'no-brand';
+      const brandName = item.brand?.name || 'No Brand';
+      const divId = item.division?.id || 'no-division';
+      const divName = item.division?.name || 'No Division';
+      const genderId = item.gender?.id || 'no-gender';
+      const genderName = item.gender?.name || 'No Gender';
+      const catId = item.category?.id || 'no-category';
+      const catName = item.category?.name || 'No Category';
+      const silName = item.silhouette?.name || 'No Silhouette';
+      const sku = item.sku || item.barCode || 'NO-SKU';
+      const desc = item.description || sku;
+      const colorName = item.color?.name || 'Default';
+      const sizeName = item.size?.name || 'Default';
+      const barCode = item.barCode || sku;
+
+      flatItems.push({
+        brand: brandName,
+        division: divName,
+        category: catName,
+        gender: genderName,
+        silhouette: silName,
+        sku,
+        articleName: desc,
+        color: colorName,
+        size: sizeName,
+        barCode,
+        totals,
+      });
+
+      // 1. Brand Level
+      let brandNode = brandsList.find((b) => b.brandId === brandId);
+      if (!brandNode) {
+        brandNode = {
+          brandId,
+          brandName,
+          divisions: [],
+          totals: createEmptyTotals(),
+        };
+        brandsList.push(brandNode);
+      }
+      addTotals(brandNode.totals, totals);
+
+      // 2. Division Level
+      let divNode = brandNode.divisions.find((d) => d.divisionId === divId);
+      if (!divNode) {
+        divNode = {
+          divisionId: divId,
+          divisionName: divName,
+          genders: [],
+          totals: createEmptyTotals(),
+        };
+        brandNode.divisions.push(divNode);
+      }
+      addTotals(divNode.totals, totals);
+
+      // 3. Gender Level
+      let genderNode = divNode.genders.find((g) => g.genderId === genderId);
+      if (!genderNode) {
+        genderNode = {
+          genderId,
+          genderName,
+          categories: [],
+          totals: createEmptyTotals(),
+        };
+        divNode.genders.push(genderNode);
+      }
+      addTotals(genderNode.totals, totals);
+
+      // 4. Category Level
+      let catNode = genderNode.categories.find((c) => c.categoryId === catId);
+      if (!catNode) {
+        catNode = {
+          categoryId: catId,
+          categoryName: catName,
+          products: [],
+          totals: createEmptyTotals(),
+        };
+        genderNode.categories.push(catNode);
+      }
+      addTotals(catNode.totals, totals);
+
+      // 5. Product Level
+      let prodNode = catNode.products.find((p) => p.sku === sku);
+      if (!prodNode) {
+        prodNode = {
+          sku,
+          description: desc,
+          productLabel: desc,
+          sizes: [],
+          totals: createEmptyTotals(),
+        };
+        catNode.products.push(prodNode);
+      }
+      addTotals(prodNode.totals, totals);
+
+      // 6. Variant Level
+      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      if (!sizeItem) {
+        sizeItem = {
+          id: item.id,
+          size: sizeName,
+          color: colorName,
+          barCode,
+          sku,
+          totals,
+        };
+        prodNode.sizes.push(sizeItem);
+      } else {
+        addTotals(sizeItem.totals, totals);
+      }
+    }
+
+    await onProgress?.(100, 'Stock Activity preview generation complete!');
+
+    return {
+      brands: brandsList,
+      flatItems,
+      grandTotals,
+      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      locationNames,
+    };
+  }
+
+  async registerClientGeneratedExport(
+    prisma: PrismaService,
+    userId: string,
+    opts: {
+      fileName: string;
+      fileBase64: string;
+      mimeType: string;
+    },
+  ): Promise<{ jobId: string; downloadUrl: string }> {
+    const jobId = uuidv4();
+    const fileBuffer = Buffer.from(opts.fileBase64, 'base64');
+    const localDir = path.join(process.cwd(), 'uploads', 'exports');
+    await fs.promises.mkdir(localDir, { recursive: true });
+    const localPath = path.join(localDir, `${jobId}-${opts.fileName}`);
+    await fs.promises.writeFile(localPath, fileBuffer);
+
+    await prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId,
+        fileName: opts.fileName,
+        filePath: localPath,
+        moduleName: 'STOCK_ACTIVITY_REPORT',
+        status: 'PENDING',
+      },
+    });
+
+    const downloadUrl = await this.exportHistoryService.completeAndUploadExport(
+      prisma,
+      jobId,
+      localPath,
+      opts.fileName,
+      opts.mimeType,
+    );
+
+    return { jobId, downloadUrl };
+  }
 
   async queueExport(opts: QueueStockActivityExportOptions): Promise<{ jobId: string }> {
     const jobId = uuidv4();
@@ -40,7 +780,6 @@ export class StockActivityExportService {
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
 
-    // Save export job request in history audit table
     await this.prisma.exportHistory.create({
       data: {
         id: jobId,
@@ -103,7 +842,6 @@ export class StockActivityExportService {
       throw new NotFoundException(`Export record ${jobId} not found in database`);
     }
 
-    // Increment download count in ExportHistory
     try {
       await this.prisma.exportHistory.update({
         where: { id: jobId },

@@ -197,8 +197,77 @@ export class StockLedgerController {
       await this.stockActivityExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
     }
+  }
+
+  // ─── Stock Activity PRO ERP Preview & SSE Endpoints ──────────────────────
+  @Post('reports/stock-activity/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueStockActivityPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockActivityExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/stock-activity/stream/:jobId')
+  streamStockActivityStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.stockActivityExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            status: queueStatus.status || queueStatus.state,
+            state: queueStatus.state,
+            progress: queueStatus.progress,
+            message: queueStatus.message,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            failedReason: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('reports/stock-activity/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getStockActivityResult(@Param('jobId') jobId: string) {
+    const data = await this.stockActivityExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Stock Activity report result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/stock-activity/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerClientStockActivityExport(
+    @Req() req: any,
+    @Body() body: {
+      fileName: string;
+      fileBase64: string;
+      mimeType: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockActivityExportService.registerClientGeneratedExport(
+      req.prisma || (this.stockLedgerService as any).prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
   }
 
   @Get('valuation-report')
