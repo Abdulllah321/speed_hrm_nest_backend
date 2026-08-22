@@ -9,8 +9,12 @@ import {
   Res,
   UseGuards,
   BadRequestException,
+  NotFoundException,
   Patch,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable, interval, map, switchMap } from 'rxjs';
 import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
 import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
@@ -1231,6 +1235,64 @@ export class PosSalesController {
     return { status: true, data };
   }
 
+  @Post('reports/cost-of-sales/queue')
+  @ApiOperation({ summary: 'Queue Cost of Sales calculation preview job' })
+  async queueCostOfSalesPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+    },
+  ) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.costOfSalesExportService.queueReportPreview({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/cost-of-sales/stream/:jobId')
+  @ApiOperation({ summary: 'Stream Cost of Sales calculation preview progress via SSE' })
+  streamCostOfSalesProgress(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(() => this.costOfSalesExportService.getJobQueueStatus(jobId)),
+      map((status) => ({ data: status } as MessageEvent)),
+    );
+  }
+
+  @Get('reports/cost-of-sales/result/:jobId')
+  @ApiOperation({ summary: 'Get cached Cost of Sales preview calculation result' })
+  async getCostOfSalesResult(@Param('jobId') jobId: string) {
+    const data = this.costOfSalesExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      throw new NotFoundException(`Preview result for job ${jobId} not found or expired.`);
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/cost-of-sales/export/register-client-export')
+  @ApiOperation({ summary: 'Register client generated Cost of Sales Excel/PDF file with S3' })
+  async registerClientCostOfSalesExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.userId || req.user?.id;
+    const fileBuffer = Buffer.from(body.fileBase64, 'base64');
+    const result = await this.costOfSalesExportService.registerClientGeneratedExport({
+      userId,
+      fileName: body.fileName,
+      fileBuffer,
+      mimeType: body.mimeType,
+    });
+    return { status: true, data: result };
+  }
+
   @Post('reports/cost-of-sales/export')
   @ApiOperation({ summary: 'Queue background export job for Cost of Sales' })
   async queueCostOfSalesExport(@Body() body: any, @Req() req: any) {
@@ -1241,7 +1303,9 @@ export class PosSalesController {
       startDate: body.startDate,
       endDate: body.endDate,
       format: body.format || 'xlsx',
+      exportType: body.exportType || 'hierarchical',
       search: body.search,
+      previewJobId: body.previewJobId,
     });
     return { status: true, data: result };
   }

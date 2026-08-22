@@ -745,23 +745,19 @@ export class StockValuationExportService {
               purchaseRetQty += absQty;
               purchaseRetVal += absQty * entryCost;
             } else if (isAdjustment) {
-              adjQty += entryQty; // negative
-              adjVal += entryQty * runningWac; // negative value
+              adjQty += entryQty; // negative or positive net adjustment qty
             } else if (isSale) {
               // Note: for POS Returns, entryQty will be positive, meaning it reduces net sales qty
               if (entryQty > 0) {
                 // Return
                 salesQty -= entryQty;
-                salesVal -= entryQty * entryCost;
               } else {
                 // Sale (outbound)
                 salesQty += absQty;
-                salesVal += absQty * runningWac; // COGS
               }
             } else {
               // Default sales/outbound
               salesQty += absQty;
-              salesVal += absQty * runningWac;
             }
           }
         }
@@ -782,17 +778,23 @@ export class StockValuationExportService {
       const purchaseCost = purchaseQty > 0 ? purchaseVal / purchaseQty : 0;
       const purchaseRetCost = purchaseRetQty > 0 ? purchaseRetVal / purchaseRetQty : 0;
 
+      // 1. Available Stock Calculation
       const availableQty = finalOpeningQty + purchaseQty - purchaseRetQty;
       const availableVal = openingValue + purchaseVal - purchaseRetVal;
-      const availableCost = availableQty > 0 ? availableVal / availableQty : 0;
+      const availableCost = availableQty > 0 ? availableVal / availableQty : (finalOpeningWac || defaultCost);
 
-      const salesCost = salesQty > 0 ? salesVal / salesQty : 0;
+      // 2. Net Sales Valuation directly derived upon Available Stock Cost
+      const salesCost = availableCost;
+      salesVal = salesQty * salesCost;
 
-      const adjCost = adjQty !== 0 ? adjVal / adjQty : 0;
+      // 3. Adjustments Valuation derived upon Available Stock Cost
+      const adjCost = availableCost;
+      adjVal = adjQty * availableCost;
 
+      // 4. Closing Balance Calculation
       const closingQty = availableQty - salesQty + adjQty;
       const closingVal = availableVal - salesVal + adjVal;
-      const closingCost = closingQty > 0 ? closingVal / closingQty : 0;
+      const closingCost = closingQty > 0 ? closingVal / closingQty : availableCost;
 
       itemMetricsMap.set(item.id, {
         openingQty: finalOpeningQty,
