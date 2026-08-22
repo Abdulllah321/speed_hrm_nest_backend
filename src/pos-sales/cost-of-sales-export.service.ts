@@ -257,6 +257,7 @@ export class CostOfSalesExportService {
   }
 
   async getJobQueueStatus(jobId: string): Promise<{
+    status: string;
     state: string;
     progress: number;
     message: string;
@@ -266,7 +267,7 @@ export class CostOfSalesExportService {
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
     }
 
     const state = await job.getState();
