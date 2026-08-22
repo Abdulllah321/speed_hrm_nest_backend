@@ -1114,6 +1114,12 @@ export class StockLedgerService {
     const transferIds = new Set<string>();
     const claimIds = new Set<string>();
     const adjustmentIds = new Set<string>();
+    const landedCostIds = new Set<string>();
+    const purchaseReturnIds = new Set<string>();
+    const purchaseInvoiceIds = new Set<string>();
+    const stockRequisitionIds = new Set<string>();
+
+    const stockMovementIds = new Set<string>();
 
     for (const entry of ledgerEntries) {
       const refId = entry.referenceId;
@@ -1124,12 +1130,22 @@ export class StockLedgerService {
         grnIds.add(refId);
       } else if (['POS_SALE', 'POS_RETURN', 'POS_REFUND', 'POS_VOID', 'POS_EXCHANGE_IN', 'POS_EXCHANGE_OUT'].includes(refType)) {
         salesOrderIds.add(refId);
-      } else if (['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(refType)) {
+      } else if (['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'TRANSFER', 'STOCK_TRANSFER', 'TRANSFER_IN', 'TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER', 'DIRECT_TRANSFER_IN', 'DIRECT_TRANSFER_OUT'].includes(refType)) {
         transferIds.add(refId);
+      } else if (refType === 'STOCK_MOVEMENT') {
+        stockMovementIds.add(refId);
       } else if (refType === 'POS_CLAIM_APPROVED') {
         claimIds.add(refId);
       } else if (['STOCK_ADJUSTMENT', 'ADJUSTMENT'].includes(refType)) {
         adjustmentIds.add(refId);
+      } else if (refType === 'LANDED_COST') {
+        landedCostIds.add(refId);
+      } else if (['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV'].includes(refType)) {
+        purchaseReturnIds.add(refId);
+      } else if (['PURCHASE_INVOICE', 'PURCHASE_INVOICE_INV'].includes(refType)) {
+        purchaseInvoiceIds.add(refId);
+      } else if (['STOCK_REQUISITION', 'REQUISITION'].includes(refType)) {
+        stockRequisitionIds.add(refId);
       }
     }
 
@@ -1139,7 +1155,18 @@ export class StockLedgerService {
       return results.flat();
     };
 
-    const [grns, salesOrders, transfers, claims, adjustments] = await Promise.all([
+    const [
+      grns,
+      salesOrders,
+      transfers,
+      claims,
+      adjustments,
+      landedCosts,
+      purchaseReturns,
+      purchaseInvoices,
+      stockRequisitions,
+      stockMovements,
+    ] = await Promise.all([
       grnIds.size > 0 ? fetchInChunks([...grnIds], (c) => prisma.goodsReceiptNote.findMany({
         where: { id: { in: c } },
         select: { id: true, grnNumber: true },
@@ -1167,19 +1194,38 @@ export class StockLedgerService {
         where: { id: { in: c } },
         select: { id: true, adjustmentNo: true },
       })) : Promise.resolve([]),
+      landedCostIds.size > 0 ? fetchInChunks([...landedCostIds], (c) => prisma.landedCost.findMany({
+        where: { id: { in: c } },
+        select: { id: true, landedCostNumber: true },
+      })) : Promise.resolve([]),
+      purchaseReturnIds.size > 0 ? fetchInChunks([...purchaseReturnIds], (c) => prisma.purchaseReturn.findMany({
+        where: { id: { in: c } },
+        select: { id: true, returnNumber: true },
+      })) : Promise.resolve([]),
+      purchaseInvoiceIds.size > 0 ? fetchInChunks([...purchaseInvoiceIds], (c) => prisma.purchaseInvoice.findMany({
+        where: { id: { in: c } },
+        select: { id: true, invoiceNumber: true },
+      })) : Promise.resolve([]),
+      stockRequisitionIds.size > 0 ? fetchInChunks([...stockRequisitionIds], (c) => prisma.stockRequisition.findMany({
+        where: { id: { in: c } },
+        select: { id: true, requisitionNo: true },
+      })) : Promise.resolve([]),
+      stockMovementIds.size > 0 ? fetchInChunks([...stockMovementIds], (c) => prisma.stockMovement.findMany({
+        where: { id: { in: c } },
+        select: { id: true, movementNo: true },
+      })) : Promise.resolve([]),
     ]);
 
-    const grnsTyped = grns as any[];
-    const salesOrdersTyped = salesOrders as any[];
-    const transfersTyped = transfers as any[];
-    const claimsTyped = claims as any[];
-    const adjustmentsTyped = adjustments as any[];
-
-    const grnMap = new Map<string, any>(grnsTyped.map(g => [g.id, g]));
-    const salesOrderMap = new Map<string, any>(salesOrdersTyped.map(s => [s.id, s]));
-    const transferMap = new Map<string, any>(transfersTyped.map(t => [t.id, t]));
-    const claimMap = new Map<string, any>(claimsTyped.map(c => [c.id, c]));
-    const adjustmentMap = new Map<string, any>(adjustmentsTyped.map(a => [a.id, a]));
+    const grnMap = new Map<string, any>((grns as any[]).map(g => [g.id, g]));
+    const salesOrderMap = new Map<string, any>((salesOrders as any[]).map(s => [s.id, s]));
+    const transferMap = new Map<string, any>((transfers as any[]).map(t => [t.id, t]));
+    const claimMap = new Map<string, any>((claims as any[]).map(c => [c.id, c]));
+    const adjustmentMap = new Map<string, any>((adjustments as any[]).map(a => [a.id, a]));
+    const landedCostMap = new Map<string, any>((landedCosts as any[]).map(lc => [lc.id, lc]));
+    const purchaseReturnMap = new Map<string, any>((purchaseReturns as any[]).map(pr => [pr.id, pr]));
+    const purchaseInvoiceMap = new Map<string, any>((purchaseInvoices as any[]).map(pi => [pi.id, pi]));
+    const stockRequisitionMap = new Map<string, any>((stockRequisitions as any[]).map(sr => [sr.id, sr]));
+    const stockMovementMap = new Map<string, any>((stockMovements as any[]).map(sm => [sm.id, sm]));
 
     // Map entries to detailed transactions grouped by itemId
     const itemTransactionsMap = new Map<string, any[]>();
@@ -1209,9 +1255,30 @@ export class StockLedgerService {
         const g = grnMap.get(refId);
         docRef = g?.grnNumber || refId || '-';
         remarks = 'Received From Warehouse';
-      } else if (['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(refType)) {
+      } else if (refType === 'LANDED_COST') {
+        docType = 'Landed Cost';
+        const lc = landedCostMap.get(refId);
+        docRef = lc?.landedCostNumber || refId || '-';
+        remarks = 'Landed Cost Entry';
+      } else if (['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV'].includes(refType)) {
+        docType = 'Purchase Return';
+        const pr = purchaseReturnMap.get(refId);
+        docRef = pr?.returnNumber || refId || '-';
+        remarks = 'Purchase Return';
+      } else if (['PURCHASE_INVOICE', 'PURCHASE_INVOICE_INV'].includes(refType)) {
+        docType = 'Purchase Invoice';
+        const pi = purchaseInvoiceMap.get(refId);
+        docRef = pi?.invoiceNumber || refId || '-';
+        remarks = 'Purchase Invoice';
+      } else if (['STOCK_REQUISITION', 'REQUISITION'].includes(refType)) {
+        docType = 'Stock Requisition';
+        const sr = stockRequisitionMap.get(refId);
+        docRef = sr?.requisitionNo || refId || '-';
+        remarks = 'Stock Requisition';
+      } else if (['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'TRANSFER', 'STOCK_TRANSFER', 'TRANSFER_IN', 'TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER', 'DIRECT_TRANSFER_IN', 'DIRECT_TRANSFER_OUT', 'STOCK_MOVEMENT'].includes(refType)) {
         const t = transferMap.get(refId);
-        docRef = t?.requestNo || refId || '-';
+        const sm = stockMovementMap.get(refId);
+        docRef = t?.requestNo || sm?.movementNo || refId || '-';
         if (qty > 0) {
           docType = 'Transfer In';
           const sourceName = t?.fromWarehouse?.name || t?.fromLocation?.name || 'Warehouse/Location';
