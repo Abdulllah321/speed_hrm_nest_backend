@@ -296,6 +296,7 @@ export class CostOfSalesExportService {
     }
 
     return {
+      status: state,
       state,
       progress,
       message,
