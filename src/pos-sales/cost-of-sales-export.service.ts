@@ -31,6 +31,7 @@ export interface CostOfSalesSizeItem {
   id: string;
   size: string;
   color: string;
+  barCode?: string;
   quantity: number;
   costPrice: number;
   totalCost: number;
@@ -606,12 +607,13 @@ export class CostOfSalesExportService {
         }
 
         // 6. Variant Level
-        let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName);
+        let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
         if (!sizeItem) {
           sizeItem = {
             id: soi.id,
             size: sizeName,
             color: colorName,
+            barCode,
             quantity: 0,
             costPrice: unitCost,
             totalCost: 0,
