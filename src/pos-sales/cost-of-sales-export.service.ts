@@ -364,19 +364,37 @@ export class CostOfSalesExportService {
       onProgress,
     } = opts;
 
-    await onProgress?.(10, 'Initializing query parameters & resolving location scopes...');
-
     const now = new Date();
-    const startDate = startStr
-      ? new Date(startStr)
-      : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const endDate = endStr
-      ? new Date(endStr)
-      : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+      if (!dateStr) {
+        if (isEndOfDay) {
+          const d = new Date(now);
+          d.setHours(23, 59, 59, 999);
+          return d;
+        } else {
+          return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        }
+      }
+      
+      if (dateStr.includes('T') || dateStr.includes('Z')) {
+        const d = new Date(dateStr);
+        if (isEndOfDay && !dateStr.includes('T23:59:59')) {
+          d.setHours(23, 59, 59, 999);
+        }
+        return d;
+      }
+      
+      const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+      return new Date(`${dateStr}${timePart}`);
+    };
+
+    const startDate = parseLocalDate(startStr, false);
+    const endDate = parseLocalDate(endStr, true);
 
     const whereSales: any = {
       createdAt: { gte: startDate, lte: endDate },
-      status: { notIn: ['voided', 'cancelled', 'draft'] },
+      status: { notIn: ['voided', 'cancelled', 'VOIDED', 'CANCELLED'] },
     };
 
     if (locationId && locationId.trim() !== '' && locationId !== 'all') {
