@@ -37,6 +37,9 @@ export interface GrossSalesReturnLineItem {
   description: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sizeName: string;
   colorName: string;
   quantity: number;
@@ -85,6 +88,9 @@ export interface GrossSalesReturnFlatRecord {
   description: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sizeName: string;
   colorName: string;
   quantity: number;
@@ -126,6 +132,9 @@ export interface GrossSalesSummaryLineItem {
   description: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sizeName: string;
   colorName: string;
   quantity: number;
@@ -138,6 +147,9 @@ export interface GrossSalesSummaryLineItem {
 export interface GrossSalesSummaryCategoryNode {
   categoryName: string;
   brandName: string;
+  divisionName?: string;
+  genderName?: string;
+  silhouetteName?: string;
   totals: GrossSalesSummaryTotals;
   items: GrossSalesSummaryLineItem[];
 }
@@ -154,6 +166,9 @@ export interface GrossSalesSummaryFlatRecord {
   locationName: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sku: string;
   barCode: string;
   description: string;
@@ -521,6 +536,9 @@ export class GrossSalesExportService {
                 barCode: true,
                 category: { select: { name: true } },
                 brand: { select: { name: true } },
+                division: { select: { name: true } },
+                gender: { select: { name: true } },
+                silhouette: { select: { name: true } },
                 size: { select: { name: true } },
                 color: { select: { name: true } },
               },
@@ -562,6 +580,9 @@ export class GrossSalesExportService {
                     barCode: true,
                     category: { select: { name: true } },
                     brand: { select: { name: true } },
+                    division: { select: { name: true } },
+                    gender: { select: { name: true } },
+                    silhouette: { select: { name: true } },
                     size: { select: { name: true } },
                     color: { select: { name: true } },
                   },
@@ -641,6 +662,9 @@ export class GrossSalesExportService {
         description: item.item?.description || item.item?.sku || 'Article',
         categoryName: item.item?.category?.name || 'Default',
         brandName: item.item?.brand?.name || 'Default',
+        divisionName: item.item?.division?.name || 'Default',
+        genderName: item.item?.gender?.name || 'Default',
+        silhouetteName: item.item?.silhouette?.name || 'Default',
         sizeName: item.item?.size?.name || 'Default',
         colorName: item.item?.color?.name || 'Default',
         quantity: Number(item.quantity || 0),
@@ -700,6 +724,9 @@ export class GrossSalesExportService {
           description: line.description,
           categoryName: line.categoryName,
           brandName: line.brandName,
+          divisionName: line.divisionName,
+          genderName: line.genderName,
+          silhouetteName: line.silhouetteName,
           sizeName: line.sizeName,
           colorName: line.colorName,
           quantity: line.quantity,
@@ -858,6 +885,9 @@ export class GrossSalesExportService {
                 barCode: true,
                 category: { select: { name: true } },
                 brand: { select: { name: true } },
+                division: { select: { name: true } },
+                gender: { select: { name: true } },
+                silhouette: { select: { name: true } },
                 size: { select: { name: true } },
                 color: { select: { name: true } },
               },
@@ -913,6 +943,10 @@ export class GrossSalesExportService {
       for (const item of order.items) {
         const catName = item.item?.category?.name || 'Unassigned Category';
         const brandName = item.item?.brand?.name || 'Default Brand';
+        const divisionName = item.item?.division?.name || 'Default Division';
+        const genderName = item.item?.gender?.name || 'Default Gender';
+        const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
+
         const qty = Number(item.quantity || 0);
         const unitPrice = Number(item.unitPrice || 0);
         const gross = unitPrice * qty;
@@ -938,6 +972,9 @@ export class GrossSalesExportService {
           description: item.item?.description || item.item?.sku || 'Article',
           categoryName: catName,
           brandName,
+          divisionName,
+          genderName,
+          silhouetteName,
           sizeName: item.item?.size?.name || 'Default',
           colorName: item.item?.color?.name || 'Default',
           quantity: qty,
@@ -951,6 +988,9 @@ export class GrossSalesExportService {
           locationName: locName,
           categoryName: catName,
           brandName,
+          divisionName,
+          genderName,
+          silhouetteName,
           sku: lineItemNode.sku,
           barCode: lineItemNode.barCode,
           description: lineItemNode.description,
