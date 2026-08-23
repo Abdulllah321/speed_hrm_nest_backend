@@ -83,6 +83,14 @@ export interface InventoryAgingTotals {
   warehouseTotals: Record<string, number>;
 }
 
+function chunkArray<T>(array: T[], size = 1000): T[][] {
+  const results: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    results.push(array.slice(i, i + size));
+  }
+  return results;
+}
+
 @Injectable()
 export class InventoryAgingExportService {
   private readonly logger = new Logger(InventoryAgingExportService.name);
@@ -318,6 +326,10 @@ export class InventoryAgingExportService {
 
     const asOfDate = opts.endDate ? new Date(opts.endDate) : new Date();
 
+    // Resolve nearest Fiscal Opening Snapshot date to prune historical closed fiscal years
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, asOfDate);
+    const queryStartDate = snapshotDate || undefined;
+
     // 1. Fetch Location & Warehouse metadata
     await onProgress(15, 'Loading stores & warehouse master catalog...');
     const [locations, warehouses] = await Promise.all([
@@ -365,37 +377,56 @@ export class InventoryAgingExportService {
 
     const rawItemIds = [...new Set(inventoryItems.map((inv: any) => inv.itemId).filter(Boolean))];
     
-    // Concurrent query for Item Master, Tenant Item Settings, and Historical Stock Ledger Costs
-    const [items, tenantSettings, latestLedgerCosts] = await Promise.all([
-      prisma.item.findMany({
-        where: {
-          id: { in: rawItemIds },
-          isActive: true,
-        },
-        include: {
-          brand: true,
-          category: true,
-          division: true,
-          color: true,
-          size: true,
-        },
-      }),
-      prisma.tenantItemSetting.findMany({
-        where: { itemId: { in: rawItemIds } },
-      }),
-      prisma.stockLedger.findMany({
-        where: {
-          itemId: { in: rawItemIds },
-          OR: [
-            { unitCost: { gt: 0 } },
-            { rate: { gt: 0 } },
-          ],
-        },
-        select: { itemId: true, unitCost: true, rate: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        distinct: ['itemId'],
-      }),
+    // Chunk items into 1,000 item batches to avoid database query parameter limits
+    const itemChunks = chunkArray(rawItemIds, 1000);
+
+    const [itemsNested, tenantSettingsNested, latestLedgerCostsNested] = await Promise.all([
+      Promise.all(
+        itemChunks.map((chunk) =>
+          prisma.item.findMany({
+            where: {
+              id: { in: chunk },
+              isActive: true,
+            },
+            include: {
+              brand: true,
+              category: true,
+              division: true,
+              color: true,
+              size: true,
+            },
+          }),
+        ),
+      ),
+      Promise.all(
+        itemChunks.map((chunk) =>
+          prisma.tenantItemSetting.findMany({
+            where: { itemId: { in: chunk } },
+          }),
+        ),
+      ),
+      Promise.all(
+        itemChunks.map((chunk) =>
+          prisma.stockLedger.findMany({
+            where: {
+              itemId: { in: chunk },
+              ...(queryStartDate ? { createdAt: { gte: queryStartDate, lte: asOfDate } } : { createdAt: { lte: asOfDate } }),
+              OR: [
+                { unitCost: { gt: 0 } },
+                { rate: { gt: 0 } },
+              ],
+            },
+            select: { itemId: true, unitCost: true, rate: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            distinct: ['itemId'],
+          }),
+        ),
+      ),
     ]);
+
+    const items = itemsNested.flat();
+    const tenantSettings = tenantSettingsNested.flat();
+    const latestLedgerCosts = latestLedgerCostsNested.flat();
 
     const itemObjMap = new Map<string, any>(items.map((i: any) => [i.id, i]));
     const settingMap = new Map<string, any>(tenantSettings.map((s: any) => [s.itemId, s]));
@@ -444,21 +475,28 @@ export class InventoryAgingExportService {
       }
     }
 
-    // 3. Fetch Stock Movements for stock age estimation
+    // 3. Fetch Stock Movements for stock age estimation in 1,000 item chunks
     const itemIds = Array.from(itemMap.keys());
-    const stockMovements = await prisma.stockMovement.findMany({
-      where: {
-        itemId: { in: itemIds },
-        createdAt: { lte: asOfDate },
-        type: { in: [MovementType.INBOUND, MovementType.OPENING_BALANCE, MovementType.TRANSFER, MovementType.ADJUSTMENT] },
-      },
-      select: {
-        itemId: true,
-        quantity: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const itemIdsChunks = chunkArray(itemIds, 1000);
+
+    const stockMovementsNested = await Promise.all(
+      itemIdsChunks.map((chunk) =>
+        prisma.stockMovement.findMany({
+          where: {
+            itemId: { in: chunk },
+            createdAt: queryStartDate ? { gte: queryStartDate, lte: asOfDate } : { lte: asOfDate },
+            type: { in: [MovementType.INBOUND, MovementType.OPENING_BALANCE, MovementType.TRANSFER, MovementType.ADJUSTMENT] },
+          },
+          select: {
+            itemId: true,
+            quantity: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ),
+    );
+    const stockMovements = stockMovementsNested.flat();
 
     // Map movements by itemId for FIFO allocation
     const movementMap = new Map<string, Array<{ quantity: number; createdAt: Date }>>();
