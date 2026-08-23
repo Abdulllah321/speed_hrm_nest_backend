@@ -210,6 +210,7 @@ export class StockLedgerController {
       warehouseId?: string;
       startDate?: string;
       endDate?: string;
+      reportType?: 'merged' | 'separate';
       search?: string;
     },
   ) {

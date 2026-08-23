@@ -43,6 +43,7 @@ export interface StockActivityPreviewJobData {
   warehouseId?: string;
   startDate?: string;
   endDate?: string;
+  reportType?: 'merged' | 'separate';
   search?: string;
 }
 
@@ -107,8 +108,8 @@ export class StockActivityExportProcessor {
 
   @Process('generate-stock-activity-preview')
   async handleGeneratePreview(job: Job<StockActivityPreviewJobData>): Promise<void> {
-    const { jobId, tenantId, tenantDbUrl, locationId, warehouseId, startDate, endDate, search } = job.data;
-    this.logger.log(`[StockActivityPreview ${jobId}] Starting background stock-activity preview computation`);
+    const { jobId, tenantId, tenantDbUrl, locationId, warehouseId, startDate, endDate, reportType, search } = job.data;
+    this.logger.log(`[StockActivityPreview ${jobId}] Starting background stock-activity preview computation (mode: ${reportType || 'merged'})`);
 
     const prisma = (tenantId && tenantDbUrl)
       ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
@@ -124,6 +125,7 @@ export class StockActivityExportProcessor {
           warehouseId,
           startDate,
           endDate,
+          reportType,
           search,
           onProgress: async (percent, message) => {
             await job.progress({ percent, message });
