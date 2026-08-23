@@ -14,7 +14,8 @@ import {
   Sse,
   MessageEvent,
 } from '@nestjs/common';
-import { Observable, interval, map, switchMap } from 'rxjs';
+import { Observable, interval, map, switchMap, takeWhile } from 'rxjs';
+import { PrismaService } from '../prisma/prisma.service';
 import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
 import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
@@ -44,6 +45,7 @@ import * as jwt from 'jsonwebtoken';
 @ApiBearerAuth()
 export class PosSalesController {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly posSalesService: PosSalesService,
     private readonly customerService: CustomerService,
     private readonly netSalesSummaryExportService: NetSalesSummaryExportService,
@@ -1515,5 +1517,89 @@ export class PosSalesController {
   @ApiOperation({ summary: 'Download completed Unified Voucher Register export file' })
   async streamVoucherRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
     return this.voucherRegisterExportService.streamExportFile(jobId, res);
+  }
+
+  // ─── Sales List PRO ERP Preview & SSE Endpoints ─────────────────────────
+  @Post('reports/sales-list/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueSalesListPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesListExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/sales-list/stream/:jobId')
+  streamSalesListStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.salesListExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing sales list calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/sales-list/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getSalesListResult(@Param('jobId') jobId: string) {
+    const data = await this.salesListExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Sales list preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/sales-list/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerSalesListClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesListExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
   }
 }
