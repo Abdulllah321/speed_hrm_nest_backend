@@ -425,8 +425,12 @@ export class StockActivityExportService {
     );
     const items = itemsNested.flat();
     const itemLookup = new Map<string, any>();
+    const itemIdToCanonicalId = new Map<string, string>();
+
     for (const item of items) {
       itemLookup.set(item.id, item);
+      if (item.id) itemIdToCanonicalId.set(item.id, item.id);
+      if (item.itemId) itemIdToCanonicalId.set(item.itemId, item.id);
     }
 
     const matchedItemIds = items.map((i) => i.id);
@@ -436,7 +440,7 @@ export class StockActivityExportService {
 
     const fiscalOpeningDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
 
-    // Map keys: if separate -> `${locKey}:${itemId}`, else -> `merged:${itemId}`
+    // Map keys: if separate -> `${locKey}:${canonicalItemId}`, else -> `merged:${canonicalItemId}`
     const bfMap = new Map<string, number>();
 
     for (const chunk of matchedItemChunks) {
@@ -458,13 +462,13 @@ export class StockActivityExportService {
 
       for (const row of bfGroup) {
         const qtyVal = Math.max(0, Number(row._sum.qty || 0));
-        const itemId = row.itemId;
+        const canonicalItemId = itemIdToCanonicalId.get(row.itemId) || row.itemId;
         if (isSeparate) {
           const locKey = row.locationId ? `loc:${row.locationId}` : row.warehouseId ? `wh:${row.warehouseId}` : 'unknown';
-          const compositeKey = `${locKey}:${itemId}`;
+          const compositeKey = `${locKey}:${canonicalItemId}`;
           bfMap.set(compositeKey, (bfMap.get(compositeKey) || 0) + qtyVal);
         } else {
-          const compositeKey = `merged:${itemId}`;
+          const compositeKey = `merged:${canonicalItemId}`;
           bfMap.set(compositeKey, (bfMap.get(compositeKey) || 0) + qtyVal);
         }
       }
@@ -487,14 +491,14 @@ export class StockActivityExportService {
 
       for (const row of inRangeOpeningGroup) {
         const qtyVal = Number(row._sum.qty || 0);
-        const itemId = row.itemId;
+        const canonicalItemId = itemIdToCanonicalId.get(row.itemId) || row.itemId;
         if (isSeparate) {
           const locKey = row.locationId ? `loc:${row.locationId}` : row.warehouseId ? `wh:${row.warehouseId}` : 'unknown';
-          const compositeKey = `${locKey}:${itemId}`;
+          const compositeKey = `${locKey}:${canonicalItemId}`;
           const currentBf = bfMap.get(compositeKey) || 0;
           bfMap.set(compositeKey, Math.max(0, currentBf + qtyVal));
         } else {
-          const compositeKey = `merged:${itemId}`;
+          const compositeKey = `merged:${canonicalItemId}`;
           const currentBf = bfMap.get(compositeKey) || 0;
           bfMap.set(compositeKey, Math.max(0, currentBf + qtyVal));
         }
@@ -565,15 +569,15 @@ export class StockActivityExportService {
     const transitMap = new Map<string, number>();
     for (const row of transitItems) {
       const qty = Number(row.quantity || 0);
-      const itemId = row.itemId;
+      const canonicalItemId = itemIdToCanonicalId.get(row.itemId) || row.itemId;
       if (isSeparate) {
         const toLocId = row.transferRequest?.toLocationId;
         const toWhId = row.transferRequest?.toWarehouseId;
         const locKey = toLocId ? `loc:${toLocId}` : toWhId ? `wh:${toWhId}` : 'unknown';
-        const compositeKey = `${locKey}:${itemId}`;
+        const compositeKey = `${locKey}:${canonicalItemId}`;
         transitMap.set(compositeKey, (transitMap.get(compositeKey) || 0) + qty);
       } else {
-        const compositeKey = `merged:${itemId}`;
+        const compositeKey = `merged:${canonicalItemId}`;
         transitMap.set(compositeKey, (transitMap.get(compositeKey) || 0) + qty);
       }
     }
@@ -596,7 +600,7 @@ export class StockActivityExportService {
     >();
 
     for (const entry of ledgerEntries) {
-      const itemId = entry.itemId;
+      const canonicalItemId = itemIdToCanonicalId.get(entry.itemId) || entry.itemId;
       const locKey = isSeparate
         ? entry.locationId
           ? `loc:${entry.locationId}`
@@ -605,7 +609,7 @@ export class StockActivityExportService {
           : 'unknown'
         : 'merged';
 
-      const compositeKey = `${locKey}:${itemId}`;
+      const compositeKey = `${locKey}:${canonicalItemId}`;
       let m = itemMetricsMap.get(compositeKey);
       if (!m) {
         m = {
@@ -809,13 +813,43 @@ export class StockActivityExportService {
     if (isSeparate) {
       // Find all distinct location keys that have ledger or inventory activity
       const locationKeysSet = new Set<string>();
+
+      // 1. Explicit filter location IDs
+      if (locIds.length > 0) {
+        for (const id of locIds) locationKeysSet.add(`loc:${id}`);
+      }
+      if (whIds.length > 0) {
+        for (const id of whIds) locationKeysSet.add(`wh:${id}`);
+      }
+
+      // 2. Discovered inventory and ledger items locations
+      for (const i of inventoryItems) {
+        if (i.locationId) locationKeysSet.add(`loc:${i.locationId}`);
+        if (i.warehouseId) locationKeysSet.add(`wh:${i.warehouseId}`);
+      }
+      for (const l of ledgerItems) {
+        if (l.locationId) locationKeysSet.add(`loc:${l.locationId}`);
+        if (l.warehouseId) locationKeysSet.add(`wh:${l.warehouseId}`);
+      }
+
+      // 3. Keys present in Maps
       for (const [key] of bfMap.keys()) {
         const parts = key.split(':');
-        if (parts.length >= 2) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
+        if (parts.length >= 3) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
       }
       for (const [key] of itemMetricsMap.keys()) {
         const parts = key.split(':');
-        if (parts.length >= 2) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
+        if (parts.length >= 3) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
+      }
+      for (const [key] of transitMap.keys()) {
+        const parts = key.split(':');
+        if (parts.length >= 3) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
+      }
+
+      // 4. Fallback if still empty
+      if (locationKeysSet.size === 0) {
+        for (const l of allLocations) locationKeysSet.add(`loc:${l.id}`);
+        for (const w of allWarehouses) locationKeysSet.add(`wh:${w.id}`);
       }
 
       for (const locKey of locationKeysSet) {
