@@ -364,23 +364,51 @@ export class InventoryAgingExportService {
     });
 
     const rawItemIds = [...new Set(inventoryItems.map((inv: any) => inv.itemId).filter(Boolean))];
-    const items = await prisma.item.findMany({
-      where: {
-        id: { in: rawItemIds },
-        isActive: true,
-      },
-      include: {
-        brand: true,
-        category: true,
-        division: true,
-        color: true,
-        size: true,
-      },
-    });
+    
+    // Concurrent query for Item Master, Tenant Item Settings, and Historical Stock Ledger Costs
+    const [items, tenantSettings, latestLedgerCosts] = await Promise.all([
+      prisma.item.findMany({
+        where: {
+          id: { in: rawItemIds },
+          isActive: true,
+        },
+        include: {
+          brand: true,
+          category: true,
+          division: true,
+          color: true,
+          size: true,
+        },
+      }),
+      prisma.tenantItemSetting.findMany({
+        where: { itemId: { in: rawItemIds } },
+      }),
+      prisma.stockLedger.findMany({
+        where: {
+          itemId: { in: rawItemIds },
+          OR: [
+            { unitCost: { gt: 0 } },
+            { rate: { gt: 0 } },
+          ],
+        },
+        select: { itemId: true, unitCost: true, rate: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['itemId'],
+      }),
+    ]);
 
     const itemObjMap = new Map<string, any>(items.map((i: any) => [i.id, i]));
+    const settingMap = new Map<string, any>(tenantSettings.map((s: any) => [s.itemId, s]));
+    const ledgerCostMap = new Map<string, number>();
 
-    await onProgress(60, 'Categorizing inventory into aging brackets...');
+    for (const l of latestLedgerCosts) {
+      const c = Number(l.unitCost || l.rate || 0);
+      if (c > 0 && !ledgerCostMap.has(l.itemId)) {
+        ledgerCostMap.set(l.itemId, c);
+      }
+    }
+
+    await onProgress(60, 'Categorizing inventory into aging brackets & resolving unit cost valuation...');
 
     // Group inventory items by SKU/Item ID
     const itemMap = new Map<string, {
@@ -443,7 +471,7 @@ export class InventoryAgingExportService {
       list.push({ quantity: Number(m.quantity || 0), createdAt: m.createdAt });
     }
 
-    await onProgress(80, 'Building aging buckets & matrix data...');
+    await onProgress(80, 'Building aging buckets & matrix valuation totals...');
 
     const flatItemsList: InventoryAgingRecord[] = [];
     const grandTotals: InventoryAgingTotals = {
@@ -472,8 +500,22 @@ export class InventoryAgingExportService {
     for (const [itemId, data] of itemMap.entries()) {
       const item = data.item;
       const totalQty = data.totalQty;
-      const unitCost = Number(item.purchaseRate || item.costPrice || item.salePrice || 0);
-      const unitPrice = Number(item.salePrice || 0);
+
+      // Multi-tier cost price resolution:
+      // 1. Direct Item.unitCost
+      // 2. Latest StockLedger purchase/receipt entry unitCost or rate
+      // 3. TenantItemSetting (averageCost, standardCost)
+      // 4. Item.fob / Item.unitPrice
+      let unitCost = Number(item.unitCost || 0);
+      if (unitCost === 0) {
+        unitCost = ledgerCostMap.get(item.id) || 0;
+      }
+      if (unitCost === 0) {
+        const setting = settingMap.get(item.id);
+        unitCost = Number(setting?.averageCost || setting?.standardCost || item.fob || item.unitPrice || 0);
+      }
+
+      const unitPrice = Number(item.unitPrice || 0);
       const totalValue = totalQty * unitCost;
 
       // Allocate current stock Qty into age buckets using receipt movements (FIFO)
