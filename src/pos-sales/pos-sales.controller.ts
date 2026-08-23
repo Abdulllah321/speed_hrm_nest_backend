@@ -1854,4 +1854,88 @@ export class PosSalesController {
     );
     return { status: true, data: result };
   }
+
+  // ─── Net Sales Summary PRO ERP Preview & SSE Endpoints ──────────────────
+  @Post('reports/net-sales-summary/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueNetSalesSummaryPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.netSalesSummaryExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/net-sales-summary/stream/:jobId')
+  streamNetSalesSummaryStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.netSalesSummaryExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing net sales summary calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/net-sales-summary/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
+    const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Net sales summary preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/net-sales-summary/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerNetSalesSummaryClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.netSalesSummaryExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
+  }
 }
