@@ -492,6 +492,7 @@ export class GrossSalesExportService {
       OR: [
         { returnNumber: { not: null } },
         { refundNumber: { not: null } },
+        { status: { in: ['refunded', 'returned', 'partially_returned'] } },
       ],
       createdAt: { gte: startDate, lte: endDate },
     };
@@ -850,7 +851,9 @@ export class GrossSalesExportService {
     await onProgress?.(35, 'Querying POS sales order items for gross sales summary...');
 
     const where: any = {
-      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
+      status: { in: ['completed', 'partially_returned', 'exchanged', 'posted'] },
+      returnNumber: null,
+      refundNumber: null,
       createdAt: { gte: startDate, lte: endDate },
     };
 

@@ -411,7 +411,12 @@ export class NetSalesSummaryExportService {
     const locationNodesMap = new Map<string, NetSalesSummaryLocationNode>();
 
     for (const order of rawOrders) {
-      const isReturnOrder = Boolean(order.returnNumber || order.refundNumber);
+      const isReturnOrder = Boolean(
+        order.returnNumber ||
+        order.refundNumber ||
+        order.status === 'refunded' ||
+        order.status === 'returned',
+      );
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
 
