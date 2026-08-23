@@ -8,6 +8,7 @@ import { StockValuationExportService } from './stock-valuation-export.service';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
 import { AvailableStockSummaryExportService } from './available-stock-summary-export.service';
 import { OverallAvailableReservedStockExportService } from './overall-available-reserved-stock-export.service';
+import { InventoryAgingExportService } from './inventory-aging-export.service';
 import { MovementType } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -22,6 +23,7 @@ export class StockLedgerController {
     private readonly stockTransactionDetailExportService: StockTransactionDetailExportService,
     private readonly availableStockSummaryExportService: AvailableStockSummaryExportService,
     private readonly overallAvailableReservedStockExportService: OverallAvailableReservedStockExportService,
+    private readonly inventoryAgingExportService: InventoryAgingExportService,
     private readonly fiscalClosingService: FiscalYearClosingService,
   ) { }
 
@@ -937,6 +939,77 @@ export class StockLedgerController {
       fileBuffer: file.buffer,
       fileName,
       format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
+    });
+    return { status: true, data: result };
+  }
+
+  // ─── Inventory Aging Report SSE & Export Endpoints ─────────────────────────
+
+  @Post('inventory-aging/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueInventoryAgingPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      reportType?: 'merged' | 'separate';
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.inventoryAgingExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('inventory-aging/stream/:jobId')
+  streamInventoryAgingReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.inventoryAgingExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            message: status.message,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('inventory-aging/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getInventoryAgingReportResult(@Param('jobId') jobId: string) {
+    const res = await this.inventoryAgingExportService.getPreviewResult(jobId);
+    return res;
+  }
+
+  @Post('inventory-aging/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerInventoryAgingClientExport(
+    @UploadedFile() file: any,
+    @Body('fileName') fileName: string,
+    @Body('format') formatStr: string,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      return { status: false, message: 'No file uploaded' };
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.inventoryAgingExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName,
+      format: formatStr === 'pdf' ? 'pdf' : 'xlsx',
     });
     return { status: true, data: result };
   }
