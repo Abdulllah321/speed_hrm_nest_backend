@@ -33,6 +33,9 @@ export interface NetSalesSummaryLineItem {
   description: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sizeName: string;
   colorName: string;
   soldQty: number;
@@ -48,6 +51,9 @@ export interface NetSalesSummaryLineItem {
 export interface NetSalesSummaryCategoryNode {
   categoryName: string;
   brandName: string;
+  divisionName?: string;
+  genderName?: string;
+  silhouetteName?: string;
   totals: NetSalesSummaryTotals;
   items: NetSalesSummaryLineItem[];
 }
@@ -64,6 +70,9 @@ export interface NetSalesSummaryFlatRecord {
   locationName: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sku: string;
   barCode: string;
   description: string;
@@ -357,6 +366,9 @@ export class NetSalesSummaryExportService {
                 barCode: true,
                 category: { select: { name: true } },
                 brand: { select: { name: true } },
+                division: { select: { name: true } },
+                gender: { select: { name: true } },
+                silhouette: { select: { name: true } },
                 size: { select: { name: true } },
                 color: { select: { name: true } },
               },
@@ -418,6 +430,9 @@ export class NetSalesSummaryExportService {
       for (const item of order.items) {
         const catName = item.item?.category?.name || 'Unassigned Category';
         const brandName = item.item?.brand?.name || 'Default Brand';
+        const divisionName = item.item?.division?.name || 'Default Division';
+        const genderName = item.item?.gender?.name || 'Default Gender';
+        const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
         const qty = Number(item.quantity || 0);
         const unitPrice = Number(item.unitPrice || 0);
         const lineTotal = Number(item.lineTotal || 0);
@@ -453,6 +468,9 @@ export class NetSalesSummaryExportService {
           description: item.item?.description || item.item?.sku || 'Article',
           categoryName: catName,
           brandName,
+          divisionName,
+          genderName,
+          silhouetteName,
           sizeName: item.item?.size?.name || 'Default',
           colorName: item.item?.color?.name || 'Default',
           soldQty,
@@ -469,6 +487,9 @@ export class NetSalesSummaryExportService {
           locationName: locName,
           categoryName: catName,
           brandName,
+          divisionName,
+          genderName,
+          silhouetteName,
           sku: lineItemNode.sku,
           barCode: lineItemNode.barCode,
           description: lineItemNode.description,
