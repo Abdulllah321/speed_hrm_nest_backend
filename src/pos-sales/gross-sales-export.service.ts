@@ -474,7 +474,10 @@ export class GrossSalesExportService {
     await onProgress?.(30, 'Querying POS sales return records from database...');
 
     const where: any = {
-      returnNumber: { not: null },
+      OR: [
+        { returnNumber: { not: null } },
+        { refundNumber: { not: null } },
+      ],
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -496,6 +499,7 @@ export class GrossSalesExportService {
       const s = search.trim();
       where.OR = [
         { returnNumber: { contains: s, mode: 'insensitive' } },
+        { refundNumber: { contains: s, mode: 'insensitive' } },
         { orderNumber: { contains: s, mode: 'insensitive' } },
         { fbrInvoiceNumber: { contains: s, mode: 'insensitive' } },
         { customer: { name: { contains: s, mode: 'insensitive' } } },
@@ -503,7 +507,7 @@ export class GrossSalesExportService {
       ];
     }
 
-    const rawReturnOrders = await prisma.salesOrder.findMany({
+    let rawReturnOrders = await prisma.salesOrder.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -525,6 +529,49 @@ export class GrossSalesExportService {
         },
       },
     });
+
+    // Fallback: Check stockLedger for POS_RETURN / POS_REFUND entries
+    if (rawReturnOrders.length === 0) {
+      const ledgerReturns = await prisma.stockLedger.findMany({
+        where: {
+          referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        select: { referenceId: true },
+        distinct: ['referenceId'],
+      });
+
+      const returnOrderIds = ledgerReturns.map((l) => l.referenceId).filter((id): id is string => Boolean(id));
+
+      if (returnOrderIds.length > 0) {
+        const orderWhere: any = { id: { in: returnOrderIds } };
+        if (locationWhere) orderWhere.locationId = locationWhere;
+        if (cashierUserId) orderWhere.cashierUserId = cashierUserId;
+
+        rawReturnOrders = await prisma.salesOrder.findMany({
+          where: orderWhere,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            customer: { select: { name: true, contactNo: true } },
+            items: {
+              include: {
+                item: {
+                  select: {
+                    description: true,
+                    sku: true,
+                    barCode: true,
+                    category: { select: { name: true } },
+                    brand: { select: { name: true } },
+                    size: { select: { name: true } },
+                    color: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+    }
 
     await onProgress?.(70, 'Building sales return register matrix...');
 
@@ -565,7 +612,10 @@ export class GrossSalesExportService {
       const payMethod = (order.paymentMethod || 'CASH').toUpperCase();
       const fbrInv = order.fbrInvoiceNumber || '-';
       const fbrStatus = order.fbrStatus || 'NONE';
-      const retNo = order.returnNumber || `RET-${order.orderNumber}`;
+      const rawRetNo = order.returnNumber || order.refundNumber || `SR-${order.orderNumber.replace(/^SO-/, '')}`;
+      const retNo = (rawRetNo.startsWith('SR-') || rawRetNo.startsWith('RF-') || rawRetNo.startsWith('RET-'))
+        ? rawRetNo
+        : `SR-${rawRetNo}`;
 
       const gross = Number(order.subtotal || 0);
       const disc = Number(order.discountAmount || 0);
