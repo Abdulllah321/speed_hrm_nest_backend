@@ -79,7 +79,18 @@ export interface StockActivityBrandNode {
   totals: StockActivityTotals;
 }
 
+export interface StockActivityLocationNode {
+  locationKey: string;
+  locationId?: string;
+  warehouseId?: string;
+  locationName: string;
+  locationType: 'OUTLET' | 'WAREHOUSE';
+  brands: StockActivityBrandNode[];
+  totals: StockActivityTotals;
+}
+
 export interface StockActivityFlatRecord {
+  locationName?: string;
   brand: string;
   division: string;
   category: string;
@@ -94,6 +105,8 @@ export interface StockActivityFlatRecord {
 }
 
 export interface StockActivityReportResult {
+  reportType: 'merged' | 'separate';
+  locations?: StockActivityLocationNode[];
   brands: StockActivityBrandNode[];
   flatItems: StockActivityFlatRecord[];
   grandTotals: StockActivityTotals;
@@ -107,6 +120,7 @@ export interface QueueStockActivityExportOptions {
   warehouseId?: string;
   startDate?: string;
   endDate?: string;
+  reportType?: 'merged' | 'separate';
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
   showBrand?: boolean;
@@ -141,6 +155,7 @@ export class StockActivityExportService {
     warehouseId?: string;
     startDate?: string;
     endDate?: string;
+    reportType?: 'merged' | 'separate';
     search?: string;
   }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
@@ -158,6 +173,7 @@ export class StockActivityExportService {
         warehouseId: opts.warehouseId,
         startDate: opts.startDate,
         endDate: opts.endDate,
+        reportType: opts.reportType || 'merged',
         search: opts.search,
       },
       {
@@ -169,7 +185,7 @@ export class StockActivityExportService {
       },
     );
 
-    this.logger.log(`[StockActivityReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(`[StockActivityReport] Queued preview job ${jobId} for user ${opts.userId} (mode: ${opts.reportType || 'merged'})`);
     return { jobId };
   }
 
@@ -248,11 +264,13 @@ export class StockActivityExportService {
       warehouseId?: string;
       startDate?: string;
       endDate?: string;
+      reportType?: 'merged' | 'separate';
       search?: string;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ): Promise<StockActivityReportResult> {
-    const { locationId, warehouseId, startDate: startStr, endDate: endStr, search, onProgress } = opts;
+    const { locationId, warehouseId, startDate: startStr, endDate: endStr, reportType = 'merged', search, onProgress } = opts;
+    const isSeparate = reportType === 'separate';
     const now = new Date();
 
     const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
@@ -296,14 +314,24 @@ export class StockActivityExportService {
         ? locOrWhFilters[0]
         : {};
 
+    // Load Location & Warehouse Names Lookup
+    const [allLocations, allWarehouses] = await Promise.all([
+      prisma.location.findMany({ select: { id: true, name: true } }),
+      prisma.warehouse.findMany({ select: { id: true, name: true } }),
+    ]);
+
+    const locationNameMap = new Map<string, { name: string; type: 'OUTLET' | 'WAREHOUSE' }>();
+    for (const l of allLocations) locationNameMap.set(`loc:${l.id}`, { name: `${l.name} (Outlet)`, type: 'OUTLET' });
+    for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, { name: `${w.name} (Warehouse)`, type: 'WAREHOUSE' });
+
     let locationNames = '';
     if (locIds.length > 0) {
-      const locs = await prisma.location.findMany({ where: { id: { in: locIds } }, select: { name: true } });
+      const locs = allLocations.filter((l) => locIds.includes(l.id));
       locationNames += locs.map((l) => l.name).join(', ');
     }
     if (whIds.length > 0) {
       if (locationNames) locationNames += ' & ';
-      const whs = await prisma.warehouse.findMany({ where: { id: { in: whIds } }, select: { name: true } });
+      const whs = allWarehouses.filter((w) => whIds.includes(w.id));
       locationNames += whs.map((w) => w.name).join(', ');
     }
     if (!locationNames) locationNames = 'All Outlets & Warehouses';
@@ -316,12 +344,12 @@ export class StockActivityExportService {
           ...locationOrWarehouseWhere,
           status: 'AVAILABLE',
         },
-        select: { itemId: true },
+        select: { itemId: true, locationId: true, warehouseId: true },
       }),
       prisma.stockLedger.findMany({
         where: locationOrWarehouseWhere,
-        select: { itemId: true },
-        distinct: ['itemId'],
+        select: { itemId: true, locationId: true, warehouseId: true },
+        distinct: ['itemId', 'locationId', 'warehouseId'],
       }),
     ]);
 
@@ -365,6 +393,7 @@ export class StockActivityExportService {
 
     if (uniqueItemIds.length === 0) {
       return {
+        reportType,
         brands: [],
         flatItems: [],
         grandTotals: createEmptyTotals(),
@@ -395,6 +424,10 @@ export class StockActivityExportService {
       ),
     );
     const items = itemsNested.flat();
+    const itemLookup = new Map<string, any>();
+    for (const item of items) {
+      itemLookup.set(item.id, item);
+    }
 
     const matchedItemIds = items.map((i) => i.id);
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
@@ -403,7 +436,9 @@ export class StockActivityExportService {
 
     const fiscalOpeningDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
 
+    // Map keys: if separate -> `${locKey}:${itemId}`, else -> `merged:${itemId}`
     const bfMap = new Map<string, number>();
+
     for (const chunk of matchedItemChunks) {
       const bfWhere: any = {
         ...locationOrWarehouseWhere,
@@ -411,19 +446,31 @@ export class StockActivityExportService {
         createdAt: fiscalOpeningDate ? { gte: fiscalOpeningDate, lt: startDate } : { lt: startDate },
       };
 
+      const groupByFields: ('itemId' | 'locationId' | 'warehouseId')[] = isSeparate
+        ? ['itemId', 'locationId', 'warehouseId']
+        : ['itemId'];
+
       const bfGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
+        by: groupByFields as any,
         where: bfWhere,
         _sum: { qty: true },
       });
 
       for (const row of bfGroup) {
-        const val = Number(row._sum.qty || 0);
-        bfMap.set(row.itemId, Math.max(0, val));
+        const qtyVal = Math.max(0, Number(row._sum.qty || 0));
+        const itemId = row.itemId;
+        if (isSeparate) {
+          const locKey = row.locationId ? `loc:${row.locationId}` : row.warehouseId ? `wh:${row.warehouseId}` : 'unknown';
+          const compositeKey = `${locKey}:${itemId}`;
+          bfMap.set(compositeKey, (bfMap.get(compositeKey) || 0) + qtyVal);
+        } else {
+          const compositeKey = `merged:${itemId}`;
+          bfMap.set(compositeKey, (bfMap.get(compositeKey) || 0) + qtyVal);
+        }
       }
 
       const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
+        by: groupByFields as any,
         where: {
           ...locationOrWarehouseWhere,
           itemId: { in: chunk },
@@ -439,8 +486,18 @@ export class StockActivityExportService {
       });
 
       for (const row of inRangeOpeningGroup) {
-        const currentBf = bfMap.get(row.itemId) || 0;
-        bfMap.set(row.itemId, Math.max(0, currentBf + Number(row._sum.qty || 0)));
+        const qtyVal = Number(row._sum.qty || 0);
+        const itemId = row.itemId;
+        if (isSeparate) {
+          const locKey = row.locationId ? `loc:${row.locationId}` : row.warehouseId ? `wh:${row.warehouseId}` : 'unknown';
+          const compositeKey = `${locKey}:${itemId}`;
+          const currentBf = bfMap.get(compositeKey) || 0;
+          bfMap.set(compositeKey, Math.max(0, currentBf + qtyVal));
+        } else {
+          const compositeKey = `merged:${itemId}`;
+          const currentBf = bfMap.get(compositeKey) || 0;
+          bfMap.set(compositeKey, Math.max(0, currentBf + qtyVal));
+        }
       }
     }
 
@@ -455,10 +512,13 @@ export class StockActivityExportService {
             { movementType: MovementType.OPENING_BALANCE },
             { referenceType: 'OPENING_BALANCE' },
             { referenceType: 'BULK_STOCK_UPLOAD' },
+            { referenceType: 'FISCAL_YEAR_OPENING' },
           ],
         },
         select: {
           itemId: true,
+          locationId: true,
+          warehouseId: true,
           qty: true,
           referenceType: true,
           movementType: true,
@@ -494,6 +554,9 @@ export class StockActivityExportService {
         select: {
           itemId: true,
           quantity: true,
+          transferRequest: {
+            select: { toLocationId: true, toWarehouseId: true },
+          },
         },
       });
       transitItems.push(...chunkTransit);
@@ -502,7 +565,17 @@ export class StockActivityExportService {
     const transitMap = new Map<string, number>();
     for (const row of transitItems) {
       const qty = Number(row.quantity || 0);
-      transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
+      const itemId = row.itemId;
+      if (isSeparate) {
+        const toLocId = row.transferRequest?.toLocationId;
+        const toWhId = row.transferRequest?.toWarehouseId;
+        const locKey = toLocId ? `loc:${toLocId}` : toWhId ? `wh:${toWhId}` : 'unknown';
+        const compositeKey = `${locKey}:${itemId}`;
+        transitMap.set(compositeKey, (transitMap.get(compositeKey) || 0) + qty);
+      } else {
+        const compositeKey = `merged:${itemId}`;
+        transitMap.set(compositeKey, (transitMap.get(compositeKey) || 0) + qty);
+      }
     }
 
     await onProgress?.(70, 'Aggregating stock movement metrics by item & location...');
@@ -524,7 +597,16 @@ export class StockActivityExportService {
 
     for (const entry of ledgerEntries) {
       const itemId = entry.itemId;
-      let m = itemMetricsMap.get(itemId);
+      const locKey = isSeparate
+        ? entry.locationId
+          ? `loc:${entry.locationId}`
+          : entry.warehouseId
+          ? `wh:${entry.warehouseId}`
+          : 'unknown'
+        : 'merged';
+
+      const compositeKey = `${locKey}:${itemId}`;
+      let m = itemMetricsMap.get(compositeKey);
       if (!m) {
         m = {
           fromWarehouse: 0,
@@ -537,7 +619,7 @@ export class StockActivityExportService {
           sales: 0,
           adj: 0,
         };
-        itemMetricsMap.set(itemId, m);
+        itemMetricsMap.set(compositeKey, m);
       }
 
       const qty = Number(entry.qty || 0);
@@ -576,14 +658,19 @@ export class StockActivityExportService {
 
     await onProgress?.(85, 'Building brand & category hierarchy matrix...');
 
-    const brandsList: StockActivityBrandNode[] = [];
-    const flatItems: StockActivityFlatRecord[] = [];
     const grandTotals = createEmptyTotals();
+    const flatItems: StockActivityFlatRecord[] = [];
 
-    for (const item of items) {
-      const bf = Math.max(0, bfMap.get(item.id) || 0);
-      const transit = Math.max(0, transitMap.get(item.id) || 0);
-      const m = itemMetricsMap.get(item.id) || {
+    // Helper to add item to a brand hierarchy tree
+    const populateBrandHierarchy = (
+      brandsList: StockActivityBrandNode[],
+      item: any,
+      compositeKey: string,
+      locName?: string,
+    ) => {
+      const bf = Math.max(0, bfMap.get(compositeKey) || 0);
+      const transit = Math.max(0, transitMap.get(compositeKey) || 0);
+      const m = itemMetricsMap.get(compositeKey) || {
         fromWarehouse: 0,
         fromOutlet: 0,
         toWarehouse: 0,
@@ -599,6 +686,22 @@ export class StockActivityExportService {
       const totalTrfOut = m.toWarehouse + m.toOutlet;
       const availableStock = Math.max(0, bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj);
       const balance = availableStock + transit;
+
+      // Skip item if absolutely zero activity and zero balances across all metrics
+      if (
+        bf === 0 &&
+        totalTrfIn === 0 &&
+        totalTrfOut === 0 &&
+        m.exchg === 0 &&
+        m.refund === 0 &&
+        m.claim === 0 &&
+        m.sales === 0 &&
+        m.adj === 0 &&
+        availableStock === 0 &&
+        transit === 0
+      ) {
+        return;
+      }
 
       const totals: StockActivityTotals = {
         bf,
@@ -618,7 +721,6 @@ export class StockActivityExportService {
         balance,
       };
 
-      // Add to grand totals
       addTotals(grandTotals, totals);
 
       const brandId = item.brand?.id || 'no-brand';
@@ -637,6 +739,7 @@ export class StockActivityExportService {
       const barCode = item.barCode || sku;
 
       flatItems.push({
+        locationName: locName,
         brand: brandName,
         division: divName,
         category: catName,
@@ -653,12 +756,7 @@ export class StockActivityExportService {
       // 1. Brand Level
       let brandNode = brandsList.find((b) => b.brandId === brandId);
       if (!brandNode) {
-        brandNode = {
-          brandId,
-          brandName,
-          divisions: [],
-          totals: createEmptyTotals(),
-        };
+        brandNode = { brandId, brandName, divisions: [], totals: createEmptyTotals() };
         brandsList.push(brandNode);
       }
       addTotals(brandNode.totals, totals);
@@ -666,12 +764,7 @@ export class StockActivityExportService {
       // 2. Division Level
       let divNode = brandNode.divisions.find((d) => d.divisionId === divId);
       if (!divNode) {
-        divNode = {
-          divisionId: divId,
-          divisionName: divName,
-          genders: [],
-          totals: createEmptyTotals(),
-        };
+        divNode = { divisionId: divId, divisionName: divName, genders: [], totals: createEmptyTotals() };
         brandNode.divisions.push(divNode);
       }
       addTotals(divNode.totals, totals);
@@ -679,12 +772,7 @@ export class StockActivityExportService {
       // 3. Gender Level
       let genderNode = divNode.genders.find((g) => g.genderId === genderId);
       if (!genderNode) {
-        genderNode = {
-          genderId,
-          genderName,
-          categories: [],
-          totals: createEmptyTotals(),
-        };
+        genderNode = { genderId, genderName, categories: [], totals: createEmptyTotals() };
         divNode.genders.push(genderNode);
       }
       addTotals(genderNode.totals, totals);
@@ -692,12 +780,7 @@ export class StockActivityExportService {
       // 4. Category Level
       let catNode = genderNode.categories.find((c) => c.categoryId === catId);
       if (!catNode) {
-        catNode = {
-          categoryId: catId,
-          categoryName: catName,
-          products: [],
-          totals: createEmptyTotals(),
-        };
+        catNode = { categoryId: catId, categoryName: catName, products: [], totals: createEmptyTotals() };
         genderNode.categories.push(catNode);
       }
       addTotals(catNode.totals, totals);
@@ -705,13 +788,7 @@ export class StockActivityExportService {
       // 5. Product Level
       let prodNode = catNode.products.find((p) => p.sku === sku);
       if (!prodNode) {
-        prodNode = {
-          sku,
-          description: desc,
-          productLabel: desc,
-          sizes: [],
-          totals: createEmptyTotals(),
-        };
+        prodNode = { sku, description: desc, productLabel: desc, sizes: [], totals: createEmptyTotals() };
         catNode.products.push(prodNode);
       }
       addTotals(prodNode.totals, totals);
@@ -719,24 +796,74 @@ export class StockActivityExportService {
       // 6. Variant Level
       let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
       if (!sizeItem) {
-        sizeItem = {
-          id: item.id,
-          size: sizeName,
-          color: colorName,
-          barCode,
-          sku,
-          totals,
-        };
+        sizeItem = { id: item.id, size: sizeName, color: colorName, barCode, sku, totals };
         prodNode.sizes.push(sizeItem);
       } else {
         addTotals(sizeItem.totals, totals);
+      }
+    };
+
+    let locationsList: StockActivityLocationNode[] = [];
+    let mergedBrandsList: StockActivityBrandNode[] = [];
+
+    if (isSeparate) {
+      // Find all distinct location keys that have ledger or inventory activity
+      const locationKeysSet = new Set<string>();
+      for (const [key] of bfMap.keys()) {
+        const parts = key.split(':');
+        if (parts.length >= 2) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
+      }
+      for (const [key] of itemMetricsMap.keys()) {
+        const parts = key.split(':');
+        if (parts.length >= 2) locationKeysSet.add(`${parts[0]}:${parts[1]}`);
+      }
+
+      for (const locKey of locationKeysSet) {
+        const locInfo = locationNameMap.get(locKey) || {
+          name: locKey.startsWith('loc:')
+            ? `Outlet Location ${locKey.replace('loc:', '')}`
+            : locKey.startsWith('wh:')
+            ? `Warehouse ${locKey.replace('wh:', '')}`
+            : 'Unknown Location',
+          type: locKey.startsWith('wh:') ? 'WAREHOUSE' : 'OUTLET',
+        };
+
+        const locNode: StockActivityLocationNode = {
+          locationKey: locKey,
+          locationId: locKey.startsWith('loc:') ? locKey.replace('loc:', '') : undefined,
+          warehouseId: locKey.startsWith('wh:') ? locKey.replace('wh:', '') : undefined,
+          locationName: locInfo.name,
+          locationType: locInfo.type as any,
+          brands: [],
+          totals: createEmptyTotals(),
+        };
+
+        for (const item of items) {
+          const compositeKey = `${locKey}:${item.id}`;
+          populateBrandHierarchy(locNode.brands, item, compositeKey, locInfo.name);
+        }
+
+        if (locNode.brands.length > 0) {
+          for (const b of locNode.brands) {
+            addTotals(locNode.totals, b.totals);
+          }
+          locationsList.push(locNode);
+        }
+      }
+    } else {
+      // Merged Mode across all locations
+      for (const item of items) {
+        const compositeKey = `merged:${item.id}`;
+        populateBrandHierarchy(mergedBrandsList, item, compositeKey);
       }
     }
 
     await onProgress?.(100, 'Stock Activity preview generation complete!');
 
     return {
-      brands: brandsList,
+      reportType,
+      locations: isSeparate ? locationsList : undefined,
+      brands: mergedBrandsList,
       flatItems,
       grandTotals,
       dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
@@ -809,6 +936,7 @@ export class StockActivityExportService {
         warehouseId: opts.warehouseId,
         startDate: opts.startDate,
         endDate: opts.endDate,
+        reportType: opts.reportType || 'merged',
         format: opts.format,
         summaryOnly: !!opts.summaryOnly,
         showBrand: opts.showBrand,
@@ -828,7 +956,7 @@ export class StockActivityExportService {
       },
     );
 
-    this.logger.log(`[StockActivityExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
+    this.logger.log(`[StockActivityExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, reportType: ${opts.reportType || 'merged'})`);
     return { jobId };
   }
 
