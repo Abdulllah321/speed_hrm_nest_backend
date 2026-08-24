@@ -38,8 +38,8 @@ export class StockRequisitionController {
 
   @Post('upload')
   @Permissions('erp.inventory.transfer.create', 'erp.inventory.stock-requisition.create', 'erp.inventory.stock-requisition.read')
-  @ApiOperation({ summary: 'Upload consolidated Excel sheet to parse items' })
-  async uploadExcel(@Req() req: any) {
+  @ApiOperation({ summary: 'Upload consolidated Excel sheet to parse items and validate warehouse stock' })
+  async uploadExcel(@Req() req: any, @Query('warehouseId') warehouseId?: string) {
     const file = await req.file();
     if (!file) {
       throw new BadRequestException('No file uploaded');
@@ -52,8 +52,9 @@ export class StockRequisitionController {
     }
 
     const buffer = await file.toBuffer();
-    const data = await this.requisitionService.parseExcelSheet(buffer);
-    return { status: true, data, message: 'Excel sheet parsed successfully' };
+    const effectiveWarehouseId = warehouseId || req.query?.warehouseId;
+    const data = await this.requisitionService.parseExcelSheet(buffer, effectiveWarehouseId);
+    return { status: true, data, message: 'Excel sheet parsed and validated successfully' };
   }
 
   @Get('replenishment-candidates')
