@@ -420,18 +420,7 @@ export class OverallAvailableReservedStockExportService {
     await onProgress?.(10, 'Discovering active stock locations & warehouses...');
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    let locationWhere: any;
-
-    if (locIds.length > 0) {
-      locationWhere = locIds.length > 1 ? { in: locIds } : locIds[0];
-    } else {
-      const stockLocations = await prisma.location.findMany({
-        where: { isStockLocation: true, isDeleted: false },
-        select: { id: true },
-      });
-      const stockLocIds = stockLocations.map(l => l.id);
-      locationWhere = { in: stockLocIds };
-    }
+    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
 
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
@@ -494,10 +483,18 @@ export class OverallAvailableReservedStockExportService {
     const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, targetDate);
     const queryStartDate = snapshotDate && snapshotDate < targetDate ? snapshotDate : undefined;
 
-    await onProgress?.(20, 'Querying stock ledgers & inventory items...');
+    await onProgress?.(20, 'Querying stock ledgers, reserves & inventory items...');
 
-    // Fetch inventory item ids within active date window
-    const [inventoryItems, ledgerItems] = await Promise.all([
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+
+    const toLocOrWhWhere = toLocOrWhFilters.length > 1
+      ? { OR: toLocOrWhFilters }
+      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+
+    // Fetch inventory item ids, reserves and in-transit transfers within active date window
+    const [inventoryItems, ledgerItems, reserveRecords, transitRecords] = await Promise.all([
       prisma.inventoryItem.findMany({
         where: {
           ...locationOrWarehouseWhere,
@@ -514,11 +511,37 @@ export class OverallAvailableReservedStockExportService {
         select: { itemId: true },
         distinct: ['itemId'],
       }),
+      prisma.stockReserve.findMany({
+        where: {
+          createdAt: { lte: targetDate },
+          ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: isHistorical ? targetDate : new Date() } },
+          ],
+        },
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
+      prisma.transferRequestItem.findMany({
+        where: {
+          transferRequest: {
+            ...toLocOrWhWhere,
+            createdAt: { lte: targetDate },
+            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+          },
+        },
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
     ]);
 
     const uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
       ...ledgerItems.map(l => l.itemId),
+      ...reserveRecords.map(r => r.itemId),
+      ...transitRecords.map(t => t.itemId),
     ])];
 
     const whIdsList = warehouses.map(w => w.id);
@@ -583,15 +606,9 @@ export class OverallAvailableReservedStockExportService {
     await onProgress?.(50, 'Calculating in-transit and reserved stock allocations...');
 
     const matchedItemIds = items.map(i => i.id);
-    const matchedItemChunks = chunkArray(matchedItemIds, 1000);
-
-    const toLocOrWhFilters: any[] = [];
-    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
-
-    const toLocOrWhWhere = toLocOrWhFilters.length > 1
-      ? { OR: toLocOrWhFilters }
-      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+    const matchedItemKeys = items.map(i => i.itemId).filter(Boolean) as string[];
+    const allQueryIds = [...new Set([...matchedItemIds, ...matchedItemKeys])];
+    const matchedItemChunks = chunkArray(allQueryIds, 1000);
 
     const transitMap = new Map<string, number>();
     const transitResults = await Promise.all(
@@ -632,8 +649,8 @@ export class OverallAvailableReservedStockExportService {
             ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
             OR: [
               { expiresAt: null },
-              { expiresAt: { gte: targetDate } }
-            ]
+              { expiresAt: { gte: isHistorical ? targetDate : new Date() } },
+            ],
           },
           _sum: { quantity: true },
         }),
@@ -642,7 +659,8 @@ export class OverallAvailableReservedStockExportService {
 
     for (const reserveGroup of reserveResults) {
       for (const row of reserveGroup) {
-        reserveMap.set(row.itemId, Number(row._sum.quantity || 0));
+        const prev = reserveMap.get(row.itemId) || 0;
+        reserveMap.set(row.itemId, prev + Number(row._sum.quantity || 0));
       }
     }
 
@@ -765,8 +783,8 @@ export class OverallAvailableReservedStockExportService {
     };
 
     for (const item of items) {
-      const transit = transitMap.get(item.id) || 0;
-      const reserved = reserveMap.get(item.id) || 0;
+      const transit = transitMap.get(item.id) || (item.itemId ? transitMap.get(item.itemId) : 0) || 0;
+      const reserved = reserveMap.get(item.id) || (item.itemId ? reserveMap.get(item.itemId) : 0) || 0;
 
       let sumWh = 0;
       const warehouseStocks: Record<string, number> = {};
