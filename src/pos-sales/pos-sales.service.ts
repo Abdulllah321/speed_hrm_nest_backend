@@ -60,18 +60,40 @@ export class PosSalesService implements OnModuleInit {
   ): Promise<string> {
     const prismaClient = tx || this.prisma;
 
-    // Find the location name and configured shortCode
-    const location = await prismaClient.location.findUnique({
-      where: { id: locationId },
+    // Find Location or Warehouse by id, code, shortCode, or centerId
+    let rawCode = 'LOC';
+    const location = await prismaClient.location.findFirst({
+      where: {
+        OR: [
+          { id: locationId },
+          { code: locationId },
+          { shortCode: locationId },
+          { centerId: locationId },
+        ],
+      },
       select: { name: true, shortCode: true },
     });
 
-    if (!location) {
-      throw new Error(`Location not found for ID: ${locationId}`);
-    }
+    if (location) {
+      rawCode = location.shortCode?.trim() || location.name;
+    } else {
+      const warehouse = await prismaClient.warehouse.findFirst({
+        where: {
+          OR: [
+            { id: locationId },
+            { code: locationId },
+            { centerId: locationId },
+          ],
+        },
+        select: { name: true, code: true },
+      });
 
-    // Clean shortCode: remove spaces, dots, dashes, ampersands
-    let rawCode = location.shortCode?.trim() || location.name;
+      if (warehouse) {
+        rawCode = warehouse.code?.trim() || warehouse.name;
+      } else {
+        rawCode = locationId || 'LOC';
+      }
+    }
     let cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     if (!cleanCode) {
       cleanCode = 'LOC';

@@ -43,8 +43,10 @@ export class HmacAuthGuard implements CanActivate {
       }
     }
 
-    // Extract center_id from query params or route params
+    // Extract center_id from request body, query params or route params
     const centerId =
+      (request.body?.center_id as string) ||
+      (request.body?.centerId as string) ||
       (request.query?.center_id as string) ||
       (request.query?.centerId as string) ||
       (request.params?.center_id as string) ||

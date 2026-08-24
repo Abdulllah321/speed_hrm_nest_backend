@@ -19,7 +19,9 @@ export interface CostOfSalesExportJobData {
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'hierarchical' | 'flat';
   search?: string;
+  previewJobId?: string;
 }
 
 const COLUMNS = [
@@ -54,12 +56,49 @@ export class CostOfSalesExportProcessor {
     }
   }
 
+  @Process('generate-cost-of-sales-preview')
+  async handleCostOfSalesPreview(job: Job<any>): Promise<void> {
+    const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+    this.logger.log(`[CostOfSalesPreview ${jobId}] Starting background cost-of-sales preview computation`);
+    try {
+      await job.progress({ percent: 5, message: 'Worker active. Connecting to tenant database...' });
+      const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+
+      const data = await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(
+        prisma,
+        {
+          ...opts,
+          previewJobId: jobId,
+          onProgress: async (percent: number, message: string) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      if (this.costOfSalesExportService.isJobCancelled(jobId)) {
+        this.logger.log(`[CostOfSalesPreview ${jobId}] Job cancelled by user. Skipping result save.`);
+        return;
+      }
+
+      await job.progress({ percent: 90, message: 'Compressing report payload & caching preview result...' });
+      this.costOfSalesExportService.saveReportPreviewResult(jobId, data);
+
+      await job.progress({ percent: 100, message: 'Cost of sales report computation complete!' });
+      this.logger.log(`[CostOfSalesPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[CostOfSalesPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
+
   @Process({ concurrency: 1 })
   async handleExport(job: Job<CostOfSalesExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate, endDate, format, search } = job.data;
-    this.logger.log(`[CostOfSalesExport ${jobId}] Starting ${format.toUpperCase()} export`);
+    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate, endDate, format, search, exportType, previewJobId } = job.data;
+    this.logger.log(`[CostOfSalesExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
@@ -69,12 +108,19 @@ export class CostOfSalesExportProcessor {
     try {
       await job.progress(10);
 
-      const reportData = await this.costOfSalesExportService.getReportData({
-        locationId,
-        startDate,
-        endDate,
-        search,
-      });
+      let reportData: any = null;
+      if (previewJobId) {
+        reportData = this.costOfSalesExportService.getReportPreviewResult(previewJobId);
+      }
+
+      if (!reportData) {
+        reportData = await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(prisma, {
+          locationId,
+          startDate,
+          endDate,
+          search,
+        });
+      }
 
       await job.progress(40);
 
@@ -347,7 +393,6 @@ export class CostOfSalesExportProcessor {
 
   private buildHtmlReport(reportData: any): string {
     const dateRangeStr = `${reportData.startDate} - ${reportData.endDate}`;
-
     let rowsHtml = '';
 
     for (const brand of reportData.brands) {

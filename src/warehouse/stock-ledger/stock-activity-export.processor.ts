@@ -12,6 +12,8 @@ import { ExportHistoryService } from '../export-history/export-history.service';
 import { chunkArray } from '../../common/utils/chunk.util';
 
 
+import { StockActivityExportService } from './stock-activity-export.service';
+
 export interface StockActivityExportJobData {
   jobId: string;
   userId: string;
@@ -30,6 +32,19 @@ export interface StockActivityExportJobData {
   showSilhouette?: boolean;
   showArticle?: boolean;
   showVariant?: boolean;
+}
+
+export interface StockActivityPreviewJobData {
+  jobId: string;
+  userId: string;
+  tenantId: string;
+  tenantDbUrl: string;
+  locationId?: string;
+  warehouseId?: string;
+  startDate?: string;
+  endDate?: string;
+  reportType?: 'merged' | 'separate';
+  search?: string;
 }
 
 const GROUP_COLORS: Record<string, string> = {
@@ -68,6 +83,7 @@ export class StockActivityExportProcessor {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly stockActivityExportService: StockActivityExportService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -87,6 +103,42 @@ export class StockActivityExportProcessor {
       } catch (e: any) {
         this.logger.warn(`Error trying to run chromium dependencies installer: ${e.message}`);
       }
+    }
+  }
+
+  @Process('generate-stock-activity-preview')
+  async handleGeneratePreview(job: Job<StockActivityPreviewJobData>): Promise<void> {
+    const { jobId, tenantId, tenantDbUrl, locationId, warehouseId, startDate, endDate, reportType, search } = job.data;
+    this.logger.log(`[StockActivityPreview ${jobId}] Starting background stock-activity preview computation (mode: ${reportType || 'merged'})`);
+
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+    try {
+      await job.progress({ percent: 10, message: 'Queueing preview computation task...' });
+
+      const result = await this.stockActivityExportService.generateStockActivityReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          warehouseId,
+          startDate,
+          endDate,
+          reportType,
+          search,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      await this.stockActivityExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Stock Activity report preview ready!' });
+      this.logger.log(`[StockActivityPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[StockActivityPreview ${jobId}] Failed to compute preview: ${err.message}`, err.stack);
+      throw err;
     }
   }
 

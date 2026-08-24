@@ -13,6 +13,8 @@ import { AvailableStockSummaryExportService } from './available-stock-summary-ex
 import { AvailableStockSummaryExportProcessor } from './available-stock-summary-export.processor';
 import { OverallAvailableReservedStockExportService } from './overall-available-reserved-stock-export.service';
 import { OverallAvailableReservedStockExportProcessor } from './overall-available-reserved-stock-export.processor';
+import { InventoryAgingExportService } from './inventory-aging-export.service';
+import { InventoryAgingExportProcessor } from './inventory-aging-export.processor';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
 import { ExportHistoryModule } from '../export-history/export-history.module';
@@ -34,6 +36,7 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
       { name: 'stock-transaction-detail-export' },
       { name: 'available-stock-summary-export' },
       { name: 'overall-available-reserved-stock-export' },
+      { name: 'inventory-aging-export' },
     ),
   ],
   controllers: [StockLedgerController],
@@ -50,6 +53,8 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
     AvailableStockSummaryExportProcessor,
     OverallAvailableReservedStockExportService,
     OverallAvailableReservedStockExportProcessor,
+    InventoryAgingExportService,
+    InventoryAgingExportProcessor,
     FiscalYearClosingService,
     FiscalYearClosingCron,
   ],
@@ -60,6 +65,7 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
     StockTransactionDetailExportService,
     AvailableStockSummaryExportService,
     OverallAvailableReservedStockExportService,
+    InventoryAgingExportService,
     FiscalYearClosingService,
   ],
 })

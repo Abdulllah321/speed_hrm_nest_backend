@@ -1821,6 +1821,11 @@ export class EmployeeService {
               updateData.employeeId = employeeIdValue;
             if (officialEmailValue !== undefined)
               updateData.email = officialEmailValue || null;
+            if (employeeNameValue !== undefined) {
+              const nameParts = employeeNameValue.trim().split(/\s+/);
+              updateData.firstName = nameParts[0] || '';
+              updateData.lastName = nameParts.slice(1).join(' ') || '';
+            }
             if (Object.keys(updateData).length > 0) {
               await this.prismaMaster.user.update({
                 where: { id: updated.userId },

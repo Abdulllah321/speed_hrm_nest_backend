@@ -9,8 +9,13 @@ import {
   Res,
   UseGuards,
   BadRequestException,
+  NotFoundException,
   Patch,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable, interval, map, switchMap, takeWhile } from 'rxjs';
+import { PrismaService } from '../prisma/prisma.service';
 import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
 import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
@@ -40,6 +45,7 @@ import * as jwt from 'jsonwebtoken';
 @ApiBearerAuth()
 export class PosSalesController {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly posSalesService: PosSalesService,
     private readonly customerService: CustomerService,
     private readonly netSalesSummaryExportService: NetSalesSummaryExportService,
@@ -1231,6 +1237,64 @@ export class PosSalesController {
     return { status: true, data };
   }
 
+  @Post('reports/cost-of-sales/queue')
+  @ApiOperation({ summary: 'Queue Cost of Sales calculation preview job' })
+  async queueCostOfSalesPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+    },
+  ) {
+    const userId = req.user?.userId || req.user?.id;
+    const result = await this.costOfSalesExportService.queueReportPreview({
+      userId,
+      locationId: body.locationId,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      search: body.search,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/cost-of-sales/stream/:jobId')
+  @ApiOperation({ summary: 'Stream Cost of Sales calculation preview progress via SSE' })
+  streamCostOfSalesProgress(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(() => this.costOfSalesExportService.getJobQueueStatus(jobId)),
+      map((status) => ({ data: status } as MessageEvent)),
+    );
+  }
+
+  @Get('reports/cost-of-sales/result/:jobId')
+  @ApiOperation({ summary: 'Get cached Cost of Sales preview calculation result' })
+  async getCostOfSalesResult(@Param('jobId') jobId: string) {
+    const data = this.costOfSalesExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      throw new NotFoundException(`Preview result for job ${jobId} not found or expired.`);
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/cost-of-sales/export/register-client-export')
+  @ApiOperation({ summary: 'Register client generated Cost of Sales Excel/PDF file with S3' })
+  async registerClientCostOfSalesExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.userId || req.user?.id;
+    const fileBuffer = Buffer.from(body.fileBase64, 'base64');
+    const result = await this.costOfSalesExportService.registerClientGeneratedExport({
+      userId,
+      fileName: body.fileName,
+      fileBuffer,
+      mimeType: body.mimeType,
+    });
+    return { status: true, data: result };
+  }
+
   @Post('reports/cost-of-sales/export')
   @ApiOperation({ summary: 'Queue background export job for Cost of Sales' })
   async queueCostOfSalesExport(@Body() body: any, @Req() req: any) {
@@ -1241,7 +1305,9 @@ export class PosSalesController {
       startDate: body.startDate,
       endDate: body.endDate,
       format: body.format || 'xlsx',
+      exportType: body.exportType || 'hierarchical',
       search: body.search,
+      previewJobId: body.previewJobId,
     });
     return { status: true, data: result };
   }
@@ -1451,5 +1517,425 @@ export class PosSalesController {
   @ApiOperation({ summary: 'Download completed Unified Voucher Register export file' })
   async streamVoucherRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
     return this.voucherRegisterExportService.streamExportFile(jobId, res);
+  }
+
+  // ─── Sales List PRO ERP Preview & SSE Endpoints ─────────────────────────
+  @Post('reports/sales-list/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueSalesListPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesListExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/sales-list/stream/:jobId')
+  streamSalesListStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.salesListExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing sales list calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/sales-list/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getSalesListResult(@Param('jobId') jobId: string) {
+    const data = await this.salesListExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Sales list preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/sales-list/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerSalesListClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesListExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
+  }
+
+  // ─── Sales Register PRO ERP Preview & SSE Endpoints ─────────────────────
+  @Post('reports/sales-register/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueSalesRegisterPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesRegisterExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/sales-register/stream/:jobId')
+  streamSalesRegisterStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.salesRegisterExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing sales register calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/sales-register/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getSalesRegisterResult(@Param('jobId') jobId: string) {
+    const data = await this.salesRegisterExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Sales register preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/sales-register/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerSalesRegisterClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesRegisterExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
+  }
+
+  // ─── Gross Sales Return PRO ERP Preview & SSE Endpoints ─────────────────
+  @Post('reports/gross-sales-return/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueGrossSalesReturnPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.grossSalesExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/gross-sales-return/stream/:jobId')
+  streamGrossSalesReturnStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.grossSalesExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing sales return register calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/gross-sales-return/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getGrossSalesReturnResult(@Param('jobId') jobId: string) {
+    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Sales return preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/gross-sales-return/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerGrossSalesReturnClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.grossSalesExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
+  }
+
+  // ─── Gross Sales Summary PRO ERP Preview & SSE Endpoints ────────────────
+  @Post('reports/gross-sales-summary/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueGrossSalesSummaryPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.grossSalesExportService.queueSummaryReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/gross-sales-summary/stream/:jobId')
+  streamGrossSalesSummaryStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.grossSalesExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing gross sales summary calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/gross-sales-summary/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getGrossSalesSummaryResult(@Param('jobId') jobId: string) {
+    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Gross sales summary preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/gross-sales-summary/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerGrossSalesSummaryClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.grossSalesExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
+  }
+
+  // ─── Net Sales Summary PRO ERP Preview & SSE Endpoints ──────────────────
+  @Post('reports/net-sales-summary/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueNetSalesSummaryPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.netSalesSummaryExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/net-sales-summary/stream/:jobId')
+  streamNetSalesSummaryStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.netSalesSummaryExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing net sales summary calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/net-sales-summary/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
+    const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Net sales summary preview result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/net-sales-summary/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerNetSalesSummaryClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.netSalesSummaryExportService.registerClientGeneratedExport(
+      this.prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
   }
 }

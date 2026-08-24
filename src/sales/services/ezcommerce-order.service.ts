@@ -88,6 +88,7 @@ export class EzcommerceOrderService {
           { code: cleanCenterId },
           { shortCode: cleanCenterId },
           { centerId: cleanCenterId },
+          { name: { contains: cleanCenterId, mode: 'insensitive' } },
         ],
         isDeleted: false,
       },
@@ -96,14 +97,17 @@ export class EzcommerceOrderService {
 
     if (location) {
       locationId = location.id;
-      warehouseId = location.warehouseId || location.id;
-    } else {
+      warehouseId = location.warehouseId || null;
+    }
+
+    if (!warehouseId) {
       const warehouse = await this.prisma.warehouse.findFirst({
         where: {
           OR: [
             { id: cleanCenterId },
             { code: cleanCenterId },
             { centerId: cleanCenterId },
+            { name: { contains: cleanCenterId, mode: 'insensitive' } },
           ],
           isDeleted: false,
         },
@@ -112,9 +116,23 @@ export class EzcommerceOrderService {
 
       if (warehouse) {
         warehouseId = warehouse.id;
+      }
+    }
+
+    // Fallback: If center_id doesn't directly map to a warehouse ID,
+    // fetch default active warehouse UUID to satisfy StockLedger foreign key requirement
+    if (!warehouseId) {
+      const defaultWh = await this.prisma.warehouse.findFirst({
+        where: { isDeleted: false, isActive: true },
+        select: { id: true },
+      });
+      if (defaultWh) {
+        warehouseId = defaultWh.id;
       } else {
-        locationId = cleanCenterId;
-        warehouseId = cleanCenterId;
+        const anyWh = await this.prisma.warehouse.findFirst({
+          select: { id: true },
+        });
+        warehouseId = anyWh?.id || null;
       }
     }
 
@@ -251,7 +269,16 @@ export class EzcommerceOrderService {
       targetLocId,
     );
 
-    // 4. Create Sales Order & Items with ERP Tax & Discount breakdown
+    // 4. Resolve Tender Breakdown (COD vs Card/Online)
+    const rawMethod = (dto.paymentMethod || 'COD').trim();
+    const upperMethod = rawMethod.toUpperCase();
+    const isCodOrCash = upperMethod.includes('COD') || upperMethod.includes('CASH');
+
+    const tenderType = isCodOrCash ? 'COD' : 'ONLINE';
+    const cashAmount = isCodOrCash ? grandTotal : 0;
+    const cardAmount = isCodOrCash ? 0 : grandTotal;
+
+    // Create Sales Order & Items with full Tender & Tax breakdown
     const salesOrder = await this.prisma.salesOrder.create({
       data: {
         orderNumber,
@@ -261,8 +288,13 @@ export class EzcommerceOrderService {
         discountAmount: totalDiscount,
         taxAmount: Math.round(totalTaxAmount * 100) / 100,
         grandTotal,
-        paymentMethod: dto.paymentMethod || 'ONLINE',
-        paymentStatus: dto.paymentStatus || 'paid',
+        paymentMethod: rawMethod,
+        paymentStatus: dto.paymentStatus || (isCodOrCash ? 'unpaid' : 'paid'),
+        tenderType,
+        cashAmount,
+        cardAmount,
+        changeAmount: 0,
+        voucherAmount: 0,
         status: 'completed',
         notes: `${ezRefText} | ${dto.notes || 'Online Order'}`,
         items: {
@@ -279,6 +311,7 @@ export class EzcommerceOrderService {
       },
       include: {
         items: true,
+        customer: true,
       },
     });
 
@@ -328,6 +361,11 @@ export class EzcommerceOrderService {
       message: 'Order confirmed and synced successfully',
       orderNumber: salesOrder.orderNumber,
       grandTotal: Number(salesOrder.grandTotal),
+      paymentMethod: salesOrder.paymentMethod,
+      paymentStatus: salesOrder.paymentStatus,
+      tenderType: salesOrder.tenderType,
+      cashAmount: Number(salesOrder.cashAmount || 0),
+      cardAmount: Number(salesOrder.cardAmount || 0),
       itemsCount: salesOrder.items.length,
     };
   }

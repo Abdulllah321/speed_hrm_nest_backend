@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body, Sse, MessageEvent } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body, Sse, MessageEvent, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Observable, interval } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { StockLedgerService } from './stock-ledger.service';
@@ -7,6 +8,7 @@ import { StockValuationExportService } from './stock-valuation-export.service';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
 import { AvailableStockSummaryExportService } from './available-stock-summary-export.service';
 import { OverallAvailableReservedStockExportService } from './overall-available-reserved-stock-export.service';
+import { InventoryAgingExportService } from './inventory-aging-export.service';
 import { MovementType } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -21,6 +23,7 @@ export class StockLedgerController {
     private readonly stockTransactionDetailExportService: StockTransactionDetailExportService,
     private readonly availableStockSummaryExportService: AvailableStockSummaryExportService,
     private readonly overallAvailableReservedStockExportService: OverallAvailableReservedStockExportService,
+    private readonly inventoryAgingExportService: InventoryAgingExportService,
     private readonly fiscalClosingService: FiscalYearClosingService,
   ) { }
 
@@ -196,8 +199,78 @@ export class StockLedgerController {
       await this.stockActivityExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
     }
+  }
+
+  // ─── Stock Activity PRO ERP Preview & SSE Endpoints ──────────────────────
+  @Post('reports/stock-activity/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueStockActivityPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockActivityExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/stock-activity/stream/:jobId')
+  streamStockActivityStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.stockActivityExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            status: queueStatus.status || queueStatus.state,
+            state: queueStatus.state,
+            progress: queueStatus.progress,
+            message: queueStatus.message,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            failedReason: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('reports/stock-activity/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getStockActivityResult(@Param('jobId') jobId: string) {
+    const data = await this.stockActivityExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Stock Activity report result not found or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/stock-activity/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerClientStockActivityExport(
+    @Req() req: any,
+    @Body() body: {
+      fileName: string;
+      fileBase64: string;
+      mimeType: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockActivityExportService.registerClientGeneratedExport(
+      req.prisma || (this.stockLedgerService as any).prisma,
+      userId,
+      body,
+    );
+    return { status: true, data: result };
   }
 
   @Get('valuation-report')
@@ -503,6 +576,27 @@ export class StockLedgerController {
     return { status: true, data: result };
   }
 
+  @Post('available-stock-summary/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerClientGeneratedExport(
+    @Req() req: any,
+    @UploadedFile() file: any,
+    @Body() body: { fileName?: string; format?: 'xlsx' | 'pdf' },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    if (!file || !file.buffer) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const result = await this.availableStockSummaryExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName: body.fileName || `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${body.format || 'xlsx'}`,
+      format: body.format || 'xlsx',
+    });
+    return { status: true, data: result };
+  }
+
   @Post('valuation-report/queue')
   @UseGuards(JwtAuthGuard)
   async queueValuationReportPreview(
@@ -736,6 +830,188 @@ export class StockLedgerController {
       const status = err?.status ?? 404;
       res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
     }
+  }
+
+  @Post('overall-available-reserved-stock/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerOverallAvailableReservedStockClientExport(
+    @UploadedFile() file: any,
+    @Body('fileName') fileName: string,
+    @Body('format') formatStr: string,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      return { status: false, message: 'No file uploaded' };
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.overallAvailableReservedStockExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName,
+      format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
+    });
+    return { status: true, data: result };
+  }
+
+  // ─── Stock Transaction Detail Report SSE & Export Endpoints ────────────────
+
+  @Post('stock-transaction-detail/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueStockTransactionDetailPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      itemId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+      showBrand?: boolean;
+      showDivision?: boolean;
+      showCategory?: boolean;
+      showGender?: boolean;
+      showSilhouette?: boolean;
+      showArticle?: boolean;
+      showVariant?: boolean;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockTransactionDetailExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('stock-transaction-detail/stream/:jobId')
+  streamStockTransactionDetailReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.stockTransactionDetailExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            message: status.message,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('stock-transaction-detail/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getStockTransactionDetailReportResult(@Param('jobId') jobId: string) {
+    const data = this.stockTransactionDetailExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return { status: false, message: 'Report result not ready or expired' };
+    }
+    return { status: true, data };
+  }
+
+  @Post('stock-transaction-detail/cancel-preview/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async cancelStockTransactionDetailPreview(@Param('jobId') jobId: string) {
+    this.stockTransactionDetailExportService.cancelReportPreview(jobId);
+    return { status: true, message: 'Preview job cancelled' };
+  }
+
+  @Post('stock-transaction-detail/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerStockTransactionDetailClientExport(
+    @UploadedFile() file: any,
+    @Body('fileName') fileName: string,
+    @Body('format') formatStr: string,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      return { status: false, message: 'No file uploaded' };
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.stockTransactionDetailExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName,
+      format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
+    });
+    return { status: true, data: result };
+  }
+
+  // ─── Inventory Aging Report SSE & Export Endpoints ─────────────────────────
+
+  @Post('inventory-aging/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueInventoryAgingPreview(
+    @Req() req: any,
+    @Body() body: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      reportType?: 'merged' | 'separate';
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.inventoryAgingExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('inventory-aging/stream/:jobId')
+  streamInventoryAgingReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const status = await this.inventoryAgingExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            jobId,
+            status: status.state,
+            progress: status.progress,
+            message: status.message,
+            queuePosition: status.queuePosition,
+            waitingCount: status.waitingCount,
+            failedReason: status.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('inventory-aging/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getInventoryAgingReportResult(@Param('jobId') jobId: string) {
+    const res = await this.inventoryAgingExportService.getPreviewResult(jobId);
+    return res;
+  }
+
+  @Post('inventory-aging/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async registerInventoryAgingClientExport(
+    @UploadedFile() file: any,
+    @Body('fileName') fileName: string,
+    @Body('format') formatStr: string,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      return { status: false, message: 'No file uploaded' };
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.inventoryAgingExportService.registerClientGeneratedExport({
+      userId,
+      fileBuffer: file.buffer,
+      fileName,
+      format: formatStr === 'pdf' ? 'pdf' : 'xlsx',
+    });
+    return { status: true, data: result };
   }
 
   @Post('fiscal-year-close/execute')

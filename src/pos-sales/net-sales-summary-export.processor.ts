@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
+import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
 
 export interface NetSalesSummaryExportJobData {
   jobId: string;
@@ -63,6 +64,7 @@ export class NetSalesSummaryExportProcessor {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly netSalesSummaryExportService: NetSalesSummaryExportService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -82,6 +84,60 @@ export class NetSalesSummaryExportProcessor {
       } catch (e: any) {
         this.logger.warn(`Error trying to run chromium dependencies installer: ${e.message}`);
       }
+    }
+  }
+
+  @Process('generate-net-sales-summary-preview')
+  async handleGeneratePreview(job: Job<any>): Promise<void> {
+    const {
+      jobId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      cashierUserId,
+      reportType,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = job.data;
+    this.logger.log(`[NetSalesSummaryPreview ${jobId}] Starting background net-sales-summary preview computation`);
+
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+    try {
+      await job.progress({ percent: 10, message: 'Queueing net sales summary preview computation task...' });
+
+      const result = await this.netSalesSummaryExportService.generateNetSalesSummaryReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      await this.netSalesSummaryExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Successfully generated net-sales-summary preview result' });
+      this.logger.log(`[NetSalesSummaryPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[NetSalesSummaryPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      throw err;
     }
   }
 
