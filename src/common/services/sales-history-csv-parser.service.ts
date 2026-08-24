@@ -85,19 +85,22 @@ export class SalesHistoryCsvParserService {
     private parseBarCode(value: any): string | null {
         if (value === null || value === undefined) return null;
 
-        // If it's already a string with no scientific notation, return as-is
         if (typeof value === 'string') {
             const s = value.trim();
             if (!s || s === '-' || s.toLowerCase() === 'n/a') return null;
-            // Handle scientific notation in string form
+            // Handle scientific notation in string form safely
             if (/e[+\-]/i.test(s)) {
-                const n = parseFloat(s);
-                if (!isNaN(n)) return Math.round(n).toString();
+                try {
+                    const BigNumber = BigInt(Math.round(parseFloat(s)));
+                    return BigNumber.toString();
+                } catch {
+                    const n = parseFloat(s);
+                    if (!isNaN(n)) return Math.round(n).toString();
+                }
             }
             return s;
         }
 
-        // Numeric value from Excel — convert to integer string
         if (typeof value === 'number') {
             return Math.round(value).toString();
         }

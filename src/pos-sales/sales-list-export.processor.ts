@@ -10,6 +10,8 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+import { SalesListExportService } from './sales-list-export.service';
+
 interface SalesListExportJobData {
   jobId: string;
   userId: string;
@@ -20,6 +22,23 @@ interface SalesListExportJobData {
   endDate?: string;
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
+  search?: string;
+  paymentModeGroup?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  fbrOnly?: boolean;
+}
+
+export interface SalesListPreviewJobData {
+  jobId: string;
+  userId: string;
+  tenantId: string;
+  tenantDbUrl: string;
+  locationId?: string;
+  startDate?: string;
+  endDate?: string;
+  cashierUserId?: string;
+  reportType?: 'merged' | 'separate';
   search?: string;
   paymentModeGroup?: string;
   minAmount?: number;
@@ -56,6 +75,7 @@ export class SalesListExportProcessor {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly salesListExportService: SalesListExportService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -67,6 +87,60 @@ export class SalesListExportProcessor {
       } catch (e: any) {
         this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
       }
+    }
+  }
+
+  @Process('generate-sales-list-preview')
+  async handleGeneratePreview(job: Job<SalesListPreviewJobData>): Promise<void> {
+    const {
+      jobId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      cashierUserId,
+      reportType,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = job.data;
+    this.logger.log(`[SalesListPreview ${jobId}] Starting background sales-list preview computation`);
+
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+    try {
+      await job.progress({ percent: 10, message: 'Queueing sales list preview computation task...' });
+
+      const result = await this.salesListExportService.generateSalesListReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      await this.salesListExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Successfully generated sales-list preview result' });
+      this.logger.log(`[SalesListPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      throw err;
     }
   }
 

@@ -3,29 +3,600 @@ import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
+import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrismaMasterService } from '../database/prisma-master.service';
 import { UploadService } from '../upload/upload.service';
+import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
+
+const gzipAsync = promisify(zlib.gzip);
+const gunzipAsync = promisify(zlib.gunzip);
+
+export interface SalesRegisterTotals {
+  orderCount: number;
+  totalItems: number;
+  grossAmount: number;
+  discountAmount: number;
+  netAmount: number;
+  taxAmount: number;
+  paidAmount: number;
+  cashAmount: number;
+  cardAmount: number;
+  walletAmount: number;
+  creditAmount: number;
+}
+
+export interface SalesRegisterLineItem {
+  id: string;
+  orderNumber: string;
+  sku: string;
+  barCode: string;
+  description: string;
+  categoryName: string;
+  brandName: string;
+  sizeName: string;
+  colorName: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount: number;
+  taxAmount: number;
+  subTotal: number;
+}
+
+export interface SalesRegisterInvoiceNode {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  customerName: string;
+  customerPhone: string;
+  cashierName: string;
+  paymentMethod: string;
+  fbrInvoiceNumber: string;
+  fbrStatus: string;
+  totals: SalesRegisterTotals;
+  items: SalesRegisterLineItem[];
+}
+
+export interface SalesRegisterLocationNode {
+  locationKey: string;
+  locationId?: string;
+  locationName: string;
+  invoices: SalesRegisterInvoiceNode[];
+  totals: SalesRegisterTotals;
+}
+
+export interface SalesRegisterFlatRecord {
+  locationName: string;
+  orderNumber: string;
+  orderDate: string;
+  cashierName: string;
+  customerName: string;
+  customerPhone: string;
+  paymentMethod: string;
+  fbrInvoiceNumber: string;
+  fbrStatus: string;
+  sku: string;
+  barCode: string;
+  description: string;
+  categoryName: string;
+  brandName: string;
+  sizeName: string;
+  colorName: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount: number;
+  taxAmount: number;
+  subTotal: number;
+  orderGrossAmount: number;
+  orderDiscountAmount: number;
+  orderNetAmount: number;
+  orderTaxAmount: number;
+}
+
+export interface SalesRegisterReportResult {
+  reportType: 'merged' | 'separate';
+  locations?: SalesRegisterLocationNode[];
+  invoices: SalesRegisterInvoiceNode[];
+  flatItems: SalesRegisterFlatRecord[];
+  grandTotals: SalesRegisterTotals;
+  dateRange: { startDate?: string; endDate?: string };
+  locationNames: string;
+}
 
 export interface QueueSalesRegisterExportOptions {
   userId: string;
-  locationId: string;
+  locationId?: string;
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
   search?: string;
+  paymentModeGroup?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  fbrOnly?: boolean;
 }
 
 @Injectable()
 export class SalesRegisterExportService {
   private readonly logger = new Logger(SalesRegisterExportService.name);
+  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
 
   constructor(
     @InjectQueue('sales-register-export') private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
+    private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
-  ) {}
+    private readonly exportHistoryService: ExportHistoryService,
+  ) {
+    if (!fs.existsSync(this.previewStorageDir)) {
+      fs.mkdirSync(this.previewStorageDir, { recursive: true });
+    }
+  }
+
+  async queueReportPreview(opts: {
+    userId: string;
+    locationId?: string;
+    startDate?: string;
+    endDate?: string;
+    cashierUserId?: string;
+    reportType?: 'merged' | 'separate';
+    search?: string;
+    paymentModeGroup?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    fbrOnly?: boolean;
+  }): Promise<{ jobId: string }> {
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    await this.exportQueue.add(
+      'generate-sales-register-preview',
+      {
+        jobId,
+        userId: opts.userId,
+        tenantId,
+        tenantDbUrl,
+        locationId: opts.locationId,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
+        cashierUserId: opts.cashierUserId,
+        reportType: opts.reportType || 'merged',
+        search: opts.search,
+        paymentModeGroup: opts.paymentModeGroup,
+        minAmount: opts.minAmount,
+        maxAmount: opts.maxAmount,
+        fbrOnly: opts.fbrOnly,
+      },
+      {
+        jobId: `preview-${jobId}`,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+        timeout: 60 * 60 * 1000,
+      },
+    );
+
+    this.logger.log(`[SalesRegisterReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    return { jobId };
+  }
+
+  async getJobQueueStatus(jobId: string): Promise<{
+    status: string;
+    state: string;
+    progress: number;
+    message: string;
+    queuePosition: number;
+    waitingCount: number;
+    failedReason?: string;
+  }> {
+    const job = await this.exportQueue.getJob(`preview-${jobId}`) || await this.exportQueue.getJob(jobId);
+    if (!job) {
+      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+    }
+
+    const state = await job.getState();
+    const progressRaw = job.progress();
+    let progress = 0;
+    let message = '';
+
+    if (typeof progressRaw === 'number') {
+      progress = progressRaw;
+    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
+      progress = (progressRaw as any).percent || 0;
+      message = (progressRaw as any).message || '';
+    }
+
+    let queuePosition = 0;
+    let waitingCount = 0;
+
+    if (state === 'waiting' || state === 'delayed') {
+      const [waiting, active] = await Promise.all([
+        this.exportQueue.getWaiting(),
+        this.exportQueue.getActive(),
+      ]);
+      waitingCount = waiting.length;
+      const allJobs = [...active, ...waiting];
+      const idx = allJobs.findIndex((j) => j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId);
+      queuePosition = idx >= 0 ? idx + 1 : 1;
+    }
+
+    return {
+      status: state,
+      state,
+      progress,
+      message,
+      queuePosition,
+      waitingCount,
+      failedReason: job.failedReason,
+    };
+  }
+
+  async saveReportPreviewResult(jobId: string, result: SalesRegisterReportResult): Promise<void> {
+    const jsonStr = JSON.stringify(result);
+    const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
+    const filePath = path.join(this.previewStorageDir, `sales-register-preview-${jobId}.json.gz`);
+    await fs.promises.writeFile(filePath, compressed);
+  }
+
+  async getReportPreviewResult(jobId: string): Promise<SalesRegisterReportResult | null> {
+    const filePath = path.join(this.previewStorageDir, `sales-register-preview-${jobId}.json.gz`);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const compressed = await fs.promises.readFile(filePath);
+    const decompressed = await gunzipAsync(compressed);
+    return JSON.parse(decompressed.toString('utf8'));
+  }
+
+  async generateSalesRegisterReportDataInternal(
+    prisma: PrismaService,
+    opts: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+      onProgress?: (percent: number, message: string) => Promise<void> | void;
+    },
+  ): Promise<SalesRegisterReportResult> {
+    const {
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      reportType = 'merged',
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+      onProgress,
+    } = opts;
+
+    const isSeparate = reportType === 'separate';
+    const now = new Date();
+
+    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+      if (!dateStr) {
+        if (isEndOfDay) {
+          const d = new Date(now);
+          d.setHours(23, 59, 59, 999);
+          return d;
+        } else {
+          return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        }
+      }
+      if (dateStr.includes('T') || dateStr.includes('Z')) {
+        const d = new Date(dateStr);
+        if (isEndOfDay && !dateStr.includes('T23:59:59')) {
+          d.setHours(23, 59, 59, 999);
+        }
+        return d;
+      }
+      const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+      return new Date(`${dateStr}${timePart}`);
+    };
+
+    const startDate = parseLocalDate(startStr, false);
+    const endDate = parseLocalDate(endStr, true);
+
+    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+
+    await onProgress?.(15, 'Loading outlet metadata & cashier user profiles...');
+
+    const [allLocations, cashiersList] = await Promise.all([
+      prisma.location.findMany({ select: { id: true, name: true } }),
+      this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+    ]);
+
+    const locationMap = new Map<string, string>();
+    for (const l of allLocations) locationMap.set(l.id, l.name);
+
+    const cashierMap = new Map<string, string>();
+    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+
+    let locationNames = '';
+    if (locIds.length > 0) {
+      const locs = allLocations.filter((l) => locIds.includes(l.id));
+      locationNames = locs.map((l) => l.name).join(', ');
+    }
+    if (!locationNames) locationNames = 'All Outlets (Stores)';
+
+    await onProgress?.(30, 'Querying POS sales register invoices from database...');
+
+    const where: any = {
+      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
+      createdAt: { gte: startDate, lte: endDate },
+    };
+
+    if (locationWhere) where.locationId = locationWhere;
+    if (cashierUserId) where.cashierUserId = cashierUserId;
+    if (fbrOnly) where.fbrInvoiceNumber = { not: null };
+
+    if (paymentModeGroup) {
+      where.paymentMethod = { equals: paymentModeGroup, mode: 'insensitive' };
+    }
+
+    if (minAmount !== undefined || maxAmount !== undefined) {
+      where.grandTotal = {};
+      if (minAmount !== undefined) where.grandTotal.gte = Number(minAmount);
+      if (maxAmount !== undefined) where.grandTotal.lte = Number(maxAmount);
+    }
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      where.OR = [
+        { orderNumber: { contains: s, mode: 'insensitive' } },
+        { fbrInvoiceNumber: { contains: s, mode: 'insensitive' } },
+        { customer: { name: { contains: s, mode: 'insensitive' } } },
+        { customer: { contactNo: { contains: s, mode: 'insensitive' } } },
+      ];
+    }
+
+    const rawOrders = await prisma.salesOrder.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { name: true, contactNo: true } },
+        items: {
+          include: {
+            item: {
+              select: {
+                description: true,
+                sku: true,
+                barCode: true,
+                category: { select: { name: true } },
+                brand: { select: { name: true } },
+                size: { select: { name: true } },
+                color: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await onProgress?.(70, 'Building sales register hierarchy matrix...');
+
+    const createEmptyTotals = (): SalesRegisterTotals => ({
+      orderCount: 0,
+      totalItems: 0,
+      grossAmount: 0,
+      discountAmount: 0,
+      netAmount: 0,
+      taxAmount: 0,
+      paidAmount: 0,
+      cashAmount: 0,
+      cardAmount: 0,
+      walletAmount: 0,
+      creditAmount: 0,
+    });
+
+    const addTotals = (target: SalesRegisterTotals, source: SalesRegisterTotals) => {
+      target.orderCount += source.orderCount;
+      target.totalItems += source.totalItems;
+      target.grossAmount += source.grossAmount;
+      target.discountAmount += source.discountAmount;
+      target.netAmount += source.netAmount;
+      target.taxAmount += source.taxAmount;
+      target.paidAmount += source.paidAmount;
+      target.cashAmount += source.cashAmount;
+      target.cardAmount += source.cardAmount;
+      target.walletAmount += source.walletAmount;
+      target.creditAmount += source.creditAmount;
+    };
+
+    const grandTotals = createEmptyTotals();
+    const flatItems: SalesRegisterFlatRecord[] = [];
+    const invoiceNodes: SalesRegisterInvoiceNode[] = [];
+    const locationNodesMap = new Map<string, SalesRegisterLocationNode>();
+
+    for (const order of rawOrders) {
+      const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
+      const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
+      const custName = order.customer?.name || 'Walk-in Customer';
+      const custPhone = order.customer?.contactNo || '-';
+      const payMethod = (order.paymentMethod || 'CASH').toUpperCase();
+      const fbrInv = order.fbrInvoiceNumber || '-';
+      const fbrStatus = order.fbrStatus || 'NONE';
+
+      const gross = Number(order.subtotal || 0);
+      const disc = Number(order.discountAmount || 0);
+      const net = Number(order.grandTotal || 0);
+      const tax = Number(order.taxAmount || 0);
+      const paid = net;
+
+      let cashAmt = Number(order.cashAmount || 0);
+      let cardAmt = Number(order.cardAmount || 0);
+      let walletAmt = Number(order.voucherAmount || 0);
+      let creditAmt = 0;
+
+      if (cashAmt === 0 && cardAmt === 0 && walletAmt === 0) {
+        if (payMethod.includes('CASH')) cashAmt = paid;
+        else if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardAmt = paid;
+        else if (payMethod.includes('WALLET') || payMethod.includes('ONLINE')) walletAmt = paid;
+        else creditAmt = paid;
+      }
+
+      const lineItems: SalesRegisterLineItem[] = (order.items || []).map((item) => ({
+        id: item.id,
+        orderNumber: order.orderNumber,
+        sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
+        barCode: item.item?.barCode || item.item?.sku || '-',
+        description: item.item?.description || item.item?.sku || 'Article',
+        categoryName: item.item?.category?.name || 'Default',
+        brandName: item.item?.brand?.name || 'Default',
+        sizeName: item.item?.size?.name || 'Default',
+        colorName: item.item?.color?.name || 'Default',
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.unitPrice || 0),
+        discountAmount: Number(item.discountAmount || 0),
+        taxAmount: Number(item.taxAmount || 0),
+        subTotal: Number(item.lineTotal || 0),
+      }));
+
+      const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
+
+      const orderTotals: SalesRegisterTotals = {
+        orderCount: 1,
+        totalItems: totalItemsCount,
+        grossAmount: gross,
+        discountAmount: disc,
+        netAmount: net,
+        taxAmount: tax,
+        paidAmount: paid,
+        cashAmount: cashAmt,
+        cardAmount: cardAmt,
+        walletAmount: walletAmt,
+        creditAmount: creditAmt,
+      };
+
+      addTotals(grandTotals, orderTotals);
+
+      const invNode: SalesRegisterInvoiceNode = {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        createdAt: order.createdAt.toISOString(),
+        customerName: custName,
+        customerPhone: custPhone,
+        cashierName,
+        paymentMethod: payMethod,
+        fbrInvoiceNumber: fbrInv,
+        fbrStatus,
+        totals: orderTotals,
+        items: lineItems,
+      };
+
+      invoiceNodes.push(invNode);
+
+      for (const line of lineItems) {
+        flatItems.push({
+          locationName: locName,
+          orderNumber: order.orderNumber,
+          orderDate: order.createdAt.toISOString(),
+          cashierName,
+          customerName: custName,
+          customerPhone: custPhone,
+          paymentMethod: payMethod,
+          fbrInvoiceNumber: fbrInv,
+          fbrStatus,
+          sku: line.sku,
+          barCode: line.barCode,
+          description: line.description,
+          categoryName: line.categoryName,
+          brandName: line.brandName,
+          sizeName: line.sizeName,
+          colorName: line.colorName,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          discountAmount: line.discountAmount,
+          taxAmount: line.taxAmount,
+          subTotal: line.subTotal,
+          orderGrossAmount: gross,
+          orderDiscountAmount: disc,
+          orderNetAmount: net,
+          orderTaxAmount: tax,
+        });
+      }
+
+      if (isSeparate) {
+        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+        let locNode = locationNodesMap.get(locKey);
+        if (!locNode) {
+          locNode = {
+            locationKey: locKey,
+            locationId: order.locationId || undefined,
+            locationName: locName,
+            invoices: [],
+            totals: createEmptyTotals(),
+          };
+          locationNodesMap.set(locKey, locNode);
+        }
+        locNode.invoices.push(invNode);
+        addTotals(locNode.totals, orderTotals);
+      }
+    }
+
+    await onProgress?.(100, 'Sales Register report computation complete!');
+
+    return {
+      reportType,
+      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
+      invoices: invoiceNodes,
+      flatItems,
+      grandTotals,
+      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      locationNames,
+    };
+  }
+
+  async registerClientGeneratedExport(
+    prisma: PrismaService,
+    userId: string,
+    opts: {
+      fileName: string;
+      fileBase64: string;
+      mimeType: string;
+    },
+  ): Promise<{ jobId: string; downloadUrl: string }> {
+    const jobId = uuidv4();
+    const fileBuffer = Buffer.from(opts.fileBase64, 'base64');
+    const localDir = path.join(process.cwd(), 'uploads', 'exports');
+    await fs.promises.mkdir(localDir, { recursive: true });
+    const localPath = path.join(localDir, `${jobId}-${opts.fileName}`);
+    await fs.promises.writeFile(localPath, fileBuffer);
+
+    await prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId,
+        fileName: opts.fileName,
+        filePath: localPath,
+        moduleName: 'SALES_REGISTER_REPORT',
+        status: 'PENDING',
+      },
+    });
+
+    const downloadUrl = await this.exportHistoryService.completeAndUploadExport(
+      prisma,
+      jobId,
+      localPath,
+      opts.fileName,
+      opts.mimeType,
+    );
+
+    return { jobId, downloadUrl };
+  }
 
   async queueExport(opts: QueueSalesRegisterExportOptions): Promise<{ jobId: string }> {
     const jobId = uuidv4();
@@ -33,7 +604,6 @@ export class SalesRegisterExportService {
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
 
-    // Save export job request in history audit table
     await this.prisma.exportHistory.create({
       data: {
         id: jobId,
@@ -57,6 +627,10 @@ export class SalesRegisterExportService {
         cashierUserId: opts.cashierUserId,
         format: opts.format,
         search: opts.search,
+        paymentModeGroup: opts.paymentModeGroup,
+        minAmount: opts.minAmount,
+        maxAmount: opts.maxAmount,
+        fbrOnly: opts.fbrOnly,
       },
       {
         jobId,
@@ -67,7 +641,7 @@ export class SalesRegisterExportService {
       },
     );
 
-    this.logger.log(`[SalesRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
+    this.logger.log(`[SalesRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
     return { jobId };
   }
 
@@ -89,7 +663,6 @@ export class SalesRegisterExportService {
       throw new NotFoundException(`Export record ${jobId} not found in database`);
     }
 
-    // Increment download count in ExportHistory
     try {
       await this.prisma.exportHistory.update({
         where: { id: jobId },

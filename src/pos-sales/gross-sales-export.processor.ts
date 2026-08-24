@@ -11,6 +11,8 @@ import { ExportHistoryService } from '../warehouse/export-history/export-history
 import { NotificationsService } from '../notifications/notifications.service';
 import { PosSalesService } from './pos-sales.service';
 
+import { GrossSalesExportService } from './gross-sales-export.service';
+
 interface GrossSalesExportJobData {
   jobId: string;
   userId: string;
@@ -36,6 +38,23 @@ interface GrossSalesExportJobData {
   showVariant?: boolean;
   showInvoices?: boolean;
   reportType: 'summary' | 'return';
+}
+
+export interface GrossSalesReturnPreviewJobData {
+  jobId: string;
+  userId: string;
+  tenantId: string;
+  tenantDbUrl: string;
+  locationId?: string;
+  startDate?: string;
+  endDate?: string;
+  cashierUserId?: string;
+  reportType?: 'merged' | 'separate';
+  search?: string;
+  paymentModeGroup?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  fbrOnly?: boolean;
 }
 
 const COLUMNS = [
@@ -65,6 +84,7 @@ export class GrossSalesExportProcessor {
     private readonly posSalesService: PosSalesService,
     private readonly exportHistoryService: ExportHistoryService,
     private readonly notificationsService: NotificationsService,
+    private readonly grossSalesExportService: GrossSalesExportService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -76,6 +96,114 @@ export class GrossSalesExportProcessor {
       } catch (e: any) {
         this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
       }
+    }
+  }
+
+  @Process('generate-gross-sales-return-preview')
+  async handleGenerateReturnPreview(job: Job<GrossSalesReturnPreviewJobData>): Promise<void> {
+    const {
+      jobId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      cashierUserId,
+      reportType,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = job.data;
+    this.logger.log(`[GrossSalesReturnPreview ${jobId}] Starting background gross-sales-return preview computation`);
+
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+    try {
+      await job.progress({ percent: 10, message: 'Queueing sales return register preview computation task...' });
+
+      const result = await this.grossSalesExportService.generateGrossSalesReturnReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      await this.grossSalesExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Successfully generated sales-return preview result' });
+      this.logger.log(`[GrossSalesReturnPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[GrossSalesReturnPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      throw err;
+    }
+  }
+
+  @Process('generate-gross-sales-summary-preview')
+  async handleGenerateSummaryPreview(job: Job<GrossSalesReturnPreviewJobData>): Promise<void> {
+    const {
+      jobId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      cashierUserId,
+      reportType,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = job.data;
+    this.logger.log(`[GrossSalesSummaryPreview ${jobId}] Starting background gross-sales-summary preview computation`);
+
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+    try {
+      await job.progress({ percent: 10, message: 'Queueing gross sales summary preview computation task...' });
+
+      const result = await this.grossSalesExportService.generateGrossSalesSummaryReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      await this.grossSalesExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Successfully generated gross-sales-summary preview result' });
+      this.logger.log(`[GrossSalesSummaryPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[GrossSalesSummaryPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      throw err;
     }
   }
 

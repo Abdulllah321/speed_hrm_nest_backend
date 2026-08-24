@@ -10,6 +10,8 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
 
+import { SalesRegisterExportService } from './sales-register-export.service';
+
 export interface SalesRegisterExportJobData {
   jobId: string;
   userId: string;
@@ -21,6 +23,23 @@ export interface SalesRegisterExportJobData {
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
   search?: string;
+}
+
+export interface SalesRegisterPreviewJobData {
+  jobId: string;
+  userId: string;
+  tenantId: string;
+  tenantDbUrl: string;
+  locationId?: string;
+  startDate?: string;
+  endDate?: string;
+  cashierUserId?: string;
+  reportType?: 'merged' | 'separate';
+  search?: string;
+  paymentModeGroup?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  fbrOnly?: boolean;
 }
 
 const COLUMNS = [
@@ -63,6 +82,7 @@ export class SalesRegisterExportProcessor {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly salesRegisterExportService: SalesRegisterExportService,
   ) {
     if (process.platform === 'linux') {
       try {
@@ -74,6 +94,60 @@ export class SalesRegisterExportProcessor {
       } catch (e: any) {
         this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
       }
+    }
+  }
+
+  @Process('generate-sales-register-preview')
+  async handleGeneratePreview(job: Job<SalesRegisterPreviewJobData>): Promise<void> {
+    const {
+      jobId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      cashierUserId,
+      reportType,
+      search,
+      paymentModeGroup,
+      minAmount,
+      maxAmount,
+      fbrOnly,
+    } = job.data;
+    this.logger.log(`[SalesRegisterPreview ${jobId}] Starting background sales-register preview computation`);
+
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
+    try {
+      await job.progress({ percent: 10, message: 'Queueing sales register preview computation task...' });
+
+      const result = await this.salesRegisterExportService.generateSalesRegisterReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
+        },
+      );
+
+      await this.salesRegisterExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Successfully generated sales-register preview result' });
+      this.logger.log(`[SalesRegisterPreview ${jobId}] Successfully generated and saved preview result`);
+    } catch (err: any) {
+      this.logger.error(`[SalesRegisterPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      throw err;
     }
   }
 
