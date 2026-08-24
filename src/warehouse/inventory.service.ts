@@ -212,7 +212,9 @@ export class InventoryService {
 
     const itemIds = items.map((i) => i.id);
 
-    let stockMap: Map<string, number>;
+    let stockMap: Map<string, number> = new Map();
+    let physicalMap: Map<string, number> = new Map();
+    let reservedMap: Map<string, number> = new Map();
 
     if (locationId) {
       // Outlet stock: use InventoryItem directly
@@ -227,6 +229,7 @@ export class InventoryService {
       stockMap = new Map(
         inventoryItems.map((inv) => [inv.itemId, Number(inv.quantity)]),
       );
+      physicalMap = stockMap;
     } else if (warehouseId) {
       // Warehouse stock: use StockLedger minus active reservations
       const stockEntries = await this.prisma.stockLedger.groupBy({
@@ -254,6 +257,11 @@ export class InventoryService {
 
       const resMap = new Map(
         reservations.map((r) => [r.itemId, Number(r._sum.quantity) || 0])
+      );
+      reservedMap = resMap;
+
+      physicalMap = new Map(
+        stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0])
       );
 
       stockMap = new Map(
@@ -288,11 +296,16 @@ export class InventoryService {
       for (const res of reservations) {
         const key = `${res.itemId}_${res.warehouseId}`;
         resMap.set(key, (resMap.get(key) || 0) + Number(res.quantity));
+        reservedMap.set(res.itemId, (reservedMap.get(res.itemId) || 0) + Number(res.quantity));
       }
 
       const globalMap = new Map<string, number>();
+      const globalPhysMap = new Map<string, number>();
       for (const inv of inventoryItems) {
-        let qty = Number(inv.quantity);
+        const pQty = Number(inv.quantity);
+        globalPhysMap.set(inv.itemId, (globalPhysMap.get(inv.itemId) || 0) + pQty);
+
+        let qty = pQty;
         if (!inv.locationId) {
           const key = `${inv.itemId}_${inv.warehouseId}`;
           const reserved = resMap.get(key) || 0;
@@ -301,12 +314,22 @@ export class InventoryService {
         globalMap.set(inv.itemId, (globalMap.get(inv.itemId) || 0) + qty);
       }
       stockMap = globalMap;
+      physicalMap = globalPhysMap;
     }
 
-    const result = items.map((item) => ({
-      ...item,
-      totalQuantity: stockMap.get(item.id) || 0,
-    }));
+    const result = items.map((item) => {
+      const avail = stockMap.get(item.id) || 0;
+      const physical = physicalMap.get(item.id) ?? avail;
+      const reserved = reservedMap.get(item.id) || 0;
+
+      return {
+        ...item,
+        totalQuantity: avail,
+        availableQuantity: avail,
+        physicalQuantity: physical,
+        reservedQuantity: reserved,
+      };
+    });
 
     return result;
   }
