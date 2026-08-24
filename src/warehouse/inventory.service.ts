@@ -183,6 +183,7 @@ export class InventoryService {
       where: {
         OR: query
           ? [
+            { id: query },
             { sku: { contains: query, mode: 'insensitive' } },
             { description: { contains: query, mode: 'insensitive' } },
             { barCode: { contains: query, mode: 'insensitive' } },

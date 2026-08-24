@@ -799,11 +799,13 @@ export class OverallAvailableReservedStockExportService {
         const stockWh = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
         const validStockWh = Math.max(0, stockWh);
-        warehouseStocks[wh.id] = validStockWh;
-        itemAvailableStockSum += validStockWh;
-
         const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
         const rs = (reserveMap.get(key) ?? reserveMap.get(altKey)) || 0;
+
+        const availWh = Math.max(0, validStockWh - rs);
+        warehouseStocks[wh.id] = availWh;
+        itemAvailableStockSum += availWh;
+
         itemTransitSum += tr;
         itemReservedSum += rs;
       }
