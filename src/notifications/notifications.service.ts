@@ -294,7 +294,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     return { status: true };
   }
 
-  
+
 
 
   async sendPosLocationNotification(args: {

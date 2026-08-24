@@ -6,6 +6,7 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { TransferRequestService } from '../transfer-request.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
 
 @Injectable()
 export class StockRequisitionService {
@@ -14,7 +15,16 @@ export class StockRequisitionService {
     private activityLogs: ActivityLogsService,
     private transferRequestService: TransferRequestService,
     private notifications: NotificationsService,
+    private stockLedgerService: StockLedgerService,
   ) {}
+
+  private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
+    const item = await tx.item.findUnique({
+      where: { id: itemId },
+      select: { unitCost: true },
+    });
+    return Number(item?.unitCost || 0);
+  }
 
   /**
    * Get net available stock of an item in a warehouse (physical AVAILABLE stock minus reserved stock).
@@ -78,21 +88,19 @@ export class StockRequisitionService {
 
     // Perform check and block in a transaction to prevent race conditions
     return this.prisma.$transaction(async (tx) => {
-      // 1. Verify stock and block/reserve (skip if DRAFT)
-      if (!isDraft) {
-        for (const reqItem of data.items) {
-          if (reqItem.quantity <= 0) {
-            throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
-          }
+      // 1. Verify stock and block/reserve
+      for (const reqItem of data.items) {
+        if (reqItem.quantity <= 0) {
+          throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
+        }
 
-          const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, data.fromWarehouseId);
-          if (netAvailable < reqItem.quantity) {
-            const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
-            throw new BadRequestException(
-              `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
-              `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
-            );
-          }
+        const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, data.fromWarehouseId);
+        if (netAvailable < reqItem.quantity) {
+          const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
+          throw new BadRequestException(
+            `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
+            `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
+          );
         }
       }
 
@@ -106,7 +114,7 @@ export class StockRequisitionService {
           documentType: data.documentType || 'New Arrival',
           remarks: data.remarks || null,
           notes: data.notes || null,
-          financialYear: data.financialYear || '25-26',
+          financialYear: data.financialYear || '26-27',
           status,
           createdById: userId,
           items: {
@@ -128,21 +136,19 @@ export class StockRequisitionService {
         },
       });
 
-      // 3. Create StockReserve records to block the stock (skip if DRAFT)
-      if (!isDraft) {
-        for (const reqItem of data.items) {
-          await tx.stockReserve.create({
-            data: {
-              itemId: reqItem.itemId,
-              warehouseId: data.fromWarehouseId,
-              quantity: new Prisma.Decimal(reqItem.quantity),
-              referenceType: 'STOCK_REQUISITION',
-              referenceId: requisition.id,
-              notes: `Reserved for SRN ${requisitionNo}`,
-              createdById: userId,
-            },
-          });
-        }
+      // 3. Create StockReserve records to block the stock immediately (for Draft & Pending)
+      for (const reqItem of data.items) {
+        await tx.stockReserve.create({
+          data: {
+            itemId: reqItem.itemId,
+            warehouseId: data.fromWarehouseId,
+            quantity: new Prisma.Decimal(reqItem.quantity),
+            referenceType: 'STOCK_REQUISITION',
+            referenceId: requisition.id,
+            notes: `Reserved for SRN ${requisitionNo} (${isDraft ? 'Draft' : 'Pending'})`,
+            createdById: userId,
+          },
+        });
       }
 
       if (!isDraft) {
@@ -170,7 +176,7 @@ export class StockRequisitionService {
           module: 'stock-requisition',
           entity: 'StockRequisition',
           entityId: requisition.id,
-          description: `Created Stock Requisition Note ${requisitionNo} and reserved stock`,
+          description: `Created Stock Requisition Note ${requisitionNo} (Status: ${status}) and reserved stock`,
           newValues: JSON.stringify(requisition),
           status: 'success',
         }),
@@ -211,14 +217,39 @@ export class StockRequisitionService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Delete existing items if new items are provided
+      // 1. Delete previous reservations for this SRN
+      await tx.stockReserve.deleteMany({
+        where: {
+          referenceType: 'STOCK_REQUISITION',
+          referenceId: id,
+        },
+      });
+
+      // 2. Delete existing items if new items are provided
       if (data.items) {
         await tx.stockRequisitionItem.deleteMany({
           where: { stockRequisitionId: id },
         });
+
+        // Verify stock availability
+        for (const reqItem of data.items) {
+          if (reqItem.quantity <= 0) {
+            throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
+          }
+
+          const targetWarehouseId = data.fromWarehouseId ?? existing.fromWarehouseId;
+          const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, targetWarehouseId);
+          if (netAvailable < reqItem.quantity) {
+            const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
+            throw new BadRequestException(
+              `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
+              `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
+            );
+          }
+        }
       }
 
-      // 2. Update requisition metadata
+      // 3. Update requisition metadata
       const updated = await tx.stockRequisition.update({
         where: { id },
         data: {
@@ -247,6 +278,23 @@ export class StockRequisitionService {
           brand: true,
         },
       });
+
+      // 4. Re-create StockReserve records
+      const itemsToReserve = data.items || existing.items.map((i) => ({ itemId: i.itemId, quantity: Number(i.quantity) }));
+      const targetWarehouseId = data.fromWarehouseId ?? existing.fromWarehouseId;
+      for (const reqItem of itemsToReserve) {
+        await tx.stockReserve.create({
+          data: {
+            itemId: reqItem.itemId,
+            warehouseId: targetWarehouseId,
+            quantity: new Prisma.Decimal(reqItem.quantity),
+            referenceType: 'STOCK_REQUISITION',
+            referenceId: updated.id,
+            notes: `Reserved for SRN ${existing.requisitionNo} (Draft)`,
+            createdById: userId,
+          },
+        });
+      }
 
       runInBackground(
         'Log SRN Update',
@@ -285,7 +333,15 @@ export class StockRequisitionService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Verify stock and block/reserve
+      // 1. Clear any existing draft reservation first to avoid double-counting
+      await tx.stockReserve.deleteMany({
+        where: {
+          referenceType: 'STOCK_REQUISITION',
+          referenceId: existing.id,
+        },
+      });
+
+      // 2. Verify stock and block/reserve
       for (const reqItem of existing.items) {
         const qty = Number(reqItem.quantity);
         if (qty <= 0) {
@@ -302,7 +358,7 @@ export class StockRequisitionService {
         }
       }
 
-      // 2. Update status to PENDING
+      // 3. Update status to PENDING
       const updated = await tx.stockRequisition.update({
         where: { id },
         data: {
@@ -320,7 +376,7 @@ export class StockRequisitionService {
         },
       });
 
-      // 3. Create StockReserve records to block the stock
+      // 4. Create StockReserve records to block the stock
       for (const reqItem of existing.items) {
         await tx.stockReserve.create({
           data: {
@@ -385,15 +441,13 @@ export class StockRequisitionService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      if (requisition.status === 'PENDING') {
-        // 1. Delete reservations
-        await tx.stockReserve.deleteMany({
-          where: {
-            referenceType: 'STOCK_REQUISITION',
-            referenceId: id,
-          },
-        });
-      }
+      // 1. Delete reservations (for both DRAFT and PENDING)
+      await tx.stockReserve.deleteMany({
+        where: {
+          referenceType: 'STOCK_REQUISITION',
+          referenceId: id,
+        },
+      });
 
       // 2. Update status to CANCELLED
       const updated = await tx.stockRequisition.update({
@@ -592,7 +646,58 @@ export class StockRequisitionService {
         },
       });
 
-      // 4. Update the fulfilled quantities and status in the Stock Requisition
+      // 4. Immediately decrement warehouse physical stock & create outbound ledger entries
+      for (const stnItem of data.items) {
+        if (stnItem.quantity <= 0) continue;
+
+        const stock = await tx.inventoryItem.findFirst({
+          where: {
+            warehouseId: requisition.fromWarehouseId,
+            locationId: null,
+            itemId: stnItem.itemId,
+            status: 'AVAILABLE',
+          },
+        });
+
+        if (stock) {
+          await tx.inventoryItem.update({
+            where: { id: stock.id },
+            data: { quantity: { decrement: stnItem.quantity } },
+          });
+        }
+
+        const itemRate = await this.getCurrentItemRate(tx, stnItem.itemId);
+
+        await this.stockLedgerService.createEntry(
+          {
+            itemId: stnItem.itemId,
+            warehouseId: requisition.fromWarehouseId,
+            qty: -stnItem.quantity,
+            movementType: 'OUTBOUND' as any,
+            referenceType: 'TRANSFER_REQUEST',
+            referenceId: transfer.id,
+            rate: itemRate,
+          },
+          tx,
+        );
+
+        await tx.stockMovement.create({
+          data: {
+            movementNo: `MV-${Date.now()}-${stnItem.itemId.slice(-4)}`,
+            itemId: stnItem.itemId,
+            fromLocationId: null,
+            toLocationId: requisition.toLocationId,
+            quantity: stnItem.quantity,
+            type: 'TRANSFER',
+            referenceType: 'TRANSFER_REQUEST',
+            referenceId: transfer.id,
+            notes: `Dispatched from warehouse via STN ${transfer.requestNo}`,
+            createdById: userId,
+          },
+        });
+      }
+
+      // 5. Update the fulfilled quantities and status in the Stock Requisition
       for (const stnItem of data.items) {
         await tx.stockRequisitionItem.update({
           where: {
@@ -616,6 +721,26 @@ export class StockRequisitionService {
         data: { status: srnStatus },
       });
 
+      if (requisition.toLocationId && hasAnyQty) {
+        const totalPcs = data.items.reduce((sum, item) => sum + (item.quantity > 0 ? item.quantity : 0), 0);
+        const totalItemsCount = data.items.filter((item) => item.quantity > 0).length;
+
+        runInBackground(
+          'Send POS Location Notification on STN Dispatch',
+          this.notifications.sendPosLocationNotification({
+            locationId: requisition.toLocationId,
+            title: `Incoming Stock Transfer: ${transfer.requestNo}`,
+            message: `Warehouse has transferred ${totalItemsCount} products (${totalPcs} Pcs) via STN ${transfer.requestNo}. Ready for receiving.`,
+            category: 'pos_stock_transfer',
+            priority: 'high',
+            actionType: 'NAVIGATE',
+            actionPayload: { url: '/pos/inventory/receiving' },
+            entityType: 'TransferRequest',
+            entityId: transfer.id,
+          }),
+        );
+      }
+
       runInBackground(
         'Log STN Conversion',
         this.activityLogs.log({
@@ -635,9 +760,9 @@ export class StockRequisitionService {
 
   /**
    * Parse manually consolidated Excel sheet to list of valid items and quantities.
-   * Matches by SKU or Barcode.
+   * Matches by SKU or Barcode and validates stock in selected warehouse.
    */
-  async parseExcelSheet(buffer: Buffer): Promise<any[]> {
+  async parseExcelSheet(buffer: Buffer, warehouseId?: string): Promise<any> {
     const workbook = xlsx.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -770,11 +895,107 @@ export class StockRequisitionService {
       }
     }
 
-    if (resolvedItems.length === 0) {
-      throw new BadRequestException('None of the SKUs or Barcodes in the file matched existing active catalog items.');
+    const validItems: any[] = [];
+    const skippedItems: any[] = [];
+
+    // Check items not found in catalog
+    const notFoundIdentifiers = itemsList.filter((entry) => !itemMap.has(entry.sku.toLowerCase()));
+    for (const nf of notFoundIdentifiers) {
+      skippedItems.push({
+        sku: nf.sku,
+        description: 'Not found in catalog',
+        requestedQty: nf.quantity,
+        availableStock: 0,
+        reason: 'Item SKU / BarCode not registered in database catalog',
+      });
     }
 
-    return resolvedItems;
+    let whName = 'selected warehouse';
+
+    // Validate warehouse stock if warehouseId is provided
+    if (warehouseId && resolvedItems.length > 0) {
+      const wh = await this.prisma.warehouse.findUnique({
+        where: { id: warehouseId },
+        select: { name: true },
+      });
+      whName = wh?.name || 'selected warehouse';
+
+      const stockItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          warehouseId,
+          locationId: null,
+          itemId: { in: resolvedItems.map((i) => i.itemId) },
+          status: 'AVAILABLE',
+        },
+      });
+      const stockMap = new Map<string, number>();
+      for (const s of stockItems) {
+        stockMap.set(s.itemId, Number(s.quantity));
+      }
+
+      const activeReservations = await this.prisma.stockReserve.groupBy({
+        by: ['itemId'],
+        where: {
+          warehouseId,
+          itemId: { in: resolvedItems.map((i) => i.itemId) },
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } },
+          ],
+        },
+        _sum: {
+          quantity: true,
+        },
+      });
+      const reserveMap = new Map<string, number>();
+      for (const r of activeReservations) {
+        reserveMap.set(r.itemId, Number(r._sum.quantity || 0));
+      }
+
+      for (const item of resolvedItems) {
+        const physical = stockMap.get(item.itemId) || 0;
+        const reserved = reserveMap.get(item.itemId) || 0;
+        const netAvailable = Math.max(0, physical - reserved);
+        item.availableStock = netAvailable;
+
+        if (netAvailable <= 0) {
+          skippedItems.push({
+            sku: item.sku,
+            description: item.description || '',
+            requestedQty: item.quantity,
+            availableStock: 0,
+            reason: `No stock available in ${whName} (Stock: 0)`,
+          });
+        } else if (item.quantity > netAvailable) {
+          validItems.push({
+            ...item,
+            quantity: netAvailable,
+          });
+          skippedItems.push({
+            sku: item.sku,
+            description: item.description || '',
+            requestedQty: item.quantity,
+            availableStock: netAvailable,
+            reason: `Requested ${item.quantity} Pcs, adjusted to available ${netAvailable} Pcs in ${whName}`,
+          });
+        } else {
+          validItems.push(item);
+        }
+      }
+    } else {
+      validItems.push(...resolvedItems);
+    }
+
+    return {
+      validItems,
+      skippedItems,
+      summary: {
+        totalProcessed: itemsList.length,
+        importedCount: validItems.length,
+        skippedCount: skippedItems.length,
+        warehouseName: whName,
+      },
+    };
   }
 
   /**
