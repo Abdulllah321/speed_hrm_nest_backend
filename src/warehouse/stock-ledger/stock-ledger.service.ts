@@ -1061,17 +1061,25 @@ export class StockLedgerService {
     // 4. Fetch Ledger Entries within date range (excluding opening entries)
     const ledgerEntries: any[] = [];
     for (const chunk of matchedItemChunks) {
+      const chunkWhere: any = {
+        itemId: { in: chunk },
+        createdAt: { gte: startDate, lte: endDate },
+        NOT: [
+          { movementType: MovementType.OPENING_BALANCE },
+          { referenceType: 'OPENING_BALANCE' },
+          { referenceType: 'BULK_STOCK_UPLOAD' },
+        ],
+      };
+
+      if (locOrWhFilters.length > 0) {
+        chunkWhere.OR = [
+          ...locOrWhFilters,
+          { referenceType: { in: ['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'TRANSFER', 'STOCK_TRANSFER', 'TRANSFER_IN', 'TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER', 'DIRECT_TRANSFER_IN', 'DIRECT_TRANSFER_OUT', 'STOCK_MOVEMENT'] } },
+        ];
+      }
+
       const chunkEntries = await prisma.stockLedger.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
-          itemId: { in: chunk },
-          createdAt: { gte: startDate, lte: endDate },
-          NOT: [
-            { movementType: MovementType.OPENING_BALANCE },
-            { referenceType: 'OPENING_BALANCE' },
-            { referenceType: 'BULK_STOCK_UPLOAD' },
-          ],
-        },
+        where: chunkWhere,
         orderBy: { createdAt: 'asc' },
       });
       ledgerEntries.push(...chunkEntries);
@@ -1180,6 +1188,10 @@ export class StockLedgerService {
         select: {
           id: true,
           requestNo: true,
+          fromLocationId: true,
+          fromWarehouseId: true,
+          toLocationId: true,
+          toWarehouseId: true,
           fromWarehouse: { select: { name: true } },
           fromLocation: { select: { name: true } },
           toWarehouse: { select: { name: true } },
@@ -1212,7 +1224,12 @@ export class StockLedgerService {
       })) : Promise.resolve([]),
       stockMovementIds.size > 0 ? fetchInChunks([...stockMovementIds], (c) => prisma.stockMovement.findMany({
         where: { id: { in: c } },
-        select: { id: true, movementNo: true },
+        select: {
+          id: true,
+          movementNo: true,
+          fromLocationId: true,
+          toLocationId: true,
+        },
       })) : Promise.resolve([]),
     ]);
 
@@ -1239,12 +1256,47 @@ export class StockLedgerService {
     };
 
     for (const entry of ledgerEntries) {
-      const itemId = entry.itemId;
-      const txs = getOrCreateTxsList(itemId);
-
       const qty = Number(entry.qty || 0);
       const refId = entry.referenceId;
       const refType = entry.referenceType;
+
+      // Transfer Direction Filter: match Inbound transfers with target dest & Outbound with target source
+      const isTransferRef = ['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'TRANSFER', 'STOCK_TRANSFER', 'TRANSFER_IN', 'TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER', 'DIRECT_TRANSFER_IN', 'DIRECT_TRANSFER_OUT', 'STOCK_MOVEMENT'].includes(refType);
+      if (isTransferRef) {
+        const t = transferMap.get(refId);
+        const sm = stockMovementMap.get(refId);
+        const fromLoc = t?.fromLocationId || sm?.fromLocationId;
+        const fromWh = t?.fromWarehouseId;
+        const toLoc = t?.toLocationId || sm?.toLocationId;
+        const toWh = t?.toWarehouseId;
+
+        if (locIds.length > 0) {
+          if (qty > 0) {
+            const matchesDest = toLoc && locIds.includes(toLoc);
+            const matchesEntry = entry.locationId && locIds.includes(entry.locationId);
+            if (!matchesDest && !matchesEntry) continue;
+          } else if (qty < 0) {
+            const matchesSource = fromLoc && locIds.includes(fromLoc);
+            const matchesEntry = entry.locationId && locIds.includes(entry.locationId) && toLoc !== entry.locationId;
+            if (!matchesSource && !matchesEntry) continue;
+          }
+        }
+
+        if (whIds.length > 0) {
+          if (qty > 0) {
+            const matchesDest = toWh && whIds.includes(toWh);
+            const matchesEntry = entry.warehouseId && whIds.includes(entry.warehouseId) && fromWh !== entry.warehouseId;
+            if (!matchesDest && !matchesEntry) continue;
+          } else if (qty < 0) {
+            const matchesSource = fromWh && whIds.includes(fromWh);
+            const matchesEntry = entry.warehouseId && whIds.includes(entry.warehouseId) && toWh !== entry.warehouseId;
+            if (!matchesSource && !matchesEntry) continue;
+          }
+        }
+      }
+
+      const itemId = entry.itemId;
+      const txs = getOrCreateTxsList(itemId);
 
       let docType = refType;
       let docRef = refId || '-';
@@ -1367,6 +1419,7 @@ export class StockLedgerService {
     // 7. Group items by SKU if showVariant is false, else keep them per item
     const skuGroupsMap = new Map<string, {
       sku: string;
+      barCode: string;
       description: string;
       brand: string;
       division: string;
@@ -1394,6 +1447,7 @@ export class StockLedgerService {
 
       group.push({
         sku: item.sku,
+        barCode: item.barCode || '',
         description: item.description || '',
         brand: item.brand?.name || 'No Brand',
         division: item.division?.name || 'No Division',
@@ -1444,6 +1498,7 @@ export class StockLedgerService {
 
         itemDataList.push({
           sku: first.sku,
+          barCode: first.barCode || '',
           description: first.description,
           brand: first.brand,
           division: first.division,
@@ -1478,6 +1533,7 @@ export class StockLedgerService {
 
           itemDataList.push({
             sku: v.sku,
+            barCode: v.barCode || '',
             description: v.description,
             brand: v.brand,
             division: v.division,
@@ -1535,11 +1591,13 @@ export class StockLedgerService {
         } else if (levelName === 'article') {
           nodeVal = itemData.sku;
           extraFields.sku = itemData.sku;
+          extraFields.barCode = itemData.barCode;
           extraFields.articleName = itemData.description;
         } else if (levelName === 'variant') {
           nodeVal = `${itemData.color}-${itemData.size}`;
           extraFields.color = itemData.color;
           extraFields.size = itemData.size;
+          extraFields.barCode = itemData.barCode;
         }
 
         let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
