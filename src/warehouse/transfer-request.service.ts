@@ -214,10 +214,63 @@ export class TransferRequestService {
                             rate: transferRate,
                         }, tx);
                     }
+                } else if (transferType === 'WAREHOUSE_TO_OUTLET') {
+                    // Immediately decrement warehouse inventory upon dispatch/creation
+                    for (const item of createdRequest.items) {
+                        const sourceStock = await tx.inventoryItem.findFirst({
+                            where: {
+                                warehouseId: data.fromWarehouseId!,
+                                locationId: null,
+                                itemId: item.itemId,
+                                status: 'AVAILABLE',
+                            },
+                        });
+
+                        if (!sourceStock || Number(sourceStock.quantity) < Number(item.quantity)) {
+                            throw new BadRequestException(`Insufficient stock for item ${item.itemId} in warehouse. Current: ${sourceStock?.quantity || 0}, Requested: ${item.quantity}`);
+                        }
+
+                        // Decrease warehouse stock immediately
+                        await tx.inventoryItem.update({
+                            where: { id: sourceStock.id },
+                            data: { quantity: { decrement: Number(item.quantity) } },
+                        });
+
+                        const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+                        // Create outbound ledger entry for warehouse
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: data.fromWarehouseId!,
+                            qty: -Number(item.quantity),
+                            movementType: 'OUTBOUND' as any,
+                            referenceType: 'TRANSFER_REQUEST',
+                            referenceId: createdRequest.id,
+                            rate: transferRate,
+                        }, tx);
+                    }
                 }
 
                 return createdRequest;
             });
+
+            if (created.toLocationId && data.items && data.items.length > 0) {
+                const totalPcs = data.items.reduce((s, i) => s + (i.quantity > 0 ? Number(i.quantity) : 0), 0);
+                runInBackground(
+                    'Send POS Location Notification on Transfer Request',
+                    this.notifications.sendPosLocationNotification({
+                        locationId: created.toLocationId,
+                        title: `Incoming Stock Transfer: ${created.requestNo}`,
+                        message: `Stock Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) has been dispatched for your outlet.`,
+                        category: 'pos_stock_transfer',
+                        priority: 'high',
+                        actionType: 'NAVIGATE',
+                        actionPayload: { url: '/pos/inventory/receiving' },
+                        entityType: 'TransferRequest',
+                        entityId: created.id,
+                    }),
+                );
+            }
 
             runInBackground(
                 'Create Transfer Request',
@@ -999,23 +1052,62 @@ export class TransferRequestService {
 
             return this.prisma.$transaction(async (tx) => {
                 if (request.transferType === 'WAREHOUSE_TO_OUTLET') {
-                    // Normal transfer: Warehouse → Outlet
+                    // Normal transfer: Warehouse → Outlet (Receiving into Outlet)
                     if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
                         throw new BadRequestException(`Request is not in PENDING or APPROVED status (Current: ${request.status})`);
                     }
 
                     for (const item of request.items) {
-                        await this.stockMovementService.executeMovement({
-                            itemId: item.itemId,
-                            fromWarehouseId: request.fromWarehouseId!,
-                            toLocationId: request.toLocationId!,
-                            quantity: Number(item.quantity),
-                            type: 'TRANSFER',
-                            referenceType: 'TRANSFER_REQUEST',
-                            referenceId: request.id,
-                            userId: userId,
+                        const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+
+                        // 1. Inbound into Destination Outlet Inventory
+                        const existingStock = await tx.inventoryItem.findFirst({
+                            where: {
+                                itemId: item.itemId,
+                                locationId: request.toLocationId!,
+                                status: 'AVAILABLE',
+                            },
                         });
+
+                        if (existingStock) {
+                            await tx.inventoryItem.update({
+                                where: { id: existingStock.id },
+                                data: { quantity: { increment: Number(item.quantity) } },
+                            });
+                        } else {
+                            await tx.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    warehouseId: request.fromWarehouseId!,
+                                    locationId: request.toLocationId!,
+                                    quantity: Number(item.quantity),
+                                    status: 'AVAILABLE',
+                                },
+                            });
+                        }
+
+                        // 2. Inbound Stock Ledger for Outlet
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: request.fromWarehouseId!,
+                            locationId: request.toLocationId!,
+                            qty: Number(item.quantity),
+                            movementType: 'INBOUND' as any,
+                            referenceType: 'TRANSFER_RECEIPT',
+                            referenceId: request.id,
+                            rate: itemRate,
+                        }, tx);
                     }
+
+                    const updated = await tx.transferRequest.update({
+                        where: { id },
+                        data: {
+                            status: 'COMPLETED',
+                            approvedById: userId || null,
+                        },
+                    });
+
+                    return updated;
                 } else if (request.transferType === 'OUTLET_TO_WAREHOUSE') {
                     // Return transfer: Outlet → Warehouse
                     if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
