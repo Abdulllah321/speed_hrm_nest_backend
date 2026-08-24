@@ -41,7 +41,7 @@ export class OverallAvailableReservedStockExportService {
     private readonly uploadService: UploadService,
     private readonly fiscalClosingService: FiscalYearClosingService,
     private readonly exportHistoryService: ExportHistoryService,
-  ) {}
+  ) { }
 
   isJobCancelled(jobId?: string): boolean {
     if (!jobId) return false;
@@ -613,7 +613,7 @@ export class OverallAvailableReservedStockExportService {
         },
       }),
       prisma.stockReserve.groupBy({
-        by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
+        by: ['itemId', 'warehouseId'],
         where: {
           ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
           OR: [
@@ -664,9 +664,13 @@ export class OverallAvailableReservedStockExportService {
     // Reserve map per warehouse & item
     const reserveMap = new Map<string, number>();
     for (const row of reserveGroupResults) {
-      const locKey = row.warehouseId ? `wh:${row.warehouseId}` : 'all';
-      const key = `${locKey}_${row.itemId}`;
-      reserveMap.set(key, (reserveMap.get(key) || 0) + Number(row._sum.quantity || 0));
+      const qty = Number(row._sum?.quantity || 0);
+      if (row.warehouseId) {
+        const key = `wh:${row.warehouseId}_${row.itemId}`;
+        reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
+      }
+      const allKey = `all_${row.itemId}`;
+      reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
     }
 
     // Movement metrics map
@@ -723,6 +727,8 @@ export class OverallAvailableReservedStockExportService {
     for (const r of inRangeOpeningResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
     for (const r of ledgerEntriesResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
     for (const inv of inventoryItems) if (inv?.itemId) activeItemIdsSet.add(inv.itemId);
+    for (const r of reserveGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const t of transitItemsResults) if (t?.itemId) activeItemIdsSet.add(t.itemId);
 
     const activeItemIds = Array.from(activeItemIdsSet).filter(Boolean);
 
@@ -791,7 +797,7 @@ export class OverallAvailableReservedStockExportService {
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const stockWh = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
-        
+
         const validStockWh = Math.max(0, stockWh);
         warehouseStocks[wh.id] = validStockWh;
         itemAvailableStockSum += validStockWh;
