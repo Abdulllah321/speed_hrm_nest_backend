@@ -206,8 +206,10 @@ export class PaymentVoucherService {
     page?: number;
     limit?: number;
     search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
   }) {
-    const { type, status, fromDate, toDate, accountId, page, limit, search } = filters || {};
+    const { type, status, fromDate, toDate, accountId, page, limit, search, sortBy, sortOrder } = filters || {};
 
     const where: any = {};
 
@@ -235,7 +237,13 @@ export class PaymentVoucherService {
         { folio: { contains: cleanSearch, mode: 'insensitive' } },
         { description: { contains: cleanSearch, mode: 'insensitive' } },
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } },
         { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { paidTo: { contains: cleanSearch, mode: 'insensitive' } },
+        { creditAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } },
+        { creditAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } },
+        { supplier: { name: { contains: cleanSearch, mode: 'insensitive' } } },
+        { supplier: { code: { contains: cleanSearch, mode: 'insensitive' } } },
         { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
@@ -266,6 +274,16 @@ export class PaymentVoucherService {
       }
     }
 
+    const orderDir = sortOrder === 'asc' ? ('asc' as const) : ('desc' as const);
+    let orderBy: any = { pvDate: orderDir };
+    if (sortBy === 'pvNo') orderBy = { pvNo: orderDir };
+    else if (sortBy === 'pvDate') orderBy = { pvDate: orderDir };
+    else if (sortBy === 'status') orderBy = { status: orderDir };
+    else if (sortBy === 'createdAt') orderBy = { createdAt: orderDir };
+    else if (sortBy === 'type') orderBy = { type: orderDir };
+    else if (sortBy === 'folio') orderBy = { folio: orderDir };
+    else if (sortBy === 'creditAmount') orderBy = { creditAmount: orderDir };
+
     const queryOptions: any = {
       where,
       include: {
@@ -278,9 +296,7 @@ export class PaymentVoucherService {
         creditAccount: true,
         supplier: true,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy,
     };
 
     if (page !== undefined && limit !== undefined) {

@@ -159,8 +159,10 @@ export class JournalVoucherService {
     page?: number;
     limit?: number;
     search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
   }) {
-    const { status, fromDate, toDate, accountId, page, limit, search } = filters || {};
+    const { status, fromDate, toDate, accountId, page, limit, search, sortBy, sortOrder } = filters || {};
 
     const where: any = {};
 
@@ -183,6 +185,8 @@ export class JournalVoucherService {
         { jvNo: { contains: cleanSearch, mode: 'insensitive' } },
         { folio: { contains: cleanSearch, mode: 'insensitive' } },
         { description: { contains: cleanSearch, mode: 'insensitive' } },
+        { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } },
         { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
@@ -213,12 +217,21 @@ export class JournalVoucherService {
       }
     }
 
+    const orderDir = sortOrder === 'asc' ? ('asc' as const) : ('desc' as const);
+    let orderBy: any = { jvDate: orderDir };
+    if (sortBy === 'jvNo') orderBy = { jvNo: orderDir };
+    else if (sortBy === 'jvDate') orderBy = { jvDate: orderDir };
+    else if (sortBy === 'status') orderBy = { status: orderDir };
+    else if (sortBy === 'createdAt') orderBy = { createdAt: orderDir };
+    else if (sortBy === 'folio') orderBy = { folio: orderDir };
+    else if (sortBy === 'description') orderBy = { description: orderDir };
+
     const queryOptions: any = {
       where,
       include: {
         details: { include: { account: true, tagAccount: true } },
       },
-      orderBy: { jvDate: 'desc' },
+      orderBy,
     };
 
     if (page !== undefined && limit !== undefined) {
