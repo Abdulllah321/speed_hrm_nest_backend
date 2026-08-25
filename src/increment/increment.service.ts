@@ -350,67 +350,131 @@ export class IncrementService {
         };
       }
 
-      // Validate all employees exist
-      const employeeIds = body.increments.map((i) => i.employeeId);
+      // 1. Resolve & validate all employees by UUID or employee code (case-insensitive)
+      const rawEmployeeKeys = body.increments
+        .map((i) => i.employeeId)
+        .filter((id): id is string => !!id && id.trim() !== '');
+      const uniqueEmployeeKeys = [...new Set(rawEmployeeKeys)];
+
       const employees = await this.prisma.employee.findMany({
-        where: { id: { in: employeeIds } },
-        select: { id: true },
+        where: {
+          OR: [
+            { id: { in: uniqueEmployeeKeys } },
+            { employeeId: { in: uniqueEmployeeKeys, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true, employeeId: true, employeeName: true },
       });
 
-      if (employees.length !== employeeIds.length) {
-        return { status: false, message: 'One or more employees not found' };
+      const empLookup = new Map<string, any>();
+      employees.forEach((e) => {
+        empLookup.set(e.id.toLowerCase(), e);
+        empLookup.set(e.employeeId.trim().toLowerCase(), e);
+      });
+
+      const missingEmployees = uniqueEmployeeKeys.filter(
+        (key) => !empLookup.has(key.trim().toLowerCase()),
+      );
+
+      if (missingEmployees.length > 0) {
+        return {
+          status: false,
+          message: `Employee(s) not found in system: ${missingEmployees.join(', ')}`,
+        };
       }
 
-      // Validate employee grades if provided
-      const employeeGradeIds = body.increments
+      // 2. Validate employee grades if provided (by UUID or grade name)
+      const rawGradeKeys = body.increments
         .map((i) => i.employeeGradeId)
-        .filter((id): id is string => !!id);
-      if (employeeGradeIds.length > 0) {
-        const uniqueGradeIds = [...new Set(employeeGradeIds)];
+        .filter((id): id is string => !!id && id.trim() !== '');
+      const uniqueGradeKeys = [...new Set(rawGradeKeys)];
+      const gradeLookup = new Map<string, any>();
+
+      if (uniqueGradeKeys.length > 0) {
         const employeeGrades = await this.prisma.employeeGrade.findMany({
-          where: { id: { in: uniqueGradeIds }, status: 'active' },
-          select: { id: true },
+          where: {
+            OR: [
+              { id: { in: uniqueGradeKeys } },
+              { grade: { in: uniqueGradeKeys, mode: 'insensitive' } },
+            ],
+            status: 'active',
+          },
+          select: { id: true, grade: true },
         });
 
-        if (employeeGrades.length !== uniqueGradeIds.length) {
+        employeeGrades.forEach((g) => {
+          gradeLookup.set(g.id.toLowerCase(), g);
+          gradeLookup.set(g.grade.trim().toLowerCase(), g);
+        });
+
+        const missingGrades = uniqueGradeKeys.filter(
+          (key) => !gradeLookup.has(key.trim().toLowerCase()),
+        );
+
+        if (missingGrades.length > 0) {
           return {
             status: false,
-            message: 'One or more employee grades not found or inactive',
+            message: `Employee grade(s) not found or inactive: ${missingGrades.join(', ')}`,
           };
         }
       }
 
-      // Validate designations if provided
-      const designationIds = body.increments
+      // 3. Validate designations if provided (by UUID or designation name)
+      const rawDesigKeys = body.increments
         .map((i) => i.designationId)
-        .filter((id): id is string => !!id);
-      if (designationIds.length > 0) {
-        const uniqueDesignationIds = [...new Set(designationIds)];
+        .filter((id): id is string => !!id && id.trim() !== '');
+      const uniqueDesigKeys = [...new Set(rawDesigKeys)];
+      const desigLookup = new Map<string, any>();
+
+      if (uniqueDesigKeys.length > 0) {
         const designations = await this.prisma.designation.findMany({
-          where: { id: { in: uniqueDesignationIds }, status: 'active' },
-          select: { id: true },
+          where: {
+            OR: [
+              { id: { in: uniqueDesigKeys } },
+              { name: { in: uniqueDesigKeys, mode: 'insensitive' } },
+            ],
+            status: 'active',
+          },
+          select: { id: true, name: true },
         });
 
-        if (designations.length !== uniqueDesignationIds.length) {
+        designations.forEach((d) => {
+          desigLookup.set(d.id.toLowerCase(), d);
+          desigLookup.set(d.name.trim().toLowerCase(), d);
+        });
+
+        const missingDesigs = uniqueDesigKeys.filter(
+          (key) => !desigLookup.has(key.trim().toLowerCase()),
+        );
+
+        if (missingDesigs.length > 0) {
           return {
             status: false,
-            message: 'One or more designations not found or inactive',
+            message: `Designation(s) not found or inactive: ${missingDesigs.join(', ')}`,
           };
         }
       }
 
-      // Create increments in a transaction
+      // 4. Create increments in a transaction
       const result = await this.prisma.$transaction(async (tx) => {
         const createdIncrements: any[] = [];
 
         for (const incrementItem of body.increments) {
+          const emp = empLookup.get(incrementItem.employeeId.trim().toLowerCase())!;
+          const grade = incrementItem.employeeGradeId
+            ? gradeLookup.get(incrementItem.employeeGradeId.trim().toLowerCase())
+            : null;
+          const desig = incrementItem.designationId
+            ? desigLookup.get(incrementItem.designationId.trim().toLowerCase())
+            : null;
+
           const promotionDate = new Date(incrementItem.promotionDate);
 
           const created = await tx.increment.create({
             data: {
-              employeeId: incrementItem.employeeId,
-              employeeGradeId: incrementItem.employeeGradeId || null,
-              designationId: incrementItem.designationId || null,
+              employeeId: emp.id,
+              employeeGradeId: grade ? grade.id : null,
+              designationId: desig ? desig.id : null,
               incrementType: incrementItem.incrementType,
               incrementAmount: incrementItem.incrementAmount
                 ? incrementItem.incrementAmount
@@ -441,7 +505,7 @@ export class IncrementService {
           createdIncrements.push(created);
 
           // Sync employee salary and grades/designations
-          await this.syncEmployeeSalary(incrementItem.employeeId, tx);
+          await this.syncEmployeeSalary(emp.id, tx);
         }
 
         return createdIncrements;
