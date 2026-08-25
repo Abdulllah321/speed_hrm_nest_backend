@@ -638,7 +638,7 @@ export class PayrollService {
           year,
           emp.workingHoursPolicy,
           emp.policyAssignments, // Pass assignments
-          totalPackageAmount,
+          effectivePackage,
           allHolidays,
           effectiveStart,
           effectiveEnd,
@@ -883,9 +883,9 @@ export class PayrollService {
 
       // G. Calculate EOBI & PF
       // PF and EOBI should only be calculated from salary components marked as deductible
-      // Pass salaryBreakup array to calculate base amount from deductible components only
+      // Pass adjustedSalaryBreakup array to calculate base amount from deductible components only (adjusted for attendance deduction)
       const { eobiDeduction, providentFundDeduction } =
-        await this.calculateEOBI_PF(employee, month, year, salaryBreakup);
+        await this.calculateEOBI_PF(employee, month, year, adjustedSalaryBreakup);
 
       // H. Calculate Loans & Advances
       const { loanDeduction, loanDisbursement, advanceSalaryDisbursement, advanceSalaryDeduction } =
@@ -2866,10 +2866,8 @@ export class PayrollService {
 
     let totalDeduction = new Decimal(0);
 
-    // Calculate per day salary based on worked days if mid-month joining/exit
-    const perDaySalary = totalSalary.div(
-      workedDays > 0 ? workedDays : totalDaysInMonth,
-    );
+    // Calculate per day salary based on fixed 30 days (regardless of 28, 29, 30, or 31 days in month)
+    const perDaySalary = totalSalary.div(30);
 
     // Helper to check if date has approved leave
     const hasApprovedLeave = (date: Date): boolean => {
