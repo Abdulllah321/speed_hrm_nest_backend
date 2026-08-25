@@ -455,7 +455,7 @@ export class IncrementService {
         }
       }
 
-      // 4. Create increments in a transaction
+      // 4. Create or Update increments in a transaction
       const result = await this.prisma.$transaction(async (tx) => {
         const createdIncrements: any[] = [];
 
@@ -470,39 +470,90 @@ export class IncrementService {
 
           const promotionDate = new Date(incrementItem.promotionDate);
 
-          const created = await tx.increment.create({
-            data: {
+          // Check if an increment for this employee already exists on the same Effective Date
+          const startOfDay = new Date(promotionDate);
+          startOfDay.setUTCHours(0, 0, 0, 0);
+          const endOfDay = new Date(promotionDate);
+          endOfDay.setUTCHours(23, 59, 59, 999);
+
+          const existingSameDate = await tx.increment.findFirst({
+            where: {
               employeeId: emp.id,
-              employeeGradeId: grade ? grade.id : null,
-              designationId: desig ? desig.id : null,
-              incrementType: incrementItem.incrementType,
-              incrementAmount: incrementItem.incrementAmount
-                ? incrementItem.incrementAmount
-                : null,
-              incrementPercentage: incrementItem.incrementPercentage
-                ? incrementItem.incrementPercentage
-                : null,
-              incrementMethod: incrementItem.incrementMethod,
-              salary: incrementItem.salary,
-              promotionDate: promotionDate,
-              currentMonth: incrementItem.currentMonth,
-              notes: incrementItem.notes || null,
-              status: 'active',
-              createdById: ctx.userId,
-            },
-            include: {
-              employee: {
-                select: {
-                  id: true,
-                  employeeId: true,
-                  employeeName: true,
-                  departmentId: true,
-                  subDepartmentId: true,
-                },
+              promotionDate: {
+                gte: startOfDay,
+                lte: endOfDay,
               },
+              status: 'active',
             },
           });
-          createdIncrements.push(created);
+
+          let savedIncrement;
+          if (existingSameDate) {
+            savedIncrement = await tx.increment.update({
+              where: { id: existingSameDate.id },
+              data: {
+                employeeGradeId: grade ? grade.id : null,
+                designationId: desig ? desig.id : null,
+                incrementType: incrementItem.incrementType,
+                incrementAmount: incrementItem.incrementAmount
+                  ? incrementItem.incrementAmount
+                  : null,
+                incrementPercentage: incrementItem.incrementPercentage
+                  ? incrementItem.incrementPercentage
+                  : null,
+                incrementMethod: incrementItem.incrementMethod,
+                salary: incrementItem.salary,
+                promotionDate: promotionDate,
+                notes: incrementItem.notes || null,
+                updatedById: ctx.userId,
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    employeeId: true,
+                    employeeName: true,
+                    departmentId: true,
+                    subDepartmentId: true,
+                  },
+                },
+              },
+            });
+          } else {
+            savedIncrement = await tx.increment.create({
+              data: {
+                employeeId: emp.id,
+                employeeGradeId: grade ? grade.id : null,
+                designationId: desig ? desig.id : null,
+                incrementType: incrementItem.incrementType,
+                incrementAmount: incrementItem.incrementAmount
+                  ? incrementItem.incrementAmount
+                  : null,
+                incrementPercentage: incrementItem.incrementPercentage
+                  ? incrementItem.incrementPercentage
+                  : null,
+                incrementMethod: incrementItem.incrementMethod,
+                salary: incrementItem.salary,
+                promotionDate: promotionDate,
+                currentMonth: incrementItem.currentMonth,
+                notes: incrementItem.notes || null,
+                status: 'active',
+                createdById: ctx.userId,
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    employeeId: true,
+                    employeeName: true,
+                    departmentId: true,
+                    subDepartmentId: true,
+                  },
+                },
+              },
+            });
+          }
+          createdIncrements.push(savedIncrement);
 
           // Sync employee salary and grades/designations
           await this.syncEmployeeSalary(emp.id, tx);
