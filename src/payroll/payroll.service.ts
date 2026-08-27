@@ -203,7 +203,6 @@ export class PayrollService {
       this.prisma.rebate.findMany({
         where: {
           employeeId: { in: ids },
-          monthYear: `${normalizedYear}-${normalizedMonth}`,
           status: { in: ['approved', 'pending', 'active'] },
         },
       }),
@@ -3655,25 +3654,8 @@ export class PayrollService {
 
       // Check if payroll is within tax year and before current month
       if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
-        // Add actual cash tax deducted
-        let monthTaxSettled = new Decimal(payroll.taxDeduction || 0);
-
-        // Also add any advance tax credit applied in that month so future months don't attempt to re-collect it
-        try {
-          const prevTaxBreakup =
-            typeof payroll.taxBreakup === 'string'
-              ? JSON.parse(payroll.taxBreakup)
-              : payroll.taxBreakup || {};
-          const prevCredit =
-            prevTaxBreakup.advanceTaxCredit || prevTaxBreakup.totalRebate || 0;
-          if (prevCredit) {
-            monthTaxSettled = monthTaxSettled.add(new Decimal(prevCredit));
-          }
-        } catch (e) {
-          // ignore parsing errors
-        }
-
-        ytdTaxDeducted = ytdTaxDeducted.add(monthTaxSettled);
+        // Sum actual cash tax deducted in previous months of this tax year
+        ytdTaxDeducted = ytdTaxDeducted.add(new Decimal(payroll.taxDeduction || 0));
 
         if (payroll.attendanceDeduction) {
           ytdAttendanceDeductions = ytdAttendanceDeductions.add(new Decimal(payroll.attendanceDeduction));
@@ -3851,33 +3833,84 @@ export class PayrollService {
         percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
         annualTax = fixedAmountTax.add(percentageTaxAmount);
 
-        // Standard Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Months
-        standardMonthlyTax = Decimal.max(
-          0,
-          annualTax.minus(ytdTaxDeducted).div(remainingMonths),
-        );
+        // Standard Monthly Tax = Annual Tax / 12
+        standardMonthlyTax = annualTax.div(12);
       }
     }
 
     // 2. Process Monthly Advance Tax Credit / Rebates for Current Month
     let totalMonthlyAdvanceTaxCredit = new Decimal(0);
     const rebateBreakup: any[] = [];
+    const normalizedMonth = currentMonth.padStart(2, '0');
+    const normalizedYear = currentYear;
+    const currentTargetMonthYear = `${normalizedYear}-${normalizedMonth}`;
 
     if (rebates && rebates.length > 0) {
       for (const rebate of rebates) {
-        const rebateAmount = new Decimal(rebate.rebateAmount || 0);
-        if (rebateAmount.gt(0)) {
-          totalMonthlyAdvanceTaxCredit =
-            totalMonthlyAdvanceTaxCredit.add(rebateAmount);
-          rebateBreakup.push({
-            id: rebate.id,
-            name:
-              rebate.rebateNature?.name ||
-              rebate.remarks ||
-              'Advance Tax Credit / Rebate',
-            underSection: rebate.rebateNature?.underSection || '236',
-            amount: Math.round(rebateAmount.toNumber()),
-          });
+        const isSpread =
+          (rebate as any).adjustmentType === 'spread_year' ||
+          (rebate.remarks && rebate.remarks.includes('[spread_year]'));
+
+        const rebateTotalAmount = new Decimal(rebate.rebateAmount || 0);
+        if (rebateTotalAmount.lte(0)) continue;
+
+        const rebateParts = (rebate.monthYear || '').split('-');
+        const rebateYear = parseInt(rebateParts[0] || '0', 10);
+        const rebateMonth = parseInt(rebateParts[1] || '0', 10);
+        const rebateDate = new Date(rebateYear, rebateMonth - 1, 1);
+
+        if (!isSpread) {
+          // A. SINGLE MONTH (One-time lump sum): Applies ONLY in the exact monthYear of the rebate
+          if (rebate.monthYear === currentTargetMonthYear) {
+            totalMonthlyAdvanceTaxCredit =
+              totalMonthlyAdvanceTaxCredit.add(rebateTotalAmount);
+            rebateBreakup.push({
+              id: rebate.id,
+              name:
+                rebate.rebateNature?.name ||
+                rebate.remarks ||
+                'Advance Tax Credit / Rebate',
+              underSection: rebate.rebateNature?.underSection || '236',
+              amount: Math.round(rebateTotalAmount.toNumber()),
+              adjustmentType: 'single_month',
+              mode: 'Single Month (One-Time)',
+            });
+          }
+        } else {
+          // B. SPREAD ACROSS FISCAL YEAR:
+          // Check if rebate is within the same fiscal tax year and submission month <= current month
+          if (
+            rebateDate >= taxYearStart &&
+            rebateDate <= taxYearEnd &&
+            rebateDate <= currentMonthDate
+          ) {
+            // How many months were remaining in the tax year when this rebate was submitted?
+            const subTaxMonthNum =
+              rebateMonth >= 7 ? rebateMonth - 6 : rebateMonth + 6;
+            const remainingMonthsAtSubmission = 13 - subTaxMonthNum;
+
+            if (remainingMonthsAtSubmission > 0) {
+              const monthlySpreadAmount = rebateTotalAmount.div(
+                remainingMonthsAtSubmission,
+              );
+
+              totalMonthlyAdvanceTaxCredit =
+                totalMonthlyAdvanceTaxCredit.add(monthlySpreadAmount);
+
+              rebateBreakup.push({
+                id: rebate.id,
+                name:
+                  rebate.rebateNature?.name ||
+                  rebate.remarks ||
+                  'Advance Tax Credit / Rebate',
+                underSection: rebate.rebateNature?.underSection || '236',
+                amount: Math.round(monthlySpreadAmount.toNumber()),
+                totalAmount: Math.round(rebateTotalAmount.toNumber()),
+                adjustmentType: 'spread_year',
+                mode: `Spread (${remainingMonthsAtSubmission} mos)`,
+              });
+            }
+          }
         }
       }
     }
