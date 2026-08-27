@@ -411,6 +411,7 @@ model Rebate {
   rebateNatureId String
   rebateAmount   Decimal  @db.Decimal(12, 2)
   monthYear      String
+  adjustmentType String?  @default("single_month")
   attachment     String?
   status         String   @default("pending")
   remarks        String?
