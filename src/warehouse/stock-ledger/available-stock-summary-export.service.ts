@@ -675,7 +675,7 @@ export class AvailableStockSummaryExportService {
         where: {
           transferRequest: {
             ...toLocOrWhWhere,
-            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
             transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
           },
         },

@@ -380,7 +380,7 @@ export class InventoryAgingExportService {
     // Chunk items into 1,000 item batches to avoid database query parameter limits
     const itemChunks = chunkArray(rawItemIds, 1000);
 
-    const [itemsNested, tenantSettingsNested, latestLedgerCostsNested] = await Promise.all([
+    const [itemsNested, tenantSettingsNested, latestLedgerCostsNested, transitItemsNested] = await Promise.all([
       Promise.all(
         itemChunks.map((chunk) =>
           prisma.item.findMany({
@@ -422,11 +422,38 @@ export class InventoryAgingExportService {
           }),
         ),
       ),
+      Promise.all(
+        itemChunks.map((chunk) =>
+          prisma.transferRequestItem.findMany({
+            where: {
+              itemId: { in: chunk },
+              transferRequest: {
+                status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
+                transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+              },
+            },
+            select: {
+              itemId: true,
+              quantity: true,
+              transferRequest: {
+                select: { toLocationId: true, toWarehouseId: true },
+              },
+            },
+          }),
+        ),
+      ),
     ]);
 
     const items = itemsNested.flat();
     const tenantSettings = tenantSettingsNested.flat();
     const latestLedgerCosts = latestLedgerCostsNested.flat();
+    const transitItems = transitItemsNested.flat();
+
+    const transitMap = new Map<string, number>();
+    for (const t of transitItems) {
+      const q = Number(t.quantity || 0);
+      transitMap.set(t.itemId, (transitMap.get(t.itemId) || 0) + q);
+    }
 
     const itemObjMap = new Map<string, any>(items.map((i: any) => [i.id, i]));
     const settingMap = new Map<string, any>(tenantSettings.map((s: any) => [s.itemId, s]));
@@ -472,6 +499,33 @@ export class InventoryAgingExportService {
       }
       if (inv.warehouseId) {
         entry.warehouseStocks[inv.warehouseId] = (entry.warehouseStocks[inv.warehouseId] || 0) + qty;
+      }
+    }
+
+    for (const t of transitItems) {
+      const qty = Number(t.quantity || 0);
+      if (qty <= 0) continue;
+      const itemMaster = itemObjMap.get(t.itemId);
+      if (!itemMaster) continue;
+
+      let entry = itemMap.get(t.itemId);
+      if (!entry) {
+        entry = {
+          item: itemMaster,
+          totalQty: 0,
+          locationStocks: {},
+          warehouseStocks: {},
+        };
+        itemMap.set(t.itemId, entry);
+      }
+
+      entry.totalQty += qty;
+      const tr = t.transferRequest;
+      if (tr?.toLocationId) {
+        entry.locationStocks[tr.toLocationId] = (entry.locationStocks[tr.toLocationId] || 0) + qty;
+      }
+      if (tr?.toWarehouseId) {
+        entry.warehouseStocks[tr.toWarehouseId] = (entry.warehouseStocks[tr.toWarehouseId] || 0) + qty;
       }
     }
 
