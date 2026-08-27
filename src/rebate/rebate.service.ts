@@ -250,7 +250,7 @@ export class RebateService {
       }
 
       // Validate monthYear format
-      if (!/^""d{4}-""d{2}$/.test(body.monthYear)) {
+      if (!/^\d{4}-\d{2}$/.test(body.monthYear)) {
         return {
           status: false,
           message: 'Invalid monthYear format. Expected YYYY-MM',
@@ -285,7 +285,7 @@ export class RebateService {
           monthYear: body.monthYear,
           attachment: body.attachment || null,
           remarks: body.remarks || null,
-          status: 'pending',
+          status: body.status || 'approved',
           createdById: ctx.userId,
         },
       });
@@ -402,7 +402,7 @@ export class RebateService {
       }
 
       // Validate monthYear format if provided
-      if (body.monthYear && !/^""d{4}-""d{2}$/.test(body.monthYear)) {
+      if (body.monthYear && !/^\d{4}-\d{2}$/.test(body.monthYear)) {
         return {
           status: false,
           message: 'Invalid monthYear format. Expected YYYY-MM',
