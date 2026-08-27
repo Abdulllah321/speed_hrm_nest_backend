@@ -50,9 +50,24 @@ export class CreateRebateDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({
+    example: 'single_month',
+    description: 'Adjustment Type (single_month, spread_year)',
+  })
+  @IsOptional()
+  @IsString()
+  adjustmentType?: string;
 }
 
 export class UpdateRebateDto {
+  @ApiPropertyOptional({
+    example: 'single_month',
+    description: 'Adjustment Type (single_month, spread_year)',
+  })
+  @IsOptional()
+  @IsString()
+  adjustmentType?: string;
   @ApiPropertyOptional({ example: 'emp-uuid' })
   @IsOptional()
   @IsString()
