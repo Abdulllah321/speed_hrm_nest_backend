@@ -42,6 +42,8 @@
     "prisma:tenant:studio": "bun scripts/studio-tenant.ts",
     "import:transfers": "bun scripts/import-transfers.ts",
     "import:transfers:dry": "bun scripts/import-transfers.ts --dry-run",
+    "import:madison-stns": "bun scripts/import-madison-stns.ts",
+    "import:madison-stns:dry": "bun scripts/import-madison-stns.ts --dry-run",
     "update:pi-tax-dates": "bun scripts/update-pi-tax-invoice-dates.ts",
     "seed:location-center-ids": "bun scripts/seed-location-center-ids.ts",
     "prisma:studio": "prisma studio"
