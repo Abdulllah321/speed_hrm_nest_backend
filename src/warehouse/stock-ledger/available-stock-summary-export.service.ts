@@ -823,17 +823,11 @@ export class AvailableStockSummaryExportService {
     // Populate Reserve Map
     const reserveMap = new Map<string, number>();
     for (const row of reserveGroupResults) {
-      const qty = Number(row._sum?.quantity || 0);
-      const itemId = row.itemId;
-      if (!itemId) continue;
-
-      const whId = (row as any).warehouseId;
-      if (whId) {
-        const whKey = `wh:${whId}_${itemId}`;
-        reserveMap.set(whKey, (reserveMap.get(whKey) || 0) + qty);
-      }
-      const allKey = `all_${itemId}`;
-      reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
+      const locKey = isSeparate
+        ? (row.warehouseId ? `wh:${row.warehouseId}` : 'all')
+        : 'all';
+      const key = `${locKey}_${row.itemId}`;
+      reserveMap.set(key, (reserveMap.get(key) || 0) + Number(row._sum.quantity || 0));
     }
 
     const movementMetricsMap = new Map<string, {
@@ -951,12 +945,7 @@ export class AvailableStockSummaryExportService {
 
         const bf = (bfMap.get(mapKey) ?? bfMap.get(altMapKey)) || 0;
         const transit = (transitMap.get(mapKey) ?? transitMap.get(altMapKey)) || 0;
-        const reserved = (
-          reserveMap.get(mapKey) ??
-          reserveMap.get(altMapKey) ??
-          reserveMap.get(`all_${item.id}`) ??
-          (item.itemId ? reserveMap.get(`all_${item.itemId}`) : undefined)
-        ) || 0;
+        const reserved = (reserveMap.get(mapKey) ?? reserveMap.get(altMapKey)) || 0;
         const m = (movementMetricsMap.get(mapKey) ?? movementMetricsMap.get(altMapKey)) || {
           fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
           exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
@@ -966,11 +955,11 @@ export class AvailableStockSummaryExportService {
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const physicalStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        // Unreserved Available Stock = Physical On-Hand Stock minus Reserved Stock
-        const availableStock = Math.max(0, physicalStock - reserved);
+        // Total Balance = Physical On-Hand Stock + In Transit (184,260)
+        const balance = physicalStock + transit;
 
-        // Total Balance = Available Stock + Transit + Reserved (equals Physical Stock + Transit)
-        const balance = availableStock + transit + reserved;
+        // Available Qty = Total Balance - In Transit - Reserved (184,260 - 53 - 833 = 183,374)
+        const availableStock = Math.max(0, balance - transit - reserved);
 
         // In separate mode, skip item entries with 0 stock across all fields for this specific location
         if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0) {
