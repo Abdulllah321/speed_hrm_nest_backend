@@ -42,6 +42,14 @@ export class CreateRebateDto {
   @IsOptional()
   @IsString()
   attachment?: string;
+
+  @ApiPropertyOptional({
+    example: 'approved',
+    description: 'Status (pending, approved, rejected)',
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
 }
 
 export class UpdateRebateDto {
