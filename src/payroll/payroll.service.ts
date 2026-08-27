@@ -3654,8 +3654,25 @@ export class PayrollService {
 
       // Check if payroll is within tax year and before current month
       if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
-        // Sum actual cash tax deducted in previous months of this tax year
-        ytdTaxDeducted = ytdTaxDeducted.add(new Decimal(payroll.taxDeduction || 0));
+        // Add actual cash tax deducted
+        let monthTaxSettled = new Decimal(payroll.taxDeduction || 0);
+
+        // Also add any advance tax credit applied in that month so future months don't attempt to re-collect it
+        try {
+          const prevTaxBreakup =
+            typeof payroll.taxBreakup === 'string'
+              ? JSON.parse(payroll.taxBreakup)
+              : payroll.taxBreakup || {};
+          const prevCredit =
+            prevTaxBreakup.advanceTaxCredit || prevTaxBreakup.totalRebate || 0;
+          if (prevCredit) {
+            monthTaxSettled = monthTaxSettled.add(new Decimal(prevCredit));
+          }
+        } catch (e) {
+          // ignore parsing errors
+        }
+
+        ytdTaxDeducted = ytdTaxDeducted.add(monthTaxSettled);
 
         if (payroll.attendanceDeduction) {
           ytdAttendanceDeductions = ytdAttendanceDeductions.add(new Decimal(payroll.attendanceDeduction));
@@ -3833,8 +3850,11 @@ export class PayrollService {
         percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
         annualTax = fixedAmountTax.add(percentageTaxAmount);
 
-        // Standard Monthly Tax = Annual Tax / 12
-        standardMonthlyTax = annualTax.div(12);
+        // Standard Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Months
+        standardMonthlyTax = Decimal.max(
+          0,
+          annualTax.minus(ytdTaxDeducted).div(remainingMonths),
+        );
       }
     }
 
