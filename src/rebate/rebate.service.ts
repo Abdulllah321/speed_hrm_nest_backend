@@ -283,12 +283,12 @@ export class RebateService {
           rebateNatureId: body.rebateNatureId,
           rebateAmount: body.rebateAmount,
           monthYear: body.monthYear,
-          adjustmentType: body.adjustmentType || 'single_month',
           attachment: body.attachment || null,
           remarks: body.remarks || null,
           status: body.status || 'approved',
           createdById: ctx.userId,
-        },
+          ...(body.adjustmentType ? { adjustmentType: body.adjustmentType } : {}),
+        } as any,
       });
 
       // Map relation data for response
