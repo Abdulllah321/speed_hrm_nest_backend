@@ -798,11 +798,10 @@ export class OverallAvailableReservedStockExportService {
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const stockWh = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        const validStockWh = Math.max(0, stockWh);
         const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
         const rs = (reserveMap.get(key) ?? reserveMap.get(altKey)) || 0;
 
-        const availWh = Math.max(0, validStockWh - rs);
+        const availWh = stockWh - rs;
         warehouseStocks[wh.id] = availWh;
         itemAvailableStockSum += availWh;
 
@@ -825,9 +824,9 @@ export class OverallAvailableReservedStockExportService {
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const stockLoc = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        const validStockLoc = Math.max(0, stockLoc);
-        locationStocks[loc.id] = validStockLoc;
-        itemAvailableStockSum += validStockLoc;
+        const availLoc = stockLoc;
+        locationStocks[loc.id] = availLoc;
+        itemAvailableStockSum += availLoc;
 
         const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
         itemTransitSum += tr;
