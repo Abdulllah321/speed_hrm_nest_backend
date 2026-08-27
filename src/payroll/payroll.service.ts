@@ -204,7 +204,7 @@ export class PayrollService {
         where: {
           employeeId: { in: ids },
           monthYear: `${normalizedYear}-${normalizedMonth}`,
-          status: 'approved',
+          status: { in: ['approved', 'pending', 'active'] },
         },
       }),
       this.prisma.leaveApplication.findMany({
@@ -3655,7 +3655,25 @@ export class PayrollService {
 
       // Check if payroll is within tax year and before current month
       if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
-        ytdTaxDeducted = ytdTaxDeducted.add(new Decimal(payroll.taxDeduction || 0));
+        // Add actual cash tax deducted
+        let monthTaxSettled = new Decimal(payroll.taxDeduction || 0);
+
+        // Also add any advance tax credit applied in that month so future months don't attempt to re-collect it
+        try {
+          const prevTaxBreakup =
+            typeof payroll.taxBreakup === 'string'
+              ? JSON.parse(payroll.taxBreakup)
+              : payroll.taxBreakup || {};
+          const prevCredit =
+            prevTaxBreakup.advanceTaxCredit || prevTaxBreakup.totalRebate || 0;
+          if (prevCredit) {
+            monthTaxSettled = monthTaxSettled.add(new Decimal(prevCredit));
+          }
+        } catch (e) {
+          // ignore parsing errors
+        }
+
+        ytdTaxDeducted = ytdTaxDeducted.add(monthTaxSettled);
 
         if (payroll.attendanceDeduction) {
           ytdAttendanceDeductions = ytdAttendanceDeductions.add(new Decimal(payroll.attendanceDeduction));
@@ -3796,30 +3814,8 @@ export class PayrollService {
       }
     }
 
-    let taxableIncome = annualTaxableIncome;
-    let totalRebateAmount = new Decimal(0);
-    const rebateBreakup: any[] = [];
-
-    // Apply rebates (reduce taxable income by rebate amounts)
-    if (rebates && rebates.length > 0) {
-      for (const rebate of rebates) {
-        const rebateAmount = new Decimal(rebate.rebateAmount);
-        totalRebateAmount = totalRebateAmount.add(rebateAmount);
-        taxableIncome = taxableIncome.minus(rebateAmount);
-        rebateBreakup.push({
-          id: rebate.id,
-          name: rebate.rebateNature?.name || 'Rebate',
-          amount: rebateAmount.toNumber(),
-        });
-      }
-    }
-
-    // Ensure taxable income is not negative
-    if (taxableIncome.lt(0)) {
-      taxableIncome = new Decimal(0);
-    }
-
-    let taxDeduction = new Decimal(0);
+    let annualTax = new Decimal(0);
+    let standardMonthlyTax = new Decimal(0);
     let taxSlabUsed: {
       minAmount: number;
       maxAmount: number;
@@ -3828,16 +3824,16 @@ export class PayrollService {
     let fixedAmountTax = new Decimal(0);
     let percentageTaxAmount = new Decimal(0);
 
-    // Apply tax slab to taxable income
-    if (taxableIncome.gt(0)) {
+    // 1. Calculate Standard Annual Tax from Tax Slabs
+    if (annualTaxableIncome.gt(0)) {
       const slab = allTaxSlabs
         .filter((s) => s.status === 'active')
         .sort((a, b) => Number(b.minAmount) - Number(a.minAmount))
         .find(
           (s) =>
-            new Decimal(taxableIncome).gte(new Decimal(s.minAmount)) &&
+            new Decimal(annualTaxableIncome).gte(new Decimal(s.minAmount)) &&
             (s.maxAmount === null ||
-              new Decimal(taxableIncome).lte(new Decimal(s.maxAmount))),
+              new Decimal(annualTaxableIncome).lte(new Decimal(s.maxAmount))),
         );
 
       if (slab) {
@@ -3851,18 +3847,46 @@ export class PayrollService {
         fixedAmountTax = slabFixedAmount
           ? new Decimal(slabFixedAmount)
           : new Decimal(0);
-        const excess = taxableIncome.minus(new Decimal(slab.minAmount));
+        const excess = annualTaxableIncome.minus(new Decimal(slab.minAmount));
         percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
-        const annualTax = fixedAmountTax.add(percentageTaxAmount);
-        
-        // Annualized Cumulative Method: Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Months
-        taxDeduction = annualTax.minus(ytdTaxDeducted).div(remainingMonths);
+        annualTax = fixedAmountTax.add(percentageTaxAmount);
 
-        if (taxDeduction.lt(0)) {
-          taxDeduction = new Decimal(0);
+        // Standard Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Months
+        standardMonthlyTax = Decimal.max(
+          0,
+          annualTax.minus(ytdTaxDeducted).div(remainingMonths),
+        );
+      }
+    }
+
+    // 2. Process Monthly Advance Tax Credit / Rebates for Current Month
+    let totalMonthlyAdvanceTaxCredit = new Decimal(0);
+    const rebateBreakup: any[] = [];
+
+    if (rebates && rebates.length > 0) {
+      for (const rebate of rebates) {
+        const rebateAmount = new Decimal(rebate.rebateAmount || 0);
+        if (rebateAmount.gt(0)) {
+          totalMonthlyAdvanceTaxCredit =
+            totalMonthlyAdvanceTaxCredit.add(rebateAmount);
+          rebateBreakup.push({
+            id: rebate.id,
+            name:
+              rebate.rebateNature?.name ||
+              rebate.remarks ||
+              'Advance Tax Credit / Rebate',
+            underSection: rebate.rebateNature?.underSection || '236',
+            amount: Math.round(rebateAmount.toNumber()),
+          });
         }
       }
     }
+
+    // 3. Direct Monthly Tax Offset: Deduct Advance Tax directly from this month's calculated tax
+    let taxDeduction = Decimal.max(
+      0,
+      standardMonthlyTax.minus(totalMonthlyAdvanceTaxCredit),
+    );
 
     // If CPR Tax has a confirmed/calculated monthly tax for this specific period, sync exact monthly tax
     if (
@@ -3884,11 +3908,14 @@ export class PayrollService {
       taxableComponents: taxableComponents,
       carAmount: carAmountVal,
       carBenefit: carBenefitVal,
-      totalRebate: totalRebateAmount.toNumber(),
-      taxableIncome: taxableIncome.toNumber(),
+      standardMonthlyTax: Math.round(standardMonthlyTax.toNumber()),
+      advanceTaxCredit: Math.round(totalMonthlyAdvanceTaxCredit.toNumber()),
+      totalRebate: Math.round(totalMonthlyAdvanceTaxCredit.toNumber()),
+      taxableIncome: annualTaxableIncome.toNumber(),
       taxSlab: taxSlabUsed,
       fixedAmountTax: fixedAmountTax.toNumber(),
       percentageTax: percentageTaxAmount.toNumber(),
+      annualTax: annualTax.toNumber(),
       monthlyTax: taxDeduction.toNumber(),
       ytdTaxDeducted: ytdTaxDeducted.toNumber(),
       remainingMonths: remainingMonths,
