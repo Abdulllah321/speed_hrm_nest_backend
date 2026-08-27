@@ -665,14 +665,59 @@ export class StockValuationExportService {
           continue;
         }
 
+        const isOpening =
+          entry.movementType === 'OPENING_BALANCE' ||
+          ref === 'OPENING_BALANCE' ||
+          ref === 'BULK_STOCK_UPLOAD' ||
+          ref === 'FISCAL_YEAR_OPENING';
+
+        const isAdjustment =
+          entry.movementType === 'ADJUSTMENT' ||
+          ref === 'ADJUSTMENT' ||
+          ref === 'STOCK_ADJUSTMENT' ||
+          ref === 'SADJ' ||
+          ref.startsWith('SADJ') ||
+          ref.includes('ADJUSTMENT');
+
+        const isTransfer =
+          entry.movementType === 'TRANSFER' ||
+          [
+            'TRANSFER_REQUEST',
+            'OUTLET_TRANSFER_IN',
+            'OUTLET_TRANSFER_OUT',
+            'TRANSFER_RECEIPT',
+            'RETURN_REQUEST',
+            'TRANSFER',
+            'STOCK_TRANSFER',
+            'TRANSFER_IN',
+            'TRANSFER_OUT',
+            'STN',
+            'STOCK_TRANSFER_NOTE',
+            'DIRECT_TRANSFER',
+            'DIRECT_TRANSFER_IN',
+            'DIRECT_TRANSFER_OUT',
+            'STOCK_MOVEMENT',
+            'INTER_OUTLET_TRANSFER',
+            'CROSS_LOCATION_RETURN_TRANSFER',
+            'CLAIM_TO_PLM',
+            'CLAIM_RETURN',
+            'CLAIM_RETURN_REQUEST',
+            'POS_CLAIM_APPROVED',
+            'CLAIM_ACKNOWLEDGED',
+            'STOCK_REQUISITION',
+          ].includes(ref) ||
+          ref.startsWith('TRANSFER') ||
+          ref.includes('TRANSFER');
+
         if (
           entry.movementType === 'INBOUND' ||
           entry.movementType === 'OPENING_BALANCE' ||
-          entry.referenceType === 'OPENING_BALANCE' ||
-          entry.referenceType === 'BULK_STOCK_UPLOAD' ||
-          (entry.movementType === 'ADJUSTMENT' && entryQty > 0)
+          isOpening ||
+          (entry.movementType === 'ADJUSTMENT' && entryQty > 0) ||
+          (entry.movementType === 'TRANSFER' && entryQty > 0) ||
+          (isTransfer && entryQty > 0)
         ) {
-          // Blended WAC on Inbound / Purchases / Positive Adjustments
+          // Blended WAC on Inbound / Purchases / Positive Adjustments / Transfers
           if (valuationMethod === 'WEIGHTED_AVG') {
             const newQty = qtyBalance + entryQty;
             if (newQty > 0) {
@@ -683,25 +728,15 @@ export class StockValuationExportService {
           }
           qtyBalance += entryQty;
 
-            if (!isBeforePeriod) {
-            // Check if it is a purchase vs. adjustment vs. opening
-            const ref = entry.referenceType || '';
-            const isOpening =
-              entry.movementType === 'OPENING_BALANCE' ||
-              entry.referenceType === 'OPENING_BALANCE' ||
-              entry.referenceType === 'BULK_STOCK_UPLOAD';
-            const isAdjustment =
-              entry.movementType === 'ADJUSTMENT' ||
-              ref === 'ADJUSTMENT' ||
-              ref === 'STOCK_ADJUSTMENT' ||
-              ref === 'SADJ' ||
-              ref.startsWith('SADJ') ||
-              ref.includes('ADJUSTMENT');
+          if (!isBeforePeriod) {
             const isPurchase =
-              ref === 'GRN' ||
-              ref === 'PURCHASE' ||
-              ref === 'LANDED_COST' ||
-              (!isOpening && !isAdjustment && entry.movementType === 'INBOUND');
+              !isTransfer &&
+              (ref === 'GRN' ||
+                ref === 'PURCHASE' ||
+                ref === 'LANDED_COST' ||
+                ref.startsWith('GRN') ||
+                ref.startsWith('PURCHASE') ||
+                (!isOpening && !isAdjustment && entry.movementType === 'INBOUND'));
 
             if (isOpening) {
               periodOpeningQty += entryQty;
@@ -709,10 +744,9 @@ export class StockValuationExportService {
             } else if (isAdjustment) {
               adjQty += entryQty;
               adjVal += entryQty * entryCost;
+            } else if (isTransfer) {
+              // Internal transfers must NOT be counted in Purchases, Sales, or Adjustments
             } else if (isPurchase) {
-              purchaseQty += entryQty;
-              purchaseVal += entryQty * entryCost;
-            } else {
               purchaseQty += entryQty;
               purchaseVal += entryQty * entryCost;
             }
@@ -722,21 +756,15 @@ export class StockValuationExportService {
           qtyBalance += entryQty; // entryQty is negative
 
           if (!isBeforePeriod) {
-            const ref = entry.referenceType || '';
             const isPurchaseReturn =
               ['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV', 'PRN', 'PURCHASE_RETURN_NOTE'].includes(ref) ||
               ref.startsWith('PURCHASE_RETURN') ||
               ref.startsWith('PRN');
-            const isAdjustment =
-              entry.movementType === 'ADJUSTMENT' ||
-              ref === 'ADJUSTMENT' ||
-              ref === 'STOCK_ADJUSTMENT' ||
-              ref === 'SADJ' ||
-              ref.startsWith('SADJ') ||
-              ref.includes('ADJUSTMENT');
+
             const isSale =
-              ['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID'].includes(ref) ||
-              entry.movementType === 'OUTBOUND';
+              !isTransfer &&
+              (['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID'].includes(ref) ||
+                entry.movementType === 'OUTBOUND');
 
             const absQty = Math.abs(entryQty);
 
@@ -746,6 +774,8 @@ export class StockValuationExportService {
               purchaseRetVal += absQty * entryCost;
             } else if (isAdjustment) {
               adjQty += entryQty; // negative or positive net adjustment qty
+            } else if (isTransfer) {
+              // Internal transfers must NOT be counted in Sales or Purchase Returns
             } else if (isSale) {
               // Note: for POS Returns, entryQty will be positive, meaning it reduces net sales qty
               if (entryQty > 0) {
@@ -755,9 +785,6 @@ export class StockValuationExportService {
                 // Sale (outbound)
                 salesQty += absQty;
               }
-            } else {
-              // Default sales/outbound
-              salesQty += absQty;
             }
           }
         }
