@@ -689,7 +689,7 @@ export class AvailableStockSummaryExportService {
       }),
       // 5. Query active stock reserves
       prisma.stockReserve.groupBy({
-        by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
+        by: ['itemId', 'warehouseId'],
         where: {
           ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
           OR: [
@@ -823,11 +823,17 @@ export class AvailableStockSummaryExportService {
     // Populate Reserve Map
     const reserveMap = new Map<string, number>();
     for (const row of reserveGroupResults) {
+      const qty = Number(row._sum.quantity || 0);
       const locKey = isSeparate
         ? (row.warehouseId ? `wh:${row.warehouseId}` : 'all')
         : 'all';
       const key = `${locKey}_${row.itemId}`;
-      reserveMap.set(key, (reserveMap.get(key) || 0) + Number(row._sum.quantity || 0));
+      reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
+
+      if (!isSeparate) {
+        const allKey = `all_${row.itemId}`;
+        reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
+      }
     }
 
     const movementMetricsMap = new Map<string, {

@@ -466,16 +466,6 @@ export class OverallAvailableReservedStockExportService {
       orderBy: { name: 'asc' },
     });
 
-    const stockLocations = await prisma.location.findMany({
-      where: {
-        isStockLocation: true,
-        isDeleted: false,
-        ...(locIds.length > 0 ? { id: { in: locIds } } : {}),
-      },
-      select: { id: true, name: true, code: true, shortCode: true },
-      orderBy: { name: 'asc' },
-    });
-
     const now = new Date();
     const endDate = asOfStr ? new Date(asOfStr) : new Date();
     endDate.setHours(23, 59, 59, 999);
@@ -506,10 +496,28 @@ export class OverallAvailableReservedStockExportService {
           ...locationOrWarehouseWhere,
           createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
         },
-        select: { itemId: true },
-        distinct: ['itemId'],
+        select: { itemId: true, locationId: true, warehouseId: true },
+        distinct: ['itemId', 'locationId'],
       }),
     ]);
+
+    const activeStockLocIds = [...new Set([
+      ...inventoryItems.map(i => i.locationId),
+      ...ledgerItems.map(l => l.locationId),
+    ].filter(Boolean))] as string[];
+
+    const stockLocations = await prisma.location.findMany({
+      where: {
+        isDeleted: false,
+        OR: [
+          { isStockLocation: true },
+          ...(activeStockLocIds.length > 0 ? [{ id: { in: activeStockLocIds } }] : []),
+        ],
+        ...(locIds.length > 0 ? { id: { in: locIds } } : {}),
+      },
+      select: { id: true, name: true, code: true, shortCode: true },
+      orderBy: { name: 'asc' },
+    });
 
     let uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
