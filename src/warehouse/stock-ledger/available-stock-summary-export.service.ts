@@ -955,11 +955,11 @@ export class AvailableStockSummaryExportService {
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const physicalStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        // Total Balance = Physical On-Hand Stock + In Transit (184,260)
+        // Total Balance = Physical On-Hand Stock + In Transit
         const balance = physicalStock + transit;
 
-        // Available Qty = Total Balance - In Transit - Reserved (184,260 - 53 - 833 = 183,374)
-        const availableStock = Math.max(0, balance - transit - reserved);
+        // Available Qty = Total Balance - In Transit - Reserved
+        const availableStock = balance - transit - reserved;
 
         // In separate mode, skip item entries with 0 stock across all fields for this specific location
         if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0) {
