@@ -283,6 +283,7 @@ export class RebateService {
           rebateNatureId: body.rebateNatureId,
           rebateAmount: body.rebateAmount,
           monthYear: body.monthYear,
+          adjustmentType: body.adjustmentType || 'single_month',
           attachment: body.attachment || null,
           remarks: body.remarks || null,
           status: body.status || 'approved',
@@ -443,6 +444,7 @@ export class RebateService {
       if (body.monthYear) updateData.monthYear = body.monthYear;
       if (body.remarks !== undefined) updateData.remarks = body.remarks;
       if (body.status) updateData.status = body.status;
+      if (body.adjustmentType) updateData.adjustmentType = body.adjustmentType;
       if (body.attachment !== undefined)
         updateData.attachment = body.attachment || null;
 

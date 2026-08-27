@@ -223,19 +223,28 @@ export class CprService {
                     }
                   }
 
-                  // Calculate remaining months in the tax year (including current month)
-                  let taxMonthNum = 0;
-                  if (monthNum >= 7) {
-                    taxMonthNum = monthNum - 6; // July = 1, August = 2, September = 3, etc.
+                  // Determine final monthly tax deducting any advance tax credit / rebate
+                  if (
+                    detail.taxDeduction !== null &&
+                    detail.taxDeduction !== undefined &&
+                    Number(detail.taxDeduction) >= 0
+                  ) {
+                    newMonthlyTax = Math.round(Number(detail.taxDeduction));
                   } else {
-                    taxMonthNum = monthNum + 6; // January = 7, February = 8, etc.
-                  }
-                  const remainingMonths = 13 - taxMonthNum;
-
-                  const remainingTax = annualTax - ytdTaxDeducted;
-                  newMonthlyTax = Math.round(remainingTax / remainingMonths);
-                  if (newMonthlyTax < 0) {
-                    newMonthlyTax = 0;
+                    let advanceTaxCredit = 0;
+                    if (detail.taxBreakup) {
+                      try {
+                        const b =
+                          typeof detail.taxBreakup === 'string'
+                            ? JSON.parse(detail.taxBreakup)
+                            : detail.taxBreakup;
+                        advanceTaxCredit = Number(
+                          b?.advanceTaxCredit || b?.totalRebate || 0,
+                        );
+                      } catch (e) {}
+                    }
+                    const standardMonthly = Math.round(annualTax / 12);
+                    newMonthlyTax = Math.max(0, standardMonthly - advanceTaxCredit);
                   }
                 }
               }
@@ -578,10 +587,29 @@ export class CprService {
             }
           }
 
-          let taxMonthNum = monthNum >= 7 ? monthNum - 6 : monthNum + 6;
-          const remainingMonths = 13 - taxMonthNum;
-          const remainingTax = calculatedAnnualTax - ytdTaxDeducted;
-          newMonthlyTax = Math.max(0, Math.round(remainingTax / remainingMonths));
+          // Determine final monthly tax deducting any advance tax credit / rebate
+          if (
+            detail.taxDeduction !== null &&
+            detail.taxDeduction !== undefined &&
+            Number(detail.taxDeduction) >= 0
+          ) {
+            newMonthlyTax = Math.round(Number(detail.taxDeduction));
+          } else {
+            let advanceTaxCredit = 0;
+            if (detail.taxBreakup) {
+              try {
+                const b =
+                  typeof detail.taxBreakup === 'string'
+                    ? JSON.parse(detail.taxBreakup)
+                    : detail.taxBreakup;
+                advanceTaxCredit = Number(
+                  b?.advanceTaxCredit || b?.totalRebate || 0,
+                );
+              } catch (e) {}
+            }
+            const standardMonthly = Math.round(calculatedAnnualTax / 12);
+            newMonthlyTax = Math.max(0, standardMonthly - advanceTaxCredit);
+          }
         }
       }
 
