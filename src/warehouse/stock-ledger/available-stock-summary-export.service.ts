@@ -953,7 +953,12 @@ export class AvailableStockSummaryExportService {
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
-        const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+        const physicalStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+
+        // Unreserved Available Stock = Physical On-Hand Stock minus Reserved Stock
+        const availableStock = Math.max(0, physicalStock - reserved);
+
+        // Total Balance = Available Stock + Transit + Reserved (equals Physical Stock + Transit)
         const balance = availableStock + transit + reserved;
 
         // In separate mode, skip item entries with 0 stock across all fields for this specific location
