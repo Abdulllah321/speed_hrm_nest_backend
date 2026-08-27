@@ -32,7 +32,7 @@ function decrypt(encryptedText: string, masterKeyString: string): string {
   return decrypted;
 }
 
-export interface ParsedMadisonStnRow {
+export interface ParsedStnRow {
   rowNum: number;
   stockOutLocationName: string;
   codeTrOut: string;
@@ -67,9 +67,13 @@ const isWarehouseCode = (code: string) => {
   return c.startsWith('C') || c.startsWith('WH') || c.includes('WAREHOUSE') || c.includes('LOGISTIC');
 };
 
+/**
+ * Calculates Fiscal Year string (July 1 to June 30)
+ * e.g., July 2026 -> "26-27"
+ */
 export function getFiscalYear(date: Date): string {
   const year = date.getFullYear();
-  const month = date.getMonth();
+  const month = date.getMonth(); // 0-indexed (6 = July)
   if (month >= 6) {
     const startYY = String(year).slice(-2);
     const endYY = String(year + 1).slice(-2);
@@ -108,40 +112,76 @@ export function parseCustomDate(dateStr: string): Date | null {
   return new Date(year, month - 1, day, hours, minutes, seconds);
 }
 
-export function readAndParseMadisonStns(filePath: string, maxRows?: number): ParsedMadisonStnRow[] {
+export function readAndParseGeneralizedStns(filePath: string, maxRows?: number): ParsedStnRow[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found at path: ${filePath}`);
   }
 
   const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split(/\r?\n/);
+  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trim().startsWith('---'));
 
-  const rawParsed: ParsedMadisonStnRow[] = [];
+  if (lines.length < 2) {
+    console.warn(`⚠️ File ${filePath} contains no data rows.`);
+    return [];
+  }
+
+  const headerLine = lines[0];
+  const isTabSep = headerLine.includes('\t');
+  const isPipeSep = headerLine.includes('|');
+
+  const headers = isTabSep
+    ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
+    : isPipeSep
+    ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
+    : headerLine.split(',').map((h) => h.trim().toLowerCase());
+
+  const findColIndex = (keywords: string[], defaultIdx: number): number => {
+    const idx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
+    return idx !== -1 ? idx : defaultIdx;
+  };
+
+  const colOutName = findColIndex(['stock tr out location', 'out location', 'from location'], 0);
+  const colOutCode = findColIndex(['stock tr out location code', 'code tr out', 'from code'], 1);
+  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 2);
+  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 3);
+  const colDocType = findColIndex(['documenttype', 'type'], 4);
+  const colInName = findColIndex(['stock deliver to location', 'in location', 'to location'], 5);
+  const colInCode = findColIndex(['stock deliver to location code', 'code tr in', 'to code'], 6);
+  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 7);
+  const colQty = findColIndex(['quantity', 'qty'], 8);
+  const colRecNo = findColIndex(['receivingdocumentno', 'receiving doc no', 'recdocno'], 9);
+  const colRecDate = findColIndex(['receivingdocumentdate', 'receiving date', 'recdate'], 10);
+  const colRemarks = findColIndex(['remarks', 'notes'], 11);
+  const colStatus = findColIndex(['documentstatus', 'status'], 12);
+
+  const rawParsed: ParsedStnRow[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const rawLine = lines[i].trim();
     if (!rawLine || rawLine.startsWith('---')) continue;
 
-    let parts = rawLine.includes('\t')
+    let parts = isTabSep
       ? rawLine.split('\t').map((p) => p.trim())
-      : rawLine.split('|').map((p) => p.trim()).filter((p) => p !== '');
+      : isPipeSep
+      ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
+      : rawLine.split(',').map((p) => p.trim());
 
-    if (parts.length < 9) continue;
+    if (parts.length < 5) continue;
 
-    const stockOutLocationName = parts[0] || '';
-    const codeTrOut = parts[1] || '';
-    const documentNumber = parts[2] || '';
-    const documentDateStr = parts[3] || '';
-    const documentType = parts[4] || 'Transfer Out';
-    const stockInLocationName = parts[5] || '';
-    const codeTrIn = parts[6] || '';
-    const barCode = (parts[7] || '').replace(/"/g, '').trim();
-    const rawQty = parts[8] || '1';
+    const stockOutLocationName = parts[colOutName] || '';
+    const codeTrOut = parts[colOutCode] || '';
+    const documentNumber = parts[colDocNo] || '';
+    const documentDateStr = parts[colDocDate] || '';
+    const documentType = parts[colDocType] || 'Transfer Out';
+    const stockInLocationName = parts[colInName] || '';
+    const codeTrIn = parts[colInCode] || '';
+    const barCode = (parts[colBarcode] || '').replace(/"/g, '').trim();
+    const rawQty = parts[colQty] || '1';
     const quantity = parseFloat(rawQty) || 1;
-    const receivingDocNo = parts[9] || '';
-    const receivingDocDateStr = parts[10] || '';
-    const remarks = parts[11] || '';
-    const documentStatus = parts[12] || 'Approved / Closed';
+    const receivingDocNo = parts[colRecNo] || '';
+    const receivingDocDateStr = parts[colRecDate] || '';
+    const remarks = parts[colRemarks] || '';
+    const documentStatus = parts[colStatus] || 'Approved / Closed';
 
     if (!codeTrOut || !codeTrIn || !barCode) continue;
 
@@ -172,6 +212,7 @@ export function readAndParseMadisonStns(filePath: string, maxRows?: number): Par
     });
   }
 
+  // Sort ALL parsed rows chronologically by documentDate ascending (oldest first)
   rawParsed.sort((a, b) => a.documentDate.getTime() - b.documentDate.getTime());
 
   rawParsed.forEach((row, index) => {
@@ -183,13 +224,14 @@ export function readAndParseMadisonStns(filePath: string, maxRows?: number): Par
 
 async function processTransfersForTenant(
   prisma: PrismaClient,
-  rows: ParsedMadisonStnRow[],
+  rows: ParsedStnRow[],
   isDryRun: boolean = false
 ) {
   console.log(`\n==================================================`);
-  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} Madison STN lines...`);
+  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} STN transfer rows...`);
   console.log(`==================================================\n`);
 
+  // Step 1: Cleanup previous imported STNs in live mode
   if (!isDryRun) {
     console.log(`🧹 Cleaning up previously imported STN records...`);
     const existingStns = await prisma.transferRequest.findMany({
@@ -272,7 +314,7 @@ async function processTransfersForTenant(
           wh = await prisma.warehouse.create({
             data: {
               code,
-              name: name || 'LOGISTIC AREA',
+              name: name || 'LOGISTIC AREA WAREHOUSE',
               type: 'GENERAL',
               isActive: true,
             },
@@ -330,7 +372,7 @@ async function processTransfersForTenant(
               itemId: `ITEM-${row.barCode}`,
               sku: row.barCode,
               barCode: row.barCode,
-              description: `Madison STN Item (${row.barCode})`,
+              description: `STN Item (${row.barCode})`,
               unitPrice: 0,
               unitCost: 0,
               status: 'active',
@@ -345,7 +387,8 @@ async function processTransfersForTenant(
     }
   }
 
-  const transferGroups = new Map<string, ParsedMadisonStnRow[]>();
+  // Group STN rows into single Transfer Requests
+  const transferGroups = new Map<string, ParsedStnRow[]>();
   for (const row of rows) {
     const groupKey = `${row.codeTrOut}_${row.codeTrIn}_${row.documentNumber}_${row.documentDateStr}`;
     if (!transferGroups.has(groupKey)) {
@@ -356,8 +399,10 @@ async function processTransfersForTenant(
 
   console.log(`📋 Grouped ${rows.length} total rows into ${transferGroups.size} STN Transfer Request documents.`);
 
+  // Sequential counters per Fiscal Year (Global STN-FY-XXXXX)
   const fyCounters = new Map<string, number>();
 
+  // Sequential counters per Outlet Location (TR-OUT-0001 per OUT outlet, TR-IN-0001 per IN outlet)
   const trOutCounters = new Map<string, number>();
   const trInCounters = new Map<string, number>();
 
@@ -370,15 +415,18 @@ async function processTransfersForTenant(
     const fromEntity = entityCache.get(sample.codeTrOut)!;
     const toEntity = entityCache.get(sample.codeTrIn)!;
 
+    // 1. Global STN Request Number per Fiscal Year (e.g. STN-26-27-00001)
     const fy = getFiscalYear(sample.documentDate);
     const fySeq = (fyCounters.get(fy) || 0) + 1;
     fyCounters.set(fy, fySeq);
     const requestNo = `STN-${fy}-${String(fySeq).padStart(5, '0')}`;
 
+    // 2. Sequential TR-OUT per OUT outlet (TR-OUT-0001, TR-OUT-0002...)
     const outSeq = (trOutCounters.get(sample.codeTrOut) || 0) + 1;
     trOutCounters.set(sample.codeTrOut, outSeq);
     const outNo = `TR-OUT-${String(outSeq).padStart(4, '0')}`;
 
+    // 3. Sequential TR-IN per IN outlet (TR-IN-0001, TR-IN-0002...)
     let inNo = 'TR-IN-PENDING';
     if (sample.isReceived && sample.receivingDocDate) {
       const inSeq = (trInCounters.get(sample.codeTrIn) || 0) + 1;
@@ -413,6 +461,7 @@ async function processTransfersForTenant(
       continue;
     }
 
+    // Live execution
     const transferNotes = `TR OUT No: ${outNo} | TR IN No: ${inNo} | OrigDocNo: ${sample.documentNumber} | RecDocNo: ${sample.receivingDocNo || 'N/A'} | RecDate: ${sample.receivingDocDateStr || 'N/A'} | Remarks: ${sample.remarks}`;
 
     const transferRequest = await prisma.transferRequest.create({
@@ -435,6 +484,7 @@ async function processTransfersForTenant(
       const item = itemCache.get(row.barCode);
       const qty = row.quantity;
 
+      // 1. Create TransferRequestItem
       await prisma.transferRequestItem.create({
         data: {
           transferRequestId: transferRequest.id,
@@ -444,6 +494,7 @@ async function processTransfersForTenant(
         },
       });
 
+      // 2. OUTBOUND Stock Movement & Ledger at Source
       if (fromEntity.type === 'WAREHOUSE') {
         const sourceInv = await prisma.inventoryItem.findFirst({
           where: { warehouseId: fromEntity.id, locationId: null, itemId: item.id },
@@ -506,6 +557,7 @@ async function processTransfersForTenant(
         },
       });
 
+      // 3. INBOUND Stock Movement & Ledger at Destination (ONLY IF RECEIVED/APPROVED)
       if (isReceived && sample.receivingDocDate) {
         if (toEntity.type === 'WAREHOUSE') {
           const destInv = await prisma.inventoryItem.findFirst({
@@ -595,13 +647,20 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  console.log(`🚀 Starting Madison STN Import Script...`);
+  let filePath = path.join(__dirname, '..', 'data', 'A-madison-STN.md');
+  const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
+  if (fileArg) {
+    const customPath = fileArg.split('=')[1];
+    filePath = path.isAbsolute(customPath) ? customPath : path.join(process.cwd(), customPath);
+  }
+
+  console.log(`🚀 Starting Generalized STN Import Script...`);
+  console.log(`📄 Target Data File: ${filePath}`);
   if (isDryRun) {
     console.log(`⚠️ DRY RUN ACTIVATED: No database changes will be committed.`);
   }
 
-  const stnFilePath = path.join(__dirname, '..', 'data', 'A-madison-STN.md');
-  const rows = readAndParseMadisonStns(stnFilePath, limit);
+  const rows = readAndParseGeneralizedStns(filePath, limit);
 
   console.log(`📄 Successfully parsed and sorted ${rows.length} rows chronologically.`);
   if (rows.length > 0) {

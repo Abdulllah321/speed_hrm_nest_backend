@@ -670,11 +670,11 @@ export class TransferRequestService {
      * Helper to manually enrichment location data and claim data
      */
     private async enrichRequest(req: any) {
-        // Clean requestNo format to ensure standard STN-YYYY-XXXX
+        // Clean requestNo format to ensure standard STN-FY-XXXXX or STN-YYYY-XXXX
         if (req.requestNo && req.requestNo.includes('STN-')) {
             const parts = req.requestNo.split('-');
-            if (parts.length > 3) {
-                req.requestNo = `STN-${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
+            if (parts.length > 4) {
+                req.requestNo = `STN-${parts[parts.length - 3]}-${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
             }
         }
 
