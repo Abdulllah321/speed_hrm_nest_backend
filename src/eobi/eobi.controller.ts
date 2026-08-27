@@ -28,13 +28,23 @@ export class EOBIController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('hr.eobi.read')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get EOBI balances for all employees' })
+  @ApiOperation({ summary: 'Get EOBI balances and contributions for employees' })
   @ApiResponse({
     status: 200,
-    description: 'Returns EOBI balance data for employees',
+    description: 'Returns EOBI balance and contribution data for employees',
   })
-  async getEOBIEmployees() {
-    return this.eobiService.getEOBIEmployees();
+  async getEOBIEmployees(
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+    @Query('region') region?: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    return this.eobiService.getEOBIEmployees({
+      month,
+      year,
+      region,
+      departmentId,
+    });
   }
 
   @Post('withdrawals')

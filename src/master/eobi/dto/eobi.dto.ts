@@ -58,10 +58,10 @@ export class UpdateEobiDto {
   @IsString()
   id: string;
 
-  @ApiProperty({ example: 'Updated EOBI' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ example: 'Updated EOBI' })
+  @IsOptional()
   @IsString()
-  name: string;
+  name?: string;
 
   @ApiPropertyOptional({ example: '0800B656361' })
   @IsOptional()

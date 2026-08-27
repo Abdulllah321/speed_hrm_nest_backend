@@ -15,14 +15,38 @@ export class EOBIService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async getEOBIEmployees() {
+  async getEOBIEmployees(filters?: {
+    month?: string;
+    year?: string;
+    region?: string;
+    departmentId?: string;
+  }) {
     try {
+      const whereClause: any = {
+        eobi: true,
+        status: 'active',
+      };
+
+      if (filters?.departmentId && filters.departmentId !== 'all') {
+        whereClause.departmentId = filters.departmentId;
+      }
+
+      if (filters?.region && filters.region.toLowerCase() !== 'all') {
+        const regionFilter = filters.region.trim();
+        if (regionFilter.toLowerCase() === 'punjab') {
+          whereClause.OR = [
+            { eobiRegion: { equals: 'Punjab', mode: 'insensitive' } },
+            { eobiRegion: null },
+            { eobiRegion: '' },
+          ];
+        } else {
+          whereClause.eobiRegion = { equals: regionFilter, mode: 'insensitive' };
+        }
+      }
+
       // Get all employees with EOBI enabled
       const employees = await this.prisma.employee.findMany({
-        where: {
-          eobi: true,
-          status: 'active',
-        },
+        where: whereClause,
         select: {
           id: true,
           employeeId: true,
@@ -48,7 +72,7 @@ export class EOBIService {
         ...new Set(employees.map((e) => e.designationId).filter(Boolean)),
       ] as string[];
 
-      const [departments, subDepartments, designations] = await Promise.all([
+      const [departments, subDepartments, designations, distinctContributions, masterEOBIRecords] = await Promise.all([
         this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
@@ -61,11 +85,32 @@ export class EOBIService {
           where: { id: { in: desgIds } },
           select: { id: true, name: true },
         }),
+        this.prisma.eOBIContribution.findMany({
+          select: { month: true, year: true, monthYear: true },
+          distinct: ['month', 'year'],
+          orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        }),
+        this.prisma.eOBI.findMany({
+          where: { isDeleted: false, status: 'active' },
+          orderBy: { createdAt: 'desc' },
+        }),
       ]);
 
       const deptMap = new Map(departments.map((d) => [d.id, d]));
       const subDeptMap = new Map(subDepartments.map((sd) => [sd.id, sd]));
       const desgMap = new Map(designations.map((d) => [d.id, d]));
+
+      // Map dynamic rates from Master EOBI table
+      const masterRateMap = new Map<string, { employeeContribution: number; employerContribution: number }>();
+      for (const rec of masterEOBIRecords) {
+        const regKey = (rec.region || 'punjab').toLowerCase().trim();
+        if (!masterRateMap.has(regKey)) {
+          masterRateMap.set(regKey, {
+            employeeContribution: Number(rec.employeeContribution || 400),
+            employerContribution: Number(rec.employerContribution || 2000),
+          });
+        }
+      }
 
       // Calculate EOBI balances for each employee
       const eobiData = await Promise.all(
@@ -81,6 +126,7 @@ export class EOBIService {
               totalContribution: true,
               month: true,
               year: true,
+              monthYear: true,
             },
             orderBy: [{ year: 'desc' }, { month: 'desc' }],
           });
@@ -121,11 +167,36 @@ export class EOBIService {
           // Get latest contribution month/year
           const latestContribution = contributions[0];
 
+          // Check if specific month/year is requested
+          let selectedMonthContribution: any = null;
+          let selectedMonthEmp = 0;
+          let selectedMonthEmpr = 0;
+          let selectedMonthTotal = 0;
+          let hasSelectedMonth = false;
+
+          if (filters?.month && filters?.year) {
+            const targetMonth = String(parseInt(filters.month, 10));
+            const targetYear = String(filters.year);
+            const match = contributions.find((c) => {
+              const cMonth = String(parseInt(c.month, 10));
+              return cMonth === targetMonth && String(c.year) === targetYear;
+            });
+            if (match) {
+              selectedMonthContribution = match;
+              selectedMonthEmp = Number(match.employeeContribution || 0);
+              selectedMonthEmpr = Number(match.employerContribution || 0);
+              selectedMonthTotal = Number(match.totalContribution || 0);
+              hasSelectedMonth = true;
+            }
+          }
+
+          const region = employee.eobiRegion || 'Punjab';
+
           return {
             id: employee.id,
             employeeId: employee.employeeId,
             employeeName: employee.employeeName,
-            eobiRegion: employee.eobiRegion,
+            eobiRegion: region,
             department:
               (employee.departmentId
                 ? deptMap.get(employee.departmentId)?.name
@@ -147,13 +218,101 @@ export class EOBIService {
               ? `${latestContribution.month}/${latestContribution.year}`
               : 'N/A',
             totalMonths: contributions.length,
+            // Selected month specific contributions
+            selectedMonthEmployeeContribution: selectedMonthEmp,
+            selectedMonthEmployerContribution: selectedMonthEmpr,
+            selectedMonthTotalContribution: selectedMonthTotal,
+            hasContributionInSelectedMonth: hasSelectedMonth,
           };
         }),
       );
 
+      const isbRates = masterRateMap.get('islamabad') || { employeeContribution: 407, employerContribution: 2035 };
+      const pjbRates = masterRateMap.get('punjab') || { employeeContribution: 400, employerContribution: 2000 };
+      const sndRates = masterRateMap.get('sindh') || { employeeContribution: 400, employerContribution: 2000 };
+
+      // Compute Region Breakdown
+      const regionStats: Record<
+        string,
+        {
+          count: number;
+          employeeContribution: number;
+          employerContribution: number;
+          totalContribution: number;
+          totalBalance: number;
+          selectedMonthTotal: number;
+          employeeMonthlyRate: number;
+          employerMonthlyRate: number;
+        }
+      > = {
+        Islamabad: {
+          count: 0,
+          employeeContribution: 0,
+          employerContribution: 0,
+          totalContribution: 0,
+          totalBalance: 0,
+          selectedMonthTotal: 0,
+          employeeMonthlyRate: isbRates.employeeContribution,
+          employerMonthlyRate: isbRates.employerContribution,
+        },
+        Punjab: {
+          count: 0,
+          employeeContribution: 0,
+          employerContribution: 0,
+          totalContribution: 0,
+          totalBalance: 0,
+          selectedMonthTotal: 0,
+          employeeMonthlyRate: pjbRates.employeeContribution,
+          employerMonthlyRate: pjbRates.employerContribution,
+        },
+        Sindh: {
+          count: 0,
+          employeeContribution: 0,
+          employerContribution: 0,
+          totalContribution: 0,
+          totalBalance: 0,
+          selectedMonthTotal: 0,
+          employeeMonthlyRate: sndRates.employeeContribution,
+          employerMonthlyRate: sndRates.employerContribution,
+        },
+      };
+
+      for (const emp of eobiData) {
+        const reg =
+          emp.eobiRegion && regionStats[emp.eobiRegion]
+            ? emp.eobiRegion
+            : 'Punjab';
+
+        if (!regionStats[reg]) {
+          regionStats[reg] = {
+            count: 0,
+            employeeContribution: 0,
+            employerContribution: 0,
+            totalContribution: 0,
+            totalBalance: 0,
+            selectedMonthTotal: 0,
+            employeeMonthlyRate: 400,
+            employerMonthlyRate: 2000,
+          };
+        }
+
+        regionStats[reg].count += 1;
+        regionStats[reg].employeeContribution += emp.employeeContribution;
+        regionStats[reg].employerContribution += emp.employerContribution;
+        regionStats[reg].totalContribution += emp.totalEOBIBalance;
+        regionStats[reg].totalBalance += emp.availableBalance;
+        regionStats[reg].selectedMonthTotal += emp.selectedMonthTotalContribution || 0;
+      }
+
       return {
         status: true,
         data: eobiData,
+        availableMonths: distinctContributions.map((c) => ({
+          month: c.month,
+          year: c.year,
+          monthYear: c.monthYear,
+        })),
+        regionBreakdown: regionStats,
       };
     } catch (error) {
       this.logger.error('Error fetching EOBI employees:', error);
@@ -557,6 +716,22 @@ export class EOBIService {
         },
       });
 
+      const masterEOBIRecords = await this.prisma.eOBI.findMany({
+        where: { isDeleted: false, status: 'active' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const masterRateMap = new Map<string, { employeeContribution: number; employerContribution: number }>();
+      for (const rec of masterEOBIRecords) {
+        const regKey = (rec.region || 'punjab').toLowerCase().trim();
+        if (!masterRateMap.has(regKey)) {
+          masterRateMap.set(regKey, {
+            employeeContribution: Number(rec.employeeContribution || 400),
+            employerContribution: Number(rec.employerContribution || 2000),
+          });
+        }
+      }
+
       let updatedCount = 0;
 
       for (const contrib of contributions) {
@@ -584,8 +759,20 @@ export class EOBIService {
           locName.includes('CENTAURUS') ||
           region.includes('islamabad');
 
-        const empContrib = new Decimal(isIslamabad ? 370 : 400);
-        const emprContrib = new Decimal(isIslamabad ? 1850 : 2000);
+        const isSindh =
+          region.includes('sindh') ||
+          locName.includes('KARACHI') ||
+          locName.includes('HYDERABAD') ||
+          locName.includes('SINDH');
+
+        const targetRegionKey = isIslamabad ? 'islamabad' : (isSindh ? 'sindh' : 'punjab');
+        const rates = masterRateMap.get(targetRegionKey) || {
+          employeeContribution: isIslamabad ? 407 : 400,
+          employerContribution: isIslamabad ? 2035 : 2000,
+        };
+
+        const empContrib = new Decimal(rates.employeeContribution);
+        const emprContrib = new Decimal(rates.employerContribution);
         const totContrib = empContrib.add(emprContrib);
 
         await this.prisma.eOBIContribution.update({
