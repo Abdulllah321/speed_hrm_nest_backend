@@ -651,7 +651,7 @@ export class TransferRequestService {
             serialMap.set(req.id, idx + 1);
         });
 
-        const prefix = type === 'INBOUND' ? 'IN' : type === 'OUTBOUND' ? 'OUT' : 'REC';
+        const prefix = type === 'INBOUND' ? 'TR-IN' : type === 'OUTBOUND' ? 'TR-OUT' : 'REC';
 
         requests.forEach((req) => {
             const seqNum = serialMap.get(req.id) || 1;
@@ -690,7 +690,7 @@ export class TransferRequestService {
                     createdAt: { lte: req.createdAt },
                 },
             });
-            req.inboundNo = `IN-${countInbound.toString().padStart(4, '0')}`;
+            req.inboundNo = `TR-IN-${countInbound.toString().padStart(4, '0')}`;
 
             if (req.status === 'COMPLETED') {
                 const countReceipt = await this.prisma.transferRequest.count({
@@ -716,7 +716,7 @@ export class TransferRequestService {
                     createdAt: { lte: req.createdAt },
                 },
             });
-            req.outboundNo = `OUT-${countOutbound.toString().padStart(4, '0')}`;
+            req.outboundNo = `TR-OUT-${countOutbound.toString().padStart(4, '0')}`;
         }
 
         if (req.fromWarehouseId && !req.fromWarehouse) {

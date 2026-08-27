@@ -527,7 +527,8 @@ async function processTransfersForTenant(
         }
       }
 
-      const outMovNo = `MV-OUT-${outNo}-${row.barCode}`;
+      // Guarantee unique movementNo using row.rowNum
+      const outMovNo = `MV-OUT-${outNo}-${row.barCode}-${row.rowNum}`;
       await prisma.stockMovement.create({
         data: {
           movementNo: outMovNo,
@@ -591,7 +592,8 @@ async function processTransfersForTenant(
           }
         }
 
-        const inMovNo = `MV-IN-${inNo}-${row.barCode}`;
+        // Guarantee unique movementNo using row.rowNum
+        const inMovNo = `MV-IN-${inNo}-${row.barCode}-${row.rowNum}`;
         await prisma.stockMovement.create({
           data: {
             movementNo: inMovNo,
@@ -681,45 +683,47 @@ async function main() {
     const adapter = new PrismaPg(pool);
     const management = new ManagementClient({ adapter } as any);
 
+    let companies: any[] = [];
     try {
-      const companies = await management.company.findMany({
+      companies = await management.company.findMany({
         where: { status: 'active' },
       });
+    } catch (err: any) {
+      console.warn(`ℹ️ Multi-tenant check skipped (${err.message}).`);
+    } finally {
+      await management.$disconnect();
+      await pool.end();
+    }
 
-      if (companies.length > 0) {
-        console.log(`\n🏢 Found ${companies.length} tenant companies. Running transfer import for each...`);
-        for (const company of companies) {
-          console.log(`\n👉 Processing Tenant: ${company.name} (${company.code})`);
-          let connectionString = company.dbUrl;
-          if (company.dbPassword) {
-            try {
-              const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
-              connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
-            } catch (e) {
-              console.warn(`  ⚠️ Decryption failed, using default connectionUrl`);
-            }
-          }
-
-          if (!connectionString) continue;
-
-          const tenantPool = new Pool({ connectionString });
-          const tenantAdapter = new PrismaPg(tenantPool);
-          const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
-
+    if (companies.length > 0) {
+      console.log(`\n🏢 Found ${companies.length} tenant companies. Running transfer import for each...`);
+      for (const company of companies) {
+        console.log(`\n👉 Processing Tenant: ${company.name} (${company.code})`);
+        let connectionString = company.dbUrl;
+        if (company.dbPassword) {
           try {
-            await tenantPrisma.$connect();
-            await processTransfersForTenant(tenantPrisma, rows, isDryRun);
-          } finally {
-            await tenantPrisma.$disconnect();
-            await tenantPool.end();
+            const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+            connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+          } catch (e) {
+            console.warn(`  ⚠️ Decryption failed, using default connectionUrl`);
           }
         }
-        await management.$disconnect();
-        await pool.end();
-        return;
+
+        if (!connectionString) continue;
+
+        const tenantPool = new Pool({ connectionString });
+        const tenantAdapter = new PrismaPg(tenantPool);
+        const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
+
+        try {
+          await tenantPrisma.$connect();
+          await processTransfersForTenant(tenantPrisma, rows, isDryRun);
+        } finally {
+          await tenantPrisma.$disconnect();
+          await tenantPool.end();
+        }
       }
-    } catch (err: any) {
-      console.warn(`ℹ️ Multi-tenant check failed (${err.message}). Falling back to single database...`);
+      return;
     }
   }
 
