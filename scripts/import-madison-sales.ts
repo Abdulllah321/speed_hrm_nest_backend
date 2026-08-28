@@ -105,6 +105,7 @@ export function parseCustomDate(dateStr: string): Date | null {
   const minutes = parseInt(tParts[1] || '0', 10);
   const seconds = parseInt(tParts[2] || '0', 10);
 
+  
   return new Date(year, month - 1, day, hours, minutes, seconds);
 }
 
@@ -132,8 +133,10 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     : headerLine.split(',').map((h) => h.trim().toLowerCase());
 
   const findColIndex = (keywords: string[], defaultIdx: number): number => {
-    const idx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
-    return idx !== -1 ? idx : defaultIdx;
+    const exactIdx = headers.findIndex((h) => keywords.some((k) => h === k));
+    if (exactIdx !== -1) return exactIdx;
+    const partialIdx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
+    return partialIdx !== -1 ? partialIdx : defaultIdx;
   };
 
   const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 0);
@@ -143,11 +146,11 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
   const colUnitPrice = findColIndex(['unitprice', 'price'], 4);
   const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot'], 5);
   const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 6);
-  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount', 'discount'], 7);
+  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount'], 7);
   const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax'], 8);
   const colSalesTax = findColIndex(['sales tax', 'salestax'], 9);
   const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 11);
-  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'grandtotal', 'total'], 12);
+  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'grandtotal'], 12);
   const colCashSale = findColIndex(['cashsale', 'cash'], 13);
   const colCashReturn = findColIndex(['cashretrun', 'cashreturn'], 14);
   const colCardSale = findColIndex(['cardsale', 'card'], 15);
@@ -190,13 +193,15 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     const barCode = (parts[colBarcode] || '').replace(/['"]/g, '').trim();
     const quantity = parseFloat(parts[colQty] || '1') || 1;
     const unitPrice = parseFloat(parts[colUnitPrice] || '0') || 0;
-    const priceWOT = parseFloat(parts[colPriceWOT] || '0') || 0;
-    const totalPriceWOT = parseFloat(parts[colTotalPriceWOT] || '0') || (priceWOT * quantity);
-    const discountAmount = parseFloat(parts[colDiscountAmount] || '0') || 0;
-    const valueExSalesTax = parseFloat(parts[colValueExSalesTax] || '0') || (totalPriceWOT - discountAmount);
-    const salesTax = parseFloat(parts[colSalesTax] || '0') || 0;
-    const totalSalesTax = parseFloat(parts[colTotalSalesTax] || '0') || salesTax;
-    const valueInclSalesTax = parseFloat(parts[colValueInclSalesTax] || '0') || (valueExSalesTax + totalSalesTax);
+    const rawPriceWOT = parseFloat(parts[colPriceWOT] || '0') || 0;
+    const rawTotalPriceWOT = parseFloat(parts[colTotalPriceWOT] || '0') || (rawPriceWOT * quantity);
+    const rawDiscountAmount = parseFloat(parts[colDiscountAmount] || '0') || 0;
+    const rawValueExSalesTax = parseFloat(parts[colValueExSalesTax] || '0') || 0;
+    const rawSalesTax = parseFloat(parts[colSalesTax] || '0') || 0;
+    const rawTotalSalesTax = parseFloat(parts[colTotalSalesTax] || '0') || rawSalesTax;
+    const rawValueInclSalesTax = parseFloat(parts[colValueInclSalesTax] || '0') || 0;
+    const discountRateGiven = parseFloat(parts[colDiscRateGiven] || '0') || 0;
+    const discountRateDefault = parseFloat(parts[colDiscRateDefault] || '0') || 0;
     const cashSale = parseFloat(parts[colCashSale] || '0') || 0;
     const cashReturn = parseFloat(parts[colCashReturn] || '0') || 0;
     const cardSale = parseFloat(parts[colCardSale] || '0') || 0;
@@ -214,8 +219,6 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     const posId = parts[colPosId] || '';
     const fbrInvoiceNumber = (parts[colFbrInvoice] || '').replace(/^['"]/, '').trim();
     const fkExchangeVoucherNumber = (parts[colExchangeVoucherNo] || '').replace(/^['"]/, '').trim();
-    const discountRateGiven = parseFloat(parts[colDiscRateGiven] || '0') || 0;
-    const discountRateDefault = parseFloat(parts[colDiscRateDefault] || '0') || 0;
     const remarks = parts[colRemarks] || '';
     const isAllianceDiscount = (parts[colIsAlliance] || '').trim().toUpperCase() === 'Y';
     const salesPerson = parts[colSalesPerson] || '';
@@ -224,6 +227,56 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
 
     const docDate = parseCustomDate(docDateStr);
     if (!docDate || isNaN(docDate.getTime())) continue;
+
+    // ── Calculate WOST, Discount, Tax according to POS Sales Creation Formula ──
+    // 1. Determine tax percent
+    let taxPercent = 0;
+    if (rawTotalSalesTax > 0 && rawValueExSalesTax > 0) {
+      taxPercent = Math.round((rawTotalSalesTax / rawValueExSalesTax) * 100 * 100) / 100;
+    } else if (rawValueInclSalesTax > 0 && rawValueExSalesTax > 0 && rawValueInclSalesTax > rawValueExSalesTax) {
+      const calcTax = rawValueInclSalesTax - rawValueExSalesTax;
+      taxPercent = Math.round((calcTax / rawValueExSalesTax) * 100 * 100) / 100;
+    } else if (unitPrice > 0 && rawPriceWOT > 0 && unitPrice > rawPriceWOT) {
+      taxPercent = Math.round(((unitPrice / rawPriceWOT) - 1) * 100 * 100) / 100;
+    }
+
+    const taxDivisor = 1 + taxPercent / 100;
+
+    // 2. WOST per unit (Price W/O Tax)
+    let priceWOT = rawPriceWOT;
+    if (priceWOT <= 0 && unitPrice > 0) {
+      priceWOT = Math.round((unitPrice / taxDivisor) * 100) / 100;
+    }
+
+    // 3. Total Price W/O Tax
+    let totalPriceWOT = rawTotalPriceWOT;
+    if (totalPriceWOT <= 0) {
+      totalPriceWOT = Math.round(priceWOT * quantity * 100) / 100;
+    }
+
+    // 4. Discount amount (applied on WOST)
+    let discountAmount = rawDiscountAmount;
+    if (discountAmount <= 0 && discountRateGiven > 0) {
+      discountAmount = Math.round(totalPriceWOT * (discountRateGiven / 100) * 100) / 100;
+    }
+
+    // 5. Value Excluding Sales Tax (Amount after discount)
+    let valueExSalesTax = rawValueExSalesTax;
+    if (valueExSalesTax <= 0) {
+      valueExSalesTax = Math.round((totalPriceWOT - discountAmount) * 100) / 100;
+    }
+
+    // 6. Total Sales Tax (Tax on value excluding sales tax)
+    let totalSalesTax = rawTotalSalesTax;
+    if (totalSalesTax <= 0 && valueExSalesTax > 0 && taxPercent > 0) {
+      totalSalesTax = Math.round((valueExSalesTax * (taxPercent / 100)) * 100) / 100;
+    }
+
+    // 7. Value Including Sales Tax (Line Total)
+    let valueInclSalesTax = rawValueInclSalesTax;
+    if (valueInclSalesTax <= 0) {
+      valueInclSalesTax = Math.round((valueExSalesTax + totalSalesTax) * 100) / 100;
+    }
 
     rawParsed.push({
       rowNum: 0,
@@ -237,7 +290,7 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
       totalPriceWOT,
       discountAmount,
       valueExSalesTax,
-      salesTax,
+      salesTax: rawSalesTax || totalSalesTax,
       totalSalesTax,
       valueInclSalesTax,
       cashSale,
