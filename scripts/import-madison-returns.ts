@@ -256,12 +256,13 @@ async function processReturnsForTenant(
           { code: { startsWith: 'REF-' } },
         ],
       },
-      select: { id: true },
+      select: { id: true, code: true },
     });
 
     if (existingVouchers.length > 0) {
       const voucherIds = existingVouchers.map((v) => v.id);
-      console.log(`  Found ${voucherIds.length} existing Exchange Vouchers to clean up.`);
+      const voucherCodes = existingVouchers.map((v) => v.code);
+      console.log(`  Found ${voucherIds.length} existing Return Vouchers to clean up.`);
 
       await prisma.stockMovement.deleteMany({
         where: {
@@ -281,11 +282,26 @@ async function processReturnsForTenant(
         },
       });
 
+      await prisma.salesOrder.updateMany({
+        where: {
+          OR: [
+            { returnNumber: { in: voucherCodes } },
+            { returnNumber: { startsWith: 'EXC-' } },
+            { returnNumber: { startsWith: 'CLM-' } },
+            { returnNumber: { startsWith: 'REF-' } },
+          ],
+        },
+        data: {
+          status: 'completed',
+          returnNumber: null,
+        },
+      });
+
       await prisma.voucher.deleteMany({
         where: { id: { in: voucherIds } },
       });
 
-      console.log(`  ✅ Successfully wiped ${voucherIds.length} old Exchange Vouchers.`);
+      console.log(`  ✅ Successfully wiped ${voucherIds.length} old Return Vouchers and reset linked Sales Orders.`);
     }
   }
 
@@ -431,14 +447,16 @@ async function processReturnsForTenant(
       continue;
     }
 
-    // 1. Locate original SalesOrder by sale doc number if present
+    // 1. Locate original SalesOrder by exact sale doc number if present
     let originalSalesOrder: any = null;
-    if (sample.fkInvoiceNumberSale) {
+    if (sample.fkInvoiceNumberSale && sample.fkInvoiceNumberSale.trim() !== '') {
+      const saleDoc = sample.fkInvoiceNumberSale.trim();
       originalSalesOrder = await prisma.salesOrder.findFirst({
         where: {
           OR: [
-            { notes: { contains: `Original DocNo: ${sample.fkInvoiceNumberSale}` } },
-            { notes: { contains: `DocNo: ${sample.fkInvoiceNumberSale}` } },
+            { notes: { startsWith: `Original DocNo: ${saleDoc} |` } },
+            { notes: { contains: `Original DocNo: ${saleDoc} |` } },
+            { notes: { equals: `Original DocNo: ${saleDoc}` } },
           ],
         },
         select: { id: true, orderNumber: true, status: true, notes: true, returnNumber: true },
@@ -479,7 +497,14 @@ async function processReturnsForTenant(
       };
 
       if (!originalSalesOrder.returnNumber) {
-        updateData.returnNumber = voucherCode;
+        const existingOrderWithReturnNum = await prisma.salesOrder.findFirst({
+          where: { returnNumber: voucherCode },
+          select: { id: true },
+        });
+
+        if (!existingOrderWithReturnNum) {
+          updateData.returnNumber = voucherCode;
+        }
       }
 
       await prisma.salesOrder.update({
