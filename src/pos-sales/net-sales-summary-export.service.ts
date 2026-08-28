@@ -552,16 +552,29 @@ export class NetSalesSummaryExportService {
         const returnQty = isReturnOrder ? qty : 0;
         const netQty = soldQty - returnQty;
 
+        const calculatedTaxPct = taxPercent > 0
+          ? taxPercent
+          : (tax > 0 && (lineTotal - tax) > 0
+              ? Math.round((tax / (lineTotal - tax)) * 100 * 100) / 100
+              : (tax > 0 ? 18 : 0));
+        const taxDivisor = 1 + calculatedTaxPct / 100;
+
         const grossAmt = isReturnOrder ? 0 : unitPrice * soldQty;
         const retAmt = isReturnOrder ? lineTotal : 0;
         const retailSalesValue = unitPrice * netQty;
-        const wostAmount = grossAmt - retAmt;
-        const valueExSalesTax = wostAmount - disc;
-        const valueInclSalesTax = isReturnOrder ? -lineTotal : (valueExSalesTax + tax);
 
-        const calculatedTaxPct = taxPercent > 0
-          ? taxPercent
-          : (valueExSalesTax > 0 ? Math.round((tax / valueExSalesTax) * 100) : (tax > 0 ? 18 : 0));
+        const wostPerUnit = unitPrice / taxDivisor;
+        const wostAmount = isReturnOrder
+          ? -Math.round(wostPerUnit * returnQty * 100) / 100
+          : Math.round(wostPerUnit * soldQty * 100) / 100;
+
+        const itemDisc = isReturnOrder ? -disc : disc;
+        const valueExSalesTax = Math.round((wostAmount - itemDisc) * 100) / 100;
+        const taxAmount = isReturnOrder
+          ? -tax
+          : (tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100);
+        const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+
         const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
 
         const lineTotals: NetSalesSummaryTotals = {
@@ -572,9 +585,9 @@ export class NetSalesSummaryExportService {
           netItems: netQty,
           retailSalesValue,
           wostAmount,
-          discountAmount: disc,
+          discountAmount: itemDisc,
           valueExSalesTax,
-          taxAmount: tax,
+          taxAmount: taxAmount,
           valueInclSalesTax,
           grossSalesAmount: grossAmt,
           returnAmount: retAmt,
@@ -606,9 +619,9 @@ export class NetSalesSummaryExportService {
           netQty,
           retailSalesValue,
           wostAmount,
-          discountAmount: disc,
+          discountAmount: itemDisc,
           valueExSalesTax,
-          taxAmount: tax,
+          taxAmount: taxAmount,
           valueInclSalesTax,
           grossAmount: grossAmt,
           returnAmount: retAmt,
