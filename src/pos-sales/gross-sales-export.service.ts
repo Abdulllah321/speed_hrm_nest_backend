@@ -511,88 +511,57 @@ export class GrossSalesExportService {
       if (maxAmount !== undefined) where.grandTotal.lte = Number(maxAmount);
     }
 
-    if (search && search.trim()) {
-      const s = search.trim();
-      where.OR = [
-        { returnNumber: { contains: s, mode: 'insensitive' } },
-        { refundNumber: { contains: s, mode: 'insensitive' } },
-        { orderNumber: { contains: s, mode: 'insensitive' } },
-        { fbrInvoiceNumber: { contains: s, mode: 'insensitive' } },
-        { customer: { name: { contains: s, mode: 'insensitive' } } },
-        { customer: { contactNo: { contains: s, mode: 'insensitive' } } },
-      ];
-    }
-
-    let rawReturnOrders = await prisma.salesOrder.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
+    const returnLedgerEntries = await prisma.stockLedger.findMany({
+      where: {
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        createdAt: { gte: startDate, lte: endDate },
+        ...(locationWhere ? { locationId: locationWhere } : {}),
+      },
       include: {
-        customer: { select: { name: true, contactNo: true } },
-        items: {
+        item: {
           include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                category: { select: { name: true } },
-                brand: { select: { name: true } },
-                division: { select: { name: true } },
-                gender: { select: { name: true } },
-                silhouette: { select: { name: true } },
-                size: { select: { name: true } },
-                color: { select: { name: true } },
-              },
-            },
+            category: { select: { name: true } },
+            brand: { select: { name: true } },
+            division: { select: { name: true } },
+            gender: { select: { name: true } },
+            silhouette: { select: { name: true } },
+            size: { select: { name: true } },
+            color: { select: { name: true } },
           },
         },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
-    // Fallback: Check stockLedger for POS_RETURN / POS_REFUND entries
-    if (rawReturnOrders.length === 0) {
-      const ledgerReturns = await prisma.stockLedger.findMany({
-        where: {
-          referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
-          createdAt: { gte: startDate, lte: endDate },
-        },
-        select: { referenceId: true },
-        distinct: ['referenceId'],
-      });
+    const returnVoucherIds = [...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean))] as string[];
+    const returnVouchers = returnVoucherIds.length
+      ? await prisma.voucher.findMany({
+          where: { id: { in: returnVoucherIds } },
+        })
+      : [];
 
-      const returnOrderIds = ledgerReturns.map((l) => l.referenceId).filter((id): id is string => Boolean(id));
-
-      if (returnOrderIds.length > 0) {
-        const orderWhere: any = { id: { in: returnOrderIds } };
-        if (locationWhere) orderWhere.locationId = locationWhere;
-        if (cashierUserId) orderWhere.cashierUserId = cashierUserId;
-
-        rawReturnOrders = await prisma.salesOrder.findMany({
-          where: orderWhere,
-          orderBy: { createdAt: 'desc' },
+    const sourceOrderIds = [...new Set(returnVouchers.map((v) => v.sourceOrderId).filter(Boolean))] as string[];
+    const sourceOrders = sourceOrderIds.length
+      ? await prisma.salesOrder.findMany({
+          where: { id: { in: sourceOrderIds } },
           include: {
             customer: { select: { name: true, contactNo: true } },
-            items: {
-              include: {
-                item: {
-                  select: {
-                    description: true,
-                    sku: true,
-                    barCode: true,
-                    category: { select: { name: true } },
-                    brand: { select: { name: true } },
-                    division: { select: { name: true } },
-                    gender: { select: { name: true } },
-                    silhouette: { select: { name: true } },
-                    size: { select: { name: true } },
-                    color: { select: { name: true } },
-                  },
-                },
-              },
-            },
+            items: true,
           },
-        });
-      }
+        })
+      : [];
+
+    const sourceOrderMap = new Map<string, any>();
+    for (const so of sourceOrders) {
+      sourceOrderMap.set(so.id, so);
+    }
+
+    const voucherMap = new Map<string, any>();
+    for (const v of returnVouchers) {
+      voucherMap.set(v.id, {
+        ...v,
+        sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+      });
     }
 
     await onProgress?.(70, 'Building sales return register matrix...');
@@ -626,56 +595,80 @@ export class GrossSalesExportService {
     const returnNodes: GrossSalesReturnNode[] = [];
     const locationNodesMap = new Map<string, GrossSalesReturnLocationNode>();
 
-    for (const order of rawReturnOrders) {
-      const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-      const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
-      const custName = order.customer?.name || 'Walk-in Customer';
-      const custPhone = order.customer?.contactNo || '-';
-      const payMethod = (order.paymentMethod || 'CASH').toUpperCase();
-      const fbrInv = order.fbrInvoiceNumber || '-';
-      const fbrStatus = order.fbrStatus || 'NONE';
-      const rawRetNo = order.returnNumber || order.refundNumber || `SR-${order.orderNumber.replace(/^SO-/, '')}`;
-      const retNo = (rawRetNo.startsWith('SR-') || rawRetNo.startsWith('RF-') || rawRetNo.startsWith('RET-'))
-        ? rawRetNo
-        : `SR-${rawRetNo}`;
-
-      const gross = Number(order.subtotal || 0);
-      const disc = Number(order.discountAmount || 0);
-      const net = Number(order.grandTotal || 0);
-      const tax = Number(order.taxAmount || 0);
-
-      let cashAmt = Number(order.cashAmount || 0);
-      let cardAmt = Number(order.cardAmount || 0);
-      let voucherAmt = Number(order.voucherAmount || 0);
-
-      if (cashAmt === 0 && cardAmt === 0 && voucherAmt === 0) {
-        if (payMethod.includes('CASH')) cashAmt = net;
-        else if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardAmt = net;
-        else voucherAmt = net;
+    // Group ledger entries by Voucher ID
+    const entriesByVoucherMap = new Map<string, typeof returnLedgerEntries>();
+    for (const entry of returnLedgerEntries) {
+      const vKey = entry.referenceId || `entry-${entry.id}`;
+      if (!entriesByVoucherMap.has(vKey)) {
+        entriesByVoucherMap.set(vKey, []);
       }
+      entriesByVoucherMap.get(vKey)!.push(entry);
+    }
 
-      const lineItems: GrossSalesReturnLineItem[] = (order.items || []).map((item) => ({
-        id: item.id,
-        returnNumber: retNo,
-        orderNumber: order.orderNumber,
-        sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
-        barCode: item.item?.barCode || item.item?.sku || '-',
-        description: item.item?.description || item.item?.sku || 'Article',
-        categoryName: item.item?.category?.name || 'Default',
-        brandName: item.item?.brand?.name || 'Default',
-        divisionName: item.item?.division?.name || 'Default',
-        genderName: item.item?.gender?.name || 'Default',
-        silhouetteName: item.item?.silhouette?.name || 'Default',
-        sizeName: item.item?.size?.name || 'Default',
-        colorName: item.item?.color?.name || 'Default',
-        quantity: Number(item.quantity || 0),
-        unitPrice: Number(item.unitPrice || 0),
-        discountAmount: Number(item.discountAmount || 0),
-        taxAmount: Number(item.taxAmount || 0),
-        subTotal: Number(item.lineTotal || 0),
-      }));
+    for (const [vKey, entries] of entriesByVoucherMap.entries()) {
+      const voucher = voucherMap.get(vKey);
+      const sampleEntry = entries[0];
+      const locName = sampleEntry.locationId ? locationMap.get(sampleEntry.locationId) || 'Main Outlet' : 'Main Outlet';
+      const locKey = sampleEntry.locationId ? `loc:${sampleEntry.locationId}` : 'main-outlet';
+      const cashierName = 'Cashier';
+      const sourceOrder = voucher?.sourceOrder;
+      const custName = sourceOrder?.customer?.name || 'Walk-in Customer';
+      const custPhone = sourceOrder?.customer?.contactNo || '-';
+      const payMethod = voucher?.voucherType || 'EXCHANGE';
+      const fbrInv = '-';
+      const fbrStatus = 'NONE';
+      const retNo = voucher?.code || `SR-${vKey.slice(0, 8)}`;
+      const orderNo = sourceOrder?.orderNumber || '-';
+
+      const lineItems: GrossSalesReturnLineItem[] = entries.map((entry) => {
+        const originalOi = sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+        const qty = Math.abs(Number(entry.qty || 1));
+        const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
+        const taxPercent = originalOi ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0) : 18;
+        const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
+        const taxDivisor = 1 + calculatedTaxPct / 100;
+
+        const wostPerUnit = unitPrice / taxDivisor;
+        const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
+        const originalQty = originalOi ? Number(originalOi.quantity || 1) : 1;
+        const discPerUnit = originalOi ? Number(originalOi.discountAmount || 0) / originalQty : 0;
+        const discountAmount = Math.round(discPerUnit * qty * 100) / 100;
+
+        const valueExSalesTax = Math.round((wostAmount - discountAmount) * 100) / 100;
+        const taxPerUnit = originalOi ? Number(originalOi.taxAmount || 0) / originalQty : 0;
+        const taxAmount = originalOi
+          ? Math.round(taxPerUnit * qty * 100) / 100
+          : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+
+        const subTotal = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+
+        return {
+          id: String(entry.id),
+          returnNumber: retNo,
+          orderNumber: orderNo,
+          sku: entry.item.sku || entry.item.barCode || 'NO-SKU',
+          barCode: entry.item.barCode || entry.item.sku || '-',
+          description: entry.item.description || entry.item.sku || 'Article',
+          categoryName: entry.item.category?.name || 'Default',
+          brandName: entry.item.brand?.name || 'Default',
+          divisionName: entry.item.division?.name || 'Default',
+          genderName: entry.item.gender?.name || 'Default',
+          silhouetteName: entry.item.silhouette?.name || 'Default',
+          sizeName: entry.item.size?.name || 'Default',
+          colorName: entry.item.color?.name || 'Default',
+          quantity: qty,
+          unitPrice,
+          discountAmount,
+          taxAmount,
+          subTotal,
+        };
+      });
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
+      const gross = lineItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
+      const disc = lineItems.reduce((acc, i) => acc + i.discountAmount, 0);
+      const tax = lineItems.reduce((acc, i) => acc + i.taxAmount, 0);
+      const net = Number(voucher?.faceValue) || lineItems.reduce((acc, i) => acc + i.subTotal, 0);
 
       const orderTotals: GrossSalesReturnTotals = {
         returnCount: 1,
@@ -684,18 +677,18 @@ export class GrossSalesExportService {
         discountAmount: disc,
         netAmount: net,
         taxAmount: tax,
-        cashAmount: cashAmt,
-        cardAmount: cardAmt,
-        voucherAmount: voucherAmt,
+        cashAmount: 0,
+        cardAmount: 0,
+        voucherAmount: net,
       };
 
       addTotals(grandTotals, orderTotals);
 
       const retNode: GrossSalesReturnNode = {
-        id: order.id,
+        id: voucher?.id || vKey,
         returnNumber: retNo,
-        orderNumber: order.orderNumber,
-        createdAt: order.createdAt.toISOString(),
+        orderNumber: orderNo,
+        createdAt: voucher?.createdAt ? new Date(voucher.createdAt).toISOString() : sampleEntry.createdAt.toISOString(),
         customerName: custName,
         customerPhone: custPhone,
         cashierName,
@@ -712,8 +705,8 @@ export class GrossSalesExportService {
         flatItems.push({
           locationName: locName,
           returnNumber: retNo,
-          orderNumber: order.orderNumber,
-          returnDate: order.createdAt.toISOString(),
+          orderNumber: orderNo,
+          returnDate: retNode.createdAt,
           cashierName,
           customerName: custName,
           customerPhone: custPhone,
@@ -743,12 +736,11 @@ export class GrossSalesExportService {
       }
 
       if (isSeparate) {
-        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
         let locNode = locationNodesMap.get(locKey);
         if (!locNode) {
           locNode = {
             locationKey: locKey,
-            locationId: order.locationId || undefined,
+            locationId: sampleEntry.locationId || undefined,
             locationName: locName,
             returns: [],
             totals: createEmptyTotals(),
@@ -952,10 +944,25 @@ export class GrossSalesExportService {
 
         const qty = Number(item.quantity || 0);
         const unitPrice = Number(item.unitPrice || 0);
-        const gross = unitPrice * qty;
         const disc = Number(item.discountAmount || 0);
-        const subTotal = Number(item.lineTotal || 0);
         const tax = Number(item.taxAmount || 0);
+        const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
+
+        const calculatedTaxPct = taxPercent > 0
+          ? taxPercent
+          : (tax > 0 && (Number(item.lineTotal || 0) - tax) > 0
+              ? Math.round((tax / (Number(item.lineTotal || 0) - tax)) * 100 * 100) / 100
+              : (tax > 0 ? 18 : 0));
+        const taxDivisor = 1 + calculatedTaxPct / 100;
+
+        const wostPerUnit = unitPrice / taxDivisor;
+        const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
+        const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
+        const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+        const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+
+        const gross = unitPrice * qty;
+        const subTotal = valueInclSalesTax;
 
         const lineTotals: GrossSalesSummaryTotals = {
           orderCount: 1,
@@ -963,7 +970,7 @@ export class GrossSalesExportService {
           grossAmount: gross,
           discountAmount: disc,
           netAmount: subTotal,
-          taxAmount: tax,
+          taxAmount: taxAmount,
         };
 
         addTotals(grandTotals, lineTotals);
