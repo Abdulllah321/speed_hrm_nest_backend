@@ -170,11 +170,15 @@ export class NetSalesSummaryExportService {
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
     const fileName = `net-sales-summary-report-${dateStr}.${ext}`;
 
-    const history = await this.exportHistoryService.queueExport(this.prisma, {
-      jobId,
-      userId: opts.userId,
-      fileName,
-      moduleName: 'NET_SALES_SUMMARY_REPORT',
+    const historyRecord = await this.prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId: opts.userId,
+        fileName,
+        filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
+        moduleName: 'NET_SALES_SUMMARY_REPORT',
+        status: 'PENDING',
+      },
     });
 
     await this.exportQueue.add(
@@ -192,15 +196,68 @@ export class NetSalesSummaryExportService {
       },
     );
 
-    return { jobId, historyId: history.id };
+    return { jobId, historyId: historyRecord.id };
   }
 
-  async getJobStatus(jobId: string) {
-    return this.exportHistoryService.getJobStatus(this.prisma, jobId);
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+    const job = await this.exportQueue.getJob(jobId);
+    if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
+    const state = await job.getState();
+    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    return { state, progress };
   }
 
-  async streamExportFile(jobId: string, res: any) {
-    return this.exportHistoryService.streamExportFile(this.prisma, jobId, res);
+  async streamExportFile(jobId: string, res: any): Promise<void> {
+    const record = await this.prisma.exportHistory.findUnique({
+      where: { id: jobId },
+      select: { fileName: true, filePath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Export record ${jobId} not found in database`);
+    }
+
+    try {
+      await this.prisma.exportHistory.update({
+        where: { id: jobId },
+        data: {
+          downloadCount: { increment: 1 },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+    }
+
+    if (record.filePath.startsWith('s3://')) {
+      const s3Key = record.filePath.replace('s3://', '');
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      return res.redirect(signedUrl, 302);
+    }
+
+    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      return res.redirect(record.filePath, 302);
+    }
+
+    const filePath = path.join(process.cwd(), record.filePath);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+    }
+
+    const stat = fs.statSync(filePath);
+
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      this.logger.error(`[NetSalesSummaryExport] Stream error: ${err.message}`);
+    });
+
+    const isPdf = record.fileName.endsWith('.pdf');
+    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header('Content-Length', stat.size);
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    res.send(stream);
   }
 
   async queueReportPreview(opts: {
@@ -650,15 +707,21 @@ export class NetSalesSummaryExportService {
     const tempFilePath = path.join(tempDir, `temp-${jobId}-${body.fileName}`);
     fs.writeFileSync(tempFilePath, fileBuffer);
 
-    await this.exportHistoryService.queueExport(prisma, {
-      jobId,
-      userId,
-      fileName: body.fileName,
-      moduleName: 'NET_SALES_SUMMARY_REPORT',
+    const activePrisma = prisma || this.prisma;
+
+    await activePrisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId,
+        fileName: body.fileName,
+        filePath: path.join('uploads', 'exports', `temp-${jobId}-${body.fileName}`),
+        moduleName: 'NET_SALES_SUMMARY_REPORT',
+        status: 'PENDING',
+      },
     });
 
-    const historyRecord = await this.exportHistoryService.completeAndUploadExport(
-      prisma,
+    const fileUrl = await this.exportHistoryService.completeAndUploadExport(
+      activePrisma,
       jobId,
       tempFilePath,
       body.fileName,
@@ -666,8 +729,8 @@ export class NetSalesSummaryExportService {
     );
 
     return {
-      historyId: historyRecord.id,
-      downloadUrl: historyRecord.fileUrl || `/api/warehouse/export-history/download/${jobId}`,
+      historyId: jobId,
+      downloadUrl: fileUrl || `/api/warehouse/export-history/download/${jobId}`,
     };
   }
 }
