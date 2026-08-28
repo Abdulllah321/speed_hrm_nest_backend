@@ -248,6 +248,27 @@ async function processReturnsForTenant(
 
   if (!isDryRun) {
     console.log(`🧹 Cleaning up previously imported Return Vouchers & Stock Records...`);
+    
+    // Always clean up any existing return stock movements & ledger entries
+    await prisma.stockMovement.deleteMany({
+      where: {
+        OR: [
+          { type: 'POS_RETURN' },
+          { referenceType: 'POS_RETURN' },
+          { movementNo: { startsWith: 'MV-RET-' } },
+          { notes: { contains: 'POS Return' } },
+        ],
+      },
+    });
+
+    await prisma.stockLedger.deleteMany({
+      where: {
+        OR: [
+          { referenceType: 'POS_RETURN' },
+        ],
+      },
+    });
+
     const existingVouchers = await prisma.voucher.findMany({
       where: {
         OR: [
@@ -263,24 +284,6 @@ async function processReturnsForTenant(
       const voucherIds = existingVouchers.map((v) => v.id);
       const voucherCodes = existingVouchers.map((v) => v.code);
       console.log(`  Found ${voucherIds.length} existing Return Vouchers to clean up.`);
-
-      await prisma.stockMovement.deleteMany({
-        where: {
-          OR: [
-            { referenceId: { in: voucherIds } },
-            { notes: { contains: 'POS Return' } },
-          ],
-        },
-      });
-
-      await prisma.stockLedger.deleteMany({
-        where: {
-          OR: [
-            { referenceId: { in: voucherIds } },
-            { referenceType: 'POS_RETURN' },
-          ],
-        },
-      });
 
       await prisma.salesOrder.updateMany({
         where: {
@@ -562,6 +565,10 @@ async function processReturnsForTenant(
 
       // Create StockMovement entry for audit trail
       const movNo = `MV-RET-${voucherCode}-${row.barCode}-${row.rowNum}`;
+      await prisma.stockMovement.deleteMany({
+        where: { movementNo: movNo },
+      });
+
       await prisma.stockMovement.create({
         data: {
           movementNo: movNo,
