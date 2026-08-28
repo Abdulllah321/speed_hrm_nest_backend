@@ -115,8 +115,10 @@ export function readAndParseReturnData(filePath: string, maxRows?: number): Pars
     : headerLine.split(',').map((h) => h.trim().toLowerCase());
 
   const findColIndex = (keywords: string[], defaultIdx: number): number => {
-    const idx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
-    return idx !== -1 ? idx : defaultIdx;
+    const exactIdx = headers.findIndex((h) => keywords.some((k) => h === k));
+    if (exactIdx !== -1) return exactIdx;
+    const partialIdx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
+    return partialIdx !== -1 ? partialIdx : defaultIdx;
   };
 
   const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 0);
@@ -248,7 +250,11 @@ async function processReturnsForTenant(
     console.log(`🧹 Cleaning up previously imported Return Vouchers & Stock Records...`);
     const existingVouchers = await prisma.voucher.findMany({
       where: {
-        code: { startsWith: 'EXC-' },
+        OR: [
+          { code: { startsWith: 'EXC-' } },
+          { code: { startsWith: 'CLM-' } },
+          { code: { startsWith: 'REF-' } },
+        ],
       },
       select: { id: true },
     });
@@ -402,8 +408,11 @@ async function processReturnsForTenant(
     const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
     // Format Voucher Code: EXC-ADIMS-0000(docNo) e.g. EXC-ADIMS-00001
+    const subTypePrefix = sample.subType.toUpperCase() === 'CLAIM' ? 'CLM' :
+                          sample.subType.toUpperCase() === 'REFUND' ? 'REF' : 'EXC';
+
     const padDocNo = String(sample.docNo).padStart(5, '0');
-    const voucherCode = `EXC-${cleanCode}-${padDocNo}`;
+    const voucherCode = `${subTypePrefix}-${cleanCode}-${padDocNo}`;
 
     // Total return value (Absolute value including tax)
     const returnTotalValue = groupRows.reduce((acc, r) => acc + Math.abs(r.valueInclSalesTax), 0);
@@ -432,7 +441,7 @@ async function processReturnsForTenant(
             { notes: { contains: `DocNo: ${sample.fkInvoiceNumberSale}` } },
           ],
         },
-        select: { id: true, orderNumber: true, status: true },
+        select: { id: true, orderNumber: true, status: true, notes: true, returnNumber: true },
       });
     }
 
@@ -464,13 +473,18 @@ async function processReturnsForTenant(
 
     // 3. Mark original SalesOrder as returned if found
     if (originalSalesOrder) {
+      const updateData: any = {
+        status: 'returned',
+        notes: `${originalSalesOrder.notes || ''} | [Returned via ${voucherCode}]`,
+      };
+
+      if (!originalSalesOrder.returnNumber) {
+        updateData.returnNumber = voucherCode;
+      }
+
       await prisma.salesOrder.update({
         where: { id: originalSalesOrder.id },
-        data: {
-          status: 'returned',
-          returnNumber: voucherCode,
-          notes: `${originalSalesOrder.notes || ''} | [Returned via ${voucherCode}]`,
-        },
+        data: updateData,
       });
       linkedSalesOrders++;
     }
