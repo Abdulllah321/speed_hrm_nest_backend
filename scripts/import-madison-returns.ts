@@ -447,16 +447,21 @@ async function processReturnsForTenant(
       continue;
     }
 
-    // 1. Locate original SalesOrder by exact sale doc number if present
+    // 1. Locate original SalesOrder by sale doc number or order number if present
     let originalSalesOrder: any = null;
     if (sample.fkInvoiceNumberSale && sample.fkInvoiceNumberSale.trim() !== '') {
       const saleDoc = sample.fkInvoiceNumberSale.trim();
+      const paddedSaleDoc = saleDoc.padStart(5, '0');
       originalSalesOrder = await prisma.salesOrder.findFirst({
         where: {
           OR: [
+            { orderNumber: { endsWith: `-${paddedSaleDoc}` } },
+            { orderNumber: { endsWith: `-${saleDoc}` } },
+            { orderNumber: { contains: `-${paddedSaleDoc}` } },
+            { orderNumber: { contains: `-${saleDoc}` } },
             { notes: { startsWith: `Original DocNo: ${saleDoc} |` } },
             { notes: { contains: `Original DocNo: ${saleDoc} |` } },
-            { notes: { equals: `Original DocNo: ${saleDoc}` } },
+            { notes: { contains: `DocNo: ${saleDoc}` } },
           ],
         },
         select: { id: true, orderNumber: true, status: true, notes: true, returnNumber: true },
