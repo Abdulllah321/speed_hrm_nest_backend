@@ -875,6 +875,8 @@ export class PayrollService {
           normalizedMonth,
           normalizedYear,
           previousPayrolls,
+          emp.joiningDate,
+          emp.lastExitDate,
         );
         taxDeduction = taxResult.taxDeduction;
         taxBreakup = taxResult.taxBreakup;
@@ -3594,6 +3596,8 @@ export class PayrollService {
     currentMonth: string,
     currentYear: string,
     passedPreviousPayrolls?: any[],
+    joiningDate?: Date | string | null,
+    lastExitDate?: Date | string | null,
   ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
     const monthNum = parseInt(currentMonth, 10);
     const yearNum = parseInt(currentYear, 10);
@@ -3620,6 +3624,55 @@ export class PayrollService {
       taxMonthNum = monthNum + 6; // January = 7, February = 8, etc.
     }
     const remainingMonths = 13 - taxMonthNum;
+
+    // Calculate Active Months in Current Fiscal Year (July 1 to June 30) based on Joining Date and Exit Date
+    let activeFiscalMonths = 12;
+
+    const jDate = joiningDate ? new Date(joiningDate) : null;
+    if (jDate) {
+      jDate.setHours(0, 0, 0, 0);
+    }
+    const exitDate = lastExitDate ? new Date(lastExitDate) : null;
+    if (exitDate) {
+      exitDate.setHours(23, 59, 59, 999);
+    }
+
+    const effectiveStart = jDate && jDate > taxYearStart ? jDate : taxYearStart;
+    const effectiveEnd = exitDate && exitDate < taxYearEnd ? exitDate : taxYearEnd;
+
+    if (effectiveStart > effectiveEnd) {
+      activeFiscalMonths = 0;
+    } else {
+      let totalMonths = 0;
+      let cur = new Date(effectiveStart.getFullYear(), effectiveStart.getMonth(), 1);
+      const lastMonth = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), 1);
+
+      while (cur <= lastMonth) {
+        const curYear = cur.getFullYear();
+        const curMonth = cur.getMonth();
+        const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+
+        let startDay = 1;
+        if (curYear === effectiveStart.getFullYear() && curMonth === effectiveStart.getMonth()) {
+          startDay = effectiveStart.getDate();
+        }
+
+        let endDay = daysInMonth;
+        if (curYear === effectiveEnd.getFullYear() && curMonth === effectiveEnd.getMonth()) {
+          endDay = effectiveEnd.getDate();
+        }
+
+        const workedDaysInMonth = Math.max(0, endDay - startDay + 1);
+        if (workedDaysInMonth === daysInMonth) {
+          totalMonths += 1;
+        } else {
+          totalMonths += workedDaysInMonth / daysInMonth;
+        }
+
+        cur.setMonth(cur.getMonth() + 1);
+      }
+      activeFiscalMonths = Math.min(12, Math.max(0, totalMonths));
+    }
 
     // Fetch previous months' actual tax deducted in the current tax year
     const previousPayrolls = passedPreviousPayrolls || await this.prisma.payrollDetail.findMany({
@@ -3740,8 +3793,8 @@ export class PayrollService {
         let annualAmount = new Decimal(0);
 
         if (isRecurring) {
-          // Recurring components are annualized (x12)
-          annualAmount = new Decimal(component.amount).mul(12);
+          // Recurring components are annualized based on active months in the fiscal year
+          annualAmount = new Decimal(component.amount).mul(activeFiscalMonths);
         } else {
           // Non-recurring (one-time) components are added as-is
           annualAmount = new Decimal(component.amount);
@@ -3802,7 +3855,7 @@ export class PayrollService {
     if (cprRecord && cprRecord.carAmount !== null && cprRecord.carAmount !== undefined) {
       carAmountVal = Number(cprRecord.carAmount);
       if (carAmountVal > 0) {
-        carBenefitVal = carAmountVal * 0.05;
+        carBenefitVal = (carAmountVal * 0.05 * activeFiscalMonths) / 12;
         annualTaxableIncome = annualTaxableIncome.add(new Decimal(carBenefitVal));
         taxableComponents.push({
           name: 'Car Perk Benefit (5%)',
@@ -3822,6 +3875,14 @@ export class PayrollService {
     } | null = null;
     let fixedAmountTax = new Decimal(0);
     let percentageTaxAmount = new Decimal(0);
+
+    // Calculate remaining payrolls in tax year from current month onwards
+    let remainingPayrolls = remainingMonths;
+    if (exitDate && exitDate < taxYearEnd) {
+      const exitMonthNum = exitDate.getMonth() + 1;
+      let exitTaxMonthNum = exitMonthNum >= 7 ? exitMonthNum - 6 : exitMonthNum + 6;
+      remainingPayrolls = Math.max(1, exitTaxMonthNum - taxMonthNum + 1);
+    }
 
     // 1. Calculate Standard Annual Tax from Tax Slabs
     if (annualTaxableIncome.gt(0)) {
@@ -3850,10 +3911,10 @@ export class PayrollService {
         percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
         annualTax = fixedAmountTax.add(percentageTaxAmount);
 
-        // Standard Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Months
+        // Standard Monthly Tax = (Annual Tax - Paid Tax YTD) / Remaining Payrolls
         standardMonthlyTax = Decimal.max(
           0,
-          annualTax.minus(ytdTaxDeducted).div(remainingMonths),
+          annualTax.minus(ytdTaxDeducted).div(remainingPayrolls),
         );
       }
     }
@@ -3956,6 +4017,8 @@ export class PayrollService {
 
     const taxBreakup = {
       method: 'AnnualizedCumulative',
+      activeFiscalMonths: Number(activeFiscalMonths.toFixed(2)),
+      fiscalYear: `${taxYearStart.getFullYear()}-${taxYearEnd.getFullYear()}`,
       annualGross: annualTaxableIncome.toNumber(),
       annualTaxableComponents: annualTaxableIncome.toNumber(),
       taxableComponents: taxableComponents,
@@ -3971,10 +4034,9 @@ export class PayrollService {
       annualTax: annualTax.toNumber(),
       monthlyTax: taxDeduction.toNumber(),
       ytdTaxDeducted: ytdTaxDeducted.toNumber(),
-      remainingMonths: remainingMonths,
+      remainingMonths: remainingPayrolls,
       rebateBreakup,
     };
-
 
     return { taxDeduction, taxBreakup };
   }
