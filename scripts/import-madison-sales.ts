@@ -337,7 +337,45 @@ async function processSalesForTenant(
   console.log(`==================================================\n`);
 
   if (!isDryRun) {
-    console.log(`🧹 Cleaning up previously imported Sales Order records...`);
+    console.log(`🧹 Cleaning up previously imported Sales Order records & Return Vouchers...`);
+
+    // Clean up return vouchers
+    const existingVouchers = await prisma.voucher.findMany({
+      where: {
+        OR: [
+          { code: { startsWith: 'EXC-' } },
+          { code: { startsWith: 'CLM-' } },
+          { code: { startsWith: 'REF-' } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (existingVouchers.length > 0) {
+      const voucherIds = existingVouchers.map((v) => v.id);
+      await prisma.stockMovement.deleteMany({
+        where: {
+          OR: [
+            { referenceId: { in: voucherIds } },
+            { notes: { contains: 'POS Return' } },
+          ],
+        },
+      });
+      await prisma.stockLedger.deleteMany({
+        where: {
+          OR: [
+            { referenceId: { in: voucherIds } },
+            { referenceType: 'POS_RETURN' },
+          ],
+        },
+      });
+      await prisma.voucher.deleteMany({
+        where: { id: { in: voucherIds } },
+      });
+      console.log(`  ✅ Successfully wiped ${existingVouchers.length} old Return Vouchers.`);
+    }
+
+    // Clean up sales orders
     const existingOrders = await prisma.salesOrder.findMany({
       where: {
         OR: [
