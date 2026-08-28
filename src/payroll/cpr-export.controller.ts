@@ -35,6 +35,7 @@ export class CprTaxExportController {
     @Query('month')  month?: string,
     @Query('year')   year?: string,
     @Query('months') months?: string,
+    @Query('employeeIds') employeeIds?: string,
   ) {
     const result = await this.exportService.queueExport({
       userId: req.user?.userId,
@@ -42,6 +43,7 @@ export class CprTaxExportController {
       month,
       year,
       months,
+      employeeIds,
     });
 
     return {

@@ -69,8 +69,9 @@ export class CprController {
     @Query('month') month?: string,
     @Query('year') year?: string,
     @Query('months') months?: string,
+    @Query('employeeIds') employeeIds?: string,
   ) {
-    const data = await this.service.list({ month, year, months });
+    const data = await this.service.list({ month, year, months, employeeIds });
     return { status: true, data, message: 'CPR Tax records fetched successfully' };
   }
 
