@@ -426,7 +426,8 @@ async function processTransfersForTenant(
         requestDate: sample.documentDate,
         createdAt: sample.documentDate,
         sourceApprovedAt: sample.documentDate,
-        status: isReceived ? 'COMPLETED' : 'DISPATCHED',
+        dispatchDate: sample.documentDate,
+        status: isReceived ? 'COMPLETED' : 'IN_TRANSIT',
         notes: transferNotes,
       },
     });
