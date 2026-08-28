@@ -154,26 +154,25 @@ export class NetSalesSummaryExportService {
 
   constructor(
     @InjectQueue('net-sales-summary-export') private readonly exportQueue: Queue,
+    private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
   ) {}
 
   async queueExport(
-    prisma: PrismaService,
-    options: QueueNetSalesSummaryExportOptions,
+    opts: QueueNetSalesSummaryExportOptions,
   ): Promise<{ jobId: string; historyId: string }> {
-    const { userId, locationId, startDate, endDate, format } = options;
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
     const dateStr = new Date().toISOString().split('T')[0];
-    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
     const fileName = `net-sales-summary-report-${dateStr}.${ext}`;
 
-    const tenantInfo = await this.prismaMaster.getCurrentTenantInfo(userId);
-    const jobId = uuidv4();
-
-    await this.exportHistoryService.registerPendingExport(prisma, {
+    const history = await this.exportHistoryService.queueExport(this.prisma, {
       jobId,
-      userId,
+      userId: opts.userId,
       fileName,
       moduleName: 'NET_SALES_SUMMARY_REPORT',
     });
@@ -181,60 +180,82 @@ export class NetSalesSummaryExportService {
     await this.exportQueue.add(
       {
         jobId,
-        userId,
-        tenantId: tenantInfo.tenantId,
-        tenantDbUrl: tenantInfo.dbUrl,
-        ...options,
+        tenantId,
+        tenantDbUrl,
+        ...opts,
       },
       {
+        jobId,
         attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
         removeOnComplete: false,
         removeOnFail: false,
       },
     );
 
-    return { jobId, historyId: jobId };
+    return { jobId, historyId: history.id };
   }
 
-  async queueReportPreview(
-    prisma: PrismaService,
-    options: {
-      userId: string;
-      locationId?: string;
-      startDate?: string;
-      endDate?: string;
-      cashierUserId?: string;
-      reportType?: 'merged' | 'separate';
-      search?: string;
-      paymentModeGroup?: string;
-      minAmount?: number;
-      maxAmount?: number;
-      fbrOnly?: boolean;
-    },
-  ): Promise<{ jobId: string }> {
-    const { userId } = options;
-    const tenantInfo = await this.prismaMaster.getCurrentTenantInfo(userId);
+  async getJobStatus(jobId: string) {
+    return this.exportHistoryService.getJobStatus(this.prisma, jobId);
+  }
+
+  async streamExportFile(jobId: string, res: any) {
+    return this.exportHistoryService.streamExportFile(this.prisma, jobId, res);
+  }
+
+  async queueReportPreview(opts: {
+    userId: string;
+    locationId?: string;
+    startDate?: string;
+    endDate?: string;
+    cashierUserId?: string;
+    reportType?: 'merged' | 'separate';
+    search?: string;
+    paymentModeGroup?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    fbrOnly?: boolean;
+  }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
     await this.exportQueue.add(
       'generate-net-sales-summary-preview',
       {
         jobId,
-        userId,
-        tenantId: tenantInfo.tenantId,
-        tenantDbUrl: tenantInfo.dbUrl,
-        ...options,
+        tenantId,
+        tenantDbUrl,
+        ...opts,
       },
       {
-        attempts: 2,
-        backoff: { type: 'fixed', delay: 3000 },
-        removeOnComplete: true,
+        jobId: `preview-${jobId}`,
+        attempts: 1,
+        removeOnComplete: false,
         removeOnFail: false,
       },
     );
 
     return { jobId };
+  }
+
+  async getJobQueueStatus(jobId: string) {
+    const job = (await this.exportQueue.getJob(`preview-${jobId}`)) || (await this.exportQueue.getJob(jobId));
+    if (!job) {
+      return { status: 'completed', progress: 100 };
+    }
+    const state = await job.getState();
+    const progressData = job.progress();
+    const progress = typeof progressData === 'number' ? progressData : (progressData as any)?.percent || 0;
+    const message = typeof progressData === 'object' ? (progressData as any)?.message : undefined;
+    return {
+      status: state,
+      progress: progress || (state === 'completed' ? 100 : 0),
+      message,
+      queuePosition: 0,
+      waitingCount: 0,
+      failedReason: job.failedReason,
+    };
   }
 
   async saveReportPreviewResult(jobId: string, result: NetSalesSummaryReportResult): Promise<void> {
@@ -362,9 +383,6 @@ export class NetSalesSummaryExportService {
     const rawOrders = await prisma.salesOrder.findMany({
       where,
       include: {
-        cashierUser: {
-          select: { firstName: true, lastName: true, email: true },
-        },
         items: {
           include: {
             item: {
@@ -443,10 +461,7 @@ export class NetSalesSummaryExportService {
       const docDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'N/A';
 
       let salesPerson = 'Default Cashier';
-      if ((order as any).cashierUser) {
-        const u = (order as any).cashierUser;
-        salesPerson = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Cashier';
-      } else if (order.notes) {
+      if (order.notes) {
         const match = order.notes.match(/SalesPerson:\s*([^|]+)/i);
         if (match) salesPerson = match[1].trim();
       }
@@ -474,7 +489,7 @@ export class NetSalesSummaryExportService {
         const lineTotal = Number(item.lineTotal || 0);
         const disc = Number(item.discountAmount || 0);
         const tax = Number(item.taxAmount || 0);
-        const taxPercent = Number((item as any).taxPercent || 0);
+        const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
 
         const soldQty = isReturnOrder ? 0 : qty;
         const returnQty = isReturnOrder ? qty : 0;
@@ -623,41 +638,31 @@ export class NetSalesSummaryExportService {
 
   async registerClientGeneratedExport(
     prisma: PrismaService,
-    opts: {
-      userId: string;
-      exportType: 'flat' | 'hierarchical';
-      format: 'xlsx' | 'pdf';
-      fileBuffer: Buffer;
-      fileName: string;
-    },
-  ): Promise<{ historyId: string; downloadUrl: string }> {
-    const { userId, format, fileBuffer, fileName } = opts;
+    userId: string,
+    body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
     const jobId = uuidv4();
-    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+    const fileBuffer = Buffer.from(body.fileBase64, 'base64');
+    const tempDir = path.join(process.cwd(), 'uploads', 'exports');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFilePath = path.join(tempDir, `temp-${jobId}-${body.fileName}`);
+    fs.writeFileSync(tempFilePath, fileBuffer);
 
-    await this.exportHistoryService.registerPendingExport(prisma, {
+    await this.exportHistoryService.queueExport(prisma, {
       jobId,
       userId,
-      fileName,
+      fileName: body.fileName,
       moduleName: 'NET_SALES_SUMMARY_REPORT',
     });
-
-    const mimeType =
-      format === 'pdf'
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-    const tempDir = path.join(process.cwd(), 'uploads', 'exports');
-    await fs.promises.mkdir(tempDir, { recursive: true });
-    const tempFilePath = path.join(tempDir, `temp-${jobId}.${ext}`);
-    await fs.promises.writeFile(tempFilePath, fileBuffer);
 
     const historyRecord = await this.exportHistoryService.completeAndUploadExport(
       prisma,
       jobId,
       tempFilePath,
-      fileName,
-      mimeType,
+      body.fileName,
+      body.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
     return {
