@@ -13,6 +13,7 @@ export interface QueueCprTaxExportOptions {
   month?: string;
   year?: string;
   months?: string;
+  employeeIds?: string;
 }
 
 @Injectable()
@@ -54,6 +55,7 @@ export class CprTaxExportService {
         month: opts.month,
         year: opts.year,
         months: opts.months,
+        employeeIds: opts.employeeIds,
       },
       {
         jobId,

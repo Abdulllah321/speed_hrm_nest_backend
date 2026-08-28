@@ -17,6 +17,7 @@ export interface CprTaxExportJobData {
   month?: string;
   year?: string;
   months?: string;
+  employeeIds?: string;
 }
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ const COLUMNS: {
   { header: 'Taxpayer CNIC',            key: 'cnic',                width: 18,  group: 'Identity',  align: 'center' },
   { header: 'CPR Number',               key: 'cprNo',               width: 20,  group: 'Identity',  align: 'center' },
   { header: 'Car Amount',               key: 'carAmount',           width: 15,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
+  { header: 'Monthly Car Perk (5%/12)', key: 'monthlyCarBenefit',   width: 22,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
   { header: 'Taxable Amount Annual',    key: 'taxableAmountAnnual', width: 22,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
   { header: 'Taxable Amount Gross',     key: 'taxableAmountGross',  width: 22,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
   { header: 'Annual Tax Amount',        key: 'taxAmountAnnual',     width: 18,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
@@ -69,7 +71,7 @@ export class CprTaxExportProcessor {
 
   @Process()
   async handleExport(job: Job<CprTaxExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, search, month, year, months } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, search, month, year, months, employeeIds } = job.data;
 
     this.logger.log(`[CprTaxExport ${jobId}] Starting for user ${userId}`);
 
@@ -82,6 +84,14 @@ export class CprTaxExportProcessor {
     try {
       // ── Build WHERE ──────────────────────────────────────────────────────
       const andClauses: any[] = [];
+
+      // Filter by employeeIds
+      if (employeeIds) {
+        const empIdList = employeeIds.split(',').map((id) => id.trim()).filter(Boolean);
+        if (empIdList.length > 0) {
+          andClauses.push({ employeeId: { in: empIdList } });
+        }
+      }
 
       // Filter by period
       let periods: string[] = [];
@@ -209,6 +219,8 @@ export class CprTaxExportProcessor {
 
         for (const record of chunk) {
           const isAlt = rowIdx % 2 === 1;
+          const carVal = record.carAmount !== null ? Number(record.carAmount) : null;
+          const monthlyCarBenefit = carVal !== null ? (carVal * 0.05) / 12 : null;
 
           const rowData: Record<string, any> = {
             sNo:                 rowIdx + 1,
@@ -217,7 +229,8 @@ export class CprTaxExportProcessor {
             name:                record.name,
             cnic:                record.cnic,
             cprNo:               record.cprNo,
-            carAmount:           record.carAmount !== null ? Number(record.carAmount) : null,
+            carAmount:           carVal,
+            monthlyCarBenefit:   monthlyCarBenefit,
             taxableAmountAnnual: record.taxableAmountAnnual !== null ? Number(record.taxableAmountAnnual) : null,
             taxableAmountGross:  record.taxableAmountGross !== null ? Number(record.taxableAmountGross) : null,
             taxAmountAnnual:     record.taxAmountAnnual !== null ? Number(record.taxAmountAnnual) : null,
@@ -243,7 +256,7 @@ export class CprTaxExportProcessor {
               right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
 
-            if (['carAmount', 'taxableAmountAnnual', 'taxableAmountGross', 'taxAmountAnnual', 'taxAmountMonthlyTax'].includes(col.key)) {
+            if (['carAmount', 'monthlyCarBenefit', 'taxableAmountAnnual', 'taxableAmountGross', 'taxAmountAnnual', 'taxAmountMonthlyTax'].includes(col.key)) {
               cell.font = { size: 9, color: { argb: `FF${VALUE_FG}` } };
             }
           });
