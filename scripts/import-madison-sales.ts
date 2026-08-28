@@ -72,13 +72,13 @@ export interface ParsedSalesRow {
 }
 
 /**
- * Calculates Fiscal Year suffix (e.g. July 2026 -> "26")
+ * Calculates Fiscal Year 2-digit end-year suffix (e.g. July 2026 - June 2027 -> "27")
  */
 export function getFySuffix(date: Date): string {
   const year = date.getFullYear();
   const month = date.getMonth(); // 0-indexed (6 = July)
-  const fyStartYear = month >= 6 ? year : year - 1;
-  return String(fyStartYear).slice(-2);
+  const fyEndYear = month >= 6 ? year + 1 : year;
+  return String(fyEndYear).slice(-2);
 }
 
 export function parseCustomDate(dateStr: string): Date | null {
@@ -265,7 +265,6 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     });
   }
 
-  // Sort ALL parsed rows chronologically by docDate ascending (oldest first)
   rawParsed.sort((a, b) => a.docDate.getTime() - b.docDate.getTime());
 
   rawParsed.forEach((row, index) => {
@@ -284,7 +283,6 @@ async function processSalesForTenant(
   console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} sales rows...`);
   console.log(`==================================================\n`);
 
-  // Step 1: Cleanup previous imported Sales Orders in live mode
   if (!isDryRun) {
     console.log(`🧹 Cleaning up previously imported Sales Order records...`);
     const existingOrders = await prisma.salesOrder.findMany({
@@ -365,6 +363,7 @@ async function processSalesForTenant(
           ],
           isDeleted: false,
         },
+        select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
       });
 
       if (!loc) {
@@ -377,6 +376,7 @@ async function processSalesForTenant(
             warehouseId: defaultWarehouse.id,
             status: 'active',
           },
+          select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
         });
       }
       locationCache.set(code, loc);
@@ -419,7 +419,6 @@ async function processSalesForTenant(
     }
   }
 
-  // Group sales rows into Cash Memos (SalesOrders) by DocumentNumber + Date + Location + POS ID
   const salesGroups = new Map<string, ParsedSalesRow[]>();
   for (const row of rows) {
     const groupKey = `${row.docNo}_${row.docDateStr}_${row.locationCode}_${row.posId}`;
@@ -431,7 +430,6 @@ async function processSalesForTenant(
 
   console.log(`📋 Grouped ${rows.length} total rows into ${salesGroups.size} Cash Memo Sales Orders.`);
 
-  // Sequential counters per Location & Fiscal Year (SI-{cleanCode}{fySuffix}-{seq})
   const locSeqMap = new Map<string, number>();
 
   let processedLines = 0;
@@ -441,7 +439,8 @@ async function processSalesForTenant(
     const sample = groupRows[0];
     const location = locationCache.get(sample.locationCode)!;
 
-    const cleanCode = (location.shortCode || location.code || sample.locationCode).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const rawCode = location.shortCode?.trim() || location.code?.trim() || sample.locationCode;
+    const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     const fySuffix = getFySuffix(sample.docDate);
     const seqKey = `${cleanCode}_${fySuffix}`;
 
@@ -450,7 +449,6 @@ async function processSalesForTenant(
 
     const orderNumber = `SI-${cleanCode}${fySuffix}-${String(seq).padStart(5, '0')}`;
 
-    // Order level header financial calculations
     const subtotal = groupRows.reduce((acc, r) => acc + (r.totalPriceWOT || (r.priceWOT * r.quantity)), 0);
     const discountAmount = groupRows.reduce((acc, r) => acc + r.discountAmount, 0);
     const taxAmount = groupRows.reduce((acc, r) => acc + r.totalSalesTax, 0);
@@ -458,7 +456,6 @@ async function processSalesForTenant(
 
     totalRevenue += grandTotal;
 
-    // Payment methods breakdown from file
     const cashAmount = sample.cashSale || 0;
     const cardAmount = sample.cardSale || 0;
     const voucherAmount = (sample.giftVoucherAmount || 0) + (sample.creditVoucherAmount || 0) +
@@ -477,14 +474,13 @@ async function processSalesForTenant(
     const orderNotes = `Original DocNo: ${sample.docNo} | SalesPerson: ${sample.salesPerson || 'N/A'} | Remarks: ${sample.remarks || 'N/A'}`;
 
     if (isDryRun) {
-      if (seq <= 10 || seq % 20 === 0) {
+      if (seq <= 10 || seq % 20 === 0 || seq === 100) {
         console.log(`🔍 [DRY-RUN #${orderNumber}] Date:${sample.docDateStr} | Store:${location.name} | GrandTotal: PKR ${grandTotal.toLocaleString()} | Items:${groupRows.length} | FBR:${sample.fbrInvoiceNumber || 'N/A'}`);
       }
       processedLines += groupRows.length;
       continue;
     }
 
-    // Live Execution: Save SalesOrder
     const salesOrder = await prisma.salesOrder.create({
       data: {
         orderNumber,
@@ -513,7 +509,6 @@ async function processSalesForTenant(
       const item = itemCache.get(row.barCode);
       const qty = row.quantity;
 
-      // 1. Create SalesOrderItem
       const lineTaxPercent = row.valueExSalesTax > 0
         ? Math.round((row.totalSalesTax / row.valueExSalesTax) * 100 * 100) / 100
         : 0;
@@ -533,7 +528,6 @@ async function processSalesForTenant(
         },
       });
 
-      // 2. Decrement InventoryItem stock at outlet location
       const outletInv = await prisma.inventoryItem.findFirst({
         where: { locationId: location.id, itemId: item.id },
       });
@@ -555,13 +549,12 @@ async function processSalesForTenant(
         });
       }
 
-      // 3. Create StockLedger OUTBOUND entry for POS Sale
       await prisma.stockLedger.create({
         data: {
           itemId: item.id,
           warehouseId: location.warehouseId || defaultWarehouse.id,
           locationId: location.id,
-          qty: -qty, // Negative for OUTBOUND sale
+          qty: -qty,
           referenceType: 'POS_SALE',
           referenceId: salesOrder.id,
           movementType: 'OUTBOUND',
@@ -569,7 +562,6 @@ async function processSalesForTenant(
         },
       });
 
-      // 4. Create StockMovement entry for audit
       const movNo = `MV-SALE-${orderNumber}-${row.barCode}-${row.rowNum}`;
       await prisma.stockMovement.create({
         data: {
