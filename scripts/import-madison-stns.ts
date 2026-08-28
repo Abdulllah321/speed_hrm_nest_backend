@@ -390,10 +390,10 @@ async function processTransfersForTenant(
     if (isReceived) completedCount++;
     else inTransitCount++;
 
-    const fromWarehouseId = fromEntity.type === 'WAREHOUSE' ? fromEntity.id : defaultWarehouse.id;
+    const fromWarehouseId = fromEntity.type === 'WAREHOUSE' ? fromEntity.id : null;
     const fromLocationId = fromEntity.type === 'LOCATION' ? fromEntity.id : null;
 
-    const toWarehouseId = toEntity.type === 'WAREHOUSE' ? toEntity.id : defaultWarehouse.id;
+    const toWarehouseId = toEntity.type === 'WAREHOUSE' ? toEntity.id : null;
     const toLocationId = toEntity.type === 'LOCATION' ? toEntity.id : null;
 
     let transferType = 'OUTLET_TO_OUTLET';
@@ -407,7 +407,7 @@ async function processTransfersForTenant(
 
     if (isDryRun) {
       if (fySeq <= 12 || fySeq % 20 === 0 || !isReceived) {
-        console.log(`🔍 [DRY-RUN #${requestNo}] FY:${fy} | Date:${sample.documentDateStr} | ${fromEntity.name} [${outNo}] -> ${toEntity.name} [${inNo}] | Status: ${isReceived ? 'COMPLETED' : 'IN_TRANSIT'} | Items: ${groupRows.length}`);
+        console.log(`🔍 [DRY-RUN #${requestNo}] FY:${fy} | Date:${sample.documentDateStr} | ${fromEntity.name} [${outNo}] -> ${toEntity.name} [${inNo}] | Status: ${isReceived ? 'COMPLETED' : 'SOURCE_APPROVED'} | Items: ${groupRows.length}`);
       }
       processedLines += groupRows.length;
       continue;
@@ -427,7 +427,7 @@ async function processTransfersForTenant(
         createdAt: sample.documentDate,
         sourceApprovedAt: sample.documentDate,
         dispatchDate: sample.documentDate,
-        status: isReceived ? 'COMPLETED' : 'IN_TRANSIT',
+        status: isReceived ? 'COMPLETED' : 'SOURCE_APPROVED',
         notes: transferNotes,
       },
     });
@@ -498,7 +498,7 @@ async function processTransfersForTenant(
       await prisma.stockLedger.create({
         data: {
           itemId: item.id,
-          warehouseId: fromWarehouseId,
+          warehouseId: fromWarehouseId || defaultWarehouse.id,
           locationId: fromLocationId,
           qty: -qty,
           referenceType: 'TRANSFER_OUT',
@@ -562,7 +562,7 @@ async function processTransfersForTenant(
         await prisma.stockLedger.create({
           data: {
             itemId: item.id,
-            warehouseId: toWarehouseId,
+            warehouseId: toWarehouseId || defaultWarehouse.id,
             locationId: toLocationId,
             qty: qty,
             referenceType: 'TRANSFER_IN',
