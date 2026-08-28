@@ -50,6 +50,10 @@
     "import:madison-sales:dry": "bun scripts/import-madison-sales.ts --dry-run",
     "import:sales": "bun scripts/import-madison-sales.ts",
     "import:sales:dry": "bun scripts/import-madison-sales.ts --dry-run",
+    "import:madison-returns": "bun scripts/import-madison-returns.ts",
+    "import:madison-returns:dry": "bun scripts/import-madison-returns.ts --dry-run",
+    "import:returns": "bun scripts/import-madison-returns.ts",
+    "import:returns:dry": "bun scripts/import-madison-returns.ts --dry-run",
     "update:pi-tax-dates": "bun scripts/update-pi-tax-invoice-dates.ts",
     "seed:location-center-ids": "bun scripts/seed-location-center-ids.ts",
     "prisma:studio": "prisma studio"

@@ -16,18 +16,29 @@ const gunzipAsync = promisify(zlib.gunzip);
 
 export interface NetSalesSummaryTotals {
   orderCount: number;
+  unitPrice?: number;
   totalItemsSold: number;
   totalItemsReturned: number;
   netItems: number;
+  retailSalesValue: number;
+  wostAmount: number;
+  discountAmount: number;
+  valueExSalesTax: number;
+  taxAmount: number;
+  valueInclSalesTax: number;
+
   grossSalesAmount: number;
   returnAmount: number;
-  discountAmount: number;
-  taxAmount: number;
   netSalesAmount: number;
 }
 
 export interface NetSalesSummaryLineItem {
   id: string;
+  docNo?: string;
+  docDate?: string;
+  salesPerson?: string;
+  taxRatePercent?: number;
+  taxRateName?: string;
   sku: string;
   barCode: string;
   description: string;
@@ -38,13 +49,19 @@ export interface NetSalesSummaryLineItem {
   silhouetteName: string;
   sizeName: string;
   colorName: string;
+  unitPrice: number;
   soldQty: number;
   returnQty: number;
   netQty: number;
+  retailSalesValue: number;
+  wostAmount: number;
+  discountAmount: number;
+  valueExSalesTax: number;
+  taxAmount: number;
+  valueInclSalesTax: number;
+
   grossAmount: number;
   returnAmount: number;
-  discountAmount: number;
-  taxAmount: number;
   netAmount: number;
 }
 
@@ -68,6 +85,11 @@ export interface NetSalesSummaryLocationNode {
 
 export interface NetSalesSummaryFlatRecord {
   locationName: string;
+  docNo?: string;
+  docDate?: string;
+  salesPerson?: string;
+  taxRatePercent?: number;
+  taxRateName?: string;
   categoryName: string;
   brandName: string;
   divisionName: string;
@@ -78,13 +100,18 @@ export interface NetSalesSummaryFlatRecord {
   description: string;
   sizeName: string;
   colorName: string;
+  unitPrice?: number;
   soldQty: number;
   returnQty: number;
   netQty: number;
+  retailSalesValue?: number;
+  wostAmount?: number;
   grossAmount: number;
   returnAmount: number;
   discountAmount: number;
+  valueExSalesTax?: number;
   taxAmount: number;
+  valueInclSalesTax?: number;
   netAmount: number;
 }
 
@@ -124,128 +151,106 @@ export interface QueueNetSalesSummaryExportOptions {
 @Injectable()
 export class NetSalesSummaryExportService {
   private readonly logger = new Logger(NetSalesSummaryExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
 
   constructor(
     @InjectQueue('net-sales-summary-export') private readonly exportQueue: Queue,
-    private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
-  ) {
-    if (!fs.existsSync(this.previewStorageDir)) {
-      fs.mkdirSync(this.previewStorageDir, { recursive: true });
-    }
+  ) {}
+
+  async queueExport(
+    prisma: PrismaService,
+    options: QueueNetSalesSummaryExportOptions,
+  ): Promise<{ jobId: string; historyId: string }> {
+    const { userId, locationId, startDate, endDate, format } = options;
+    const dateStr = new Date().toISOString().split('T')[0];
+    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+    const fileName = `net-sales-summary-report-${dateStr}.${ext}`;
+
+    const tenantInfo = await this.prismaMaster.getCurrentTenantInfo(userId);
+    const jobId = uuidv4();
+
+    await this.exportHistoryService.registerPendingExport(prisma, {
+      jobId,
+      userId,
+      fileName,
+      moduleName: 'NET_SALES_SUMMARY_REPORT',
+    });
+
+    await this.exportQueue.add(
+      {
+        jobId,
+        userId,
+        tenantId: tenantInfo.tenantId,
+        tenantDbUrl: tenantInfo.dbUrl,
+        ...options,
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+
+    return { jobId, historyId: jobId };
   }
 
-  async queueReportPreview(opts: {
-    userId: string;
-    locationId?: string;
-    startDate?: string;
-    endDate?: string;
-    cashierUserId?: string;
-    reportType?: 'merged' | 'separate';
-    search?: string;
-    paymentModeGroup?: string;
-    minAmount?: number;
-    maxAmount?: number;
-    fbrOnly?: boolean;
-  }): Promise<{ jobId: string }> {
+  async queueReportPreview(
+    prisma: PrismaService,
+    options: {
+      userId: string;
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+    },
+  ): Promise<{ jobId: string }> {
+    const { userId } = options;
+    const tenantInfo = await this.prismaMaster.getCurrentTenantInfo(userId);
     const jobId = uuidv4();
-    const tenantId = this.prisma.getTenantId() ?? '';
-    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
     await this.exportQueue.add(
       'generate-net-sales-summary-preview',
       {
         jobId,
-        userId: opts.userId,
-        tenantId,
-        tenantDbUrl,
-        locationId: opts.locationId,
-        startDate: opts.startDate,
-        endDate: opts.endDate,
-        cashierUserId: opts.cashierUserId,
-        reportType: opts.reportType || 'merged',
-        search: opts.search,
-        paymentModeGroup: opts.paymentModeGroup,
-        minAmount: opts.minAmount,
-        maxAmount: opts.maxAmount,
-        fbrOnly: opts.fbrOnly,
+        userId,
+        tenantId: tenantInfo.tenantId,
+        tenantDbUrl: tenantInfo.dbUrl,
+        ...options,
       },
       {
-        jobId: `preview-${jobId}`,
-        attempts: 1,
-        removeOnComplete: false,
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 3000 },
+        removeOnComplete: true,
         removeOnFail: false,
-        timeout: 60 * 60 * 1000,
       },
     );
 
-    this.logger.log(`[NetSalesSummaryReport] Queued preview job ${jobId} for user ${opts.userId}`);
     return { jobId };
   }
 
-  async getJobQueueStatus(jobId: string): Promise<{
-    status: string;
-    state: string;
-    progress: number;
-    message: string;
-    queuePosition: number;
-    waitingCount: number;
-    failedReason?: string;
-  }> {
-    const job = await this.exportQueue.getJob(`preview-${jobId}`) || await this.exportQueue.getJob(jobId);
-    if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
-    }
-
-    const state = await job.getState();
-    const progressRaw = job.progress();
-    let progress = 0;
-    let message = '';
-
-    if (typeof progressRaw === 'number') {
-      progress = progressRaw;
-    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
-      progress = (progressRaw as any).percent || 0;
-      message = (progressRaw as any).message || '';
-    }
-
-    let queuePosition = 0;
-    let waitingCount = 0;
-
-    if (state === 'waiting' || state === 'delayed') {
-      const [waiting, active] = await Promise.all([
-        this.exportQueue.getWaiting(),
-        this.exportQueue.getActive(),
-      ]);
-      waitingCount = waiting.length;
-      const allJobs = [...active, ...waiting];
-      const idx = allJobs.findIndex((j) => j.id?.toString().includes(jobId));
-      queuePosition = idx >= 0 ? idx + 1 : 1;
-    }
-
-    return {
-      status: state,
-      state,
-      progress,
-      message,
-      queuePosition,
-      waitingCount,
-      failedReason: job.failedReason,
-    };
-  }
-
   async saveReportPreviewResult(jobId: string, result: NetSalesSummaryReportResult): Promise<void> {
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    await fs.promises.mkdir(previewDir, { recursive: true });
+    const filePath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+
     const jsonStr = JSON.stringify(result);
     const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-    const filePath = path.join(this.previewStorageDir, `net-sales-summary-preview-${jobId}.json.gz`);
     await fs.promises.writeFile(filePath, compressed);
   }
 
   async getReportPreviewResult(jobId: string): Promise<NetSalesSummaryReportResult | null> {
-    const filePath = path.join(this.previewStorageDir, `net-sales-summary-preview-${jobId}.json.gz`);
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    const filePath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -357,6 +362,9 @@ export class NetSalesSummaryExportService {
     const rawOrders = await prisma.salesOrder.findMany({
       where,
       include: {
+        cashierUser: {
+          select: { firstName: true, lastName: true, email: true },
+        },
         items: {
           include: {
             item: {
@@ -382,13 +390,18 @@ export class NetSalesSummaryExportService {
 
     const createEmptyTotals = (): NetSalesSummaryTotals => ({
       orderCount: 0,
+      unitPrice: 0,
       totalItemsSold: 0,
       totalItemsReturned: 0,
       netItems: 0,
+      retailSalesValue: 0,
+      wostAmount: 0,
+      discountAmount: 0,
+      valueExSalesTax: 0,
+      taxAmount: 0,
+      valueInclSalesTax: 0,
       grossSalesAmount: 0,
       returnAmount: 0,
-      discountAmount: 0,
-      taxAmount: 0,
       netSalesAmount: 0,
     });
 
@@ -397,10 +410,16 @@ export class NetSalesSummaryExportService {
       target.totalItemsSold += source.totalItemsSold;
       target.totalItemsReturned += source.totalItemsReturned;
       target.netItems += source.netItems;
+      target.retailSalesValue += source.retailSalesValue;
+      target.wostAmount += source.wostAmount;
+      target.discountAmount += source.discountAmount;
+      target.valueExSalesTax += source.valueExSalesTax;
+      target.taxAmount += source.taxAmount;
+      target.valueInclSalesTax += source.valueInclSalesTax;
+
+      // Legacy field aliases
       target.grossSalesAmount += source.grossSalesAmount;
       target.returnAmount += source.returnAmount;
-      target.discountAmount += source.discountAmount;
-      target.taxAmount += source.taxAmount;
       target.netSalesAmount += source.netSalesAmount;
     };
 
@@ -419,6 +438,18 @@ export class NetSalesSummaryExportService {
       );
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+
+      const docNo = order.orderNumber || order.returnNumber || 'N/A';
+      const docDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'N/A';
+
+      let salesPerson = 'Default Cashier';
+      if ((order as any).cashierUser) {
+        const u = (order as any).cashierUser;
+        salesPerson = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Cashier';
+      } else if (order.notes) {
+        const match = order.notes.match(/SalesPerson:\s*([^|]+)/i);
+        if (match) salesPerson = match[1].trim();
+      }
 
       let locNode = locationNodesMap.get(locKey);
       if (isSeparate && !locNode) {
@@ -443,6 +474,7 @@ export class NetSalesSummaryExportService {
         const lineTotal = Number(item.lineTotal || 0);
         const disc = Number(item.discountAmount || 0);
         const tax = Number(item.taxAmount || 0);
+        const taxPercent = Number((item as any).taxPercent || 0);
 
         const soldQty = isReturnOrder ? 0 : qty;
         const returnQty = isReturnOrder ? qty : 0;
@@ -450,24 +482,42 @@ export class NetSalesSummaryExportService {
 
         const grossAmt = isReturnOrder ? 0 : unitPrice * soldQty;
         const retAmt = isReturnOrder ? lineTotal : 0;
-        const netSalesAmt = isReturnOrder ? -lineTotal : lineTotal;
+        const retailSalesValue = unitPrice * netQty;
+        const wostAmount = grossAmt - retAmt;
+        const valueExSalesTax = wostAmount - disc;
+        const valueInclSalesTax = isReturnOrder ? -lineTotal : (valueExSalesTax + tax);
+
+        const calculatedTaxPct = taxPercent > 0
+          ? taxPercent
+          : (valueExSalesTax > 0 ? Math.round((tax / valueExSalesTax) * 100) : (tax > 0 ? 18 : 0));
+        const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
 
         const lineTotals: NetSalesSummaryTotals = {
           orderCount: 1,
+          unitPrice,
           totalItemsSold: soldQty,
           totalItemsReturned: returnQty,
           netItems: netQty,
+          retailSalesValue,
+          wostAmount,
+          discountAmount: disc,
+          valueExSalesTax,
+          taxAmount: tax,
+          valueInclSalesTax,
           grossSalesAmount: grossAmt,
           returnAmount: retAmt,
-          discountAmount: disc,
-          taxAmount: tax,
-          netSalesAmount: netSalesAmt,
+          netSalesAmount: valueInclSalesTax,
         };
 
         addTotals(grandTotals, lineTotals);
 
         const lineItemNode: NetSalesSummaryLineItem = {
           id: item.id,
+          docNo,
+          docDate,
+          salesPerson,
+          taxRatePercent: calculatedTaxPct,
+          taxRateName,
           sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
           barCode: item.item?.barCode || item.item?.sku || '-',
           description: item.item?.description || item.item?.sku || 'Article',
@@ -478,18 +528,28 @@ export class NetSalesSummaryExportService {
           silhouetteName,
           sizeName: item.item?.size?.name || 'Default',
           colorName: item.item?.color?.name || 'Default',
+          unitPrice,
           soldQty,
           returnQty,
           netQty,
+          retailSalesValue,
+          wostAmount,
+          discountAmount: disc,
+          valueExSalesTax,
+          taxAmount: tax,
+          valueInclSalesTax,
           grossAmount: grossAmt,
           returnAmount: retAmt,
-          discountAmount: disc,
-          taxAmount: tax,
-          netAmount: netSalesAmt,
+          netAmount: valueInclSalesTax,
         };
 
         flatItems.push({
           locationName: locName,
+          docNo,
+          docDate,
+          salesPerson,
+          taxRatePercent: calculatedTaxPct,
+          taxRateName,
           categoryName: catName,
           brandName,
           divisionName,
@@ -500,14 +560,19 @@ export class NetSalesSummaryExportService {
           description: lineItemNode.description,
           sizeName: lineItemNode.sizeName,
           colorName: lineItemNode.colorName,
+          unitPrice,
           soldQty,
           returnQty,
           netQty,
+          retailSalesValue,
+          wostAmount,
           grossAmount: grossAmt,
           returnAmount: retAmt,
           discountAmount: disc,
+          valueExSalesTax,
           taxAmount: tax,
-          netAmount: netSalesAmt,
+          valueInclSalesTax,
+          netAmount: valueInclSalesTax,
         });
 
         // Add to global category map
@@ -558,148 +623,46 @@ export class NetSalesSummaryExportService {
 
   async registerClientGeneratedExport(
     prisma: PrismaService,
-    userId: string,
     opts: {
+      userId: string;
+      exportType: 'flat' | 'hierarchical';
+      format: 'xlsx' | 'pdf';
+      fileBuffer: Buffer;
       fileName: string;
-      fileBase64: string;
-      mimeType: string;
     },
-  ): Promise<{ jobId: string; downloadUrl: string }> {
+  ): Promise<{ historyId: string; downloadUrl: string }> {
+    const { userId, format, fileBuffer, fileName } = opts;
     const jobId = uuidv4();
-    const fileBuffer = Buffer.from(opts.fileBase64, 'base64');
-    const localDir = path.join(process.cwd(), 'uploads', 'exports');
-    await fs.promises.mkdir(localDir, { recursive: true });
-    const localPath = path.join(localDir, `${jobId}-${opts.fileName}`);
-    await fs.promises.writeFile(localPath, fileBuffer);
+    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
 
-    await prisma.exportHistory.create({
-      data: {
-        id: jobId,
-        userId,
-        fileName: opts.fileName,
-        filePath: localPath,
-        moduleName: 'NET_SALES_SUMMARY_REPORT',
-        status: 'PENDING',
-      },
+    await this.exportHistoryService.registerPendingExport(prisma, {
+      jobId,
+      userId,
+      fileName,
+      moduleName: 'NET_SALES_SUMMARY_REPORT',
     });
 
-    const downloadUrl = await this.exportHistoryService.completeAndUploadExport(
+    const mimeType =
+      format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    const tempDir = path.join(process.cwd(), 'uploads', 'exports');
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    const tempFilePath = path.join(tempDir, `temp-${jobId}.${ext}`);
+    await fs.promises.writeFile(tempFilePath, fileBuffer);
+
+    const historyRecord = await this.exportHistoryService.completeAndUploadExport(
       prisma,
       jobId,
-      localPath,
-      opts.fileName,
-      opts.mimeType,
+      tempFilePath,
+      fileName,
+      mimeType,
     );
 
-    return { jobId, downloadUrl };
-  }
-
-  async queueExport(opts: QueueNetSalesSummaryExportOptions): Promise<{ jobId: string }> {
-    const jobId = uuidv4();
-    const tenantId = this.prisma.getTenantId() ?? '';
-    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
-
-    await this.prisma.exportHistory.create({
-      data: {
-        id: jobId,
-        userId: opts.userId,
-        fileName: `net-sales-summary-${new Date().toISOString().slice(0, 10)}.${ext}`,
-        filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
-        moduleName: 'NET_SALES_SUMMARY_REPORT',
-        status: 'PENDING',
-      },
-    });
-
-    await this.exportQueue.add(
-      {
-        jobId,
-        userId: opts.userId,
-        tenantId,
-        tenantDbUrl,
-        locationId: opts.locationId,
-        startDate: opts.startDate,
-        endDate: opts.endDate,
-        cashierUserId: opts.cashierUserId,
-        format: opts.format,
-        summaryOnly: !!opts.summaryOnly,
-        showSalesperson: opts.showSalesperson,
-        showYear: opts.showYear,
-        showMonth: opts.showMonth,
-        showDay: opts.showDay,
-        showDocument: opts.showDocument,
-        showBrand: opts.showBrand,
-        showDivision: opts.showDivision,
-        showSalesTax: opts.showSalesTax,
-        showCategory: opts.showCategory,
-        showGender: opts.showGender,
-        showSilhouette: opts.showSilhouette,
-        showArticle: opts.showArticle,
-        showVariant: opts.showVariant,
-      },
-      {
-        jobId,
-        attempts: 1,
-        removeOnComplete: false,
-        removeOnFail: false,
-        timeout: 2 * 60 * 60 * 1000,
-      },
-    );
-
-    this.logger.log(`[NetSalesSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
-    return { jobId };
-  }
-
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
-    const job = await this.exportQueue.getJob(jobId);
-    if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
-    const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
-    return { state, progress };
-  }
-
-  async streamExportFile(jobId: string, res: any): Promise<void> {
-    const record = await this.prisma.exportHistory.findUnique({
-      where: { id: jobId },
-      select: { fileName: true, filePath: true },
-    });
-
-    if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found`);
-    }
-
-    try {
-      await this.prisma.exportHistory.update({
-        where: { id: jobId },
-        data: { downloadCount: { increment: 1 } },
-      });
-    } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
-    }
-
-    if (record.filePath.startsWith('s3://')) {
-      const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
-      return res.redirect(signedUrl, 302);
-    }
-
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
-      return res.redirect(record.filePath, 302);
-    }
-
-    const filePath = path.join(process.cwd(), record.filePath);
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found.');
-    }
-
-    const stat = fs.statSync(filePath);
-    const stream = fs.createReadStream(filePath);
-    const isPdf = record.fileName.endsWith('.pdf');
-
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
-    res.header('Content-Length', stat.size);
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.send(stream);
+    return {
+      historyId: historyRecord.id,
+      downloadUrl: historyRecord.fileUrl || `/api/warehouse/export-history/download/${jobId}`,
+    };
   }
 }
