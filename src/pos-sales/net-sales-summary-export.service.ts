@@ -461,6 +461,52 @@ export class NetSalesSummaryExportService {
       },
     });
 
+    const returnLedgerEntries = await prisma.stockLedger.findMany({
+      where: {
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        createdAt: { gte: startDate, lte: endDate },
+        ...(locationId ? { locationId } : {}),
+      },
+      include: {
+        item: {
+          include: {
+            category: { select: { name: true } },
+            brand: { select: { name: true } },
+            division: { select: { name: true } },
+            gender: { select: { name: true } },
+            silhouette: { select: { name: true } },
+            size: { select: { name: true } },
+            color: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const returnVoucherIds = [...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean))] as string[];
+    const returnVouchers = returnVoucherIds.length
+      ? await prisma.voucher.findMany({
+          where: { id: { in: returnVoucherIds } },
+        })
+      : [];
+    const sourceOrderIds = [...new Set(returnVouchers.map((v) => v.sourceOrderId).filter(Boolean))] as string[];
+    const sourceOrders = sourceOrderIds.length
+      ? await prisma.salesOrder.findMany({
+          where: { id: { in: sourceOrderIds } },
+          include: { items: true },
+        })
+      : [];
+    const sourceOrderMap = new Map<string, any>();
+    for (const so of sourceOrders) {
+      sourceOrderMap.set(so.id, so);
+    }
+    const voucherMap = new Map<string, any>();
+    for (const v of returnVouchers) {
+      voucherMap.set(v.id, {
+        ...v,
+        sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+      });
+    }
+
     await onProgress?.(70, 'Compiling Net Sales Summary hierarchy matrix...');
 
     const createEmptyTotals = (): NetSalesSummaryTotals => ({
@@ -504,17 +550,12 @@ export class NetSalesSummaryExportService {
     const globalCategoryNodesMap = new Map<string, NetSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, NetSalesSummaryLocationNode>();
 
+    // 1. Process Gross Sales from SalesOrders
     for (const order of rawOrders) {
-      const isReturnOrder = Boolean(
-        order.returnNumber ||
-        order.refundNumber ||
-        order.status === 'refunded' ||
-        order.status === 'returned',
-      );
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
 
-      const docNo = order.orderNumber || order.returnNumber || 'N/A';
+      const docNo = order.orderNumber || 'N/A';
       const docDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'N/A';
 
       let salesPerson = 'Default Cashier';
@@ -548,9 +589,9 @@ export class NetSalesSummaryExportService {
         const tax = Number(item.taxAmount || 0);
         const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
 
-        const soldQty = isReturnOrder ? 0 : qty;
-        const returnQty = isReturnOrder ? qty : 0;
-        const netQty = soldQty - returnQty;
+        const soldQty = qty;
+        const returnQty = 0;
+        const netQty = soldQty;
 
         const calculatedTaxPct = taxPercent > 0
           ? taxPercent
@@ -559,20 +600,16 @@ export class NetSalesSummaryExportService {
               : (tax > 0 ? 18 : 0));
         const taxDivisor = 1 + calculatedTaxPct / 100;
 
-        const grossAmt = isReturnOrder ? 0 : unitPrice * soldQty;
-        const retAmt = isReturnOrder ? lineTotal : 0;
+        const grossAmt = unitPrice * soldQty;
+        const retAmt = 0;
         const retailSalesValue = unitPrice * netQty;
 
         const wostPerUnit = unitPrice / taxDivisor;
-        const wostAmount = isReturnOrder
-          ? -Math.round(wostPerUnit * returnQty * 100) / 100
-          : Math.round(wostPerUnit * soldQty * 100) / 100;
+        const wostAmount = Math.round(wostPerUnit * soldQty * 100) / 100;
 
-        const itemDisc = isReturnOrder ? -disc : disc;
+        const itemDisc = disc;
         const valueExSalesTax = Math.round((wostAmount - itemDisc) * 100) / 100;
-        const taxAmount = isReturnOrder
-          ? -tax
-          : (tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100);
+        const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
         const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
 
         const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
@@ -581,7 +618,7 @@ export class NetSalesSummaryExportService {
           orderCount: 1,
           unitPrice,
           totalItemsSold: soldQty,
-          totalItemsReturned: returnQty,
+          totalItemsReturned: 0,
           netItems: netQty,
           retailSalesValue,
           wostAmount,
@@ -590,7 +627,7 @@ export class NetSalesSummaryExportService {
           taxAmount: taxAmount,
           valueInclSalesTax,
           grossSalesAmount: grossAmt,
-          returnAmount: retAmt,
+          returnAmount: 0,
           netSalesAmount: valueInclSalesTax,
         };
 
@@ -690,6 +727,175 @@ export class NetSalesSummaryExportService {
           addTotals(locCat.totals, lineTotals);
           addTotals(locNode.totals, lineTotals);
         }
+      }
+    }
+
+    // 2. Process Returns from StockLedger Entries / Return Vouchers
+    for (const entry of returnLedgerEntries) {
+      if (!entry.item) continue;
+      const voucher = voucherMap.get(entry.referenceId);
+      const locName = entry.locationId ? locationMap.get(entry.locationId) || 'Main Outlet' : 'Main Outlet';
+      const locKey = entry.locationId ? `loc:${entry.locationId}` : 'main-outlet';
+
+      const docNo = voucher?.code || 'POS-RETURN';
+      const docDate = entry.createdAt ? new Date(entry.createdAt).toISOString().split('T')[0] : 'N/A';
+      const salesPerson = 'Default Cashier';
+
+      let locNode = locationNodesMap.get(locKey);
+      if (isSeparate && !locNode) {
+        locNode = {
+          locationKey: locKey,
+          locationId: entry.locationId || undefined,
+          locationName: locName,
+          categories: [],
+          totals: createEmptyTotals(),
+        };
+        locationNodesMap.set(locKey, locNode);
+      }
+
+      const catName = entry.item.category?.name || 'Unassigned Category';
+      const brandName = entry.item.brand?.name || 'Default Brand';
+      const divisionName = entry.item.division?.name || 'Default Division';
+      const genderName = entry.item.gender?.name || 'Default Gender';
+      const silhouetteName = entry.item.silhouette?.name || 'Default Silhouette';
+
+      const originalOi = voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+      const returnQty = Math.abs(Number(entry.qty || 1));
+      const soldQty = 0;
+      const netQty = -returnQty;
+
+      const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
+      const taxPercent = originalOi ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0) : 18;
+      const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
+      const taxDivisor = 1 + calculatedTaxPct / 100;
+
+      const retailSalesValue = -Math.round(unitPrice * returnQty * 100) / 100;
+      const wostPerUnit = unitPrice / taxDivisor;
+      const wostAmount = -Math.round(wostPerUnit * returnQty * 100) / 100;
+
+      const originalQty = originalOi ? Number(originalOi.quantity || 1) : 1;
+      const discPerUnit = originalOi ? Number(originalOi.discountAmount || 0) / originalQty : 0;
+      const itemDisc = -Math.round(discPerUnit * returnQty * 100) / 100;
+
+      const valueExSalesTax = Math.round((wostAmount - itemDisc) * 100) / 100;
+      const taxPerUnit = originalOi ? Number(originalOi.taxAmount || 0) / originalQty : 0;
+      const taxAmount = originalOi
+        ? -Math.round(taxPerUnit * returnQty * 100) / 100
+        : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+
+      const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+      const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
+
+      const lineTotals: NetSalesSummaryTotals = {
+        orderCount: 0,
+        unitPrice,
+        totalItemsSold: 0,
+        totalItemsReturned: returnQty,
+        netItems: netQty,
+        retailSalesValue,
+        wostAmount,
+        discountAmount: itemDisc,
+        valueExSalesTax,
+        taxAmount: taxAmount,
+        valueInclSalesTax,
+        grossSalesAmount: 0,
+        returnAmount: -valueInclSalesTax,
+        netSalesAmount: valueInclSalesTax,
+      };
+
+      addTotals(grandTotals, lineTotals);
+
+      const lineItemNode: NetSalesSummaryLineItem = {
+        id: String(entry.id),
+        docNo,
+        docDate,
+        salesPerson,
+        taxRatePercent: calculatedTaxPct,
+        taxRateName,
+        sku: entry.item.sku || entry.item.barCode || 'NO-SKU',
+        barCode: entry.item.barCode || entry.item.sku || '-',
+        description: entry.item.description || entry.item.sku || 'Article',
+        categoryName: catName,
+        brandName,
+        divisionName,
+        genderName,
+        silhouetteName,
+        sizeName: entry.item.size?.name || 'Default',
+        colorName: entry.item.color?.name || 'Default',
+        unitPrice,
+        soldQty,
+        returnQty,
+        netQty,
+        retailSalesValue,
+        wostAmount,
+        discountAmount: itemDisc,
+        valueExSalesTax,
+        taxAmount: taxAmount,
+        valueInclSalesTax,
+        grossAmount: 0,
+        returnAmount: -valueInclSalesTax,
+        netAmount: valueInclSalesTax,
+      };
+
+      flatItems.push({
+        locationName: locName,
+        docNo,
+        docDate,
+        salesPerson,
+        taxRatePercent: calculatedTaxPct,
+        taxRateName,
+        categoryName: catName,
+        brandName,
+        divisionName,
+        genderName,
+        silhouetteName,
+        sku: lineItemNode.sku,
+        barCode: lineItemNode.barCode,
+        description: lineItemNode.description,
+        sizeName: lineItemNode.sizeName,
+        colorName: lineItemNode.colorName,
+        unitPrice,
+        soldQty,
+        returnQty,
+        netQty,
+        retailSalesValue,
+        wostAmount,
+        grossAmount: 0,
+        returnAmount: -valueInclSalesTax,
+        discountAmount: itemDisc,
+        valueExSalesTax,
+        taxAmount: taxAmount,
+        valueInclSalesTax,
+        netAmount: valueInclSalesTax,
+      });
+
+      let globalCat = globalCategoryNodesMap.get(catName);
+      if (!globalCat) {
+        globalCat = {
+          categoryName: catName,
+          brandName,
+          totals: createEmptyTotals(),
+          items: [],
+        };
+        globalCategoryNodesMap.set(catName, globalCat);
+      }
+      globalCat.items.push(lineItemNode);
+      addTotals(globalCat.totals, lineTotals);
+
+      if (isSeparate && locNode) {
+        let locCat = locNode.categories.find((c) => c.categoryName === catName);
+        if (!locCat) {
+          locCat = {
+            categoryName: catName,
+            brandName,
+            totals: createEmptyTotals(),
+            items: [],
+          };
+          locNode.categories.push(locCat);
+        }
+        locCat.items.push(lineItemNode);
+        addTotals(locCat.totals, lineTotals);
+        addTotals(locNode.totals, lineTotals);
       }
     }
 
