@@ -37,8 +37,13 @@ export class CprService {
     });
   }
 
-  async list(filters?: { month?: string; year?: string; months?: string }) {
+  async list(filters?: { month?: string; year?: string; months?: string; employeeIds?: string }) {
     this.prisma.ensureTenantContext();
+
+    const empIdList = filters?.employeeIds
+      ? filters.employeeIds.split(',').map((id) => id.trim()).filter(Boolean)
+      : [];
+    const employeeFilter = empIdList.length > 0 ? { employeeId: { in: empIdList } } : {};
 
     // 1. Resolve which periods to fetch/process
     let periods: string[] = [];
@@ -267,7 +272,10 @@ export class CprService {
 
       // Return only the CprTax records for these periods
       return this.prisma.cprTax.findMany({
-        where: { taxPeriod: { in: periods } },
+        where: {
+          taxPeriod: { in: periods },
+          ...employeeFilter,
+        },
         include: {
           employee: {
             select: {
@@ -285,6 +293,7 @@ export class CprService {
 
     // Default (no filter): return all records in the table
     return this.prisma.cprTax.findMany({
+      where: employeeFilter,
       include: {
         employee: {
           select: {
