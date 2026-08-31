@@ -843,9 +843,7 @@ export class GrossSalesExportService {
     await onProgress?.(35, 'Querying POS sales order items for gross sales summary...');
 
     const where: any = {
-      status: { in: ['completed', 'partially_returned', 'exchanged', 'posted'] },
-      returnNumber: null,
-      refundNumber: null,
+      status: { in: ['completed', 'partially_returned', 'exchanged', 'posted', 'returned'] },
       createdAt: { gte: startDate, lte: endDate },
     };
 
