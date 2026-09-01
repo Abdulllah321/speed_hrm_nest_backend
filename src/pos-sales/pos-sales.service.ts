@@ -7362,10 +7362,8 @@ export class PosSalesService implements OnModuleInit {
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
-          in: ['completed', 'partially_returned', 'exchanged', 'posted'],
+          in: ['completed', 'partially_returned', 'refunded', 'exchanged', 'posted', 'returned'],
         },
-        returnNumber: null,
-        refundNumber: null,
         createdAt: { gte: startDate, lte: endDate },
         ...(cashierUserId ? { cashierUserId } : {}),
       },
