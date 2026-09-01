@@ -186,7 +186,6 @@ export class JournalVoucherService {
         { folio: { contains: cleanSearch, mode: 'insensitive' } },
         { description: { contains: cleanSearch, mode: 'insensitive' } },
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
-        { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } },
         { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
