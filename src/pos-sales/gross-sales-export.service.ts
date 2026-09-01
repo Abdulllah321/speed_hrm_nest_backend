@@ -20,6 +20,7 @@ export interface GrossSalesReturnTotals {
   returnCount: number;
   totalItems: number;
   grossAmount: number;
+  wostAmount: number;
   discountAmount: number;
   netAmount: number;
   taxAmount: number;
@@ -44,6 +45,7 @@ export interface GrossSalesReturnLineItem {
   colorName: string;
   quantity: number;
   unitPrice: number;
+  wostAmount: number;
   discountAmount: number;
   taxAmount: number;
   subTotal: number;
@@ -95,10 +97,12 @@ export interface GrossSalesReturnFlatRecord {
   colorName: string;
   quantity: number;
   unitPrice: number;
+  wostAmount: number;
   discountAmount: number;
   taxAmount: number;
   subTotal: number;
   returnGrossAmount: number;
+  returnWostAmount: number;
   returnDiscountAmount: number;
   returnNetAmount: number;
   returnTaxAmount: number;
@@ -120,6 +124,7 @@ export interface GrossSalesSummaryTotals {
   orderCount: number;
   totalItems: number;
   grossAmount: number;
+  wostAmount: number;
   discountAmount: number;
   netAmount: number;
   taxAmount: number;
@@ -139,6 +144,7 @@ export interface GrossSalesSummaryLineItem {
   colorName: string;
   quantity: number;
   unitPrice: number;
+  wostAmount: number;
   discountAmount: number;
   taxAmount: number;
   subTotal: number;
@@ -176,6 +182,7 @@ export interface GrossSalesSummaryFlatRecord {
   colorName: string;
   quantity: number;
   unitPrice: number;
+  wostAmount: number;
   discountAmount: number;
   taxAmount: number;
   subTotal: number;
@@ -570,6 +577,7 @@ export class GrossSalesExportService {
       returnCount: 0,
       totalItems: 0,
       grossAmount: 0,
+      wostAmount: 0,
       discountAmount: 0,
       netAmount: 0,
       taxAmount: 0,
@@ -582,6 +590,7 @@ export class GrossSalesExportService {
       target.returnCount += source.returnCount;
       target.totalItems += source.totalItems;
       target.grossAmount += source.grossAmount;
+      target.wostAmount += source.wostAmount;
       target.discountAmount += source.discountAmount;
       target.netAmount += source.netAmount;
       target.taxAmount += source.taxAmount;
@@ -658,6 +667,7 @@ export class GrossSalesExportService {
           colorName: entry.item.color?.name || 'Default',
           quantity: qty,
           unitPrice,
+          wostAmount,
           discountAmount,
           taxAmount,
           subTotal,
@@ -666,6 +676,7 @@ export class GrossSalesExportService {
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
       const gross = lineItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
+      const wost = lineItems.reduce((acc, i) => acc + i.wostAmount, 0);
       const disc = lineItems.reduce((acc, i) => acc + i.discountAmount, 0);
       const tax = lineItems.reduce((acc, i) => acc + i.taxAmount, 0);
       const net = Number(voucher?.faceValue) || lineItems.reduce((acc, i) => acc + i.subTotal, 0);
@@ -674,6 +685,7 @@ export class GrossSalesExportService {
         returnCount: 1,
         totalItems: totalItemsCount,
         grossAmount: gross,
+        wostAmount: wost,
         discountAmount: disc,
         netAmount: net,
         taxAmount: tax,
@@ -725,10 +737,12 @@ export class GrossSalesExportService {
           colorName: line.colorName,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          wostAmount: line.wostAmount,
           discountAmount: line.discountAmount,
           taxAmount: line.taxAmount,
           subTotal: line.subTotal,
           returnGrossAmount: gross,
+          returnWostAmount: wost,
           returnDiscountAmount: disc,
           returnNetAmount: net,
           returnTaxAmount: tax,
@@ -896,6 +910,7 @@ export class GrossSalesExportService {
       orderCount: 0,
       totalItems: 0,
       grossAmount: 0,
+      wostAmount: 0,
       discountAmount: 0,
       netAmount: 0,
       taxAmount: 0,
@@ -905,6 +920,7 @@ export class GrossSalesExportService {
       target.orderCount += source.orderCount;
       target.totalItems += source.totalItems;
       target.grossAmount += source.grossAmount;
+      target.wostAmount += source.wostAmount;
       target.discountAmount += source.discountAmount;
       target.netAmount += source.netAmount;
       target.taxAmount += source.taxAmount;
@@ -967,6 +983,7 @@ export class GrossSalesExportService {
           orderCount: 1,
           totalItems: qty,
           grossAmount: gross,
+          wostAmount,
           discountAmount: disc,
           netAmount: subTotal,
           taxAmount: taxAmount,
@@ -988,6 +1005,7 @@ export class GrossSalesExportService {
           colorName: item.item?.color?.name || 'Default',
           quantity: qty,
           unitPrice,
+          wostAmount,
           discountAmount: disc,
           taxAmount: tax,
           subTotal,
@@ -1007,6 +1025,7 @@ export class GrossSalesExportService {
           colorName: lineItemNode.colorName,
           quantity: qty,
           unitPrice,
+          wostAmount,
           discountAmount: disc,
           taxAmount: tax,
           subTotal,
