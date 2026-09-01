@@ -137,19 +137,25 @@ async function bootstrap() {
   );
 
   /* Swagger Setup */
-  const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
-  const config = new DocumentBuilder()
-    .setTitle('Speed (pvt.) Limited API')
-    .setDescription('The Speed (pvt.) Limited API description')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+  try {
+    if (process.env.ENABLE_SWAGGER !== 'false') {
+      const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
+      const config = new DocumentBuilder()
+        .setTitle('Speed (pvt.) Limited API')
+        .setDescription('The Speed (pvt.) Limited API description')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+      SwaggerModule.setup('api/docs', app, document, {
+        swaggerOptions: {
+          persistAuthorization: true,
+        },
+      });
+    }
+  } catch (err: any) {
+    logger.warn(`Swagger initialization skipped: ${err?.message || err}`);
+  }
 
   // CORS is handled at the Fastify adapter level above
 
