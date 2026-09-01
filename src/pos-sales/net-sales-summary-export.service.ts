@@ -463,7 +463,7 @@ export class NetSalesSummaryExportService {
 
     const returnLedgerEntries = await prisma.stockLedger.findMany({
       where: {
-        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'POS_VOID'] },
         createdAt: { gte: startDate, lte: endDate },
         ...(locationId ? { locationId } : {}),
       },

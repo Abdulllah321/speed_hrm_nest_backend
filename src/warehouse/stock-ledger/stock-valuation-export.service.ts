@@ -709,15 +709,24 @@ export class StockValuationExportService {
           ref.startsWith('TRANSFER') ||
           ref.includes('TRANSFER');
 
+        const isPosSalesReturn =
+          !isTransfer &&
+          (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN', 'SRN'].includes(ref) ||
+            ref.startsWith('POS_RETURN') ||
+            ref.startsWith('POS_REFUND') ||
+            ref.startsWith('POS_VOID') ||
+            ref.startsWith('SALES_RETURN'));
+
         if (
           entry.movementType === 'INBOUND' ||
           entry.movementType === 'OPENING_BALANCE' ||
           isOpening ||
           (entry.movementType === 'ADJUSTMENT' && entryQty > 0) ||
           (entry.movementType === 'TRANSFER' && entryQty > 0) ||
-          (isTransfer && entryQty > 0)
+          (isTransfer && entryQty > 0) ||
+          isPosSalesReturn
         ) {
-          // Blended WAC on Inbound / Purchases / Positive Adjustments / Transfers
+          // Blended WAC on Inbound / Purchases / Positive Adjustments / Transfers / Returns
           if (valuationMethod === 'WEIGHTED_AVG') {
             const newQty = qtyBalance + entryQty;
             if (newQty > 0) {
@@ -731,12 +740,15 @@ export class StockValuationExportService {
           if (!isBeforePeriod) {
             const isPurchase =
               !isTransfer &&
+              !isOpening &&
+              !isAdjustment &&
+              !isPosSalesReturn &&
               (ref === 'GRN' ||
                 ref === 'PURCHASE' ||
                 ref === 'LANDED_COST' ||
                 ref.startsWith('GRN') ||
                 ref.startsWith('PURCHASE') ||
-                (!isOpening && !isAdjustment && entry.movementType === 'INBOUND'));
+                entry.movementType === 'INBOUND');
 
             if (isOpening) {
               periodOpeningQty += entryQty;
@@ -746,6 +758,9 @@ export class StockValuationExportService {
               adjVal += entryQty * entryCost;
             } else if (isTransfer) {
               // Internal transfers must NOT be counted in Purchases, Sales, or Adjustments
+            } else if (isPosSalesReturn) {
+              // Sales Return (stock returned by customer) reduces Net Sales
+              salesQty -= entryQty;
             } else if (isPurchase) {
               purchaseQty += entryQty;
               purchaseVal += entryQty * entryCost;
