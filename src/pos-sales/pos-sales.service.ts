@@ -30,7 +30,7 @@ export class PosSalesService implements OnModuleInit {
     private voucherService: VoucherService,
     private notificationsService: NotificationsService,
     private stockMovementService: StockMovementService,
-  ) { }
+  ) {}
 
   // ─── Schedule midnight hold-clear ─────────────────────────────────
   onModuleInit() {
@@ -52,7 +52,6 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── Generate sequential numbers per location and Pakistan fiscal year ───
   async generateSequentialNumber(
-
     prefix: string,
     fieldName: 'orderNumber' | 'returnNumber' | 'refundNumber',
     locationId: string,
@@ -151,8 +150,6 @@ export class PosSalesService implements OnModuleInit {
 
     return nextNumber;
   }
-
-
 
   private async generateOrderNumber(
     locationId: string,
@@ -313,214 +310,126 @@ export class PosSalesService implements OnModuleInit {
     }> = [];
 
     try {
-      const result = await this.prisma.$transaction(async (tx) => {
-        const locationId = dto.locationId;
-        if (!locationId) {
-          throw new Error('Location ID is required to create a sales order.');
-        }
-        const orderNumber = await this.generateOrderNumber(locationId, tx);
-        const warehouseId = await this.resolveWarehouseId(
-          tx,
-          locationId,
-          dto.items?.[0]?.itemId,
-        );
-
-        // If resuming from hold, reverse the stock deduction and delete old items first
-        const isResumedHold = !!dto.holdOrderId;
-        if (isResumedHold) {
-          const oldOrder = await tx.salesOrder.findUnique({
-            where: { id: dto.holdOrderId },
-            include: { items: true },
-          });
-          if (!oldOrder) {
-            throw new Error('Resumed hold order not found');
+      const result = await this.prisma.$transaction(
+        async (tx) => {
+          const locationId = dto.locationId;
+          if (!locationId) {
+            throw new Error('Location ID is required to create a sales order.');
           }
+          const orderNumber = await this.generateOrderNumber(locationId, tx);
+          const warehouseId = await this.resolveWarehouseId(
+            tx,
+            locationId,
+            dto.items?.[0]?.itemId,
+          );
 
-          // Reverse stock deduction done at hold time
+          // If resuming from hold, reverse the stock deduction and delete old items first
+          const isResumedHold = !!dto.holdOrderId;
+          if (isResumedHold) {
+            const oldOrder = await tx.salesOrder.findUnique({
+              where: { id: dto.holdOrderId },
+              include: { items: true },
+            });
+            if (!oldOrder) {
+              throw new Error('Resumed hold order not found');
+            }
 
-          if (warehouseId) {
-            for (const item of oldOrder.items) {
-              await this.stockLedgerService.createEntry(
-                {
-                  itemId: item.itemId,
-                  warehouseId: warehouseId,
-                  locationId: oldOrder.locationId || locationId,
-                  qty: item.quantity, // Positive to reverse OUTBOUND
-                  movementType: MovementType.INBOUND,
-                  referenceType: 'POS_HOLD_CANCELLED',
-                  referenceId: oldOrder.id,
-                },
-                tx,
-              );
+            // Reverse stock deduction done at hold time
 
-              const existing = await tx.inventoryItem.findFirst({
-                where: {
-                  itemId: item.itemId,
-                  locationId: oldOrder.locationId || locationId,
-                  status: 'AVAILABLE',
-                },
-              });
-              if (existing) {
-                await tx.inventoryItem.update({
-                  where: { id: existing.id },
-                  data: { quantity: { increment: item.quantity } },
-                });
-              } else {
-                await tx.inventoryItem.create({
-                  data: {
+            if (warehouseId) {
+              for (const item of oldOrder.items) {
+                await this.stockLedgerService.createEntry(
+                  {
+                    itemId: item.itemId,
+                    warehouseId: warehouseId,
+                    locationId: oldOrder.locationId || locationId,
+                    qty: item.quantity, // Positive to reverse OUTBOUND
+                    movementType: MovementType.INBOUND,
+                    referenceType: 'POS_HOLD_CANCELLED',
+                    referenceId: oldOrder.id,
+                  },
+                  tx,
+                );
+
+                const existing = await tx.inventoryItem.findFirst({
+                  where: {
                     itemId: item.itemId,
                     locationId: oldOrder.locationId || locationId,
-                    warehouseId: warehouseId,
-                    quantity: item.quantity,
                     status: 'AVAILABLE',
                   },
                 });
+                if (existing) {
+                  await tx.inventoryItem.update({
+                    where: { id: existing.id },
+                    data: { quantity: { increment: item.quantity } },
+                  });
+                } else {
+                  await tx.inventoryItem.create({
+                    data: {
+                      itemId: item.itemId,
+                      locationId: oldOrder.locationId || locationId,
+                      warehouseId: warehouseId,
+                      quantity: item.quantity,
+                      status: 'AVAILABLE',
+                    },
+                  });
+                }
               }
             }
+
+            // Delete old items associated with the hold order
+            await tx.salesOrderItem.deleteMany({
+              where: { salesOrderId: dto.holdOrderId },
+            });
           }
 
-          // Delete old items associated with the hold order
-          await tx.salesOrderItem.deleteMany({
-            where: { salesOrderId: dto.holdOrderId },
-          });
-        }
+          // ── Check if this is a credit sale ─────────────────────
+          const isCreditSale = dto.isCreditSale || false;
+          const creditAmount = dto.creditAmount || 0;
 
-        // ── Check if this is a credit sale ─────────────────────
-        const isCreditSale = dto.isCreditSale || false;
-        const creditAmount = dto.creditAmount || 0;
+          // ── Resolve tenders ─────────────────────────────────────
+          const tenders =
+            dto.tenders && dto.tenders.length > 0
+              ? dto.tenders
+              : dto.paymentMethod
+                ? [
+                    {
+                      method: dto.paymentMethod,
+                      amount: dto.cashAmount || dto.cardAmount || 0,
+                    },
+                  ]
+                : [{ method: 'cash', amount: 0 }];
 
-        // ── Resolve tenders ─────────────────────────────────────
-        const tenders =
-          dto.tenders && dto.tenders.length > 0
-            ? dto.tenders
-            : dto.paymentMethod
-              ? [
-                {
-                  method: dto.paymentMethod,
-                  amount: dto.cashAmount || dto.cardAmount || 0,
-                },
-              ]
-              : [{ method: 'cash', amount: 0 }];
-
-        const totalPaid = tenders.reduce((acc, t) => acc + Number(t.amount), 0);
-        const tenderMethods = [...new Set(tenders.map((t) => t.method))];
-        const paymentMethod =
-          tenderMethods.length === 1 ? tenderMethods[0] : 'split';
-        const cashAmount = tenders
-          .filter((t) => t.method === 'cash')
-          .reduce((a, t) => a + Number(t.amount), 0);
-        const voucherAmount = tenders
-          .filter((t) => t.method === 'voucher')
-          .reduce((a, t) => a + Number(t.amount), 0);
-
-        const cardAmount = tenders
-          .filter(
-            (t) =>
-              t.method !== 'cash' &&
-              t.method !== 'voucher' &&
-              t.method !== 'credit_account' &&
-              t.method !== 'reward_voucher',
-          )
-          .reduce((a, t) => a + Number(t.amount), 0);
-
-        // General card/bank payment slip format validation (must be 6 digits numeric if present)
-        for (const t of tenders) {
-          if (t.method === 'card' || t.method === 'bank_transfer') {
-            if (t.slipNo) {
-              const trimmedSlip = t.slipNo.trim();
-              if (trimmedSlip.length !== 6 || !/^\d+$/.test(trimmedSlip)) {
-                throw new Error(
-                  'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
-                );
-              }
-            }
-          }
-        }
-
-        if (dto.allianceId) {
-          const alliance = await tx.allianceDiscount.findFirst({
-            where: { id: dto.allianceId, isDeleted: false },
-          });
-          if (!alliance) {
-            throw new Error(
-              'Selected Alliance discount is invalid or expired.',
-            );
-          }
-
-          const hasCashTender = tenders.some((t) => t.method === 'cash');
-          if (hasCashTender) {
-            throw new Error(
-              'Alliance discount cannot be applied when cash payment is selected.',
-            );
-          }
-          const hasCardTender = tenders.some(
-            (t) => t.method === 'card' || t.method === 'bank_transfer',
+          const totalPaid = tenders.reduce(
+            (acc, t) => acc + Number(t.amount),
+            0,
           );
-          const hasVoucherTender = tenders.some((t) => t.method === 'voucher');
+          const tenderMethods = [...new Set(tenders.map((t) => t.method))];
+          const paymentMethod =
+            tenderMethods.length === 1 ? tenderMethods[0] : 'split';
+          const cashAmount = tenders
+            .filter((t) => t.method === 'cash')
+            .reduce((a, t) => a + Number(t.amount), 0);
+          const voucherAmount = tenders
+            .filter((t) => t.method === 'voucher')
+            .reduce((a, t) => a + Number(t.amount), 0);
 
-          if (!hasCardTender && !hasVoucherTender) {
-            throw new Error(
-              'A card, bank transfer, or voucher payment is required when Alliance is selected.',
-            );
-          }
+          const cardAmount = tenders
+            .filter(
+              (t) =>
+                t.method !== 'cash' &&
+                t.method !== 'voucher' &&
+                t.method !== 'credit_account' &&
+                t.method !== 'reward_voucher',
+            )
+            .reduce((a, t) => a + Number(t.amount), 0);
 
-          if (alliance.binNumbers && alliance.binNumbers.length > 0) {
-            if (!dto.allianceMeta || !dto.allianceMeta.binNumber) {
-              throw new Error(
-                'BIN number selection is mandatory for this Alliance.',
-              );
-            }
-            if (!alliance.binNumbers.includes(dto.allianceMeta.binNumber)) {
-              throw new Error(
-                `Invalid BIN number: ${dto.allianceMeta.binNumber} is not allowed for this Alliance.`,
-              );
-            }
-          }
-
-          if (hasCardTender) {
-            if (
-              !dto.allianceMeta ||
-              !dto.allianceMeta.cardLast4 ||
-              dto.allianceMeta.cardLast4.trim().length !== 4
-            ) {
-              throw new Error(
-                'Card number (last 4 digits) is mandatory when Alliance is selected.',
-              );
-            }
-            if (
-              !dto.allianceMeta.merchantSlip ||
-              !dto.allianceMeta.merchantSlip.trim()
-            ) {
-              throw new Error(
-                'Auth ID / Approval Code is mandatory when Alliance is selected.',
-              );
-            }
-            const trimmedMerchantSlip = dto.allianceMeta.merchantSlip.trim();
-            if (
-              trimmedMerchantSlip.length !== 6 ||
-              !/^\d+$/.test(trimmedMerchantSlip)
-            ) {
-              throw new Error(
-                'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
-              );
-            }
-            for (const t of tenders) {
-              if (t.method === 'card' || t.method === 'bank_transfer') {
-                if (!t.cardLast4 || t.cardLast4.trim().length !== 4) {
-                  throw new Error(
-                    'Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.',
-                  );
-                }
-                if (!t.slipNo || !t.slipNo.trim()) {
-                  throw new Error(
-                    'Auth ID / Approval Code is mandatory for card/bank payments when Alliance is selected.',
-                  );
-                }
-                const trimmedTenderSlip = t.slipNo.trim();
-                if (
-                  trimmedTenderSlip.length !== 6 ||
-                  !/^\d+$/.test(trimmedTenderSlip)
-                ) {
+          // General card/bank payment slip format validation (must be 6 digits numeric if present)
+          for (const t of tenders) {
+            if (t.method === 'card' || t.method === 'bank_transfer') {
+              if (t.slipNo) {
+                const trimmedSlip = t.slipNo.trim();
+                if (trimmedSlip.length !== 6 || !/^\d+$/.test(trimmedSlip)) {
                   throw new Error(
                     'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
                   );
@@ -528,644 +437,755 @@ export class PosSalesService implements OnModuleInit {
               }
             }
           }
-        }
 
-        // ── Resolve promo scope ──────────────────────────────────
-        const promoItemIds =
-          dto.promoScope?.type === 'items' && dto.promoScope.itemIds?.length
-            ? new Set(dto.promoScope.itemIds)
-            : null; // null = apply to all
-
-        // ── Calculate line items ─────────────────────────────────
-        itemsData = dto.items.map((lineItem) => {
-          const retailPrice = lineItem.unitPrice;
-          const taxPct = lineItem.taxPercent || 0;
-          const taxDivisor = 1 + taxPct / 100;
-
-          // Calculate WOST (Value excluding tax) from Retail Price
-          // WOST = Retail / (1 + tax%)
-          const wostPerUnit = retailPrice / taxDivisor;
-          const totalWost =
-            Math.round(wostPerUnit * lineItem.quantity * 100) / 100;
-
-          // Apply discount on WOST (not on Retail Price)
-          // Use overrideDiscountPercent if available, otherwise use discountPercent
-          const discPct =
-            lineItem.overrideDiscountPercent ?? lineItem.discountPercent ?? 0;
-          const discAmt = Math.round(totalWost * (discPct / 100) * 100) / 100;
-          const afterDisc = totalWost - discAmt;
-
-          // Calculate tax on amount after discount
-          const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
-
-          const promoDisc =
-            promoItemIds === null || promoItemIds.has(lineItem.itemId)
-              ? lineItem.promoDiscountAmount || 0
-              : 0;
-
-          const lineTotal =
-            Math.round((afterDisc + taxAmt - promoDisc) * 100) / 100;
-
-          return {
-            itemId: lineItem.itemId,
-            quantity: lineItem.quantity,
-            unitPrice: lineItem.unitPrice,
-            discountPercent: discPct,
-            discountAmount: discAmt + promoDisc,
-            overrideDiscountPercent:
-              lineItem.overrideDiscountPercent || undefined,
-            overrideDiscountNote: lineItem.overrideDiscountNote || undefined,
-            taxPercent: taxPct,
-            taxAmount: taxAmt,
-            lineTotal: Math.max(0, lineTotal),
-          };
-        });
-
-        // Calculate subtotal as sum of WOST (not retail price)
-        const subtotal = itemsData.reduce((acc, i) => {
-          const taxDivisor = 1 + i.taxPercent / 100;
-          const wostPerUnit = i.unitPrice / taxDivisor;
-          return acc + wostPerUnit * i.quantity;
-        }, 0);
-        const lineItemDiscount = itemsData.reduce(
-          (acc, i) => acc + i.discountAmount,
-          0,
-        );
-        const recalculatedTotalTax = itemsData.reduce(
-          (acc, i) => acc + i.taxAmount,
-          0,
-        );
-        const subtotalAfterItemDiscount = subtotal - lineItemDiscount;
-
-        // ── Calculate global discount with priority logic ──
-        let globalDiscAmt = 0;
-        let finalLineItemDiscount = lineItemDiscount; // May be zeroed if alliance is better
-        let appliedDiscountType = 'none'; // Track which discount was applied
-
-        // Calculate all possible discounts
-        let manualDiscount = 0;
-        let allianceDiscount = 0;
-        let couponDiscount = 0;
-
-        // 1. Manual discount (from UI) — calculated on full subtotal (replaces item discounts)
-        //    Max 50% allowed; flat amount capped at 50% of Grand Total before manual discount
-        const grandTotalBeforeManual =
-          Math.round(
-            (subtotal - lineItemDiscount + recalculatedTotalTax + 1) * 100,
-          ) / 100;
-        if (dto.globalDiscountPercent) {
-          const cappedPercent = Math.min(dto.globalDiscountPercent, 50);
-          manualDiscount =
-            Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
-        } else if (dto.globalDiscountAmount) {
-          const maxFlatDiscount =
-            Math.round(grandTotalBeforeManual * 0.5 * 100) / 100;
-          const cappedWstDiscount = Math.min(
-            dto.globalDiscountAmount,
-            maxFlatDiscount,
-          );
-          const totalWstPrice = itemsData.reduce(
-            (acc, i) => acc + i.unitPrice * i.quantity,
-            0,
-          );
-          if (totalWstPrice > 0) {
-            manualDiscount =
-              Math.round(cappedWstDiscount * (subtotal / totalWstPrice) * 100) /
-              100;
-          } else {
-            manualDiscount = 0;
-          }
-        }
-        // 2. Alliance discount (calculated on subtotal AFTER item discounts)
-        if (
-          dto.allianceId &&
-          !dto.globalDiscountAmount &&
-          !dto.globalDiscountPercent
-        ) {
-          const alliance = await tx.allianceDiscount.findFirst({
-            where: { id: dto.allianceId, isDeleted: false },
-          });
-          if (alliance) {
-            const calculatedDiscount =
-              Math.round(
-                subtotal * (Number(alliance.discountPercent) / 100) * 100,
-              ) / 100;
-            if (alliance.maxDiscount) {
-              allianceDiscount = Math.min(
-                calculatedDiscount,
-                Number(alliance.maxDiscount),
-              );
-            } else {
-              allianceDiscount = calculatedDiscount;
-            }
-            allianceDiscount = Math.round(allianceDiscount * 100) / 100;
-          }
-        }
-
-        // 3. Coupon discount
-        if (dto.couponId) {
-          const coupon = await tx.couponCode.findFirst({
-            where: { id: dto.couponId, isDeleted: false },
-          });
-          if (coupon) {
-            if (coupon.discountType === 'percent') {
-              const disc =
-                Math.round(
-                  subtotalAfterItemDiscount *
-                  (Number(coupon.discountValue) / 100) *
-                  100,
-                ) / 100;
-              couponDiscount = coupon.maxDiscount
-                ? Math.min(disc, Number(coupon.maxDiscount))
-                : disc;
-            } else {
-              couponDiscount = Math.min(
-                Number(coupon.discountValue),
-                subtotalAfterItemDiscount,
-              );
-            }
-          }
-        }
-
-        // Apply discount priority logic:
-        // - If item discount and alliance discount both exist, apply the greater one
-        // - If equal, apply alliance discount
-        // - The one not applied should be removed from calculation
-
-        if (lineItemDiscount > 0 && allianceDiscount > 0) {
-          // Both item and alliance discounts exist - choose the greater one
-          if (allianceDiscount >= lineItemDiscount) {
-            // Alliance discount is greater or equal - use alliance, remove item discount
-            globalDiscAmt = allianceDiscount;
-            finalLineItemDiscount = 0; // Remove item discount
-            appliedDiscountType = 'alliance';
-          } else {
-            // Item discount is greater - keep item discount, no alliance
-            globalDiscAmt = 0;
-            finalLineItemDiscount = lineItemDiscount;
-            appliedDiscountType = 'item';
-          }
-        } else if (allianceDiscount > 0) {
-          // Only alliance discount
-          globalDiscAmt = allianceDiscount;
-          appliedDiscountType = 'alliance';
-        } else if (couponDiscount > 0) {
-          // Coupon discount
-          globalDiscAmt = couponDiscount;
-          appliedDiscountType = 'coupon';
-        } else if (manualDiscount > 0) {
-          // Manual discount — replaces item-level discounts
-          globalDiscAmt = manualDiscount;
-          finalLineItemDiscount = 0; // Remove item discounts when manual discount is applied
-          appliedDiscountType = 'manual';
           if (dto.allianceId) {
-            dto.manualDiscountNote =
-              `[Manual Alliance] ${dto.manualDiscountNote || ''}`.trim();
+            const alliance = await tx.allianceDiscount.findFirst({
+              where: { id: dto.allianceId, isDeleted: false },
+            });
+            if (!alliance) {
+              throw new Error(
+                'Selected Alliance discount is invalid or expired.',
+              );
+            }
+
+            const hasCashTender = tenders.some((t) => t.method === 'cash');
+            if (hasCashTender) {
+              throw new Error(
+                'Alliance discount cannot be applied when cash payment is selected.',
+              );
+            }
+            const hasCardTender = tenders.some(
+              (t) => t.method === 'card' || t.method === 'bank_transfer',
+            );
+            const hasVoucherTender = tenders.some(
+              (t) => t.method === 'voucher',
+            );
+
+            if (!hasCardTender && !hasVoucherTender) {
+              throw new Error(
+                'A card, bank transfer, or voucher payment is required when Alliance is selected.',
+              );
+            }
+
+            if (alliance.binNumbers && alliance.binNumbers.length > 0) {
+              if (!dto.allianceMeta || !dto.allianceMeta.binNumber) {
+                throw new Error(
+                  'BIN number selection is mandatory for this Alliance.',
+                );
+              }
+              if (!alliance.binNumbers.includes(dto.allianceMeta.binNumber)) {
+                throw new Error(
+                  `Invalid BIN number: ${dto.allianceMeta.binNumber} is not allowed for this Alliance.`,
+                );
+              }
+            }
+
+            if (hasCardTender) {
+              if (
+                !dto.allianceMeta ||
+                !dto.allianceMeta.cardLast4 ||
+                dto.allianceMeta.cardLast4.trim().length !== 4
+              ) {
+                throw new Error(
+                  'Card number (last 4 digits) is mandatory when Alliance is selected.',
+                );
+              }
+              if (
+                !dto.allianceMeta.merchantSlip ||
+                !dto.allianceMeta.merchantSlip.trim()
+              ) {
+                throw new Error(
+                  'Auth ID / Approval Code is mandatory when Alliance is selected.',
+                );
+              }
+              const trimmedMerchantSlip = dto.allianceMeta.merchantSlip.trim();
+              if (
+                trimmedMerchantSlip.length !== 6 ||
+                !/^\d+$/.test(trimmedMerchantSlip)
+              ) {
+                throw new Error(
+                  'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
+                );
+              }
+              for (const t of tenders) {
+                if (t.method === 'card' || t.method === 'bank_transfer') {
+                  if (!t.cardLast4 || t.cardLast4.trim().length !== 4) {
+                    throw new Error(
+                      'Card number (last 4 digits) is mandatory for card/bank payments when Alliance is selected.',
+                    );
+                  }
+                  if (!t.slipNo || !t.slipNo.trim()) {
+                    throw new Error(
+                      'Auth ID / Approval Code is mandatory for card/bank payments when Alliance is selected.',
+                    );
+                  }
+                  const trimmedTenderSlip = t.slipNo.trim();
+                  if (
+                    trimmedTenderSlip.length !== 6 ||
+                    !/^\d+$/.test(trimmedTenderSlip)
+                  ) {
+                    throw new Error(
+                      'Auth ID / Approval Code must be exactly a 6-digit numeric code.',
+                    );
+                  }
+                }
+              }
+            }
           }
-        }
 
-        // If any global/order-level discount (Alliance, Coupon, Manual) is applied,
-        // distribute it across itemsData proportionally to WOST (Value excluding tax)
-        if (globalDiscAmt > 0) {
-          const baseSubtotal = subtotal > 0 ? subtotal : 1;
-          let distributedDisc = 0;
-          const rawShares = itemsData.map((item) => {
-            const taxDivisor = 1 + item.taxPercent / 100;
-            const wostPerUnit = item.unitPrice / taxDivisor;
-            const itemWost = wostPerUnit * item.quantity;
-            const share = Math.floor((globalDiscAmt * itemWost) / baseSubtotal);
-            distributedDisc += share;
-            return share;
-          });
+          // ── Resolve promo scope ──────────────────────────────────
+          const promoItemIds =
+            dto.promoScope?.type === 'items' && dto.promoScope.itemIds?.length
+              ? new Set(dto.promoScope.itemIds)
+              : null; // null = apply to all
 
-          let remainder = Math.round(globalDiscAmt - distributedDisc);
-          const sortedIdx = itemsData
-            .map((item, i) => {
-              const taxDivisor = 1 + item.taxPercent / 100;
-              const wostPerUnit = item.unitPrice / taxDivisor;
-              return { i, v: wostPerUnit * item.quantity };
-            })
-            .sort((a, b) => b.v - a.v)
-            .map((x) => x.i);
+          // ── Calculate line items ─────────────────────────────────
+          itemsData = dto.items.map((lineItem) => {
+            const retailPrice = lineItem.unitPrice;
+            const taxPct = lineItem.taxPercent || 0;
+            const taxDivisor = 1 + taxPct / 100;
 
-          for (let k = 0; k < remainder; k++) {
-            rawShares[sortedIdx[k % sortedIdx.length]]++;
-          }
+            // Calculate WOST (Value excluding tax) from Retail Price
+            // WOST = Retail / (1 + tax%)
+            const wostPerUnit = retailPrice / taxDivisor;
+            const totalWost =
+              Math.round(wostPerUnit * lineItem.quantity * 100) / 100;
 
-          itemsData = itemsData.map((item, idx) => {
-            const disc = rawShares[idx];
+            // Apply discount on WOST (not on Retail Price)
+            // Use overrideDiscountPercent if available, otherwise use discountPercent
+            const discPct =
+              lineItem.overrideDiscountPercent ?? lineItem.discountPercent ?? 0;
+            const discAmt = Math.round(totalWost * (discPct / 100) * 100) / 100;
+            const afterDisc = totalWost - discAmt;
 
-            // Recalculate tax based on WOST after discount
-            const taxDivisor = 1 + item.taxPercent / 100;
-            const wostPerUnit = item.unitPrice / taxDivisor;
-            const totalWost = wostPerUnit * item.quantity;
-            const afterDisc = totalWost - disc;
-            const recalculatedTax =
-              Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
+            // Calculate tax on amount after discount
+            const taxAmt = Math.round(afterDisc * (taxPct / 100) * 100) / 100;
+
+            const promoDisc =
+              promoItemIds === null || promoItemIds.has(lineItem.itemId)
+                ? lineItem.promoDiscountAmount || 0
+                : 0;
+
+            const lineTotal =
+              Math.round((afterDisc + taxAmt - promoDisc) * 100) / 100;
 
             return {
-              ...item,
-              discountPercent: Math.round((disc / totalWost) * 100 * 100) / 100,
-              discountAmount: disc,
-              taxAmount: recalculatedTax,
-              lineTotal: Math.round((afterDisc + recalculatedTax) * 100) / 100,
+              itemId: lineItem.itemId,
+              quantity: lineItem.quantity,
+              unitPrice: lineItem.unitPrice,
+              discountPercent: discPct,
+              discountAmount: discAmt + promoDisc,
+              overrideDiscountPercent:
+                lineItem.overrideDiscountPercent || undefined,
+              overrideDiscountNote: lineItem.overrideDiscountNote || undefined,
+              taxPercent: taxPct,
+              taxAmount: taxAmt,
+              lineTotal: Math.max(0, lineTotal),
             };
           });
-        }
 
-        // Recalculate totalTax after alliance discount distribution (if applied)
-        const finalTotalTax = itemsData.reduce(
-          (acc, i) => acc + i.taxAmount,
-          0,
-        );
+          // Calculate subtotal as sum of WOST (not retail price)
+          const subtotal = itemsData.reduce((acc, i) => {
+            const taxDivisor = 1 + i.taxPercent / 100;
+            const wostPerUnit = i.unitPrice / taxDivisor;
+            return acc + wostPerUnit * i.quantity;
+          }, 0);
+          const lineItemDiscount = itemsData.reduce(
+            (acc, i) => acc + i.discountAmount,
+            0,
+          );
+          const recalculatedTotalTax = itemsData.reduce(
+            (acc, i) => acc + i.taxAmount,
+            0,
+          );
+          const subtotalAfterItemDiscount = subtotal - lineItemDiscount;
 
-        // Recalculate total with the chosen discount
-        const totalDiscount = finalLineItemDiscount + globalDiscAmt;
-        const location = await tx.location.findUnique({
-          where: { id: locationId },
-          select: { fbrEnabled: true, fbrNtn: true },
-        });
-        const fbrPosFee = location?.fbrEnabled && location?.fbrNtn ? 1 : 0;
-        const grandTotal = Math.max(
-          0,
-          Math.round(subtotal - totalDiscount + finalTotalTax + fbrPosFee),
-        );
-        const changeAmount = Math.max(0, totalPaid - grandTotal);
+          // ── Calculate global discount with priority logic ──
+          let globalDiscAmt = 0;
+          let finalLineItemDiscount = lineItemDiscount; // May be zeroed if alliance is better
+          let appliedDiscountType = 'none'; // Track which discount was applied
 
-        // Debug logging
-        console.log('=== GRAND TOTAL CALCULATION ===');
-        console.log('Subtotal (WOST):', subtotal);
-        console.log('Total Discount:', totalDiscount);
-        console.log('Total Tax (Final):', finalTotalTax);
-        console.log('FBR POS Fee:', fbrPosFee);
-        console.log('Grand Total:', grandTotal);
-        console.log(
-          'Formula: subtotal - totalDiscount + finalTotalTax + fbrPosFee =',
-          subtotal,
-          '-',
-          totalDiscount,
-          '+',
-          finalTotalTax,
-          '+',
-          fbrPosFee,
-          '=',
-          grandTotal,
-        );
-        console.log('===============================');
+          // Calculate all possible discounts
+          let manualDiscount = 0;
+          let allianceDiscount = 0;
+          let couponDiscount = 0;
 
-        const notesParts: string[] = [];
-        if (dto.notes) notesParts.push(dto.notes);
-        if (isCreditSale)
-          notesParts.push(`[Credit Sale] Balance: ${creditAmount}`);
-        const rewardVoucherTenders = tenders.filter((t) => t.method === 'reward_voucher');
-        if (rewardVoucherTenders.length > 0) {
-          const rvDetails = rewardVoucherTenders
-            .map((t) => {
-              const r = (t as any).remarks || t.slipNo;
-              return r ? `${r} (Amount: ${t.amount})` : `Amount: ${t.amount}`;
-            })
-            .join(' | ');
-          notesParts.push(`[Reward Voucher] ${rvDetails}`);
-        }
-        if (appliedDiscountType === 'alliance' && dto.allianceMeta) {
-          const m = dto.allianceMeta;
-          const parts: string[] = [];
-          if (m.cardholderName) parts.push(`Cardholder: ${m.cardholderName}`);
-          if (m.cardLast4) parts.push(`Card: ****${m.cardLast4}`);
-          if (m.merchantSlip) parts.push(`Slip: ${m.merchantSlip}`);
-          if (m.binNumber) parts.push(`BIN: ${m.binNumber}`);
-          if (parts.length) notesParts.push(`[Alliance] ${parts.join(' | ')}`);
-        }
+          // 1. Manual discount (from UI) — calculated on full subtotal (replaces item discounts)
+          //    Max 50% allowed; flat amount capped at 50% of Grand Total before manual discount
+          const grandTotalBeforeManual =
+            Math.round(
+              (subtotal - lineItemDiscount + recalculatedTotalTax + 1) * 100,
+            ) / 100;
+          if (dto.globalDiscountPercent) {
+            const cappedPercent = Math.min(dto.globalDiscountPercent, 50);
+            manualDiscount =
+              Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
+          } else if (dto.globalDiscountAmount) {
+            const maxFlatDiscount =
+              Math.round(grandTotalBeforeManual * 0.5 * 100) / 100;
+            const cappedWstDiscount = Math.min(
+              dto.globalDiscountAmount,
+              maxFlatDiscount,
+            );
+            const totalWstPrice = itemsData.reduce(
+              (acc, i) => acc + i.unitPrice * i.quantity,
+              0,
+            );
+            if (totalWstPrice > 0) {
+              manualDiscount =
+                Math.round(
+                  cappedWstDiscount * (subtotal / totalWstPrice) * 100,
+                ) / 100;
+            } else {
+              manualDiscount = 0;
+            }
+          }
+          // 2. Alliance discount (calculated on subtotal AFTER item discounts)
+          if (
+            dto.allianceId &&
+            !dto.globalDiscountAmount &&
+            !dto.globalDiscountPercent
+          ) {
+            const alliance = await tx.allianceDiscount.findFirst({
+              where: { id: dto.allianceId, isDeleted: false },
+            });
+            if (alliance) {
+              const calculatedDiscount =
+                Math.round(
+                  subtotal * (Number(alliance.discountPercent) / 100) * 100,
+                ) / 100;
+              if (alliance.maxDiscount) {
+                allianceDiscount = Math.min(
+                  calculatedDiscount,
+                  Number(alliance.maxDiscount),
+                );
+              } else {
+                allianceDiscount = calculatedDiscount;
+              }
+              allianceDiscount = Math.round(allianceDiscount * 100) / 100;
+            }
+          }
 
-        // Determine payment status - round both values to 2 decimals for comparison
-        const totalPaidRounded = Math.round(totalPaid * 100) / 100;
-        const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+          // 3. Coupon discount
+          if (dto.couponId) {
+            const coupon = await tx.couponCode.findFirst({
+              where: { id: dto.couponId, isDeleted: false },
+            });
+            if (coupon) {
+              if (coupon.discountType === 'percent') {
+                const disc =
+                  Math.round(
+                    subtotalAfterItemDiscount *
+                      (Number(coupon.discountValue) / 100) *
+                      100,
+                  ) / 100;
+                couponDiscount = coupon.maxDiscount
+                  ? Math.min(disc, Number(coupon.maxDiscount))
+                  : disc;
+              } else {
+                couponDiscount = Math.min(
+                  Number(coupon.discountValue),
+                  subtotalAfterItemDiscount,
+                );
+              }
+            }
+          }
 
-        let paymentStatus: string;
+          // Apply discount priority logic:
+          // - If item discount and alliance discount both exist, apply the greater one
+          // - If equal, apply alliance discount
+          // - The one not applied should be removed from calculation
 
-        // Debug logging
-        console.log('Payment Status Calculation:', {
-          totalPaid,
-          totalPaidRounded,
-          grandTotal,
-          grandTotalRounded,
-          difference: totalPaidRounded - grandTotalRounded,
-          comparison:
-            totalPaidRounded >= grandTotalRounded
-              ? 'PAID'
-              : totalPaidRounded > 0
-                ? 'PARTIAL'
-                : 'UNPAID',
-        });
+          if (lineItemDiscount > 0 && allianceDiscount > 0) {
+            // Both item and alliance discounts exist - choose the greater one
+            if (allianceDiscount >= lineItemDiscount) {
+              // Alliance discount is greater or equal - use alliance, remove item discount
+              globalDiscAmt = allianceDiscount;
+              finalLineItemDiscount = 0; // Remove item discount
+              appliedDiscountType = 'alliance';
+            } else {
+              // Item discount is greater - keep item discount, no alliance
+              globalDiscAmt = 0;
+              finalLineItemDiscount = lineItemDiscount;
+              appliedDiscountType = 'item';
+            }
+          } else if (allianceDiscount > 0) {
+            // Only alliance discount
+            globalDiscAmt = allianceDiscount;
+            appliedDiscountType = 'alliance';
+          } else if (couponDiscount > 0) {
+            // Coupon discount
+            globalDiscAmt = couponDiscount;
+            appliedDiscountType = 'coupon';
+          } else if (manualDiscount > 0) {
+            // Manual discount — replaces item-level discounts
+            globalDiscAmt = manualDiscount;
+            finalLineItemDiscount = 0; // Remove item discounts when manual discount is applied
+            appliedDiscountType = 'manual';
+            if (dto.allianceId) {
+              dto.manualDiscountNote =
+                `[Manual Alliance] ${dto.manualDiscountNote || ''}`.trim();
+            }
+          }
 
-        if (totalPaidRounded >= grandTotalRounded) {
-          // Full payment received
-          paymentStatus = 'paid';
-        } else if (totalPaidRounded > 0) {
-          // Partial payment received
-          paymentStatus = 'partial';
-        } else {
-          // No payment received (credit sale)
-          paymentStatus = 'unpaid';
-        }
+          // If any global/order-level discount (Alliance, Coupon, Manual) is applied,
+          // distribute it across itemsData proportionally to WOST (Value excluding tax)
+          if (globalDiscAmt > 0) {
+            const baseSubtotal = subtotal > 0 ? subtotal : 1;
+            let distributedDisc = 0;
+            const rawShares = itemsData.map((item) => {
+              const taxDivisor = 1 + item.taxPercent / 100;
+              const wostPerUnit = item.unitPrice / taxDivisor;
+              const itemWost = wostPerUnit * item.quantity;
+              const share = Math.floor(
+                (globalDiscAmt * itemWost) / baseSubtotal,
+              );
+              distributedDisc += share;
+              return share;
+            });
 
-        let order;
-        if (isResumedHold) {
-          order = await tx.salesOrder.update({
-            where: { id: dto.holdOrderId },
-            data: {
-              orderNumber,
-              posId: dto.posId,
-              terminalId: dto.terminalId,
-              locationId: dto.locationId,
-              customerId: dto.customerId,
-              cashierUserId,
-              createdById: ctx?.userId || cashierUserId || null,
-              paymentMethod:
-                isCreditSale && totalPaid === 0
-                  ? 'credit_account'
-                  : paymentMethod,
-              notes: notesParts.join(' | ') || undefined,
-              manualDiscountNote: dto.manualDiscountNote || undefined,
-              subtotal,
-              discountAmount: totalDiscount,
-              taxAmount: finalTotalTax,
-              grandTotal,
-              status: 'completed',
-              paymentStatus,
-              globalDiscountPercent: dto.globalDiscountPercent,
-              globalDiscountAmount: globalDiscAmt || undefined,
-              promoId: dto.promoId,
-              couponId: dto.couponId,
-              allianceId: dto.allianceId,
-              merchantId: dto.merchantId || undefined,
-              tenderType:
-                isCreditSale && totalPaid === 0
-                  ? 'credit_account'
-                  : paymentMethod,
-              cashAmount: cashAmount || undefined,
-              cardAmount: cardAmount || undefined,
-              voucherAmount: voucherAmount || undefined,
-              changeAmount: changeAmount || undefined,
-              isGiftReceipt: dto.isGiftReceipt || false,
-              items: {
-                create: itemsData,
+            let remainder = Math.round(globalDiscAmt - distributedDisc);
+            const sortedIdx = itemsData
+              .map((item, i) => {
+                const taxDivisor = 1 + item.taxPercent / 100;
+                const wostPerUnit = item.unitPrice / taxDivisor;
+                return { i, v: wostPerUnit * item.quantity };
+              })
+              .sort((a, b) => b.v - a.v)
+              .map((x) => x.i);
+
+            for (let k = 0; k < remainder; k++) {
+              rawShares[sortedIdx[k % sortedIdx.length]]++;
+            }
+
+            itemsData = itemsData.map((item, idx) => {
+              const disc = rawShares[idx];
+
+              // Recalculate tax based on WOST after discount
+              const taxDivisor = 1 + item.taxPercent / 100;
+              const wostPerUnit = item.unitPrice / taxDivisor;
+              const totalWost = wostPerUnit * item.quantity;
+              const afterDisc = totalWost - disc;
+              const recalculatedTax =
+                Math.round(afterDisc * (item.taxPercent / 100) * 100) / 100;
+
+              return {
+                ...item,
+                discountPercent:
+                  Math.round((disc / totalWost) * 100 * 100) / 100,
+                discountAmount: disc,
+                taxAmount: recalculatedTax,
+                lineTotal:
+                  Math.round((afterDisc + recalculatedTax) * 100) / 100,
+              };
+            });
+          }
+
+          // Recalculate totalTax after alliance discount distribution (if applied)
+          const finalTotalTax = itemsData.reduce(
+            (acc, i) => acc + i.taxAmount,
+            0,
+          );
+
+          // Recalculate total with the chosen discount
+          const totalDiscount = finalLineItemDiscount + globalDiscAmt;
+          const location = await tx.location.findUnique({
+            where: { id: locationId },
+            select: { fbrEnabled: true, fbrNtn: true },
+          });
+          const fbrPosFee = location?.fbrEnabled && location?.fbrNtn ? 1 : 0;
+          const grandTotal = Math.max(
+            0,
+            Math.round(subtotal - totalDiscount + finalTotalTax + fbrPosFee),
+          );
+          const changeAmount = Math.max(0, totalPaid - grandTotal);
+
+          // Debug logging
+          console.log('=== GRAND TOTAL CALCULATION ===');
+          console.log('Subtotal (WOST):', subtotal);
+          console.log('Total Discount:', totalDiscount);
+          console.log('Total Tax (Final):', finalTotalTax);
+          console.log('FBR POS Fee:', fbrPosFee);
+          console.log('Grand Total:', grandTotal);
+          console.log(
+            'Formula: subtotal - totalDiscount + finalTotalTax + fbrPosFee =',
+            subtotal,
+            '-',
+            totalDiscount,
+            '+',
+            finalTotalTax,
+            '+',
+            fbrPosFee,
+            '=',
+            grandTotal,
+          );
+          console.log('===============================');
+
+          const notesParts: string[] = [];
+          if (dto.notes) notesParts.push(dto.notes);
+          if (isCreditSale)
+            notesParts.push(`[Credit Sale] Balance: ${creditAmount}`);
+          const rewardVoucherTenders = tenders.filter(
+            (t) => t.method === 'reward_voucher',
+          );
+          if (rewardVoucherTenders.length > 0) {
+            const rvDetails = rewardVoucherTenders
+              .map((t) => {
+                const r = (t as any).remarks || t.slipNo;
+                return r ? `${r} (Amount: ${t.amount})` : `Amount: ${t.amount}`;
+              })
+              .join(' | ');
+            notesParts.push(`[Reward Voucher] ${rvDetails}`);
+          }
+          if (appliedDiscountType === 'alliance' && dto.allianceMeta) {
+            const m = dto.allianceMeta;
+            const parts: string[] = [];
+            if (m.cardholderName) parts.push(`Cardholder: ${m.cardholderName}`);
+            if (m.cardLast4) parts.push(`Card: ****${m.cardLast4}`);
+            if (m.merchantSlip) parts.push(`Slip: ${m.merchantSlip}`);
+            if (m.binNumber) parts.push(`BIN: ${m.binNumber}`);
+            if (parts.length)
+              notesParts.push(`[Alliance] ${parts.join(' | ')}`);
+          }
+
+          // Determine payment status - round both values to 2 decimals for comparison
+          const totalPaidRounded = Math.round(totalPaid * 100) / 100;
+          const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+
+          let paymentStatus: string;
+
+          // Debug logging
+          console.log('Payment Status Calculation:', {
+            totalPaid,
+            totalPaidRounded,
+            grandTotal,
+            grandTotalRounded,
+            difference: totalPaidRounded - grandTotalRounded,
+            comparison:
+              totalPaidRounded >= grandTotalRounded
+                ? 'PAID'
+                : totalPaidRounded > 0
+                  ? 'PARTIAL'
+                  : 'UNPAID',
+          });
+
+          if (totalPaidRounded >= grandTotalRounded) {
+            // Full payment received
+            paymentStatus = 'paid';
+          } else if (totalPaidRounded > 0) {
+            // Partial payment received
+            paymentStatus = 'partial';
+          } else {
+            // No payment received (credit sale)
+            paymentStatus = 'unpaid';
+          }
+
+          let order;
+          if (isResumedHold) {
+            order = await tx.salesOrder.update({
+              where: { id: dto.holdOrderId },
+              data: {
+                orderNumber,
+                posId: dto.posId,
+                terminalId: dto.terminalId,
+                locationId: dto.locationId,
+                customerId: dto.customerId,
+                cashierUserId,
+                createdById: ctx?.userId || cashierUserId || null,
+                paymentMethod:
+                  isCreditSale && totalPaid === 0
+                    ? 'credit_account'
+                    : paymentMethod,
+                notes: notesParts.join(' | ') || undefined,
+                manualDiscountNote: dto.manualDiscountNote || undefined,
+                subtotal,
+                discountAmount: totalDiscount,
+                taxAmount: finalTotalTax,
+                grandTotal,
+                status: 'completed',
+                paymentStatus,
+                globalDiscountPercent: dto.globalDiscountPercent,
+                globalDiscountAmount: globalDiscAmt || undefined,
+                promoId: dto.promoId,
+                couponId: dto.couponId,
+                allianceId: dto.allianceId,
+                merchantId: dto.merchantId || undefined,
+                tenderType:
+                  isCreditSale && totalPaid === 0
+                    ? 'credit_account'
+                    : paymentMethod,
+                cashAmount: cashAmount || undefined,
+                cardAmount: cardAmount || undefined,
+                voucherAmount: voucherAmount || undefined,
+                changeAmount: changeAmount || undefined,
+                isGiftReceipt: dto.isGiftReceipt || false,
+                items: {
+                  create: itemsData,
+                },
               },
-            },
-            include: {
-              items: {
-                include: {
-                  item: {
-                    select: {
-                      description: true,
-                      sku: true,
-                      barCode: true,
-                      size: { select: { name: true } },
-                      color: { select: { name: true } },
+              include: {
+                items: {
+                  include: {
+                    item: {
+                      select: {
+                        description: true,
+                        sku: true,
+                        barCode: true,
+                        size: { select: { name: true } },
+                        color: { select: { name: true } },
+                      },
                     },
                   },
                 },
-              },
-              promo: { select: { name: true, code: true } },
-              coupon: { select: { code: true, description: true } },
-              alliance: {
-                select: {
-                  partnerName: true,
-                  code: true,
-                  discountPercent: true,
-                  maxDiscount: true,
+                promo: { select: { name: true, code: true } },
+                coupon: { select: { code: true, description: true } },
+                alliance: {
+                  select: {
+                    partnerName: true,
+                    code: true,
+                    discountPercent: true,
+                    maxDiscount: true,
+                  },
                 },
-              },
-              merchant: {
-                select: {
-                  id: true,
-                  bankName: true,
-                  description: true,
-                  commissionRate: true,
-                  bankGlCode: true,
-                },
-              },
-            },
-          });
-        } else {
-          order = await tx.salesOrder.create({
-            data: {
-              orderNumber,
-              posId: dto.posId,
-              terminalId: dto.terminalId,
-              locationId: dto.locationId,
-              customerId: dto.customerId,
-              cashierUserId,
-              createdById: ctx?.userId || cashierUserId || null,
-              paymentMethod:
-                isCreditSale && totalPaid === 0
-                  ? 'credit_account'
-                  : paymentMethod,
-              notes: notesParts.join(' | ') || undefined,
-              manualDiscountNote: dto.manualDiscountNote || undefined,
-              subtotal,
-              discountAmount: totalDiscount,
-              taxAmount: finalTotalTax,
-              grandTotal,
-              status: 'completed',
-              paymentStatus,
-              globalDiscountPercent: dto.globalDiscountPercent,
-              globalDiscountAmount: globalDiscAmt || undefined,
-              promoId: dto.promoId,
-              couponId: dto.couponId,
-              allianceId: dto.allianceId,
-              merchantId: dto.merchantId || undefined,
-              tenderType:
-                isCreditSale && totalPaid === 0
-                  ? 'credit_account'
-                  : paymentMethod,
-              cashAmount: cashAmount || undefined,
-              cardAmount: cardAmount || undefined,
-              voucherAmount: voucherAmount || undefined,
-              changeAmount: changeAmount || undefined,
-              isGiftReceipt: dto.isGiftReceipt || false,
-              items: {
-                create: itemsData,
-              },
-            },
-            include: {
-              items: {
-                include: {
-                  item: {
-                    select: {
-                      description: true,
-                      sku: true,
-                      barCode: true,
-                      size: { select: { name: true } },
-                      color: { select: { name: true } },
-                    },
+                merchant: {
+                  select: {
+                    id: true,
+                    bankName: true,
+                    description: true,
+                    commissionRate: true,
+                    bankGlCode: true,
                   },
                 },
               },
-              promo: { select: { name: true, code: true } },
-              coupon: { select: { code: true, description: true } },
-              alliance: {
-                select: {
-                  partnerName: true,
-                  code: true,
-                  discountPercent: true,
-                  maxDiscount: true,
-                },
-              },
-              merchant: {
-                select: {
-                  id: true,
-                  bankName: true,
-                  description: true,
-                  commissionRate: true,
-                  bankGlCode: true,
-                },
-              },
-            },
-          });
-        }
-
-        // ── Update Customer Balance for Credit Sale ────────────
-        if (isCreditSale && dto.customerId && creditAmount > 0) {
-          await tx.customer.update({
-            where: { id: dto.customerId },
-            data: {
-              balance: {
-                increment: creditAmount,
-              },
-            },
-          });
-        }
-
-        // ── Update Stock (Deduct) ───────────────────────────────
-        for (const item of itemsData) {
-          const itemWarehouseId = await this.resolveWarehouseId(
-            tx,
-            locationId,
-            item.itemId,
-          );
-
-          await this.stockLedgerService.createEntry(
-            {
-              itemId: item.itemId,
-              warehouseId: itemWarehouseId,
-              locationId: locationId,
-              qty: -item.quantity, // Negative for OUTBOUND
-              movementType: MovementType.OUTBOUND,
-              referenceType: 'POS_SALE',
-              // unitCost: item.,
-              referenceId: order.id,
-            },
-            tx,
-          );
-
-          // ── Sync InventoryItem (for ERP visibility) ─────────
-          // Find existing inventory item first
-          const existingInventory = await tx.inventoryItem.findFirst({
-            where: {
-              itemId: item.itemId,
-              locationId: locationId,
-              status: 'AVAILABLE',
-            },
-          });
-
-          if (existingInventory) {
-            // Update existing inventory item
-            await tx.inventoryItem.update({
-              where: { id: existingInventory.id },
-              data: { quantity: { decrement: item.quantity } },
             });
           } else {
-            // If no record exists at this outlet, create one to reflect the sale
-            // This ensures that ERP views (which read InventoryItem) see the deduction
-            await tx.inventoryItem.create({
+            order = await tx.salesOrder.create({
               data: {
+                orderNumber,
+                posId: dto.posId,
+                terminalId: dto.terminalId,
+                locationId: dto.locationId,
+                customerId: dto.customerId,
+                cashierUserId,
+                createdById: ctx?.userId || cashierUserId || null,
+                paymentMethod:
+                  isCreditSale && totalPaid === 0
+                    ? 'credit_account'
+                    : paymentMethod,
+                notes: notesParts.join(' | ') || undefined,
+                manualDiscountNote: dto.manualDiscountNote || undefined,
+                subtotal,
+                discountAmount: totalDiscount,
+                taxAmount: finalTotalTax,
+                grandTotal,
+                status: 'completed',
+                paymentStatus,
+                globalDiscountPercent: dto.globalDiscountPercent,
+                globalDiscountAmount: globalDiscAmt || undefined,
+                promoId: dto.promoId,
+                couponId: dto.couponId,
+                allianceId: dto.allianceId,
+                merchantId: dto.merchantId || undefined,
+                tenderType:
+                  isCreditSale && totalPaid === 0
+                    ? 'credit_account'
+                    : paymentMethod,
+                cashAmount: cashAmount || undefined,
+                cardAmount: cardAmount || undefined,
+                voucherAmount: voucherAmount || undefined,
+                changeAmount: changeAmount || undefined,
+                isGiftReceipt: dto.isGiftReceipt || false,
+                items: {
+                  create: itemsData,
+                },
+              },
+              include: {
+                items: {
+                  include: {
+                    item: {
+                      select: {
+                        description: true,
+                        sku: true,
+                        barCode: true,
+                        size: { select: { name: true } },
+                        color: { select: { name: true } },
+                      },
+                    },
+                  },
+                },
+                promo: { select: { name: true, code: true } },
+                coupon: { select: { code: true, description: true } },
+                alliance: {
+                  select: {
+                    partnerName: true,
+                    code: true,
+                    discountPercent: true,
+                    maxDiscount: true,
+                  },
+                },
+                merchant: {
+                  select: {
+                    id: true,
+                    bankName: true,
+                    description: true,
+                    commissionRate: true,
+                    bankGlCode: true,
+                  },
+                },
+              },
+            });
+          }
+
+          // ── Update Customer Balance for Credit Sale ────────────
+          if (isCreditSale && dto.customerId && creditAmount > 0) {
+            await tx.customer.update({
+              where: { id: dto.customerId },
+              data: {
+                balance: {
+                  increment: creditAmount,
+                },
+              },
+            });
+          }
+
+          // ── Update Stock (Deduct) ───────────────────────────────
+          for (const item of itemsData) {
+            const itemWarehouseId = await this.resolveWarehouseId(
+              tx,
+              locationId,
+              item.itemId,
+            );
+
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: itemWarehouseId,
+                locationId: locationId,
+                qty: -item.quantity, // Negative for OUTBOUND
+                movementType: MovementType.OUTBOUND,
+                referenceType: 'POS_SALE',
+                // unitCost: item.,
+                referenceId: order.id,
+              },
+              tx,
+            );
+
+            // ── Sync InventoryItem (for ERP visibility) ─────────
+            // Find existing inventory item first
+            const existingInventory = await tx.inventoryItem.findFirst({
+              where: {
                 itemId: item.itemId,
                 locationId: locationId,
-                warehouseId: warehouseId,
-                quantity: -item.quantity,
                 status: 'AVAILABLE',
               },
             });
-          }
-        }
 
-        if (dto.couponId) {
-          await tx.couponCode.update({
-            where: { id: dto.couponId },
-            data: { usedCount: { increment: 1 } },
-          });
-        }
-
-        // ── Redeem vouchers ────────────────────────────────────────
-        const voucherRedemptions = dto.voucherRedemptions;
-        let creditVouchers: {
-          code: string;
-          faceValue: number;
-          expiresAt: Date | null;
-        }[] = [];
-        if (voucherRedemptions?.length) {
-          creditVouchers = await this.voucherService.redeemVouchers(
-            voucherRedemptions.map((r) => ({
-              voucherId: r.voucherId,
-              amountUsed: r.amount,
-            })),
-            order.id,
-            locationId || '',
-            tx,
-            ctx,
-          );
-        }
-
-        // Resolve cashier info for immediate receipt rendering
-        let cashier: {
-          name: string;
-          empCode: string | null;
-          email: string | null;
-        } | null = null;
-        if (cashierUserId) {
-          try {
-            const emp = await tx.employee.findFirst({
-              where: {
-                OR: [{ userId: cashierUserId }, { id: cashierUserId }],
-              },
-              select: { id: true, employeeName: true, employeeId: true },
-            });
-            const user = await this.prismaMaster.user.findUnique({
-              where: { id: cashierUserId },
-              select: { id: true, firstName: true, lastName: true, email: true },
-            });
-            if (emp || user) {
-              cashier = {
-                name:
-                  emp?.employeeName ||
-                  (user ? `${user.firstName} ${user.lastName}`.trim() : 'Unknown'),
-                empCode: emp?.employeeId || null,
-                email: user?.email || null,
-              };
+            if (existingInventory) {
+              // Update existing inventory item
+              await tx.inventoryItem.update({
+                where: { id: existingInventory.id },
+                data: { quantity: { decrement: item.quantity } },
+              });
+            } else {
+              // If no record exists at this outlet, create one to reflect the sale
+              // This ensures that ERP views (which read InventoryItem) see the deduction
+              await tx.inventoryItem.create({
+                data: {
+                  itemId: item.itemId,
+                  locationId: locationId,
+                  warehouseId: warehouseId,
+                  quantity: -item.quantity,
+                  status: 'AVAILABLE',
+                },
+              });
             }
-          } catch (e) {
-            // ignore
           }
-        }
 
-        return {
-          status: true,
-          data: {
-            ...order,
-            cashier,
-            cashierName: cashier?.name || undefined,
-            tenders,
-            changeAmount,
-            creditVouchers:
-              creditVouchers.length > 0 ? creditVouchers : undefined,
-          },
-          message:
-            creditVouchers.length > 0
-              ? `Order ${orderNumber} created successfully. Credit voucher(s) issued: ${creditVouchers.map((v) => v.code).join(', ')}`
-              : `Order ${orderNumber} created successfully`,
-        };
-      }, { maxWait: 15000, timeout: 45000 });
+          if (dto.couponId) {
+            await tx.couponCode.update({
+              where: { id: dto.couponId },
+              data: { usedCount: { increment: 1 } },
+            });
+          }
+
+          // ── Redeem vouchers ────────────────────────────────────────
+          const voucherRedemptions = dto.voucherRedemptions;
+          let creditVouchers: {
+            code: string;
+            faceValue: number;
+            expiresAt: Date | null;
+          }[] = [];
+          if (voucherRedemptions?.length) {
+            creditVouchers = await this.voucherService.redeemVouchers(
+              voucherRedemptions.map((r) => ({
+                voucherId: r.voucherId,
+                amountUsed: r.amount,
+              })),
+              order.id,
+              locationId || '',
+              tx,
+              ctx,
+            );
+          }
+
+          // Resolve cashier info for immediate receipt rendering
+          let cashier: {
+            name: string;
+            empCode: string | null;
+            email: string | null;
+          } | null = null;
+          if (cashierUserId) {
+            try {
+              const emp = await tx.employee.findFirst({
+                where: {
+                  OR: [{ userId: cashierUserId }, { id: cashierUserId }],
+                },
+                select: { id: true, employeeName: true, employeeId: true },
+              });
+              const user = await this.prismaMaster.user.findUnique({
+                where: { id: cashierUserId },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              });
+              if (emp || user) {
+                cashier = {
+                  name:
+                    emp?.employeeName ||
+                    (user
+                      ? `${user.firstName} ${user.lastName}`.trim()
+                      : 'Unknown'),
+                  empCode: emp?.employeeId || null,
+                  email: user?.email || null,
+                };
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          return {
+            status: true,
+            data: {
+              ...order,
+              cashier,
+              cashierName: cashier?.name || undefined,
+              tenders,
+              changeAmount,
+              creditVouchers:
+                creditVouchers.length > 0 ? creditVouchers : undefined,
+            },
+            message:
+              creditVouchers.length > 0
+                ? `Order ${orderNumber} created successfully. Credit voucher(s) issued: ${creditVouchers.map((v) => v.code).join(', ')}`
+                : `Order ${orderNumber} created successfully`,
+          };
+        },
+        { maxWait: 15000, timeout: 45000 },
+      );
 
       // ── FBR Sync (outside transaction — never rolls back local DB) ──
       await this.syncWithFbr(result.data, itemsData);
@@ -1395,7 +1415,6 @@ export class PosSalesService implements OnModuleInit {
     }
   }
 
-
   // ─── Search order for return (unrestricted by location / POS) ─────
   async searchOrderForReturn(orderNumber: string) {
     if (!orderNumber || !orderNumber.trim()) {
@@ -1411,7 +1430,16 @@ export class PosSalesService implements OnModuleInit {
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
-        customer: { select: { id: true, name: true, contactNo: true, email: true, cnicNo: true, address: true } },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            contactNo: true,
+            email: true,
+            cnicNo: true,
+            address: true,
+          },
+        },
         items: {
           include: {
             item: {
@@ -1428,27 +1456,58 @@ export class PosSalesService implements OnModuleInit {
         },
         promo: { select: { name: true, code: true } },
         coupon: { select: { code: true, description: true } },
-        alliance: { select: { partnerName: true, code: true, discountPercent: true, maxDiscount: true } },
-        merchant: { select: { id: true, bankName: true, description: true, commissionRate: true, bankGlCode: true } },
-        voucherRedemptions: { select: { amountUsed: true, voucher: { select: { code: true, faceValue: true } } } },
+        alliance: {
+          select: {
+            partnerName: true,
+            code: true,
+            discountPercent: true,
+            maxDiscount: true,
+          },
+        },
+        merchant: {
+          select: {
+            id: true,
+            bankName: true,
+            description: true,
+            commissionRate: true,
+            bankGlCode: true,
+          },
+        },
+        voucherRedemptions: {
+          select: {
+            amountUsed: true,
+            voucher: { select: { code: true, faceValue: true } },
+          },
+        },
       },
     });
 
     if (rawOrders.length === 0) {
-      return { status: false, message: `Order matching "${cleanSearch}" not found` };
+      return {
+        status: false,
+        message: `Order matching "${cleanSearch}" not found`,
+      };
     }
 
-    const orderIds = rawOrders.map(o => o.id);
+    const orderIds = rawOrders.map((o) => o.id);
     const returnEntries = await this.prisma.stockLedger.findMany({
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
         referenceId: { in: orderIds },
       },
-      select: { referenceId: true, itemId: true, qty: true, referenceType: true },
+      select: {
+        referenceId: true,
+        itemId: true,
+        qty: true,
+        referenceType: true,
+      },
     });
 
     const returnedQtyMap = new Map<string, Map<string, number>>();
-    const orderReturnFlags = new Map<string, { hasReturn: boolean; hasRefund: boolean }>();
+    const orderReturnFlags = new Map<
+      string,
+      { hasReturn: boolean; hasRefund: boolean }
+    >();
     for (const entry of returnEntries) {
       if (!returnedQtyMap.has(entry.referenceId)) {
         returnedQtyMap.set(entry.referenceId, new Map());
@@ -1458,7 +1517,10 @@ export class PosSalesService implements OnModuleInit {
       itemMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
 
       if (!orderReturnFlags.has(entry.referenceId)) {
-        orderReturnFlags.set(entry.referenceId, { hasReturn: false, hasRefund: false });
+        orderReturnFlags.set(entry.referenceId, {
+          hasReturn: false,
+          hasRefund: false,
+        });
       }
       const flags = orderReturnFlags.get(entry.referenceId)!;
       if (entry.referenceType === 'POS_RETURN') flags.hasReturn = true;
@@ -1473,7 +1535,12 @@ export class PosSalesService implements OnModuleInit {
         salesOrderId: true,
         status: true,
         items: {
-          select: { itemId: true, claimedQty: true, approvedQty: true, itemStatus: true },
+          select: {
+            itemId: true,
+            claimedQty: true,
+            approvedQty: true,
+            itemStatus: true,
+          },
         },
       },
     });
@@ -1486,24 +1553,42 @@ export class PosSalesService implements OnModuleInit {
       claimsMap.get(claim.salesOrderId)!.push(claim);
     }
 
-    const locIds = [...new Set(rawOrders.map(o => o.locationId).filter(Boolean))] as string[];
-    const locations = locIds.length > 0
-      ? await this.prisma.location.findMany({ where: { id: { in: locIds } }, select: { id: true, name: true, code: true, shortCode: true } })
-      : [];
-    const locationMap = new Map(locations.map(l => [l.id, l]));
+    const locIds = [
+      ...new Set(rawOrders.map((o) => o.locationId).filter(Boolean)),
+    ] as string[];
+    const locations =
+      locIds.length > 0
+        ? await this.prisma.location.findMany({
+            where: { id: { in: locIds } },
+            select: { id: true, name: true, code: true, shortCode: true },
+          })
+        : [];
+    const locationMap = new Map(locations.map((l) => [l.id, l]));
 
-    const orders = rawOrders.map(order => {
+    const orders = rawOrders.map((order) => {
       const itemMap = returnedQtyMap.get(order.id);
       const orderClaims = claimsMap.get(order.id) || [];
-      const claimedQtyMap = new Map<string, { claimed: number; approved: number }>();
+      const claimedQtyMap = new Map<
+        string,
+        { claimed: number; approved: number }
+      >();
       for (const claim of orderClaims) {
         for (const claimItem of claim.items) {
-          const current = claimedQtyMap.get(claimItem.itemId) || { claimed: 0, approved: 0 };
-          const isRejected = claim.status === 'REJECTED' || claim.status === 'CANCELLED' || claimItem.itemStatus === 'REJECTED';
+          const current = claimedQtyMap.get(claimItem.itemId) || {
+            claimed: 0,
+            approved: 0,
+          };
+          const isRejected =
+            claim.status === 'REJECTED' ||
+            claim.status === 'CANCELLED' ||
+            claimItem.itemStatus === 'REJECTED';
           let claimedToAdd = 0;
           if (isRejected) {
             claimedToAdd = 0;
-          } else if (claimItem.itemStatus === 'APPROVED' || claimItem.itemStatus === 'PARTIALLY_APPROVED') {
+          } else if (
+            claimItem.itemStatus === 'APPROVED' ||
+            claimItem.itemStatus === 'PARTIALLY_APPROVED'
+          ) {
             claimedToAdd = Number(claimItem.approvedQty);
           } else {
             claimedToAdd = Number(claimItem.claimedQty);
@@ -1515,17 +1600,22 @@ export class PosSalesService implements OnModuleInit {
         }
       }
 
-      const enrichedItems = order.items.map(oi => ({
+      const enrichedItems = order.items.map((oi) => ({
         ...oi,
         returnedQty: itemMap?.get(oi.itemId) || 0,
         claimedQty: claimedQtyMap.get(oi.itemId)?.claimed || 0,
         approvedClaimQty: claimedQtyMap.get(oi.itemId)?.approved || 0,
       }));
 
-      const returnFlags = orderReturnFlags.get(order.id) || { hasReturn: false, hasRefund: false };
+      const returnFlags = orderReturnFlags.get(order.id) || {
+        hasReturn: false,
+        hasRefund: false,
+      };
       return {
         ...order,
-        location: order.locationId ? locationMap.get(order.locationId) || null : null,
+        location: order.locationId
+          ? locationMap.get(order.locationId) || null
+          : null,
         items: enrichedItems,
         claims: orderClaims,
         hasReturn: returnFlags.hasReturn,
@@ -1535,7 +1625,6 @@ export class PosSalesService implements OnModuleInit {
 
     return { status: true, data: orders };
   }
-
 
   // ─── List orders (for session/history) ────────────────────────────
   async listOrders(
@@ -1793,12 +1882,23 @@ export class PosSalesService implements OnModuleInit {
       if (order.tenderType === 'split') {
         if (cash > 0) tenders.push({ method: 'cash', amount: cash });
         if (card > 0) tenders.push({ method: 'card', amount: card });
-        const remainder = Math.max(0, grandTotal - cash - card - voucherTotalFromRedemptions);
+        const remainder = Math.max(
+          0,
+          grandTotal - cash - card - voucherTotalFromRedemptions,
+        );
         if (remainder > 0) {
           if (order.notes?.includes('[Reward Voucher]')) {
-            const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
-            const remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
-            tenders.push({ method: 'reward_voucher', amount: remainder, slipNo: remarkText || undefined });
+            const rvMatch = order.notes.match(
+              /\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/,
+            );
+            const remarkText = rvMatch
+              ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim()
+              : undefined;
+            tenders.push({
+              method: 'reward_voucher',
+              amount: remainder,
+              slipNo: remarkText || undefined,
+            });
           } else if (order.notes?.includes('[Credit Sale]')) {
             tenders.push({ method: 'credit_account', amount: remainder });
           }
@@ -1827,12 +1927,23 @@ export class PosSalesService implements OnModuleInit {
             grandTotal - voucherTotalFromRedemptions,
           );
           let remarkText: string | undefined;
-          if (order.paymentMethod === 'reward_voucher' && order.notes?.includes('[Reward Voucher]')) {
-            const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
-            remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
+          if (
+            order.paymentMethod === 'reward_voucher' &&
+            order.notes?.includes('[Reward Voucher]')
+          ) {
+            const rvMatch = order.notes.match(
+              /\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/,
+            );
+            remarkText = rvMatch
+              ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim()
+              : undefined;
           }
           if (finalAmt > 0)
-            tenders.push({ method: order.paymentMethod, amount: finalAmt, slipNo: remarkText });
+            tenders.push({
+              method: order.paymentMethod,
+              amount: finalAmt,
+              slipNo: remarkText,
+            });
         }
       }
 
@@ -1902,10 +2013,10 @@ export class PosSalesService implements OnModuleInit {
         .length,
       sampleOrder: orders[0]
         ? {
-          orderNumber: orders[0].orderNumber,
-          claimsCount: orders[0].claims?.length || 0,
-          claimNumbers: orders[0].claims?.map((c) => c.claimNumber) || [],
-        }
+            orderNumber: orders[0].orderNumber,
+            claimsCount: orders[0].claims?.length || 0,
+            claimNumbers: orders[0].claims?.map((c) => c.claimNumber) || [],
+          }
         : null,
     });
 
@@ -2226,11 +2337,11 @@ export class PosSalesService implements OnModuleInit {
           order.voucherAmount === null || order.voucherAmount === undefined;
         const realCardAmount = isLegacy
           ? Math.max(
-            0,
-            Number(order.cardAmount) -
-            voucherTotalFromRedemptions -
-            Number(order.changeAmount ?? 0),
-          )
+              0,
+              Number(order.cardAmount) -
+                voucherTotalFromRedemptions -
+                Number(order.changeAmount ?? 0),
+            )
           : Number(order.cardAmount);
         if (realCardAmount > 0)
           tenders.push({ method: 'card', amount: realCardAmount });
@@ -2326,13 +2437,13 @@ export class PosSalesService implements OnModuleInit {
           items: returnedItems,
           issuedVouchers: exchangeVoucher
             ? [
-              {
-                code: exchangeVoucher.code,
-                faceValue: Number(exchangeVoucher.faceValue),
-                voucherType: 'EXCHANGE',
-                expiresAt: exchangeVoucher.expiresAt,
-              },
-            ]
+                {
+                  code: exchangeVoucher.code,
+                  faceValue: Number(exchangeVoucher.faceValue),
+                  voucherType: 'EXCHANGE',
+                  expiresAt: exchangeVoucher.expiresAt,
+                },
+              ]
             : [],
         });
       }
@@ -2413,13 +2524,13 @@ export class PosSalesService implements OnModuleInit {
           customer: order.customer,
           issuedVouchers: claim.voucher
             ? [
-              {
-                code: claim.voucher.code,
-                faceValue: Number(claim.voucher.faceValue),
-                voucherType: 'EXCHANGE',
-                expiresAt: (claim.voucher as any).expiresAt,
-              },
-            ]
+                {
+                  code: claim.voucher.code,
+                  faceValue: Number(claim.voucher.faceValue),
+                  voucherType: 'EXCHANGE',
+                  expiresAt: (claim.voucher as any).expiresAt,
+                },
+              ]
             : [],
           items: claim.items.map((ci: any) => ({
             itemId: ci.itemId,
@@ -2672,12 +2783,23 @@ export class PosSalesService implements OnModuleInit {
     if (order.tenderType === 'split') {
       if (cash > 0) tenders.push({ method: 'cash', amount: cash });
       if (card > 0) tenders.push({ method: 'card', amount: card });
-      const remainder = Math.max(0, grandTotal - cash - card - voucherTotalFromRedemptions);
+      const remainder = Math.max(
+        0,
+        grandTotal - cash - card - voucherTotalFromRedemptions,
+      );
       if (remainder > 0) {
         if (order.notes?.includes('[Reward Voucher]')) {
-          const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
-          const remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
-          tenders.push({ method: 'reward_voucher', amount: remainder, slipNo: remarkText || undefined });
+          const rvMatch = order.notes.match(
+            /\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/,
+          );
+          const remarkText = rvMatch
+            ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim()
+            : undefined;
+          tenders.push({
+            method: 'reward_voucher',
+            amount: remainder,
+            slipNo: remarkText || undefined,
+          });
         } else if (order.notes?.includes('[Credit Sale]')) {
           tenders.push({ method: 'credit_account', amount: remainder });
         }
@@ -2702,12 +2824,23 @@ export class PosSalesService implements OnModuleInit {
       } else if (order.paymentMethod !== 'voucher') {
         const finalAmt = Math.max(0, grandTotal - voucherTotalFromRedemptions);
         let remarkText: string | undefined;
-        if (order.paymentMethod === 'reward_voucher' && order.notes?.includes('[Reward Voucher]')) {
-          const rvMatch = order.notes.match(/\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/);
-          remarkText = rvMatch ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim() : undefined;
+        if (
+          order.paymentMethod === 'reward_voucher' &&
+          order.notes?.includes('[Reward Voucher]')
+        ) {
+          const rvMatch = order.notes.match(
+            /\[Reward Voucher\]\s*(.*?)(?=\s*\||\s*\[|$)/,
+          );
+          remarkText = rvMatch
+            ? rvMatch[1].replace(/\(Amount:.*?\)/, '').trim()
+            : undefined;
         }
         if (finalAmt > 0)
-          tenders.push({ method: order.paymentMethod, amount: finalAmt, slipNo: remarkText });
+          tenders.push({
+            method: order.paymentMethod,
+            amount: finalAmt,
+            slipNo: remarkText,
+          });
       }
     }
 
@@ -2738,7 +2871,13 @@ export class PosSalesService implements OnModuleInit {
   }
 
   // ─── Partial return ───────────────────────────────────────────────
-  async returnItems(id: string, items: { orderItemId: string; itemId: string; quantity: number }[], reason?: string, returnLocationId?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async returnItems(
+    id: string,
+    items: { orderItemId: string; itemId: string; quantity: number }[],
+    reason?: string,
+    returnLocationId?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const result = await this.prisma.$transaction(async (tx) => {
         const order = await tx.salesOrder.findUnique({
@@ -2746,9 +2885,12 @@ export class PosSalesService implements OnModuleInit {
           include: { items: true, coupon: true },
         });
         if (!order) throw new Error('Order not found');
-        if (order.status === 'voided') throw new Error('Order is already voided');
+        if (order.status === 'voided')
+          throw new Error('Order is already voided');
 
-        const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
+        const warehouse = await tx.warehouse.findFirst({
+          where: { isActive: true, isDeleted: false },
+        });
         if (!warehouse) throw new Error('No active warehouse found');
 
         // Determine effective location for return (where stock goes back)
@@ -2757,7 +2899,10 @@ export class PosSalesService implements OnModuleInit {
         // Generate sequential return number if not set
         let returnNumber = (order as any).returnNumber;
         if (!returnNumber) {
-          returnNumber = await this.generateReturnNumber(effectiveLocationId || '', tx);
+          returnNumber = await this.generateReturnNumber(
+            effectiveLocationId || '',
+            tx,
+          );
         }
 
         // ── Fetch already-returned quantities BEFORE creating new entries ──
@@ -2772,7 +2917,10 @@ export class PosSalesService implements OnModuleInit {
         const alreadyReturnedMap = new Map<string, number>();
         for (const entry of existingReturnEntries) {
           const current = alreadyReturnedMap.get(entry.itemId) || 0;
-          alreadyReturnedMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+          alreadyReturnedMap.set(
+            entry.itemId,
+            current + Math.abs(Number(entry.qty)),
+          );
         }
 
         let totalRefundAmount = 0;
@@ -2792,7 +2940,10 @@ export class PosSalesService implements OnModuleInit {
         }[] = [];
 
         // Pre-compute for proportional coupon distribution
-        const lineTotalsSum = order.items.reduce((s, i) => s + Number(i.lineTotal), 0);
+        const lineTotalsSum = order.items.reduce(
+          (s, i) => s + Number(i.lineTotal),
+          0,
+        );
         const orderLevelDiscount = lineTotalsSum - Number(order.grandTotal);
 
         // ── Auto-create STN (TransferRequest) if return is at a different outlet ──
@@ -2813,15 +2964,26 @@ export class PosSalesService implements OnModuleInit {
 
           let nextNumber = 1;
           if (lastRequest) {
-            const lastNumber = parseInt(lastRequest.requestNo.split('-').pop() || '0', 10);
+            const lastNumber = parseInt(
+              lastRequest.requestNo.split('-').pop() || '0',
+              10,
+            );
             if (!isNaN(lastNumber)) {
               nextNumber = lastNumber + 1;
             }
           }
           const requestNo = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
 
-          const origLoc = await tx.location.findUnique({ where: { id: order.locationId }, select: { warehouseId: true, name: true } });
-          const retLoc = effectiveLocationId ? await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { warehouseId: true, name: true } }) : null;
+          const origLoc = await tx.location.findUnique({
+            where: { id: order.locationId },
+            select: { warehouseId: true, name: true },
+          });
+          const retLoc = effectiveLocationId
+            ? await tx.location.findUnique({
+                where: { id: effectiveLocationId },
+                select: { warehouseId: true, name: true },
+              })
+            : null;
           const origName = origLoc?.name || 'Original Branch';
           const retName = retLoc?.name || 'Return Outlet';
 
@@ -2857,23 +3019,31 @@ export class PosSalesService implements OnModuleInit {
 
         // ── Validate and process return items ──
         for (const returnItem of items) {
-          const orderItem = order.items.find(i => i.id === returnItem.orderItemId);
+          const orderItem = order.items.find(
+            (i) => i.id === returnItem.orderItemId,
+          );
           if (!orderItem) continue;
 
-          const alreadyReturned = alreadyReturnedMap.get(returnItem.itemId) || 0;
-          const remainingReturnable = Number(orderItem.quantity) - alreadyReturned;
+          const alreadyReturned =
+            alreadyReturnedMap.get(returnItem.itemId) || 0;
+          const remainingReturnable =
+            Number(orderItem.quantity) - alreadyReturned;
 
           if (returnItem.quantity > remainingReturnable) {
-            throw new Error(`Cannot return ${returnItem.quantity} of item ${returnItem.itemId}. Only ${remainingReturnable} remaining (${alreadyReturned} already returned).`);
+            throw new Error(
+              `Cannot return ${returnItem.quantity} of item ${returnItem.itemId}. Only ${remainingReturnable} remaining (${alreadyReturned} already returned).`,
+            );
           }
 
           const qty = Number(orderItem.quantity);
           const lineTotal = Number(orderItem.lineTotal);
 
-          const isAllianceOrNoGlobalDisc = Math.abs(lineTotalsSum - Number(order.grandTotal)) <= 5;
-          const itemCouponDeduction = (isAllianceOrNoGlobalDisc || lineTotalsSum <= 0)
-            ? 0
-            : (lineTotal / lineTotalsSum) * orderLevelDiscount;
+          const isAllianceOrNoGlobalDisc =
+            Math.abs(lineTotalsSum - Number(order.grandTotal)) <= 5;
+          const itemCouponDeduction =
+            isAllianceOrNoGlobalDisc || lineTotalsSum <= 0
+              ? 0
+              : (lineTotal / lineTotalsSum) * orderLevelDiscount;
           const itemShare = lineTotal - itemCouponDeduction;
 
           let originalPaidPerUnit = 0;
@@ -2899,37 +3069,60 @@ export class PosSalesService implements OnModuleInit {
             : originalPaidPerUnit;
 
           const now = new Date();
-          const startDate = currentItem?.discountStartDate ? new Date(currentItem.discountStartDate) : null;
-          const endDate = currentItem?.discountEndDate ? new Date(currentItem.discountEndDate) : null;
-          const discountActive = currentItem && (
+          const startDate = currentItem?.discountStartDate
+            ? new Date(currentItem.discountStartDate)
+            : null;
+          const endDate = currentItem?.discountEndDate
+            ? new Date(currentItem.discountEndDate)
+            : null;
+          const discountActive =
+            currentItem &&
             (!startDate || startDate <= now) &&
-            (!endDate || endDate >= now)
-          );
+            (!endDate || endDate >= now);
 
-          const discountRate = discountActive ? Number(currentItem.discountRate || 0) : 0;
-          const discountAmount = discountActive ? Number(currentItem.discountAmount || 0) : 0;
+          const discountRate = discountActive
+            ? Number(currentItem.discountRate || 0)
+            : 0;
+          const discountAmount = discountActive
+            ? Number(currentItem.discountAmount || 0)
+            : 0;
 
           let effectiveDiscountPercent = 0;
           if (discountRate > 0) {
             effectiveDiscountPercent = discountRate;
           } else if (discountAmount > 0 && latestPrice > 0) {
-            effectiveDiscountPercent = Math.min(100, (discountAmount / latestPrice) * 100);
+            effectiveDiscountPercent = Math.min(
+              100,
+              (discountAmount / latestPrice) * 100,
+            );
           }
 
           // Current price is already tax-inclusive (retail price)
-          const currentPriceWithTax = latestPrice - (latestPrice * (effectiveDiscountPercent / 100));
+          const currentPriceWithTax =
+            latestPrice - latestPrice * (effectiveDiscountPercent / 100);
 
           const priceAdjusted = currentPriceWithTax < originalPaidPerUnit;
-          const refundPerUnit = Math.min(originalPaidPerUnit, currentPriceWithTax);
+          const refundPerUnit = Math.min(
+            originalPaidPerUnit,
+            currentPriceWithTax,
+          );
           totalRefundAmount += refundPerUnit * returnItem.quantity;
 
           const taxPct = Number(orderItem.taxPercent || 0);
-          const taxDivisor = 1 + (taxPct / 100);
-          const wostRefund = (Number(orderItem.unitPrice) * returnItem.quantity) / taxDivisor;
+          const taxDivisor = 1 + taxPct / 100;
+          const wostRefund =
+            (Number(orderItem.unitPrice) * returnItem.quantity) / taxDivisor;
 
-          const finalDiscountPercent = priceAdjusted ? effectiveDiscountPercent : Number(orderItem.discountPercent ?? 0);
-          const finalDiscountAmount = priceAdjusted ? wostRefund * (effectiveDiscountPercent / 100) : Number(orderItem.discountAmount ?? 0) * (returnItem.quantity / qty);
-          const finalTaxAmount = priceAdjusted ? (wostRefund - finalDiscountAmount) * (taxPct / 100) : Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty);
+          const finalDiscountPercent = priceAdjusted
+            ? effectiveDiscountPercent
+            : Number(orderItem.discountPercent ?? 0);
+          const finalDiscountAmount = priceAdjusted
+            ? wostRefund * (effectiveDiscountPercent / 100)
+            : Number(orderItem.discountAmount ?? 0) *
+              (returnItem.quantity / qty);
+          const finalTaxAmount = priceAdjusted
+            ? (wostRefund - finalDiscountAmount) * (taxPct / 100)
+            : Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty);
 
           itemRefundDetails.push({
             orderItemId: returnItem.orderItemId,
@@ -2940,7 +3133,10 @@ export class PosSalesService implements OnModuleInit {
             discountPercent: finalDiscountPercent,
             taxAmount: Math.round(finalTaxAmount * 100) / 100,
             taxPercent: taxPct,
-            couponDeduction: Math.round(itemCouponDeduction * (returnItem.quantity / qty) * 100) / 100,
+            couponDeduction:
+              Math.round(
+                itemCouponDeduction * (returnItem.quantity / qty) * 100,
+              ) / 100,
             originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
             refundPerUnit: Math.round(refundPerUnit * 100) / 100,
             priceAdjusted,
@@ -2948,53 +3144,75 @@ export class PosSalesService implements OnModuleInit {
 
           // Process stock movement, stock ledger, and inventory update via StockMovementService for all returns
           if (order.locationId && order.locationId !== effectiveLocationId) {
-            const origLoc = await tx.location.findUnique({ where: { id: order.locationId }, select: { name: true } });
-            const retLoc = effectiveLocationId ? await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } }) : null;
+            const origLoc = await tx.location.findUnique({
+              where: { id: order.locationId },
+              select: { name: true },
+            });
+            const retLoc = effectiveLocationId
+              ? await tx.location.findUnique({
+                  where: { id: effectiveLocationId },
+                  select: { name: true },
+                })
+              : null;
             const origName = origLoc?.name || 'Original Branch';
             const retName = retLoc?.name || 'Return Outlet';
 
-            await this.stockMovementService.executeMovement({
-              itemId: returnItem.itemId,
-              fromLocationId: order.locationId,
-              toLocationId: effectiveLocationId || undefined,
-              quantity: returnItem.quantity,
-              type: 'CROSS_LOCATION_RETURN_TRANSFER',
-              referenceType: 'OUTLET_TRANSFER_OUT',
-              referenceId: crossLocationStn?.id || order.id,
-              notes: `Automated Stock Transfer against Sales Return #${returnNumber} (${crossLocationStn ? `STN #${crossLocationStn.requestNo}, ` : ''}Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
-              userId: ctx?.userId,
-              transaction: tx,
-            }, ctx);
+            await this.stockMovementService.executeMovement(
+              {
+                itemId: returnItem.itemId,
+                fromLocationId: order.locationId,
+                toLocationId: effectiveLocationId || undefined,
+                quantity: returnItem.quantity,
+                type: 'CROSS_LOCATION_RETURN_TRANSFER',
+                referenceType: 'OUTLET_TRANSFER_OUT',
+                referenceId: crossLocationStn?.id || order.id,
+                notes: `Automated Stock Transfer against Sales Return #${returnNumber} (${crossLocationStn ? `STN #${crossLocationStn.requestNo}, ` : ''}Original Order #${order.orderNumber} sold at ${origName}). Physical item received at ${retName}.`,
+                userId: ctx?.userId,
+                transaction: tx,
+              },
+              ctx,
+            );
           } else {
-            await this.stockMovementService.executeMovement({
-              itemId: returnItem.itemId,
-              toLocationId: effectiveLocationId || undefined,
-              quantity: returnItem.quantity,
-              type: 'POS_RETURN',
-              referenceType: 'POS_RETURN',
-              referenceId: order.id,
-              notes: `POS Return against Order #${order.orderNumber} (Return #${returnNumber})`,
-              userId: ctx?.userId,
-              transaction: tx,
-            }, ctx);
+            await this.stockMovementService.executeMovement(
+              {
+                itemId: returnItem.itemId,
+                toLocationId: effectiveLocationId || undefined,
+                quantity: returnItem.quantity,
+                type: 'POS_RETURN',
+                referenceType: 'POS_RETURN',
+                referenceId: order.id,
+                notes: `POS Return against Order #${order.orderNumber} (Return #${returnNumber})`,
+                userId: ctx?.userId,
+                transaction: tx,
+              },
+              ctx,
+            );
           }
 
-
           // Update the map with current return
-          alreadyReturnedMap.set(returnItem.itemId, (alreadyReturnedMap.get(returnItem.itemId) || 0) + returnItem.quantity);
+          alreadyReturnedMap.set(
+            returnItem.itemId,
+            (alreadyReturnedMap.get(returnItem.itemId) || 0) +
+              returnItem.quantity,
+          );
         }
 
         // ── Determine if ALL items are now fully returned ──
-        const allItemsReturned = order.items.every(oi => {
+        const allItemsReturned = order.items.every((oi) => {
           const totalReturned = alreadyReturnedMap.get(oi.itemId) || 0;
           return totalReturned >= Number(oi.quantity);
         });
 
         const newStatus = allItemsReturned ? 'returned' : 'partially_returned';
-        const isCrossLocation = !!(order.locationId && order.locationId !== effectiveLocationId);
+        const isCrossLocation = !!(
+          order.locationId && order.locationId !== effectiveLocationId
+        );
         let locationNarration = '';
         if (isCrossLocation && effectiveLocationId) {
-          const retLoc = await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } });
+          const retLoc = await tx.location.findUnique({
+            where: { id: effectiveLocationId },
+            select: { name: true },
+          });
           locationNarration = ` [Cross-Location Return: Physical stock received at ${retLoc?.name || 'Return Branch'}; Stock transfer created against Order ${order.orderNumber} / SR ${returnNumber}]`;
         }
 
@@ -3003,15 +3221,22 @@ export class PosSalesService implements OnModuleInit {
           data: {
             status: newStatus,
             returnNumber,
-            notes: `${reason ? `Return (${newStatus}): ${reason}` : order.notes || ''}${locationNarration}`.trim(),
+            notes:
+              `${reason ? `Return (${newStatus}): ${reason}` : order.notes || ''}${locationNarration}`.trim(),
           },
         });
 
         // ── Restore Voucher / Coupon ────────────────────────────
         // Ensure voucher is only restored once per order
         if (order.couponId && !order.isVoucherRestored) {
-          const coupon = await tx.couponCode.findUnique({ where: { id: order.couponId } });
-          if (coupon && (coupon.discountType === 'voucher' || coupon.discountType === 'fixed')) {
+          const coupon = await tx.couponCode.findUnique({
+            where: { id: order.couponId },
+          });
+          if (
+            coupon &&
+            (coupon.discountType === 'voucher' ||
+              coupon.discountType === 'fixed')
+          ) {
             // 1. Decrement used count (restore validity)
             if (coupon.usedCount > 0) {
               await tx.couponCode.update({
@@ -3041,7 +3266,9 @@ export class PosSalesService implements OnModuleInit {
 
             // 2. Restrict to the return location as requested
             if (effectiveLocationId) {
-              await tx.couponCodeLocation.deleteMany({ where: { couponId: order.couponId } });
+              await tx.couponCodeLocation.deleteMany({
+                where: { couponId: order.couponId },
+              });
               await tx.couponCodeLocation.create({
                 data: {
                   couponId: order.couponId,
@@ -3055,14 +3282,17 @@ export class PosSalesService implements OnModuleInit {
         // ── Generate Exchange Voucher for refund amount ──
         let exchangeVoucher: any = null;
         if (totalRefundAmount > 0) {
-          const voucherResult = await this.voucherService.issueExchangeVoucher({
-            faceValue: Math.round(totalRefundAmount * 100) / 100,
-            sourceOrderId: id,
-            issuedByLocationId: effectiveLocationId || order.locationId || '',
-            issuedByUserId: ctx?.userId,
-            customerId: order.customerId || undefined,
-            expiresInDays: 30,
-          }, ctx);
+          const voucherResult = await this.voucherService.issueExchangeVoucher(
+            {
+              faceValue: Math.round(totalRefundAmount * 100) / 100,
+              sourceOrderId: id,
+              issuedByLocationId: effectiveLocationId || order.locationId || '',
+              issuedByUserId: ctx?.userId,
+              customerId: order.customerId || undefined,
+              expiresInDays: 30,
+            },
+            ctx,
+          );
 
           if (voucherResult.status && voucherResult.data) {
             exchangeVoucher = voucherResult.data;
@@ -3075,7 +3305,9 @@ export class PosSalesService implements OnModuleInit {
             where: { id: effectiveLocationId },
             select: { shortCode: true, code: true, name: true },
           });
-          if (retLoc) returnLocationShortCode = retLoc.shortCode || retLoc.code || retLoc.name;
+          if (retLoc)
+            returnLocationShortCode =
+              retLoc.shortCode || retLoc.code || retLoc.name;
         }
 
         return {
@@ -3084,38 +3316,54 @@ export class PosSalesService implements OnModuleInit {
           returnRef: returnNumber,
           refundAmount: Math.round(totalRefundAmount * 100) / 100,
           itemRefundDetails,
-          exchangeVoucher: exchangeVoucher ? {
-            code: exchangeVoucher.code,
-            faceValue: exchangeVoucher.faceValue,
-            expiresAt: exchangeVoucher.expiresAt,
-          } : null,
-          isCrossLocation: !!(order.locationId && order.locationId !== effectiveLocationId),
+          exchangeVoucher: exchangeVoucher
+            ? {
+                code: exchangeVoucher.code,
+                faceValue: exchangeVoucher.faceValue,
+                expiresAt: exchangeVoucher.expiresAt,
+              }
+            : null,
+          isCrossLocation: !!(
+            order.locationId && order.locationId !== effectiveLocationId
+          ),
           originalLocationId: order.locationId,
           returnLocationId: effectiveLocationId,
           returnLocationShortCode,
           orderNumber: order.orderNumber,
           message: exchangeVoucher
             ? `Return processed (${newStatus}), inventory restored, and exchange voucher ${exchangeVoucher.code} issued for Rs.${Math.round(totalRefundAmount * 100) / 100}`
-            : `Return processed (${newStatus}) and inventory restored`
+            : `Return processed (${newStatus}) and inventory restored`,
         };
       });
 
       if (result.status) {
-        this.logger.log(`[returnItems] Return processed successfully for Order #${result.orderNumber}. isCrossLocation: ${result.isCrossLocation}`);
+        this.logger.log(
+          `[returnItems] Return processed successfully for Order #${result.orderNumber}. isCrossLocation: ${result.isCrossLocation}`,
+        );
 
         // Send notification ONLY if cross-location return
         if (result.isCrossLocation && result.originalLocationId) {
-          this.notificationsService.sendPosLocationNotification({
-            locationId: result.originalLocationId,
-            title: 'Cross-Location Return Received',
-            message: `Invoice #${result.orderNumber} (originally sold at your branch) had a return processed at ${result.returnLocationShortCode || 'another branch'}.`,
-            category: 'pos_return',
-            priority: 'high',
-            entityType: 'SalesOrder',
-            entityId: id,
-            actionType: 'view_order',
-            actionPayload: { orderId: id, orderNumber: result.orderNumber, returnLocationId: result.returnLocationId },
-          }).catch(err => this.logger.error(`[returnItems] Failed to send original location notification: ${err.message}`));
+          this.notificationsService
+            .sendPosLocationNotification({
+              locationId: result.originalLocationId,
+              title: 'Cross-Location Return Received',
+              message: `Invoice #${result.orderNumber} (originally sold at your branch) had a return processed at ${result.returnLocationShortCode || 'another branch'}.`,
+              category: 'pos_return',
+              priority: 'high',
+              entityType: 'SalesOrder',
+              entityId: id,
+              actionType: 'view_order',
+              actionPayload: {
+                orderId: id,
+                orderNumber: result.orderNumber,
+                returnLocationId: result.returnLocationId,
+              },
+            })
+            .catch((err) =>
+              this.logger.error(
+                `[returnItems] Failed to send original location notification: ${err.message}`,
+              ),
+            );
         }
       }
 
@@ -3373,14 +3621,14 @@ export class PosSalesService implements OnModuleInit {
         type === 'refund'
           ? null
           : await this.prisma.voucher.findFirst({
-            where: {
-              sourceOrderId: order.id,
-              voucherType: 'EXCHANGE',
-              isDeleted: false,
-            },
-            select: { code: true, faceValue: true, expiresAt: true },
-            orderBy: { createdAt: 'desc' },
-          });
+              where: {
+                sourceOrderId: order.id,
+                voucherType: 'EXCHANGE',
+                isDeleted: false,
+              },
+              select: { code: true, faceValue: true, expiresAt: true },
+              orderBy: { createdAt: 'desc' },
+            });
 
       return {
         status: true,
@@ -3566,38 +3814,68 @@ export class PosSalesService implements OnModuleInit {
     newItems: { itemId: string; quantity: number; unitPrice: number }[],
     reason?: string,
     exchangeLocationId?: string,
-    ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        const order = await tx.salesOrder.findUnique({ where: { id }, include: { items: true, coupon: true } });
+        const order = await tx.salesOrder.findUnique({
+          where: { id },
+          include: { items: true, coupon: true },
+        });
         if (!order) throw new Error('Order not found');
-        if (order.status === 'voided') throw new Error('Order is already voided');
+        if (order.status === 'voided')
+          throw new Error('Order is already voided');
 
-        const warehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
+        const warehouse = await tx.warehouse.findFirst({
+          where: { isActive: true, isDeleted: false },
+        });
         if (!warehouse) throw new Error('No active warehouse found');
 
         const effectiveLocationId = exchangeLocationId || order.locationId;
-        const isCrossLocation = !!(order.locationId && order.locationId !== effectiveLocationId);
+        const isCrossLocation = !!(
+          order.locationId && order.locationId !== effectiveLocationId
+        );
 
         // ── Restore returned items ──────────────────────────────
         for (const ri of returnedItems) {
-          const orderItem = order.items.find(i => i.id === ri.orderItemId);
+          const orderItem = order.items.find((i) => i.id === ri.orderItemId);
           if (!orderItem || ri.quantity > orderItem.quantity) continue;
 
-          await this.stockLedgerService.createEntry({
-            itemId: ri.itemId, warehouseId: warehouse.id, locationId: effectiveLocationId,
-            qty: ri.quantity, movementType: MovementType.INBOUND,
-            referenceType: 'POS_EXCHANGE_IN', referenceId: order.id,
-          }, tx);
+          await this.stockLedgerService.createEntry(
+            {
+              itemId: ri.itemId,
+              warehouseId: warehouse.id,
+              locationId: effectiveLocationId,
+              qty: ri.quantity,
+              movementType: MovementType.INBOUND,
+              referenceType: 'POS_EXCHANGE_IN',
+              referenceId: order.id,
+            },
+            tx,
+          );
 
           const existing = await tx.inventoryItem.findFirst({
-            where: { itemId: ri.itemId, locationId: effectiveLocationId, status: 'AVAILABLE' },
+            where: {
+              itemId: ri.itemId,
+              locationId: effectiveLocationId,
+              status: 'AVAILABLE',
+            },
           });
           if (existing) {
-            await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { increment: ri.quantity } } });
+            await tx.inventoryItem.update({
+              where: { id: existing.id },
+              data: { quantity: { increment: ri.quantity } },
+            });
           } else {
-            await tx.inventoryItem.create({ data: { itemId: ri.itemId, locationId: effectiveLocationId, warehouseId: warehouse.id, quantity: ri.quantity, status: 'AVAILABLE' } });
+            await tx.inventoryItem.create({
+              data: {
+                itemId: ri.itemId,
+                locationId: effectiveLocationId,
+                warehouseId: warehouse.id,
+                quantity: ri.quantity,
+                status: 'AVAILABLE',
+              },
+            });
           }
 
           if (isCrossLocation) {
@@ -3620,39 +3898,78 @@ export class PosSalesService implements OnModuleInit {
 
         // ── Deduct new items ────────────────────────────────────
         for (const ni of newItems) {
-          await this.stockLedgerService.createEntry({
-            itemId: ni.itemId, warehouseId: warehouse.id, locationId: effectiveLocationId,
-            qty: -ni.quantity, movementType: MovementType.OUTBOUND,
-            referenceType: 'POS_EXCHANGE_OUT', referenceId: order.id,
-          }, tx);
+          await this.stockLedgerService.createEntry(
+            {
+              itemId: ni.itemId,
+              warehouseId: warehouse.id,
+              locationId: effectiveLocationId,
+              qty: -ni.quantity,
+              movementType: MovementType.OUTBOUND,
+              referenceType: 'POS_EXCHANGE_OUT',
+              referenceId: order.id,
+            },
+            tx,
+          );
 
           const existing = await tx.inventoryItem.findFirst({
-            where: { itemId: ni.itemId, locationId: effectiveLocationId, status: 'AVAILABLE' },
+            where: {
+              itemId: ni.itemId,
+              locationId: effectiveLocationId,
+              status: 'AVAILABLE',
+            },
           });
           if (existing) {
-            await tx.inventoryItem.update({ where: { id: existing.id }, data: { quantity: { decrement: ni.quantity } } });
+            await tx.inventoryItem.update({
+              where: { id: existing.id },
+              data: { quantity: { decrement: ni.quantity } },
+            });
           } else {
-            await tx.inventoryItem.create({ data: { itemId: ni.itemId, locationId: effectiveLocationId, warehouseId: warehouse.id, quantity: -ni.quantity, status: 'AVAILABLE' } });
+            await tx.inventoryItem.create({
+              data: {
+                itemId: ni.itemId,
+                locationId: effectiveLocationId,
+                warehouseId: warehouse.id,
+                quantity: -ni.quantity,
+                status: 'AVAILABLE',
+              },
+            });
           }
         }
 
         const returnedValue = returnedItems.reduce((s, ri) => {
-          const oi = order.items.find(i => i.id === ri.orderItemId);
+          const oi = order.items.find((i) => i.id === ri.orderItemId);
           // Use lineTotal/quantity so discounts & tax are correctly reflected
-          return s + (oi ? (Number(oi.lineTotal) / Number(oi.quantity)) * ri.quantity : 0);
+          return (
+            s +
+            (oi
+              ? (Number(oi.lineTotal) / Number(oi.quantity)) * ri.quantity
+              : 0)
+          );
         }, 0);
-        const newValue = newItems.reduce((s, ni) => s + ni.unitPrice * ni.quantity, 0);
+        const newValue = newItems.reduce(
+          (s, ni) => s + ni.unitPrice * ni.quantity,
+          0,
+        );
         const difference = newValue - returnedValue; // positive = customer pays more, negative = refund
 
         const updatedOrder = await tx.salesOrder.update({
           where: { id },
-          data: { status: 'exchanged', notes: reason ? `Exchange: ${reason}` : order.notes },
+          data: {
+            status: 'exchanged',
+            notes: reason ? `Exchange: ${reason}` : order.notes,
+          },
         });
 
         // ── Restore Voucher / Coupon (for exchanges) ──────────────
         if (order.couponId && !order.isVoucherRestored) {
-          const coupon = await tx.couponCode.findUnique({ where: { id: order.couponId } });
-          if (coupon && (coupon.discountType === 'voucher' || coupon.discountType === 'fixed')) {
+          const coupon = await tx.couponCode.findUnique({
+            where: { id: order.couponId },
+          });
+          if (
+            coupon &&
+            (coupon.discountType === 'voucher' ||
+              coupon.discountType === 'fixed')
+          ) {
             if (coupon.usedCount > 0) {
               await tx.couponCode.update({
                 where: { id: order.couponId },
@@ -3681,7 +3998,9 @@ export class PosSalesService implements OnModuleInit {
 
             // Restrict to exchange location
             if (effectiveLocationId) {
-              await tx.couponCodeLocation.deleteMany({ where: { couponId: order.couponId } });
+              await tx.couponCodeLocation.deleteMany({
+                where: { couponId: order.couponId },
+              });
               await tx.couponCodeLocation.create({
                 data: {
                   couponId: order.couponId,
@@ -3694,7 +4013,10 @@ export class PosSalesService implements OnModuleInit {
 
         let exchangeLocationName = '';
         if (isCrossLocation && effectiveLocationId) {
-          const exLoc = await tx.location.findUnique({ where: { id: effectiveLocationId }, select: { name: true } });
+          const exLoc = await tx.location.findUnique({
+            where: { id: effectiveLocationId },
+            select: { name: true },
+          });
           if (exLoc) exchangeLocationName = exLoc.name;
         }
 
@@ -3710,7 +4032,11 @@ export class PosSalesService implements OnModuleInit {
         };
       });
 
-      if (result.status && result.isCrossLocation && result.originalLocationId) {
+      if (
+        result.status &&
+        result.isCrossLocation &&
+        result.originalLocationId
+      ) {
         runInBackground(
           'Notify Original Location of Cross-Location Exchange',
           this.notificationsService.sendPosLocationNotification({
@@ -3722,8 +4048,12 @@ export class PosSalesService implements OnModuleInit {
             entityType: 'SalesOrder',
             entityId: id,
             actionType: 'view_order',
-            actionPayload: { orderId: id, orderNumber: result.orderNumber, exchangeLocationId: result.exchangeLocationId },
-          })
+            actionPayload: {
+              orderId: id,
+              orderNumber: result.orderNumber,
+              exchangeLocationId: result.exchangeLocationId,
+            },
+          }),
         );
       }
 
@@ -3965,10 +4295,10 @@ export class PosSalesService implements OnModuleInit {
         returnRef: result.refundNumber,
         refundVoucher: result.refundVoucher
           ? {
-            code: result.refundVoucher.code,
-            faceValue: result.refundVoucher.faceValue,
-            voucherType: 'REFUND',
-          }
+              code: result.refundVoucher.code,
+              faceValue: result.refundVoucher.faceValue,
+              voucherType: 'REFUND',
+            }
           : null,
         message: result.refundVoucher
           ? `Cash refunded Rs.${refundAmount} - Refund voucher ${result.refundVoucher.code} issued for record - Inventory restored`
@@ -4531,12 +4861,12 @@ export class PosSalesService implements OnModuleInit {
       paymentMethod?: string;
       status?: string;
       groupBy?:
-      | 'day'
-      | 'week'
-      | 'month'
-      | 'cashier'
-      | 'payment_method'
-      | 'item';
+        | 'day'
+        | 'week'
+        | 'month'
+        | 'cashier'
+        | 'payment_method'
+        | 'item';
       page?: number;
       limit?: number;
       search?: string;
@@ -4733,27 +5063,27 @@ export class PosSalesService implements OnModuleInit {
       .filter(Boolean) as string[];
     const cashierUsers = cashierUserIds.length
       ? await this.prismaMaster.user.findMany({
-        where: { id: { in: cashierUserIds } },
-        select: { id: true, firstName: true, lastName: true, email: true },
-      })
+          where: { id: { in: cashierUserIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
       : [];
 
     const cashierEmployees = cashierUserIds.length
       ? await this.prisma.employee.findMany({
-        where: {
-          OR: [
-            { id: { in: cashierUserIds } },
-            { userId: { in: cashierUserIds } },
-          ],
-        },
-        select: {
-          id: true,
-          userId: true,
-          employeeName: true,
-          officialEmail: true,
-          personalEmail: true,
-        },
-      })
+          where: {
+            OR: [
+              { id: { in: cashierUserIds } },
+              { userId: { in: cashierUserIds } },
+            ],
+          },
+          select: {
+            id: true,
+            userId: true,
+            employeeName: true,
+            officialEmail: true,
+            personalEmail: true,
+          },
+        })
       : [];
 
     const cashierNameMap = new Map<string, string>();
@@ -4818,21 +5148,21 @@ export class PosSalesService implements OnModuleInit {
     ] as string[];
     const orderCashierUsers = orderCashierIds.length
       ? await this.prismaMaster.user.findMany({
-        where: { id: { in: orderCashierIds } },
-        select: { id: true, firstName: true, lastName: true },
-      })
+          where: { id: { in: orderCashierIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
       : [];
 
     const orderEmployees = orderCashierIds.length
       ? await this.prisma.employee.findMany({
-        where: {
-          OR: [
-            { id: { in: orderCashierIds } },
-            { userId: { in: orderCashierIds } },
-          ],
-        },
-        select: { id: true, userId: true, employeeName: true },
-      })
+          where: {
+            OR: [
+              { id: { in: orderCashierIds } },
+              { userId: { in: orderCashierIds } },
+            ],
+          },
+          select: { id: true, userId: true, employeeName: true },
+        })
       : [];
 
     const orderCashierMap = new Map<string, string>();
@@ -5135,7 +5465,9 @@ export class PosSalesService implements OnModuleInit {
         const grandTotalRounded = Math.round(grandTotal * 100) / 100;
 
         if (totalPaidRounded > grandTotalRounded + 0.01) {
-          throw new Error('Total tender amount cannot exceed the order bill total');
+          throw new Error(
+            'Total tender amount cannot exceed the order bill total',
+          );
         }
 
         const changeAmount = Math.max(0, totalPaidRounded - grandTotalRounded);
@@ -5193,8 +5525,18 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── List available cashiers for a location ─────────────────────
   async listCashiers(locationId: string) {
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
     // 1. Find all active employees at this location
     const employees = await this.prisma.employee.findMany({
@@ -5304,8 +5646,8 @@ export class PosSalesService implements OnModuleInit {
     const sArticle = options.showArticle !== false;
     const sVariant =
       options.showVariant !== undefined
-         ? options.showVariant
-         : !options.summaryOnly;
+        ? options.showVariant
+        : !options.summaryOnly;
 
     const levels: string[] = [];
     if (sSalesperson) levels.push('salesperson');
@@ -5360,8 +5702,18 @@ export class PosSalesService implements OnModuleInit {
     const startDate = parseLocalDate(startStr, false);
     const endDate = parseLocalDate(endStr, true);
 
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
     // Fetch sales order items
     const orderItems = await this.prisma.salesOrderItem.findMany({
@@ -5430,8 +5782,8 @@ export class PosSalesService implements OnModuleInit {
       .filter(Boolean);
     const originalSalesOrderItems = salesOrderItemIds.length
       ? await this.prisma.salesOrderItem.findMany({
-        where: { id: { in: salesOrderItemIds } },
-      })
+          where: { id: { in: salesOrderItemIds } },
+        })
       : [];
     const originalSalesOrderItemMap = new Map<string, any>();
     for (const oi of originalSalesOrderItems) {
@@ -5465,14 +5817,14 @@ export class PosSalesService implements OnModuleInit {
     ];
     const referenceOrders = referenceOrderIds.length
       ? await this.prisma.salesOrder.findMany({
-        where: {
-          id: { in: referenceOrderIds },
-          ...(cashierUserId ? { cashierUserId } : {}),
-        },
-        include: {
-          items: true,
-        },
-      })
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: true,
+          },
+        })
       : [];
     const referenceOrderMap = new Map<string, any>();
     for (const order of referenceOrders) {
@@ -5499,20 +5851,20 @@ export class PosSalesService implements OnModuleInit {
       ] as string[];
       const cashierUsers = cashierUserIds.length
         ? await this.prismaMaster.user.findMany({
-          where: { id: { in: cashierUserIds } },
-          select: { id: true, firstName: true, lastName: true },
-        })
+            where: { id: { in: cashierUserIds } },
+            select: { id: true, firstName: true, lastName: true },
+          })
         : [];
       const cashierEmployees = cashierUserIds.length
         ? await this.prisma.employee.findMany({
-          where: {
-            OR: [
-              { id: { in: cashierUserIds } },
-              { userId: { in: cashierUserIds } },
-            ],
-          },
-          select: { id: true, userId: true, employeeName: true },
-        })
+            where: {
+              OR: [
+                { id: { in: cashierUserIds } },
+                { userId: { in: cashierUserIds } },
+              ],
+            },
+            select: { id: true, userId: true, employeeName: true },
+          })
         : [];
 
       for (const u of cashierUsers) {
@@ -5880,9 +6232,9 @@ export class PosSalesService implements OnModuleInit {
           const docNum =
             ledgerEntry.referenceType === 'POS_REFUND'
               ? originalOrder.refundNumber ||
-              `Refund for ${originalOrder.orderNumber}`
+                `Refund for ${originalOrder.orderNumber}`
               : originalOrder.returnNumber ||
-              `Return for ${originalOrder.orderNumber}`;
+                `Return for ${originalOrder.orderNumber}`;
           nodeVal = `POS Return - ${docNum}`;
         } else if (levelName === 'brand') {
           nodeVal = ledgerEntry.item.brand?.name || 'No Brand';
@@ -5947,8 +6299,18 @@ export class PosSalesService implements OnModuleInit {
       cashierUserId,
       search,
     } = options;
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -6008,16 +6370,16 @@ export class PosSalesService implements OnModuleInit {
     ];
     const referenceOrders = referenceOrderIds.length
       ? await this.prisma.salesOrder.findMany({
-        where: {
-          id: { in: referenceOrderIds },
-          ...(cashierUserId ? { cashierUserId } : {}),
-        },
-        include: {
-          items: { include: { item: { include: { hsCode: true } } } },
-          alliance: true,
-          voucherRedemptions: { include: { voucher: true } },
-        },
-      })
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: { include: { item: { include: { hsCode: true } } } },
+            alliance: true,
+            voucherRedemptions: { include: { voucher: true } },
+          },
+        })
       : [];
 
     const referenceOrderMap = new Map<string, any>();
@@ -6204,9 +6566,7 @@ export class PosSalesService implements OnModuleInit {
         ),
       ].join(', ');
       const returnBarcodes = [
-        ...new Set(
-          entries.map((e: any) => e.item?.barCode).filter(Boolean),
-        ),
+        ...new Set(entries.map((e: any) => e.item?.barCode).filter(Boolean)),
       ].join(', ');
 
       const netSale = grossSaleWost - disc + sTax;
@@ -6294,13 +6654,13 @@ export class PosSalesService implements OnModuleInit {
       locationId && locationId !== 'all'
         ? locationId.includes(',')
           ? {
-            locationId: {
-              in: locationId
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            },
-          }
+              locationId: {
+                in: locationId
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              },
+            }
           : { locationId }
         : {};
 
@@ -6340,12 +6700,12 @@ export class PosSalesService implements OnModuleInit {
     const issuedVouchers =
       orderIds.length > 0
         ? await this.prisma.voucher.findMany({
-          where: {
-            sourceOrderId: { in: orderIds },
-            voucherType: 'CREDIT',
-            isDeleted: false,
-          },
-        })
+            where: {
+              sourceOrderId: { in: orderIds },
+              voucherType: 'CREDIT',
+              isDeleted: false,
+            },
+          })
         : [];
 
     const issuedVouchersMap = new Map<string, any[]>();
@@ -6512,8 +6872,18 @@ export class PosSalesService implements OnModuleInit {
       maxAmount,
       fbrOnly,
     } = options;
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -6565,16 +6935,16 @@ export class PosSalesService implements OnModuleInit {
     ];
     const referenceOrders = referenceOrderIds.length
       ? await this.prisma.salesOrder.findMany({
-        where: {
-          id: { in: referenceOrderIds },
-          ...(cashierUserId ? { cashierUserId } : {}),
-        },
-        include: {
-          items: { include: { item: true } },
-          alliance: true,
-          voucherRedemptions: { include: { voucher: true } },
-        },
-      })
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: { include: { item: true } },
+            alliance: true,
+            voucherRedemptions: { include: { voucher: true } },
+          },
+        })
       : [];
 
     const referenceOrderMap = new Map<string, any>();
@@ -6586,11 +6956,11 @@ export class PosSalesService implements OnModuleInit {
     const allOrderIds = [...orders.map((o) => o.id), ...referenceOrderIds];
     const issuedVouchers = allOrderIds.length
       ? await this.prisma.voucher.findMany({
-        where: {
-          sourceOrderId: { in: allOrderIds },
-          isDeleted: false,
-        },
-      })
+          where: {
+            sourceOrderId: { in: allOrderIds },
+            isDeleted: false,
+          },
+        })
       : [];
 
     const issuedVoucherMap = new Map<string, any[]>();
@@ -6662,7 +7032,9 @@ export class PosSalesService implements OnModuleInit {
       ) {
         rewardVoucher = Number(order.grandTotal);
       } else if (notesStr.includes('[Reward Voucher]')) {
-        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        const amtMatch = notesStr.match(
+          /\[Reward Voucher\].*?Amount:\s*([\d.]+)/i,
+        );
         if (amtMatch) {
           rewardVoucher = Number(amtMatch[1]);
         }
@@ -6891,15 +7263,15 @@ export class PosSalesService implements OnModuleInit {
 
     const cashierUsers = cashierUserIds.length
       ? await this.prismaMaster.user.findMany({
-        where: { id: { in: cashierUserIds } },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          employeeId: true,
-        },
-      })
+          where: { id: { in: cashierUserIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+          },
+        })
       : [];
 
     return { status: true, data: filteredRows, cashiers: cashierUsers };
@@ -6945,8 +7317,18 @@ export class PosSalesService implements OnModuleInit {
       showInvoices,
     } = options;
     const db = options.prismaClient || this.prisma;
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -6980,8 +7362,10 @@ export class PosSalesService implements OnModuleInit {
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
-          in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
+          in: ['completed', 'partially_returned', 'exchanged', 'posted'],
         },
+        returnNumber: null,
+        refundNumber: null,
         createdAt: { gte: startDate, lte: endDate },
         ...(cashierUserId ? { cashierUserId } : {}),
       },
@@ -7102,6 +7486,8 @@ export class PosSalesService implements OnModuleInit {
 
       for (const item of order.items) {
         const qty = item.quantity;
+        if (qty <= 0) continue;
+
         const retailPrice = Number(item.unitPrice);
         const taxPercent = Number(item.taxPercent);
         const discountAmount = Number(item.discountAmount);
@@ -7322,15 +7708,15 @@ export class PosSalesService implements OnModuleInit {
 
     const activeCashiers = cashierUserIds.length
       ? await this.prismaMaster.user.findMany({
-        where: { id: { in: cashierUserIds } },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          employeeId: true,
-        },
-      })
+          where: { id: { in: cashierUserIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+          },
+        })
       : [];
 
     return { status: true, data: flatRows, cashiers: activeCashiers };
@@ -7376,8 +7762,18 @@ export class PosSalesService implements OnModuleInit {
       showInvoices,
     } = options;
     const db = options.prismaClient || this.prisma;
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
     const now = new Date();
     const startDate = startStr
       ? new Date(startStr)
@@ -7435,14 +7831,14 @@ export class PosSalesService implements OnModuleInit {
     ];
     const referenceOrders = referenceOrderIds.length
       ? await db.salesOrder.findMany({
-        where: {
-          id: { in: referenceOrderIds },
-          ...(cashierUserId ? { cashierUserId } : {}),
-        },
-        include: {
-          items: true,
-        },
-      })
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: true,
+          },
+        })
       : [];
 
     const refOrderMap = new Map<string, any>();
@@ -7715,7 +8111,8 @@ export class PosSalesService implements OnModuleInit {
           : order.returnNumber || `Return for ${order.orderNumber}`;
 
       const fbr = order.fbrInvoiceNumber ? 1 : 0;
-      const itemHsCode = entry.item?.hsCodeStr || entry.item?.hsCode?.hsCode || '-';
+      const itemHsCode =
+        entry.item?.hsCodeStr || entry.item?.hsCode?.hsCode || '-';
       const itemBarcode = entry.item?.barCode || '-';
 
       const leaf = {
@@ -7764,9 +8161,9 @@ export class PosSalesService implements OnModuleInit {
 
         const discountAmount = originalItem
           ? Number(originalItem.discountAmount) *
-          (qty / (originalItem.quantity || 1))
+            (qty / (originalItem.quantity || 1))
           : (retailPrice * qty - Number(claimItem.approvedAmount)) /
-          (1 + taxPercent / 100);
+            (1 + taxPercent / 100);
 
         const totalPriceWost = (retailPrice * qty) / (1 + taxPercent / 100);
         const excludingSalesTax = totalPriceWost - discountAmount;
@@ -7779,7 +8176,8 @@ export class PosSalesService implements OnModuleInit {
           ? cashierMap.get(order.cashierUserId) || 'Unknown'
           : 'Unknown';
 
-        const itemHsCode = claimItem.item?.hsCodeStr || claimItem.item?.hsCode?.hsCode || '-';
+        const itemHsCode =
+          claimItem.item?.hsCodeStr || claimItem.item?.hsCode?.hsCode || '-';
         const itemBarcode = claimItem.item?.barCode || '-';
 
         const leaf = {
@@ -7877,15 +8275,15 @@ export class PosSalesService implements OnModuleInit {
 
     const activeCashiers = cashierUserIds.length
       ? await this.prismaMaster.user.findMany({
-        where: { id: { in: cashierUserIds } },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          employeeId: true,
-        },
-      })
+          where: { id: { in: cashierUserIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+          },
+        })
       : [];
 
     return { status: true, data: flatRows, cashiers: activeCashiers };

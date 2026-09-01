@@ -136,9 +136,7 @@ export class PosSalesController {
     @Query('locationId') locIdQuery?: string,
   ) {
     const locationId =
-      locIdQuery ||
-      req.user?.locationId ||
-      this.extractLocationFromCookie(req);
+      locIdQuery || req.user?.locationId || this.extractLocationFromCookie(req);
     if (!locationId) {
       throw new BadRequestException(
         'Location context is required for POS search',
@@ -156,9 +154,7 @@ export class PosSalesController {
     @Query('locationId') locIdQuery?: string,
   ) {
     const locationId =
-      locIdQuery ||
-      req.user?.locationId ||
-      this.extractLocationFromCookie(req);
+      locIdQuery || req.user?.locationId || this.extractLocationFromCookie(req);
     if (!locationId) {
       throw new BadRequestException(
         'Location context is required for POS scan',
@@ -187,7 +183,9 @@ export class PosSalesController {
     // Salesman must be explicitly selected on every sale
     const cashierUserId = dto.cashierUserId;
     if (!cashierUserId) {
-      throw new BadRequestException('Salesman selection is required to complete the sale');
+      throw new BadRequestException(
+        'Salesman selection is required to complete the sale',
+      );
     }
 
     // 1. Context from req.user (Preferred - comes from combined cashier token)
@@ -745,12 +743,10 @@ export class PosSalesController {
       await this.netSalesSummaryExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res
-        .status(status)
-        .send({
-          status: false,
-          message: err?.message ?? 'Export file not found',
-        });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -818,12 +814,10 @@ export class PosSalesController {
       await this.salesRegisterExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res
-        .status(status)
-        .send({
-          status: false,
-          message: err?.message ?? 'Export file not found',
-        });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -893,12 +887,10 @@ export class PosSalesController {
       await this.allianceRegisterExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res
-        .status(status)
-        .send({
-          status: false,
-          message: err?.message ?? 'Export file not found',
-        });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -982,12 +974,10 @@ export class PosSalesController {
       await this.salesListExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res
-        .status(status)
-        .send({
-          status: false,
-          message: err?.message ?? 'Export file not found',
-        });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -1209,12 +1199,10 @@ export class PosSalesController {
       await this.grossSalesExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res
-        .status(status)
-        .send({
-          status: false,
-          message: err?.message ?? 'Export file not found',
-        });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -1241,7 +1229,8 @@ export class PosSalesController {
   @ApiOperation({ summary: 'Queue Cost of Sales calculation preview job' })
   async queueCostOfSalesPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -1260,38 +1249,49 @@ export class PosSalesController {
   }
 
   @Sse('reports/cost-of-sales/stream/:jobId')
-  @ApiOperation({ summary: 'Stream Cost of Sales calculation preview progress via SSE' })
-  streamCostOfSalesProgress(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  @ApiOperation({
+    summary: 'Stream Cost of Sales calculation preview progress via SSE',
+  })
+  streamCostOfSalesProgress(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(() => this.costOfSalesExportService.getJobQueueStatus(jobId)),
-      map((status) => ({ data: status } as MessageEvent)),
+      map((status) => ({ data: status }) as MessageEvent),
     );
   }
 
   @Get('reports/cost-of-sales/result/:jobId')
-  @ApiOperation({ summary: 'Get cached Cost of Sales preview calculation result' })
+  @ApiOperation({
+    summary: 'Get cached Cost of Sales preview calculation result',
+  })
   async getCostOfSalesResult(@Param('jobId') jobId: string) {
     const data = this.costOfSalesExportService.getReportPreviewResult(jobId);
     if (!data) {
-      throw new NotFoundException(`Preview result for job ${jobId} not found or expired.`);
+      throw new NotFoundException(
+        `Preview result for job ${jobId} not found or expired.`,
+      );
     }
     return { status: true, data };
   }
 
   @Post('reports/cost-of-sales/export/register-client-export')
-  @ApiOperation({ summary: 'Register client generated Cost of Sales Excel/PDF file with S3' })
+  @ApiOperation({
+    summary: 'Register client generated Cost of Sales Excel/PDF file with S3',
+  })
   async registerClientCostOfSalesExport(
     @Req() req: any,
     @Body() body: { fileName: string; fileBase64: string; mimeType: string },
   ) {
     const userId = req.user?.userId || req.user?.id;
     const fileBuffer = Buffer.from(body.fileBase64, 'base64');
-    const result = await this.costOfSalesExportService.registerClientGeneratedExport({
-      userId,
-      fileName: body.fileName,
-      fileBuffer,
-      mimeType: body.mimeType,
-    });
+    const result =
+      await this.costOfSalesExportService.registerClientGeneratedExport({
+        userId,
+        fileName: body.fileName,
+        fileBuffer,
+        mimeType: body.mimeType,
+      });
     return { status: true, data: result };
   }
 
@@ -1321,14 +1321,19 @@ export class PosSalesController {
 
   @Get('reports/cost-of-sales/export-download/:jobId')
   @ApiOperation({ summary: 'Download completed Cost of Sales export file' })
-  async streamCostOfSalesExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+  async streamCostOfSalesExportFile(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     return this.costOfSalesExportService.streamExportFile(jobId, res);
   }
 
   // ─── Gift Voucher Sale Register Report Endpoints ────────────────────────
 
   @Get('reports/gift-voucher-sale-register')
-  @ApiOperation({ summary: 'Get Gift Voucher Sale Register report preview data' })
+  @ApiOperation({
+    summary: 'Get Gift Voucher Sale Register report preview data',
+  })
   async getGiftVoucherSaleRegisterReport(
     @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
@@ -1345,7 +1350,9 @@ export class PosSalesController {
   }
 
   @Post('reports/gift-voucher-sale-register/export')
-  @ApiOperation({ summary: 'Queue background export job for Gift Voucher Sale Register' })
+  @ApiOperation({
+    summary: 'Queue background export job for Gift Voucher Sale Register',
+  })
   async queueGiftVoucherSaleRegisterExport(@Body() body: any, @Req() req: any) {
     const userId = req.user?.userId || req.user?.id;
     const result = await this.giftVoucherSaleRegisterExportService.queueExport({
@@ -1362,14 +1369,23 @@ export class PosSalesController {
   @Get('reports/gift-voucher-sale-register/export-status/:jobId')
   @ApiOperation({ summary: 'Get Gift Voucher Sale Register export job status' })
   async getGiftVoucherSaleRegisterExportStatus(@Param('jobId') jobId: string) {
-    const result = await this.giftVoucherSaleRegisterExportService.getJobStatus(jobId);
+    const result =
+      await this.giftVoucherSaleRegisterExportService.getJobStatus(jobId);
     return { status: true, data: result };
   }
 
   @Get('reports/gift-voucher-sale-register/export-download/:jobId')
-  @ApiOperation({ summary: 'Download completed Gift Voucher Sale Register export file' })
-  async streamGiftVoucherSaleRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
-    return this.giftVoucherSaleRegisterExportService.streamExportFile(jobId, res);
+  @ApiOperation({
+    summary: 'Download completed Gift Voucher Sale Register export file',
+  })
+  async streamGiftVoucherSaleRegisterExportFile(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
+    return this.giftVoucherSaleRegisterExportService.streamExportFile(
+      jobId,
+      res,
+    );
   }
 
   // ─── Corporate Voucher Report Endpoints ─────────────────────────────────
@@ -1392,7 +1408,9 @@ export class PosSalesController {
   }
 
   @Post('reports/corporate-voucher/export')
-  @ApiOperation({ summary: 'Queue background export job for Corporate Voucher' })
+  @ApiOperation({
+    summary: 'Queue background export job for Corporate Voucher',
+  })
   async queueCorporateVoucherExport(@Body() body: any, @Req() req: any) {
     const userId = req.user?.userId || req.user?.id;
     const result = await this.corporateVoucherExportService.queueExport({
@@ -1415,7 +1433,10 @@ export class PosSalesController {
 
   @Get('reports/corporate-voucher/export-download/:jobId')
   @ApiOperation({ summary: 'Download completed Corporate Voucher export file' })
-  async streamCorporateVoucherExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+  async streamCorporateVoucherExportFile(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     return this.corporateVoucherExportService.streamExportFile(jobId, res);
   }
 
@@ -1462,7 +1483,10 @@ export class PosSalesController {
 
   @Get('reports/credit-voucher/export-download/:jobId')
   @ApiOperation({ summary: 'Download completed Credit Voucher export file' })
-  async streamCreditVoucherExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+  async streamCreditVoucherExportFile(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     return this.creditVoucherExportService.streamExportFile(jobId, res);
   }
 
@@ -1490,7 +1514,9 @@ export class PosSalesController {
   }
 
   @Post('reports/voucher-register/export')
-  @ApiOperation({ summary: 'Queue background export job for Unified Voucher Register' })
+  @ApiOperation({
+    summary: 'Queue background export job for Unified Voucher Register',
+  })
   async queueVoucherRegisterExport(@Body() body: any, @Req() req: any) {
     const userId = req.user?.userId || req.user?.id;
     const result = await this.voucherRegisterExportService.queueExport({
@@ -1514,8 +1540,13 @@ export class PosSalesController {
   }
 
   @Get('reports/voucher-register/export-download/:jobId')
-  @ApiOperation({ summary: 'Download completed Unified Voucher Register export file' })
-  async streamVoucherRegisterExportFile(@Param('jobId') jobId: string, @Res() res: any) {
+  @ApiOperation({
+    summary: 'Download completed Unified Voucher Register export file',
+  })
+  async streamVoucherRegisterExportFile(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     return this.voucherRegisterExportService.streamExportFile(jobId, res);
   }
 
@@ -1524,7 +1555,8 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async queueSalesListPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -1546,17 +1578,27 @@ export class PosSalesController {
   }
 
   @Sse('reports/sales-list/stream/:jobId')
-  streamSalesListStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamSalesListStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1500).pipe(
       switchMap(async () => {
-        const queueStatus = await this.salesListExportService.getJobQueueStatus(jobId);
+        const queueStatus =
+          await this.salesListExportService.getJobQueueStatus(jobId);
 
-        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
-        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
           sseStatus = 'completed';
         } else if (queueStatus.status === 'failed') {
           sseStatus = 'failed';
-        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
           sseStatus = 'processing';
         }
 
@@ -1564,7 +1606,9 @@ export class PosSalesController {
           data: JSON.stringify({
             status: sseStatus,
             progressPercent: queueStatus.progress,
-            message: queueStatus.message || `Processing sales list calculation (${queueStatus.progress}%)`,
+            message:
+              queueStatus.message ||
+              `Processing sales list calculation (${queueStatus.progress}%)`,
             queuePosition: queueStatus.queuePosition,
             waitingCount: queueStatus.waitingCount,
             error: queueStatus.failedReason,
@@ -1581,9 +1625,13 @@ export class PosSalesController {
   @Get('reports/sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getSalesListResult(@Param('jobId') jobId: string) {
-    const data = await this.salesListExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.salesListExportService.getReportPreviewResult(jobId);
     if (!data) {
-      return { status: false, message: 'Sales list preview result not found or expired' };
+      return {
+        status: false,
+        message: 'Sales list preview result not found or expired',
+      };
     }
     return { status: true, data };
   }
@@ -1595,11 +1643,12 @@ export class PosSalesController {
     @Body() body: { fileName: string; fileBase64: string; mimeType: string },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.salesListExportService.registerClientGeneratedExport(
-      this.prisma,
-      userId,
-      body,
-    );
+    const result =
+      await this.salesListExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
     return { status: true, data: result };
   }
 
@@ -1608,7 +1657,8 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async queueSalesRegisterPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -1630,17 +1680,27 @@ export class PosSalesController {
   }
 
   @Sse('reports/sales-register/stream/:jobId')
-  streamSalesRegisterStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamSalesRegisterStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1500).pipe(
       switchMap(async () => {
-        const queueStatus = await this.salesRegisterExportService.getJobQueueStatus(jobId);
+        const queueStatus =
+          await this.salesRegisterExportService.getJobQueueStatus(jobId);
 
-        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
-        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
           sseStatus = 'completed';
         } else if (queueStatus.status === 'failed') {
           sseStatus = 'failed';
-        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
           sseStatus = 'processing';
         }
 
@@ -1648,7 +1708,9 @@ export class PosSalesController {
           data: JSON.stringify({
             status: sseStatus,
             progressPercent: queueStatus.progress,
-            message: queueStatus.message || `Processing sales register calculation (${queueStatus.progress}%)`,
+            message:
+              queueStatus.message ||
+              `Processing sales register calculation (${queueStatus.progress}%)`,
             queuePosition: queueStatus.queuePosition,
             waitingCount: queueStatus.waitingCount,
             error: queueStatus.failedReason,
@@ -1665,9 +1727,13 @@ export class PosSalesController {
   @Get('reports/sales-register/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getSalesRegisterResult(@Param('jobId') jobId: string) {
-    const data = await this.salesRegisterExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.salesRegisterExportService.getReportPreviewResult(jobId);
     if (!data) {
-      return { status: false, message: 'Sales register preview result not found or expired' };
+      return {
+        status: false,
+        message: 'Sales register preview result not found or expired',
+      };
     }
     return { status: true, data };
   }
@@ -1679,11 +1745,12 @@ export class PosSalesController {
     @Body() body: { fileName: string; fileBase64: string; mimeType: string },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.salesRegisterExportService.registerClientGeneratedExport(
-      this.prisma,
-      userId,
-      body,
-    );
+    const result =
+      await this.salesRegisterExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
     return { status: true, data: result };
   }
 
@@ -1692,7 +1759,8 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async queueGrossSalesReturnPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -1714,17 +1782,27 @@ export class PosSalesController {
   }
 
   @Sse('reports/gross-sales-return/stream/:jobId')
-  streamGrossSalesReturnStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamGrossSalesReturnStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1500).pipe(
       switchMap(async () => {
-        const queueStatus = await this.grossSalesExportService.getJobQueueStatus(jobId);
+        const queueStatus =
+          await this.grossSalesExportService.getJobQueueStatus(jobId);
 
-        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
-        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
           sseStatus = 'completed';
         } else if (queueStatus.status === 'failed') {
           sseStatus = 'failed';
-        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
           sseStatus = 'processing';
         }
 
@@ -1732,7 +1810,9 @@ export class PosSalesController {
           data: JSON.stringify({
             status: sseStatus,
             progressPercent: queueStatus.progress,
-            message: queueStatus.message || `Processing sales return register calculation (${queueStatus.progress}%)`,
+            message:
+              queueStatus.message ||
+              `Processing sales return register calculation (${queueStatus.progress}%)`,
             queuePosition: queueStatus.queuePosition,
             waitingCount: queueStatus.waitingCount,
             error: queueStatus.failedReason,
@@ -1749,9 +1829,13 @@ export class PosSalesController {
   @Get('reports/gross-sales-return/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getGrossSalesReturnResult(@Param('jobId') jobId: string) {
-    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.grossSalesExportService.getReportPreviewResult(jobId);
     if (!data) {
-      return { status: false, message: 'Sales return preview result not found or expired' };
+      return {
+        status: false,
+        message: 'Sales return preview result not found or expired',
+      };
     }
     return { status: true, data };
   }
@@ -1763,11 +1847,12 @@ export class PosSalesController {
     @Body() body: { fileName: string; fileBase64: string; mimeType: string },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.grossSalesExportService.registerClientGeneratedExport(
-      this.prisma,
-      userId,
-      body,
-    );
+    const result =
+      await this.grossSalesExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
     return { status: true, data: result };
   }
 
@@ -1776,7 +1861,8 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async queueGrossSalesSummaryPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -1790,25 +1876,37 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.grossSalesExportService.queueSummaryReportPreview({
-      userId,
-      ...body,
-    });
+    const result = await this.grossSalesExportService.queueSummaryReportPreview(
+      {
+        userId,
+        ...body,
+      },
+    );
     return { status: true, data: result };
   }
 
   @Sse('reports/gross-sales-summary/stream/:jobId')
-  streamGrossSalesSummaryStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamGrossSalesSummaryStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1500).pipe(
       switchMap(async () => {
-        const queueStatus = await this.grossSalesExportService.getJobQueueStatus(jobId);
+        const queueStatus =
+          await this.grossSalesExportService.getJobQueueStatus(jobId);
 
-        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
-        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
           sseStatus = 'completed';
         } else if (queueStatus.status === 'failed') {
           sseStatus = 'failed';
-        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
           sseStatus = 'processing';
         }
 
@@ -1816,7 +1914,9 @@ export class PosSalesController {
           data: JSON.stringify({
             status: sseStatus,
             progressPercent: queueStatus.progress,
-            message: queueStatus.message || `Processing gross sales summary calculation (${queueStatus.progress}%)`,
+            message:
+              queueStatus.message ||
+              `Processing gross sales summary calculation (${queueStatus.progress}%)`,
             queuePosition: queueStatus.queuePosition,
             waitingCount: queueStatus.waitingCount,
             error: queueStatus.failedReason,
@@ -1833,9 +1933,13 @@ export class PosSalesController {
   @Get('reports/gross-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getGrossSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.grossSalesExportService.getReportPreviewResult(jobId);
     if (!data) {
-      return { status: false, message: 'Gross sales summary preview result not found or expired' };
+      return {
+        status: false,
+        message: 'Gross sales summary preview result not found or expired',
+      };
     }
     return { status: true, data };
   }
@@ -1847,11 +1951,12 @@ export class PosSalesController {
     @Body() body: { fileName: string; fileBase64: string; mimeType: string },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.grossSalesExportService.registerClientGeneratedExport(
-      this.prisma,
-      userId,
-      body,
-    );
+    const result =
+      await this.grossSalesExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
     return { status: true, data: result };
   }
 
@@ -1860,7 +1965,8 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async queueNetSalesSummaryPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -1882,17 +1988,27 @@ export class PosSalesController {
   }
 
   @Sse('reports/net-sales-summary/stream/:jobId')
-  streamNetSalesSummaryStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamNetSalesSummaryStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1500).pipe(
       switchMap(async () => {
-        const queueStatus = await this.netSalesSummaryExportService.getJobQueueStatus(jobId);
+        const queueStatus =
+          await this.netSalesSummaryExportService.getJobQueueStatus(jobId);
 
-        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
-        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
           sseStatus = 'completed';
         } else if (queueStatus.status === 'failed') {
           sseStatus = 'failed';
-        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
           sseStatus = 'processing';
         }
 
@@ -1900,7 +2016,9 @@ export class PosSalesController {
           data: JSON.stringify({
             status: sseStatus,
             progressPercent: queueStatus.progress,
-            message: queueStatus.message || `Processing net sales summary calculation (${queueStatus.progress}%)`,
+            message:
+              queueStatus.message ||
+              `Processing net sales summary calculation (${queueStatus.progress}%)`,
             queuePosition: queueStatus.queuePosition,
             waitingCount: queueStatus.waitingCount,
             error: queueStatus.failedReason,
@@ -1917,9 +2035,13 @@ export class PosSalesController {
   @Get('reports/net-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
     if (!data) {
-      return { status: false, message: 'Net sales summary preview result not found or expired' };
+      return {
+        status: false,
+        message: 'Net sales summary preview result not found or expired',
+      };
     }
     return { status: true, data };
   }
@@ -1931,11 +2053,12 @@ export class PosSalesController {
     @Body() body: { fileName: string; fileBase64: string; mimeType: string },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.netSalesSummaryExportService.registerClientGeneratedExport(
-      this.prisma,
-      userId,
-      body,
-    );
+    const result =
+      await this.netSalesSummaryExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
     return { status: true, data: result };
   }
 }

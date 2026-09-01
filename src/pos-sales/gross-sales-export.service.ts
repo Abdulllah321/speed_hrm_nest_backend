@@ -843,7 +843,9 @@ export class GrossSalesExportService {
     await onProgress?.(35, 'Querying POS sales order items for gross sales summary...');
 
     const where: any = {
-      status: { in: ['completed', 'partially_returned', 'exchanged', 'posted', 'returned'] },
+      status: { in: ['completed', 'partially_returned', 'exchanged', 'posted'] },
+      returnNumber: null,
+      refundNumber: null,
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -934,13 +936,14 @@ export class GrossSalesExportService {
       }
 
       for (const item of order.items) {
+        const qty = Number(item.quantity || 0);
+        if (qty <= 0) continue;
+
         const catName = item.item?.category?.name || 'Unassigned Category';
         const brandName = item.item?.brand?.name || 'Default Brand';
         const divisionName = item.item?.division?.name || 'Default Division';
         const genderName = item.item?.gender?.name || 'Default Gender';
         const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
-
-        const qty = Number(item.quantity || 0);
         const unitPrice = Number(item.unitPrice || 0);
         const disc = Number(item.discountAmount || 0);
         const tax = Number(item.taxAmount || 0);
