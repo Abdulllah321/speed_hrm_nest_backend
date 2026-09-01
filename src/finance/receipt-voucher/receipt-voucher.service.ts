@@ -7,6 +7,7 @@ import { UpdateReceiptVoucherDto } from './dto/update-receipt-voucher.dto';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { generateNextRvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+
 @Injectable()
 export class ReceiptVoucherService {
   constructor(
