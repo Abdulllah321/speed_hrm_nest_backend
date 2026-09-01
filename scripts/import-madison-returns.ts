@@ -306,6 +306,23 @@ async function processReturnsForTenant(
 
       console.log(`  ✅ Successfully wiped ${voucherIds.length} old Return Vouchers and reset linked Sales Orders.`);
     }
+
+    const existingReturnOrders = await prisma.salesOrder.findMany({
+      where: {
+        orderNumber: { startsWith: 'RET-' },
+      },
+      select: { id: true },
+    });
+    if (existingReturnOrders.length > 0) {
+      const returnOrderIds = existingReturnOrders.map((o) => o.id);
+      await prisma.salesOrderItem.deleteMany({
+        where: { salesOrderId: { in: returnOrderIds } },
+      });
+      await prisma.salesOrder.deleteMany({
+        where: { id: { in: returnOrderIds } },
+      });
+      console.log(`  ✅ Successfully wiped ${existingReturnOrders.length} previous return SalesOrders.`);
+    }
   }
 
   let defaultWarehouse: any = null;
@@ -471,7 +488,69 @@ async function processReturnsForTenant(
       });
     }
 
-    // 2. Create/Update Voucher in database
+    // 2. Create/Update Return SalesOrder and SalesOrderItems for exact discount & tax breakdown
+    const returnOrderNumber = `RET-${cleanCode}-${padDocNo}`;
+    const retSubtotal = groupRows.reduce((acc, r) => acc + Math.abs(r.totalPriceWOT || r.priceWOT), 0);
+    const retDiscountAmount = groupRows.reduce((acc, r) => acc + Math.abs(r.discountAmount), 0);
+    const retTaxAmount = groupRows.reduce((acc, r) => acc + Math.abs(r.totalSalesTax || r.salesTax), 0);
+    const retGrandTotal = groupRows.reduce((acc, r) => acc + Math.abs(r.valueInclSalesTax), 0);
+
+    const existingRetOrder = await prisma.salesOrder.findUnique({
+      where: { orderNumber: returnOrderNumber },
+      select: { id: true },
+    });
+    if (existingRetOrder) {
+      await prisma.salesOrderItem.deleteMany({ where: { salesOrderId: existingRetOrder.id } });
+      await prisma.salesOrder.delete({ where: { id: existingRetOrder.id } });
+    }
+
+    const returnSalesOrder = await prisma.salesOrder.create({
+      data: {
+        orderNumber: returnOrderNumber,
+        returnNumber: voucherCode,
+        posId: sample.posId || null,
+        locationId: location.id,
+        subtotal: retSubtotal,
+        discountAmount: retDiscountAmount,
+        taxAmount: retTaxAmount,
+        grandTotal: retGrandTotal,
+        paymentMethod: 'VOUCHER',
+        paymentStatus: 'paid',
+        status: 'returned',
+        notes: sample.remarks || `Imported Return Doc #${sample.docNo}${originalSalesOrder ? ' (Linked to ' + originalSalesOrder.orderNumber + ')' : ''}`,
+        fbrInvoiceNumber: sample.fbrInvoiceNumber || null,
+        createdAt: sample.docDate,
+      },
+    });
+
+    for (const row of groupRows) {
+      const item = itemCache.get(row.barCode);
+      const absQty = Math.abs(row.quantity);
+      const unitPrice = Math.abs(row.unitPrice);
+      const lineDiscountAmount = Math.abs(row.discountAmount);
+      const lineTaxAmount = Math.abs(row.totalSalesTax || row.salesTax);
+      const lineValueExSalesTax = Math.abs(row.valueExSalesTax);
+      const calculatedTaxPct = lineValueExSalesTax > 0
+        ? Math.round((lineTaxAmount / lineValueExSalesTax) * 100 * 100) / 100
+        : 18;
+      const lineTotal = Math.abs(row.valueInclSalesTax);
+
+      await prisma.salesOrderItem.create({
+        data: {
+          salesOrderId: returnSalesOrder.id,
+          itemId: item.id,
+          quantity: absQty,
+          unitPrice,
+          discountAmount: lineDiscountAmount,
+          taxAmount: lineTaxAmount,
+          taxPercent: calculatedTaxPct,
+          lineTotal,
+          createdAt: sample.docDate,
+        },
+      });
+    }
+
+    // 3. Create/Update Voucher in database linked to returnSalesOrder
     const voucher = await prisma.voucher.upsert({
       where: { code: voucherCode },
       update: {
@@ -479,7 +558,7 @@ async function processReturnsForTenant(
         faceValue: returnTotalValue,
         description: voucherDesc,
         issuedByLocationId: location.id,
-        sourceOrderId: originalSalesOrder ? originalSalesOrder.id : null,
+        sourceOrderId: returnSalesOrder.id,
         isActive: true,
         isRedeemed,
         createdAt: sample.docDate,
@@ -490,14 +569,14 @@ async function processReturnsForTenant(
         faceValue: returnTotalValue,
         description: voucherDesc,
         issuedByLocationId: location.id,
-        sourceOrderId: originalSalesOrder ? originalSalesOrder.id : null,
+        sourceOrderId: returnSalesOrder.id,
         isActive: true,
         isRedeemed,
         createdAt: sample.docDate,
       },
     });
 
-    // 3. Mark original SalesOrder as returned if found
+    // 4. Mark original SalesOrder as returned if found
     if (originalSalesOrder) {
       const updateData: any = {
         status: 'returned',
