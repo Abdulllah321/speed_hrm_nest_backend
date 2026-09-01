@@ -93,7 +93,8 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
           'manualDbUrl',
           '$disconnect',
         ];
-        if (ownMethods.includes(prop as string)) {
+        // A. Handle own methods & properties of PrismaService instance or Object prototype
+        if (ownMethods.includes(prop as string) || (typeof prop === 'string' && prop in Object.prototype)) {
           return Reflect.get(target, prop, receiver);
         }
 
@@ -104,7 +105,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
             prop.startsWith('_') ||
             prop.startsWith('onModule') ||
             prop.startsWith('onApplication') ||
-            ['constructor', 'then', 'hasOwnProperty', 'toString', 'valueOf', 'toJSON', 'inspect'].includes(prop)
+            ['constructor', 'then', 'catch', 'finally', 'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable', 'toString', 'valueOf', 'toLocaleString', 'toJSON', 'inspect'].includes(prop)
           ))
         ) {
           return Reflect.get(target, prop, receiver);

@@ -7,6 +7,7 @@ import { UpdateReceiptVoucherDto } from './dto/update-receipt-voucher.dto';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { generateNextRvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+
 @Injectable()
 export class ReceiptVoucherService {
   constructor(
@@ -155,8 +156,10 @@ export class ReceiptVoucherService {
     page?: number;
     limit?: number;
     search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
   }) {
-    const { type, status, fromDate, toDate, accountId, page, limit, search } = filters || {};
+    const { type, status, fromDate, toDate, accountId, page, limit, search, sortBy, sortOrder } = filters || {};
 
     const where: any = {};
 
@@ -188,8 +191,13 @@ export class ReceiptVoucherService {
         { rvNo: { contains: cleanSearch, mode: 'insensitive' } },
         { folio: { contains: cleanSearch, mode: 'insensitive' } },
         { description: { contains: cleanSearch, mode: 'insensitive' } },
+        { remarks: { contains: cleanSearch, mode: 'insensitive' } },
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
         { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
+        { debitAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } },
+        { debitAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } },
+        { customer: { name: { contains: cleanSearch, mode: 'insensitive' } } },
+        { customer: { code: { contains: cleanSearch, mode: 'insensitive' } } },
         { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
         { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
@@ -220,6 +228,16 @@ export class ReceiptVoucherService {
       }
     }
 
+    const orderDir = sortOrder === 'asc' ? ('asc' as const) : ('desc' as const);
+    let orderBy: any = { rvDate: orderDir };
+    if (sortBy === 'rvNo') orderBy = { rvNo: orderDir };
+    else if (sortBy === 'rvDate') orderBy = { rvDate: orderDir };
+    else if (sortBy === 'status') orderBy = { status: orderDir };
+    else if (sortBy === 'createdAt') orderBy = { createdAt: orderDir };
+    else if (sortBy === 'type') orderBy = { type: orderDir };
+    else if (sortBy === 'folio') orderBy = { folio: orderDir };
+    else if (sortBy === 'debitAmount') orderBy = { debitAmount: orderDir };
+
     const queryOptions: any = {
       where,
       include: {
@@ -227,7 +245,7 @@ export class ReceiptVoucherService {
         debitAccount: true,
         customer: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
     };
 
     if (page !== undefined && limit !== undefined) {

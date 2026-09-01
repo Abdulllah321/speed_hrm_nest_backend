@@ -42,19 +42,19 @@ export interface InventoryAgingRecord {
   totalQty: number;
   totalValue: number;
 
-  // Age Buckets (Qty & Value)
-  bucket0to30Qty: number;
-  bucket0to30Value: number;
-  bucket31to60Qty: number;
-  bucket31to60Value: number;
-  bucket61to90Qty: number;
-  bucket61to90Value: number;
-  bucket91to120Qty: number;
-  bucket91to120Value: number;
-  bucket121to180Qty: number;
-  bucket121to180Value: number;
-  bucket181PlusQty: number;
-  bucket181PlusValue: number;
+  // Age Buckets (Qty & Value: Month-based 0-6M, 6-9M, 9-12M, 12-15M, 15-18M, >18M)
+  bucket0to6mQty: number;
+  bucket0to6mValue: number;
+  bucket6to9mQty: number;
+  bucket6to9mValue: number;
+  bucket9to12mQty: number;
+  bucket9to12mValue: number;
+  bucket12to15mQty: number;
+  bucket12to15mValue: number;
+  bucket15to18mQty: number;
+  bucket15to18mValue: number;
+  bucket18mPlusQty: number;
+  bucket18mPlusValue: number;
 
   avgAgeDays: number;
 
@@ -66,18 +66,18 @@ export interface InventoryAgingTotals {
   totalItems: number;
   totalStockQty: number;
   totalStockValue: number;
-  totalBucket0to30Qty: number;
-  totalBucket0to30Value: number;
-  totalBucket31to60Qty: number;
-  totalBucket31to60Value: number;
-  totalBucket61to90Qty: number;
-  totalBucket61to90Value: number;
-  totalBucket91to120Qty: number;
-  totalBucket91to120Value: number;
-  totalBucket121to180Qty: number;
-  totalBucket121to180Value: number;
-  totalBucket181PlusQty: number;
-  totalBucket181PlusValue: number;
+  totalBucket0to6mQty: number;
+  totalBucket0to6mValue: number;
+  totalBucket6to9mQty: number;
+  totalBucket6to9mValue: number;
+  totalBucket9to12mQty: number;
+  totalBucket9to12mValue: number;
+  totalBucket12to15mQty: number;
+  totalBucket12to15mValue: number;
+  totalBucket15to18mQty: number;
+  totalBucket15to18mValue: number;
+  totalBucket18mPlusQty: number;
+  totalBucket18mPlusValue: number;
   overallAvgAgeDays: number;
   locationTotals: Record<string, number>;
   warehouseTotals: Record<string, number>;
@@ -380,7 +380,7 @@ export class InventoryAgingExportService {
     // Chunk items into 1,000 item batches to avoid database query parameter limits
     const itemChunks = chunkArray(rawItemIds, 1000);
 
-    const [itemsNested, tenantSettingsNested, latestLedgerCostsNested] = await Promise.all([
+    const [itemsNested, tenantSettingsNested, latestLedgerCostsNested, transitItemsNested] = await Promise.all([
       Promise.all(
         itemChunks.map((chunk) =>
           prisma.item.findMany({
@@ -422,11 +422,38 @@ export class InventoryAgingExportService {
           }),
         ),
       ),
+      Promise.all(
+        itemChunks.map((chunk) =>
+          prisma.transferRequestItem.findMany({
+            where: {
+              itemId: { in: chunk },
+              transferRequest: {
+                status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
+                transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+              },
+            },
+            select: {
+              itemId: true,
+              quantity: true,
+              transferRequest: {
+                select: { toLocationId: true, toWarehouseId: true },
+              },
+            },
+          }),
+        ),
+      ),
     ]);
 
     const items = itemsNested.flat();
     const tenantSettings = tenantSettingsNested.flat();
     const latestLedgerCosts = latestLedgerCostsNested.flat();
+    const transitItems = transitItemsNested.flat();
+
+    const transitMap = new Map<string, number>();
+    for (const t of transitItems) {
+      const q = Number(t.quantity || 0);
+      transitMap.set(t.itemId, (transitMap.get(t.itemId) || 0) + q);
+    }
 
     const itemObjMap = new Map<string, any>(items.map((i: any) => [i.id, i]));
     const settingMap = new Map<string, any>(tenantSettings.map((s: any) => [s.itemId, s]));
@@ -475,6 +502,33 @@ export class InventoryAgingExportService {
       }
     }
 
+    for (const t of transitItems) {
+      const qty = Number(t.quantity || 0);
+      if (qty <= 0) continue;
+      const itemMaster = itemObjMap.get(t.itemId);
+      if (!itemMaster) continue;
+
+      let entry = itemMap.get(t.itemId);
+      if (!entry) {
+        entry = {
+          item: itemMaster,
+          totalQty: 0,
+          locationStocks: {},
+          warehouseStocks: {},
+        };
+        itemMap.set(t.itemId, entry);
+      }
+
+      entry.totalQty += qty;
+      const tr = t.transferRequest;
+      if (tr?.toLocationId) {
+        entry.locationStocks[tr.toLocationId] = (entry.locationStocks[tr.toLocationId] || 0) + qty;
+      }
+      if (tr?.toWarehouseId) {
+        entry.warehouseStocks[tr.toWarehouseId] = (entry.warehouseStocks[tr.toWarehouseId] || 0) + qty;
+      }
+    }
+
     // 3. Fetch Stock Movements for stock age estimation in 1,000 item chunks
     const itemIds = Array.from(itemMap.keys());
     const itemIdsChunks = chunkArray(itemIds, 1000);
@@ -516,18 +570,18 @@ export class InventoryAgingExportService {
       totalItems: 0,
       totalStockQty: 0,
       totalStockValue: 0,
-      totalBucket0to30Qty: 0,
-      totalBucket0to30Value: 0,
-      totalBucket31to60Qty: 0,
-      totalBucket31to60Value: 0,
-      totalBucket61to90Qty: 0,
-      totalBucket61to90Value: 0,
-      totalBucket91to120Qty: 0,
-      totalBucket91to120Value: 0,
-      totalBucket121to180Qty: 0,
-      totalBucket121to180Value: 0,
-      totalBucket181PlusQty: 0,
-      totalBucket181PlusValue: 0,
+      totalBucket0to6mQty: 0,
+      totalBucket0to6mValue: 0,
+      totalBucket6to9mQty: 0,
+      totalBucket6to9mValue: 0,
+      totalBucket9to12mQty: 0,
+      totalBucket9to12mValue: 0,
+      totalBucket12to15mQty: 0,
+      totalBucket12to15mValue: 0,
+      totalBucket15to18mQty: 0,
+      totalBucket15to18mValue: 0,
+      totalBucket18mPlusQty: 0,
+      totalBucket18mPlusValue: 0,
       overallAvgAgeDays: 0,
       locationTotals: {},
       warehouseTotals: {},
@@ -557,15 +611,22 @@ export class InventoryAgingExportService {
       const totalValue = totalQty * unitCost;
 
       // Allocate current stock Qty into age buckets using receipt movements (FIFO)
+      // Month-based Aging Brackets:
+      // 0 - 6 Months (0 - 180 days)
+      // 6 - 9 Months (181 - 270 days)
+      // 9 - 12 Months (271 - 360 days)
+      // 12 - 15 Months (361 - 450 days)
+      // 15 - 18 Months (451 - 540 days)
+      // > 18 Months (> 540 days)
       const movements = movementMap.get(itemId) || [];
       let remainingToAllocate = totalQty;
 
-      let b0to30 = 0;
-      let b31to60 = 0;
-      let b61to90 = 0;
-      let b91to120 = 0;
-      let b121to180 = 0;
-      let b181plus = 0;
+      let b0to6 = 0;
+      let b6to9 = 0;
+      let b9to12 = 0;
+      let b12to15 = 0;
+      let b15to18 = 0;
+      let b18plus = 0;
       let itemAgeDaysSum = 0;
 
       for (const mov of movements) {
@@ -576,18 +637,18 @@ export class InventoryAgingExportService {
         const ageDays = Math.max(0, Math.floor((asOfDate.getTime() - new Date(mov.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
         itemAgeDaysSum += ageDays * allocQty;
 
-        if (ageDays <= 30) b0to30 += allocQty;
-        else if (ageDays <= 60) b31to60 += allocQty;
-        else if (ageDays <= 90) b61to90 += allocQty;
-        else if (ageDays <= 120) b91to120 += allocQty;
-        else if (ageDays <= 180) b121to180 += allocQty;
-        else b181plus += allocQty;
+        if (ageDays <= 180) b0to6 += allocQty;
+        else if (ageDays <= 270) b6to9 += allocQty;
+        else if (ageDays <= 360) b9to12 += allocQty;
+        else if (ageDays <= 450) b12to15 += allocQty;
+        else if (ageDays <= 540) b15to18 += allocQty;
+        else b18plus += allocQty;
       }
 
-      // If movements didn't cover all stock, remaining stock falls into default 181+ days
+      // If movements didn't cover all stock, remaining stock falls into default >18M (>540 days)
       if (remainingToAllocate > 0) {
-        b181plus += remainingToAllocate;
-        itemAgeDaysSum += 180 * remainingToAllocate;
+        b18plus += remainingToAllocate;
+        itemAgeDaysSum += 540 * remainingToAllocate;
       }
 
       const avgAgeDays = totalQty > 0 ? Math.round(itemAgeDaysSum / totalQty) : 0;
@@ -612,18 +673,18 @@ export class InventoryAgingExportService {
         totalQty,
         totalValue,
 
-        bucket0to30Qty: b0to30,
-        bucket0to30Value: b0to30 * unitCost,
-        bucket31to60Qty: b31to60,
-        bucket31to60Value: b31to60 * unitCost,
-        bucket61to90Qty: b61to90,
-        bucket61to90Value: b61to90 * unitCost,
-        bucket91to120Qty: b91to120,
-        bucket91to120Value: b91to120 * unitCost,
-        bucket121to180Qty: b121to180,
-        bucket121to180Value: b121to180 * unitCost,
-        bucket181PlusQty: b181plus,
-        bucket181PlusValue: b181plus * unitCost,
+        bucket0to6mQty: b0to6,
+        bucket0to6mValue: b0to6 * unitCost,
+        bucket6to9mQty: b6to9,
+        bucket6to9mValue: b6to9 * unitCost,
+        bucket9to12mQty: b9to12,
+        bucket9to12mValue: b9to12 * unitCost,
+        bucket12to15mQty: b12to15,
+        bucket12to15mValue: b12to15 * unitCost,
+        bucket15to18mQty: b15to18,
+        bucket15to18mValue: b15to18 * unitCost,
+        bucket18mPlusQty: b18plus,
+        bucket18mPlusValue: b18plus * unitCost,
 
         avgAgeDays,
         locationStocks: data.locationStocks,
@@ -637,18 +698,18 @@ export class InventoryAgingExportService {
       grandTotals.totalStockQty += totalQty;
       grandTotals.totalStockValue += totalValue;
 
-      grandTotals.totalBucket0to30Qty += b0to30;
-      grandTotals.totalBucket0to30Value += b0to30 * unitCost;
-      grandTotals.totalBucket31to60Qty += b31to60;
-      grandTotals.totalBucket31to60Value += b31to60 * unitCost;
-      grandTotals.totalBucket61to90Qty += b61to90;
-      grandTotals.totalBucket61to90Value += b61to90 * unitCost;
-      grandTotals.totalBucket91to120Qty += b91to120;
-      grandTotals.totalBucket91to120Value += b91to120 * unitCost;
-      grandTotals.totalBucket121to180Qty += b121to180;
-      grandTotals.totalBucket121to180Value += b121to180 * unitCost;
-      grandTotals.totalBucket181PlusQty += b181plus;
-      grandTotals.totalBucket181PlusValue += b181plus * unitCost;
+      grandTotals.totalBucket0to6mQty += b0to6;
+      grandTotals.totalBucket0to6mValue += b0to6 * unitCost;
+      grandTotals.totalBucket6to9mQty += b6to9;
+      grandTotals.totalBucket6to9mValue += b6to9 * unitCost;
+      grandTotals.totalBucket9to12mQty += b9to12;
+      grandTotals.totalBucket9to12mValue += b9to12 * unitCost;
+      grandTotals.totalBucket12to15mQty += b12to15;
+      grandTotals.totalBucket12to15mValue += b12to15 * unitCost;
+      grandTotals.totalBucket15to18mQty += b15to18;
+      grandTotals.totalBucket15to18mValue += b15to18 * unitCost;
+      grandTotals.totalBucket18mPlusQty += b18plus;
+      grandTotals.totalBucket18mPlusValue += b18plus * unitCost;
 
       for (const [locId, q] of Object.entries(data.locationStocks)) {
         grandTotals.locationTotals[locId] = (grandTotals.locationTotals[locId] || 0) + q;

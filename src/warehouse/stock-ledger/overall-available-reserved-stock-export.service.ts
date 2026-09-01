@@ -466,16 +466,6 @@ export class OverallAvailableReservedStockExportService {
       orderBy: { name: 'asc' },
     });
 
-    const stockLocations = await prisma.location.findMany({
-      where: {
-        isStockLocation: true,
-        isDeleted: false,
-        ...(locIds.length > 0 ? { id: { in: locIds } } : {}),
-      },
-      select: { id: true, name: true, code: true, shortCode: true },
-      orderBy: { name: 'asc' },
-    });
-
     const now = new Date();
     const endDate = asOfStr ? new Date(asOfStr) : new Date();
     endDate.setHours(23, 59, 59, 999);
@@ -506,10 +496,28 @@ export class OverallAvailableReservedStockExportService {
           ...locationOrWarehouseWhere,
           createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
         },
-        select: { itemId: true },
-        distinct: ['itemId'],
+        select: { itemId: true, locationId: true, warehouseId: true },
+        distinct: ['itemId', 'locationId'],
       }),
     ]);
+
+    const activeStockLocIds = [...new Set([
+      ...inventoryItems.map(i => i.locationId),
+      ...ledgerItems.map(l => l.locationId),
+    ].filter(Boolean))] as string[];
+
+    const stockLocations = await prisma.location.findMany({
+      where: {
+        isDeleted: false,
+        OR: [
+          { isStockLocation: true },
+          ...(activeStockLocIds.length > 0 ? [{ id: { in: activeStockLocIds } }] : []),
+        ],
+        ...(locIds.length > 0 ? { id: { in: locIds } } : {}),
+      },
+      select: { id: true, name: true, code: true, shortCode: true },
+      orderBy: { name: 'asc' },
+    });
 
     let uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
@@ -600,7 +608,7 @@ export class OverallAvailableReservedStockExportService {
         where: {
           transferRequest: {
             ...toLocOrWhWhere,
-            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
             transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
           },
         },
@@ -798,11 +806,10 @@ export class OverallAvailableReservedStockExportService {
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const stockWh = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        const validStockWh = Math.max(0, stockWh);
         const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
         const rs = (reserveMap.get(key) ?? reserveMap.get(altKey)) || 0;
 
-        const availWh = Math.max(0, validStockWh - rs);
+        const availWh = stockWh - rs;
         warehouseStocks[wh.id] = availWh;
         itemAvailableStockSum += availWh;
 
@@ -825,9 +832,9 @@ export class OverallAvailableReservedStockExportService {
         const totalTrfOut = m.toWarehouse + m.toOutlet;
         const stockLoc = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        const validStockLoc = Math.max(0, stockLoc);
-        locationStocks[loc.id] = validStockLoc;
-        itemAvailableStockSum += validStockLoc;
+        const availLoc = stockLoc;
+        locationStocks[loc.id] = availLoc;
+        itemAvailableStockSum += availLoc;
 
         const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
         itemTransitSum += tr;

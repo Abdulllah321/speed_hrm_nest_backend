@@ -1,28 +1,23 @@
-import { PrismaClient } from '@prisma/management-client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL_MANAGEMENT || 'postgresql://speedlimit:speedlimit123@localhost:5433/speedlimit_management' });
+const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:root@localhost:5432/spl_core_db?schema=public';
+const pool = new Pool({ connectionString: dbUrl });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
   try {
-    const updated = await prisma.company.update({
-      where: { code: 'speed' },
-      data: {
-        dbName: 'tenant_speed_main_mox1gfsi',
-        dbUrl: 'postgresql://speedlimit:speedlimit123@localhost:5433/tenant_speed_main_mox1gfsi?schema=public',
-        dbUser: 'speedlimit',
-        dbPassword: null, // Clear dynamic encryption to use dbUrl directly
-        dbPort: 5433,
-        dbHost: 'localhost'
-      }
-    });
-    console.log('Successfully switched tenant database to tenant_speed_main_mox1gfsi!');
-    console.log(JSON.stringify(updated, null, 2));
+    const updated = await prisma.$executeRawUnsafe(
+      `UPDATE "Company" SET "dbName" = 'tenant_speed_main_mox1gfsi', "dbUrl" = 'postgresql://postgres:root@localhost:5432/tenant_speed_main_mox1gfsi?schema=public', "dbPort" = 5432, "dbUser" = 'postgres'`
+    );
+    console.log('Successfully updated Company record to tenant_speed_main_mox1gfsi! Rows updated:', updated);
+
+    const companies: any[] = await prisma.$queryRawUnsafe(`SELECT id, code, name, "dbName", "dbUrl" FROM "Company"`);
+    console.log('Current Company Records:', JSON.stringify(companies, null, 2));
   } catch (error) {
-    console.error('Error switching tenant database:', error);
+    console.error('Error updating company:', error);
   } finally {
     await prisma.$disconnect();
     await pool.end();
