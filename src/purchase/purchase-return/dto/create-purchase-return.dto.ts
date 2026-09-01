@@ -71,7 +71,7 @@ export class CreatePurchaseReturnItemDto {
 }
 
 export class CreatePurchaseReturnDto {
-  @ApiProperty({ enum: ReturnSourceType })
+  @ApiProperty({ enum: ReturnSourceType, enumName: 'ReturnSourceType' })
   @IsEnum(ReturnSourceType)
   sourceType: ReturnSourceType;
 
@@ -100,7 +100,7 @@ export class CreatePurchaseReturnDto {
   @IsNotEmpty()
   warehouseId: string;
 
-  @ApiProperty({ enum: ReturnType })
+  @ApiProperty({ enum: ReturnType, enumName: 'ReturnType' })
   @IsEnum(ReturnType)
   returnType: ReturnType;
 

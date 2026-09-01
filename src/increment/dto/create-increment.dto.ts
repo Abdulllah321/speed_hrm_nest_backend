@@ -38,7 +38,7 @@ export class CreateIncrementItemDto {
   @IsString()
   designationId?: string;
 
-  @ApiProperty({ enum: IncrementType, example: IncrementType.INCREMENT })
+  @ApiProperty({ enum: IncrementType, enumName: 'IncrementType', example: IncrementType.INCREMENT })
   @IsNotEmpty()
   @IsEnum(IncrementType)
   incrementType: IncrementType;
@@ -55,7 +55,7 @@ export class CreateIncrementItemDto {
   @Min(0)
   incrementPercentage?: number;
 
-  @ApiProperty({ enum: IncrementMethod, example: IncrementMethod.AMOUNT })
+  @ApiProperty({ enum: IncrementMethod, enumName: 'IncrementMethod', example: IncrementMethod.AMOUNT })
   @IsNotEmpty()
   @IsEnum(IncrementMethod)
   incrementMethod: IncrementMethod;

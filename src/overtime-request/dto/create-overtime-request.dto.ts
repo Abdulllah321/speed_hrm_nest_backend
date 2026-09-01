@@ -19,7 +19,7 @@ export class CreateOvertimeRequestDto {
   @IsString()
   employeeId: string;
 
-  @ApiProperty({ enum: OvertimeType, example: OvertimeType.WEEKDAY })
+  @ApiProperty({ enum: OvertimeType, enumName: 'OvertimeType', example: OvertimeType.WEEKDAY })
   @IsNotEmpty()
   @IsEnum(OvertimeType)
   overtimeType: OvertimeType;
