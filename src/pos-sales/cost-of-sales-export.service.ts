@@ -428,9 +428,24 @@ export class CostOfSalesExportService {
       };
     }
 
-    await onProgress?.(30, 'Fetching sales order line items & store/warehouse details...');
+    const whereReturns: any = {
+      referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'POS_VOID'] },
+      createdAt: { gte: startDate, lte: endDate },
+    };
 
-    const [orders, locations] = await Promise.all([
+    if (locationId && locationId.trim() !== '' && locationId !== 'all') {
+      const locationIds = locationId
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (locationIds.length > 0) {
+        whereReturns.locationId = { in: locationIds };
+      }
+    }
+
+    await onProgress?.(30, 'Fetching sales orders, returns & store details...');
+
+    const [orders, returnLedgerEntries, locations] = await Promise.all([
       prisma.salesOrder.findMany({
         where: whereSales,
         select: {
@@ -464,12 +479,63 @@ export class CostOfSalesExportService {
           },
         },
       }),
+      (prisma as any).stockLedger.findMany({
+        where: whereReturns,
+        select: {
+          id: true,
+          qty: true,
+          referenceId: true,
+          locationId: true,
+          item: {
+            select: {
+              id: true,
+              sku: true,
+              barCode: true,
+              description: true,
+              unitCost: true,
+              unitPrice: true,
+              division: { select: { id: true, name: true } },
+              brand: { select: { id: true, name: true } },
+              gender: { select: { id: true, name: true } },
+              category: { select: { id: true, name: true } },
+              silhouette: { select: { id: true, name: true } },
+              size: { select: { name: true } },
+              color: { select: { name: true } },
+            },
+          },
+        },
+      }),
       prisma.location.findMany({ select: { id: true, name: true } }),
     ]);
 
+    const returnVoucherIds = [...new Set(returnLedgerEntries.map((e: any) => e.referenceId).filter(Boolean))] as string[];
+    const returnVouchers = returnVoucherIds.length
+      ? await (prisma as any).voucher.findMany({
+          where: { id: { in: returnVoucherIds } },
+        })
+      : [];
+    const sourceOrderIds = [...new Set(returnVouchers.map((v: any) => v.sourceOrderId).filter(Boolean))] as string[];
+    const sourceOrders = sourceOrderIds.length
+      ? await prisma.salesOrder.findMany({
+          where: { id: { in: sourceOrderIds } },
+          include: { items: true },
+        })
+      : [];
+    const sourceOrderMap = new Map<string, any>();
+    for (const so of sourceOrders) {
+      sourceOrderMap.set(so.id, so);
+    }
+    const voucherMap = new Map<string, any>();
+    for (const v of returnVouchers) {
+      voucherMap.set(v.id, {
+        ...v,
+        sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+      });
+    }
+
     const locationMap = new Map<string, string>(locations.map((l) => [l.id, l.name]));
 
-    await onProgress?.(65, 'Building cost-of-sales tree & calculating gross profit metrics...');
+    await onProgress?.(65, 'Building Net Cost of Sales tree & calculating gross profit metrics...');
 
     const brandsList: CostOfSalesBrandNode[] = [];
     const flatItemsList: CostOfSalesFlatRecord[] = [];
@@ -483,11 +549,12 @@ export class CostOfSalesExportService {
       grossProfit: number;
       profitMargin: number;
     }) => {
-      tot.avgUnitCost = tot.quantity > 0 ? Math.round((tot.totalCost / tot.quantity) * 100) / 100 : 0;
+      tot.avgUnitCost = tot.quantity !== 0 ? Math.round((tot.totalCost / Math.abs(tot.quantity)) * 100) / 100 : 0;
       tot.grossProfit = Math.round((tot.totalRevenue - tot.totalCost) * 100) / 100;
-      tot.profitMargin = tot.totalRevenue > 0 ? Math.round((tot.grossProfit / tot.totalRevenue) * 10000) / 100 : 0;
+      tot.profitMargin = tot.totalRevenue !== 0 ? Math.round((tot.grossProfit / tot.totalRevenue) * 10000) / 100 : 0;
     };
 
+    // 1. Process Sales Orders (Gross Sales)
     for (const order of orders) {
       const locName = (order.locationId && locationMap.get(order.locationId)) || 'Main Location';
       locationsSet.add(order.locationId || 'default');
@@ -498,9 +565,15 @@ export class CostOfSalesExportService {
         const unitCost = Number(soi.item.unitCost || 0);
         const totalCost = Math.round(qty * unitCost * 100) / 100;
         const unitPrice = Number(soi.unitPrice || 0);
-        const totalRevenue = Number(soi.lineTotal || qty * unitPrice);
+
+        const taxPercent = Number((soi as any).taxPercent || (soi as any).taxRate || 0);
+        const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
+        const taxDivisor = 1 + calculatedTaxPct / 100;
+        const wostPerUnit = unitPrice / taxDivisor;
+        const totalRevenue = Math.round(wostPerUnit * qty * 100) / 100;
+
         const grossProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
-        const profitMargin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
+        const profitMargin = totalRevenue !== 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
 
         const brandName = soi.item.brand?.name || 'Unassigned Brand';
         const brandId = soi.item.brand?.id || 'brand-unassigned';
@@ -629,7 +702,7 @@ export class CostOfSalesExportService {
         sizeItem.totalCost = Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
         sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
         sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
-        sizeItem.profitMargin = sizeItem.totalRevenue > 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+        sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
 
         prodNode.totals.quantity += qty;
         prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
@@ -651,6 +724,176 @@ export class CostOfSalesExportService {
         brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
         brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
       }
+    }
+
+    // 2. Deduct Sales Returns from StockLedger (Sales Returns)
+    for (const entry of returnLedgerEntries) {
+      if (!entry.item) continue;
+      const locName = (entry.locationId && locationMap.get(entry.locationId)) || 'Main Location';
+      locationsSet.add(entry.locationId || 'default');
+
+      const voucher = voucherMap.get(entry.referenceId);
+      const originalOi = voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+
+      const retQty = Math.abs(Number(entry.qty || 1));
+      const netQty = -retQty;
+      const unitCost = Number(entry.item.unitCost || 0);
+      const netCost = -Math.round(retQty * unitCost * 100) / 100;
+
+      const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
+      const taxPercent = originalOi ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0) : 18;
+      const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
+      const taxDivisor = 1 + calculatedTaxPct / 100;
+      const wostPerUnit = unitPrice / taxDivisor;
+      const netRevenue = -Math.round(wostPerUnit * retQty * 100) / 100;
+
+      const brandName = entry.item.brand?.name || 'Unassigned Brand';
+      const brandId = entry.item.brand?.id || 'brand-unassigned';
+
+      const divName = entry.item.division?.name || 'Unassigned Division';
+      const divId = entry.item.division?.id || 'div-unassigned';
+
+      const genderName = entry.item.gender?.name || 'Unassigned Gender';
+      const genderId = entry.item.gender?.id || 'gender-unassigned';
+
+      const catName = entry.item.category?.name || 'Unassigned Category';
+      const catId = entry.item.category?.id || 'cat-unassigned';
+
+      const silName = entry.item.silhouette?.name || 'Unassigned Silhouette';
+
+      const sku = entry.item.sku || 'UNKNOWN-SKU';
+      const desc = entry.item.description || 'No Description';
+      const sizeName = entry.item.size?.name || 'N/A';
+      const colorName = entry.item.color?.name || 'N/A';
+      const barCode = entry.item.barCode || '';
+
+      flatItemsList.push({
+        id: `ret-${entry.id}`,
+        brand: brandName,
+        division: divName,
+        category: catName,
+        gender: genderName,
+        silhouette: silName,
+        sku,
+        articleName: desc,
+        color: colorName,
+        size: sizeName,
+        barCode,
+        locationName: locName,
+        quantity: netQty,
+        unitCost,
+        totalCost: netCost,
+        unitPrice,
+        totalRevenue: netRevenue,
+        grossProfit: Math.round((netRevenue - netCost) * 100) / 100,
+        profitMargin: netRevenue !== 0 ? Math.round(((netRevenue - netCost) / netRevenue) * 10000) / 100 : 0,
+      });
+
+      // 1. Brand Level
+      let brandNode = brandsList.find((b) => b.brandId === brandId);
+      if (!brandNode) {
+        brandNode = {
+          brandId,
+          brandName,
+          divisions: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        brandsList.push(brandNode);
+      }
+
+      // 2. Division Level
+      let divNode = brandNode.divisions.find((d) => d.divisionId === divId);
+      if (!divNode) {
+        divNode = {
+          divisionId: divId,
+          divisionName: divName,
+          genders: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        brandNode.divisions.push(divNode);
+      }
+
+      // 3. Gender Level
+      let genderNode = divNode.genders.find((g) => g.genderId === genderId);
+      if (!genderNode) {
+        genderNode = {
+          genderId,
+          genderName,
+          categories: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        divNode.genders.push(genderNode);
+      }
+
+      // 4. Category Level
+      let catNode = genderNode.categories.find((c) => c.categoryId === catId);
+      if (!catNode) {
+        catNode = {
+          categoryId: catId,
+          categoryName: catName,
+          products: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        genderNode.categories.push(catNode);
+      }
+
+      // 5. Product Level
+      let prodNode = catNode.products.find((p) => p.sku === sku);
+      if (!prodNode) {
+        prodNode = {
+          sku,
+          description: desc,
+          productLabel: desc,
+          sizes: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        catNode.products.push(prodNode);
+      }
+
+      // 6. Variant Level
+      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      if (!sizeItem) {
+        sizeItem = {
+          id: `ret-${entry.id}`,
+          size: sizeName,
+          color: colorName,
+          barCode,
+          quantity: 0,
+          costPrice: unitCost,
+          totalCost: 0,
+          unitPrice,
+          totalRevenue: 0,
+          grossProfit: 0,
+          profitMargin: 0,
+        };
+        prodNode.sizes.push(sizeItem);
+      }
+
+      sizeItem.quantity += netQty;
+      sizeItem.totalCost = Math.round((sizeItem.totalCost + netCost) * 100) / 100;
+      sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + netRevenue) * 100) / 100;
+      sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
+      sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+
+      prodNode.totals.quantity += netQty;
+      prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + netCost) * 100) / 100;
+      prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + netRevenue) * 100) / 100;
+
+      catNode.totals.quantity += netQty;
+      catNode.totals.totalCost = Math.round((catNode.totals.totalCost + netCost) * 100) / 100;
+      catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + netRevenue) * 100) / 100;
+
+      genderNode.totals.quantity += netQty;
+      genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + netCost) * 100) / 100;
+      genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + netRevenue) * 100) / 100;
+
+      divNode.totals.quantity += netQty;
+      divNode.totals.totalCost = Math.round((divNode.totals.totalCost + netCost) * 100) / 100;
+      divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + netRevenue) * 100) / 100;
+
+      brandNode.totals.quantity += netQty;
+      brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + netCost) * 100) / 100;
+      brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + netRevenue) * 100) / 100;
     }
 
     await onProgress?.(85, 'Finalizing node metrics & grand totals...');
